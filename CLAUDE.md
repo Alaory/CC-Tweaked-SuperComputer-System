@@ -30,11 +30,15 @@ PneumaticCraft drone rides, turtle mapping/surveys, and an AE2 ME network view.
   only if they fit, through a temp file, never half-written. Big files go
   through `dataFile(path)` so they can live on data floppies (`disks data`).
 - The computer has only **1 MB of disk** - keep data files small.
-- The MAP is saved as region files `map/<rx>_<rz>.dat` (4x4 chunks, compact
-  text) on data floppies first (base_map.lua: MAP.save / writeRegion), at most
-  once a minute (MAP.autoSave in commsWorker) and on exit. In memory a chunk is
-  256 packed numbers; `MAP.get(x, z)` returns height, block. An old `map.dat` is
-  converted once on start-up.
+- The MAP has two layers (base_map.lua): DETAIL (every column, newest
+  `maxChunks` chunks) and OVERVIEW (1 value per chunk, never dropped; used at
+  zoom >= 16 and where detail is gone). Files in `map/`: detail `<rx>_<rz>.dat`
+  (4x4 chunks), overview `o<ox>_<oz>.dat` (32x32 chunks), compact text, on data
+  floppies first (owner has at most 10), computer at most `computerKB`. Saved
+  at most once a minute (MAP.autoSave in commsWorker) and on exit. In memory
+  layers are TEXT, 4 bytes per cell (numbers in tables are costly in Cobalt).
+  `MAP.get` / `MAP.getOverview(x, z)` return height, block. No ores (owner
+  does not want them). An old `map.dat` is converted once on start-up.
 - `tools/preview/` draws the monitor outside the game (Lua 5.3 + Pillow); use
   it to check screen changes. It is not game code.
 

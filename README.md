@@ -22,7 +22,7 @@ Made for **CC:Tweaked 1.120.2 on Minecraft 1.21.1 (NeoForge)** with
 | **CHAT** | Who may use the `$drone` chat commands (the allow list). |
 | **TURTLES** | Remote-controlled turtles: status, fuel, position, and a control pad. Also rescue and "find lost turtles". |
 | **EVENTS** | Every message the program showed, newest first, with filters (errors, warnings, done, info). |
-| **MAP** | Terrain and ores from the turtles' Geo Scanner scans: zoom, rotate, and send turtles to survey an area. |
+| **MAP** | Terrain from the turtles' Geo Scanner scans: zoom (1 to 128 blocks per cell), rotate, and send turtles to survey an area. |
 
 A tab only appears when the block it needs is connected.
 
@@ -137,7 +137,7 @@ Type these on the base computer. `help` shows the full list.
 | `base_players.lua` | Player Detector data, dimensions, `$drone back` tracking |
 | `base_drones.lua` | Drones: travel, pickup / drop, charging, missions |
 | `base_turtles.lua` | Turtle communication, shared knowledge, updates, rescue |
-| `base_map.lua` | Map data from turtle scans, saved as small region files |
+| `base_map.lua` | Map data from turtle scans (detail + overview), saved as small files on the data floppies |
 | `base_console.lua` | Keyboard commands |
 | `base_chat.lua` | `$drone` chat commands |
 | `base_input.lua` | Monitor touches |
@@ -155,17 +155,23 @@ the game.
 
 `waypoints.dat`, `drone_logs.dat`, `drone_charger.dat`, `chat_access.dat`,
 `back_spots.dat`, `player_dims.dat`, `turtles.dat`, `terrain.dat`,
-`exit_route.dat`, `map/<x>_<z>.dat` (map region files), `map_view.dat`, `me_setup.dat`, `me_names.dat`,
+`exit_route.dat`, `map/` (map files), `map_view.dat`, `me_setup.dat`, `me_names.dat`,
 `me_owed.dat`, `curios_last.dat`.
 
 A computer has only **1 MB** of disk. The biggest files (map, turtle
 knowledge, logs) can be moved to data floppies with `disks data` / `disks move`.
 
-The **map** is saved as small region files (4 x 4 chunks each) in a `map`
-folder: on the data floppy with the most room, on the computer only when no
-floppy has room. Only changed regions are written, at most once a minute and
-when the program stops. 200 chunks take about 70 KB. `map` on the computer
-shows how much room it takes and where.
+The **map** has two layers. The *detail* (every block column) is kept for the
+newest chunks (`maxChunks`). The *overview* (one colour and height per chunk)
+keeps every chunk ever scanned and is used when zoomed out (16 to 128 blocks
+per cell) and wherever the detail was dropped. 512 x 512 chunks of overview
+take roughly 0.5 - 0.8 MB; detail takes about 350 bytes per chunk.
+Both are saved as small files in a `map` folder on the data floppies (the one
+with the most room); the computer is used only when no floppy has room, and
+for at most `computerKB` (default 200 KB). Only changed files are written, at
+most once a minute and when the program stops. When the floppies are full, the
+oldest detail is dropped (the overview keeps those chunks). `map` on the
+computer shows how much room it takes.
 When the disk is full, the footer shows a warning instead of writing half a file.
 
 ## Screen preview

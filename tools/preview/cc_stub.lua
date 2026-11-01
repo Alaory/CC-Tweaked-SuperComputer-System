@@ -75,8 +75,9 @@ local function rootOf(p)
   return ""
 end
 fs = {}
-function fs.exists(p) return FILES[p] ~= nil or DIRS[p] ~= nil or CAP[p] ~= nil or (p ~= "" and io.open(SRC .. "/" .. p, "r") ~= nil) end
-function fs.isDir(p) return DIRS[p] ~= nil or (CAP[p] ~= nil) or p == "" end
+local function hasFilesIn(p) local pre = p .. "/" for k in pairs(FILES) do if k:sub(1, #pre) == pre then return true end end return false end
+function fs.exists(p) return FILES[p] ~= nil or DIRS[p] ~= nil or CAP[p] ~= nil or hasFilesIn(p) or (p ~= "" and io.open(SRC .. "/" .. p, "r") ~= nil) end
+function fs.isDir(p) return DIRS[p] ~= nil or (CAP[p] ~= nil) or p == "" or hasFilesIn(p) end
 function fs.makeDir(p) DIRS[p] = true end
 function fs.list(d)
   local out, seen = {}, {}

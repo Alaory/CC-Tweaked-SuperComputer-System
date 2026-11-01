@@ -333,7 +333,7 @@ function handleCommand(line)
         return (fs.exists(d) and (d .. " (" .. math.ceil(fs.getSize(d) / 1024) .. " KB)")) or "not saved"
       end
       local total, onPc, files = MAP.diskUse()
-      say("Map:              " .. files .. " region files, " .. math.ceil((total - onPc) / 1024) ..
+      say("Map:              " .. files .. " files, " .. math.ceil((total - onPc) / 1024) ..
           " KB on floppies, " .. math.ceil(onPc / 1024) .. " KB on the computer" ..
           (#MAP.order < chunks0 and ("  - trimmed to the newest " .. #MAP.order .. " chunks") or ""))
       say("Turtle knowledge: " .. where(CONFIG.turtles.knowFile) ..
@@ -411,7 +411,7 @@ function handleCommand(line)
     else
       pcall(MAP.save)
       local total, onPc, files = MAP.diskUse()
-      say("Map: " .. #MAP.order .. " chunks in " .. files .. " region files, " ..
+      say("Map: overview " .. MAP.ovN .. " chunks, detail " .. #MAP.order .. " chunks, in " .. files .. " files, " ..
           math.ceil(total / 1024) .. " KB (" .. math.ceil((total - onPc) / 1024) .. " KB on data floppies, " ..
           math.ceil(onPc / 1024) .. " KB on this computer).")
       say("'map clear' deletes all scans. 'disks data' makes empty floppies data disks for the map.")
