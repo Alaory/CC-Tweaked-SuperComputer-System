@@ -806,6 +806,22 @@ function curioSignature(fn, slotType)
     end
   end
   if #types == 0 then return nil, "could not find out how " .. fn .. " is called" end
+  -- OPTIONAL arguments (the function works without them, so the questions
+  -- above never see them): an extra argument of a wrong type (true) is refused
+  -- with the type the function wants there - before it does anything (the
+  -- chest is still a marker, so nothing moves). A number becomes the slot
+  -- number, a table the item filter, a text the item name.
+  for _ = 1, 3 do
+    local n = #types + 1
+    local a2 = {}
+    for k = 1, #types do a2[k] = args[k] end
+    a2[n] = true
+    local ok, err = pcall(inv[fn], unpack(a2, 1, n))
+    local m, ty = tostring(err):match("bad argument #(%d+) %((%a+) expected, got boolean")
+    if ok or tonumber(m) ~= n or not PLACEHOLDER[ty] or ty == "boolean" then break end
+    types[n] = ty
+    args[n] = (ty == "string") and ("__p" .. n .. "__") or PLACEHOLDER[ty]
+  end
   CURIO_SIG[fn] = { types = types, roles = roles }
   return CURIO_SIG[fn]
 end
@@ -929,14 +945,26 @@ local function curioCall(fn, target, slotType, slotNo, name, count, check)
         idx = 0
       end
       if wrongName then
-        -- a different item moved (wrong slot number): put it back on
-        local other = (fn == "exportCuriosItem") and "importCuriosItem" or "exportCuriosItem"
-        local osig = curioSignature(other, slotType)
+        -- a different item came off (the function chose another slot): put it
+        -- back on - checked; if it does not go back on, it goes into the
+        -- inventory (never left in the chest)
+        local osig = curioSignature("importCuriosItem", slotType)
         if osig then
           local back = curioArgs(osig, target, slotType, (tonumber(slotNo) or 1) + sh, wrongName, 1)
-          pcall(inv[other], unpack(back, 1, #osig.types))
+          pcall(inv.importCuriosItem, unpack(back, 1, #osig.types))
         end
-        lastErr = "the slot numbers did not match - " .. prettify(wrongName) .. " was put back"
+        local now, isBack = curiosNow(), false
+        if now and after then
+          for k, n in pairs(now) do if n == wrongName and after[k] == nil then isBack = true end end
+        end
+        if isBack then
+          lastErr = "the Inventory Manager took " .. prettify(wrongName) .. " instead - put back on"
+        elseif bufferToPlayer(wrongName, 1, "take") > 0 then
+          lastErr = "the Inventory Manager took " .. prettify(wrongName) .. " instead - it is in your inventory now"
+        else
+          owe(wrongName, 1, "player", "take")
+          lastErr = "the Inventory Manager took " .. prettify(wrongName) .. " instead - kept in the buffer, given to you later"
+        end
       end
     end
   end
