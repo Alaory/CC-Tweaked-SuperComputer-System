@@ -10,15 +10,57 @@
 ---------------------------------------------------------------------
 -- ME / RS BRIDGE
 ---------------------------------------------------------------------
-function setToast(msg, col, secs)
-  state.toast = { msg = msg, col = col or C.good, exp = os.clock() + (secs or 6) }
+-- ===== messages (shown as boxes top-right; see drawNotes in base_ui_core.lua) =====
+-- Every message also goes into the EVENTS list (the last NOTE_LOG_MAX).
+NOTE_LOG_MAX = 40
+local noteId = 0
+
+-- the label of a message, from its colour
+function noteKind(col)
+  if col == C.bad then return "ERROR" end
+  if col == C.warn then return "WARNING" end
+  if col == C.good then return "DONE" end
+  return "INFO"
 end
 
--- a box in the middle of the monitor; closes after `secs` or when tapped
-function setPopup(title, msg, col, secs)
-  state.popup = { title = title, msg = msg, col = col or C.warn, exp = os.clock() + (secs or 8) }
+-- show a message. secs = how long it stays (at least 6 s); sticky = until
+-- closed by a tap (errors are always sticky)
+function pushNote(title, msg, col, secs, sticky)
+  col = col or C.good
+  msg = tostring(msg or "")
+  sticky = sticky or col == C.bad
+  local now = os.clock()
+  local exp = (not sticky) and (now + math.max(secs or 6, 6)) or nil
+  -- the same message again while it is shown: refresh it instead of stacking
+  for _, n in ipairs(state.notes) do
+    if n.msg == msg and n.title == title then
+      n.t, n.exp, n.times = now, exp, (n.times or 1) + 1
+      os.queueEvent("inv_update")
+      return
+    end
+  end
+  noteId = noteId + 1
+  local when = textutils.formatTime(os.time(), true)
+  table.insert(state.notes, 1, { id = noteId, title = title, msg = msg, col = col, t = now,
+                                 exp = exp, when = when })
+  table.insert(state.noteLog, 1, { title = title, msg = msg, col = col, when = when })
+  while #state.noteLog > NOTE_LOG_MAX do table.remove(state.noteLog) end
+  state.noteUnread = (state.noteUnread or 0) + 1
   os.queueEvent("inv_update")
 end
+
+-- close one message box
+function dismissNote(id)
+  for i, n in ipairs(state.notes) do
+    if n.id == id then table.remove(state.notes, i) return end
+  end
+end
+
+-- a short message (closes by itself; errors stay until closed)
+function setToast(msg, col, secs) pushNote(nil, msg, col, secs) end
+
+-- an important message with a title: stays until closed
+function setPopup(title, msg, col) pushNote(title, msg, col or C.warn, nil, true) end
 
 -- pcall wrapper: returns ok, r1, r2
 function callx(obj, fn, ...)

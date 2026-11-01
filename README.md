@@ -25,6 +25,12 @@ Made for **CC:Tweaked 1.120.2 on Minecraft 1.21.1 (NeoForge)** with
 
 A tab only appears when the block it needs is connected.
 
+**Messages** (a transfer is done, a drone cannot start, an error ...) appear as
+boxes in the top-right corner. Tap a box to close it. Normal messages close by
+themselves after a few seconds, errors stay until you close them. The
+**EVENTS** button in the header lists the last 40 messages, with the number of
+new ones on it.
+
 **Drones** (PneumaticCraft):
 - They teleport (or fly) to players and places, pick a player up with Entity Import, and drop them at the destination. If something fails with a passenger on board, the drone brings them back to Base.
 - They only go to players and places **in the overworld**.
@@ -154,6 +160,11 @@ the game.
 A computer has only **1 MB** of disk. The biggest files (map, turtle
 knowledge, logs) can be moved to data floppies with `disks data` / `disks move`.
 When the disk is full, the footer shows a warning instead of writing half a file.
+
+## Screen preview
+
+`tools/preview/` draws the monitor outside the game (for checking screen changes).
+See `tools/preview/README.md`. It is not part of the program; do not copy it into the game.
 
 ## Known limits
 

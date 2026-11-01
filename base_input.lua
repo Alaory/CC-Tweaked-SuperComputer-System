@@ -230,8 +230,17 @@ function handleTouch(tx, ty)
         state.rawView[h[6]] = not state.rawView[h[6]] or nil
       elseif h[5] == "item" then
         if h[6] and h[6] ~= selName then selName = h[6] else selName = nil end
-      elseif h[5] == "popclose" then
-        state.popup = nil
+      elseif h[5] == "ndismiss" then
+        dismissNote(h[6])
+      elseif h[5] == "nclear" then
+        state.notes = {}
+      elseif h[5] == "nhist" then
+        state.noteHistory = not state.noteHistory
+        state.noteUnread = 0
+      elseif h[5] == "nhclose" then
+        state.noteHistory = false
+      elseif h[5] == "nhclear" then
+        state.noteLog = {}
       end
       return h[5] == "page" or h[5] == "act" or h[5] == "mecraft"
     end

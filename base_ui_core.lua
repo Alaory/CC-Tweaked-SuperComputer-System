@@ -112,46 +112,109 @@ function drawCell(x, y, w, h, item, emptyLabel)
   end
 end
 
--- the title, the tabs and the clock
+-- the tabs to show: { page, label, badge, badge colour } (a tab only when its block is there)
+function headerTabs()
+  local tabs = { { "inventory", "INVENTORY" } }
+  local np = det and #(state.players or {}) or 0
+  tabs[#tabs + 1] = { "players", "PLAYERS", np > 0 and tostring(np) or nil }
+  if invCaps.storage then tabs[#tabs + 1] = { "storage", "STORAGE" } end
+  if invCaps.curios then tabs[#tabs + 1] = { "curios", "CURIOS" } end
+  if bridge then tabs[#tabs + 1] = { "me", bridgeKind } end
+  if #droneOrder > 0 then
+    tabs[#tabs + 1] = { "drone", #droneOrder > 1 and "DRONES" or "DRONE",
+                        #droneOrder > 1 and tostring(#droneOrder) or nil }
+  end
+  if chatBox then
+    local req = 0
+    for _ in pairs(state.rideRequests or {}) do req = req + 1 end
+    tabs[#tabs + 1] = { "access", "CHAT", req > 0 and tostring(req) or nil, req > 0 and C.warn or nil }
+  end
+  if state.tModem or next(state.turtles) then
+    local on, all = 0, 0
+    for _, t in pairs(state.turtles) do
+      all = all + 1
+      if TT.online(t) then on = on + 1 end
+    end
+    tabs[#tabs + 1] = { "turtles", "TURTLES", all > 0 and (on .. "/" .. all) or nil }
+  end
+  if state.tModem or next(state.turtles) or MAP.hasData() then tabs[#tabs + 1] = { "map", "MAP" } end
+  return tabs
+end
+
+-- the title, the tabs, the EVENTS button, the owner and the clock
 function drawHeader()
   fill(1, 1, W, 3, C.panel)
-  -- slim separator line under the header (rounded style only)
-  if rounded() then text(1, 4, string.char(131):rep(W), C.head, C.bg) end
 
   local title = CONFIG.title:gsub(".", "%0 "):sub(1, -2)
   text(3, 2, "\4", C.accent, C.panel)
   text(5, 2, title, C.text, C.panel)
   text(5, 3, "Advanced Peripherals", C.dim, C.panel)
 
-  -- page tabs: pills, the active one filled and underlined
-  local tabs = { { "inventory", "INVENTORY" }, { "players", "PLAYERS" } }
-  if invCaps.storage then tabs[#tabs + 1] = { "storage", "STORAGE" } end
-  if invCaps.curios then tabs[#tabs + 1] = { "curios", "CURIOS" } end
-  if bridge then tabs[#tabs + 1] = { "me", bridgeKind } end
-  if #droneOrder > 0 then
-    tabs[#tabs + 1] = { "drone", #droneOrder > 1 and ("DRONES " .. #droneOrder) or "DRONE" }
-  end
-  if chatBox then tabs[#tabs + 1] = { "access", "CHAT" } end
-  if state.tModem or next(state.turtles) then tabs[#tabs + 1] = { "turtles", "TURTLES" } end
-  if state.tModem or next(state.turtles) or MAP.hasData() then tabs[#tabs + 1] = { "map", "MAP" } end
-  local tx = 50
-  for _, t in ipairs(tabs) do
-    local active = state.page == t[1]
-    local lab = "  " .. t[2] .. "  "
-    local bg = active and C.accent or C.empty
-    text(tx, 2, lab, active and C.ink or C.text, bg)
-    round(tx, 2, #lab, 1, bg, C.panel)
-    if active and rounded() then text(tx, 4, string.char(131):rep(#lab), C.accent, C.bg) end
-    addHit(tx, 1, #lab, 3, "page", t[1])
-    tx = tx + #lab + 1
-  end
-
+  -- right side: EVENTS button (with the number of new messages), owner, clock
   local owner = state.owner or "no player"
+  local unread = state.noteUnread or 0
+  local ev = " EVENTS " .. (unread > 0 and (unread .. " ") or "")
+  local rightW = math.max(#owner + 4, 8) + #ev + 3
+  local ex = W - rightW + 1
+  local evBg = unread > 0 and C.warn or C.head
+  fill(ex, 1, #ev, 3, evBg)
+  round(ex, 1, #ev, 3, evBg, C.panel)
+  text(ex, 2, ev, unread > 0 and C.ink or C.text, evBg)
+  addHit(ex, 1, #ev, 3, "nhist")
   local dot = state.status == "ok" and C.good or C.bad
   text(W - #owner - 2, 2, owner, C.text, C.panel)
   text(W - #owner - 4, 2, "\7", dot, C.panel)
   local t = textutils.formatTime(os.time(), true)
   text(W - #t - 2, 3, t, C.dim, C.panel)
+
+  -- the tabs: full header height; the active one is filled and joins the page
+  local tabs = headerTabs()
+  local x0 = 5 + math.max(#title, 20) + 3
+  local avail = ex - 2 - x0
+  local function widthOf(t, pad, badges)
+    local w = #t[2] + 2 * pad
+    if badges and t[3] then w = w + #t[3] + 3 end
+    return w
+  end
+  local pad, badges = 3, true
+  local function total()
+    local s = 0
+    for _, t in ipairs(tabs) do s = s + widthOf(t, pad, badges) + 1 end
+    return s - 1
+  end
+  -- too wide for the monitor: less padding, then no title, then no badges,
+  -- then short names
+  while total() > avail and pad > 1 do pad = pad - 1 end
+  if total() > avail then
+    x0 = 2
+    avail = ex - 2 - x0
+    fill(1, 1, ex - 1, 3, C.panel)                            -- hide the title
+  end
+  if total() > avail then badges = false end
+  if total() > avail then
+    for _, t in ipairs(tabs) do t[2] = t[2]:sub(1, 4) end
+  end
+
+  local tx = x0
+  for _, t in ipairs(tabs) do
+    local active = state.page == t[1]
+    local w = widthOf(t, pad, badges)
+    local bg = active and C.accent or C.head
+    local fg = active and C.ink or C.text
+    fill(tx, 1, w, 3, bg)
+    round(tx, 1, w, 3, bg, C.panel)
+    text(tx + pad, 2, t[2], fg, bg)
+    if badges and t[3] then
+      local bcol = t[4] or (active and C.ink or C.label)
+      local bbg = active and C.label or C.empty
+      if t[4] then bbg = t[4]; bcol = C.ink end
+      text(tx + pad + #t[2] + 1, 2, " " .. t[3] .. " ", bcol, bbg)
+    end
+    -- the active tab runs into the page: a thin line in its colour under it
+    if active then text(tx, 4, string.char(131):rep(w), C.accent, C.bg) end
+    addHit(tx, 1, w, 3, "page", t[1])
+    tx = tx + w + 1
+  end
 end
 
 -- a box in the middle with a title and text (loading, errors)
@@ -304,10 +367,6 @@ function drawFooter()
   }
   if state.diskLow then
     text(3, H, trunc("  " .. state.diskLow .. "  ", W - 24), C.ink, C.bad)
-  elseif state.toast and os.clock() < state.toast.exp then
-    local m = "  " .. trunc(state.toast.msg, W - 24) .. "  "
-    text(3, H, m, C.ink, state.toast.col)
-    round(3, H, #m, 1, state.toast.col, C.panel)
   else
     text(3, H, hint[state.page] or "Touch an item to highlight it", C.dim, C.panel)
   end
@@ -315,26 +374,94 @@ function drawFooter()
   if state.status ~= "ok" then msg, col = "\7 OFFLINE", C.bad
   elseif state.dropped > 0 then msg, col = "\7 SLOT MISMATCH (see slotBase)", C.warn end
   text(W - #msg - 2, H, msg, col, C.panel)
-  drawPopup()
+  drawNotes()
+  drawNoteHistory()
 end
 
--- the popup box (setPopup) on top of everything; a tap anywhere closes it
-function drawPopup()
-  local p = state.popup
-  if not p then return end
-  if os.clock() >= p.exp then state.popup = nil return end
-  local boxW = math.min(W - 6, 50)
-  local lines = wrap(p.msg, boxW - 4, 4)
-  local boxH = #lines + 5
-  local bx = math.floor((W - boxW) / 2) + 1
-  local by = math.floor((H - boxH) / 2) + 1
-  card(bx, by, boxW, boxH)
-  fill(bx, by, boxW, 1, p.col)
-  round(bx, by, boxW, 1, p.col, C.panel)
-  text(bx + 2, by, trunc(p.title, boxW - 4), C.ink, p.col)
-  for i, l in ipairs(lines) do text(bx + 2, by + 1 + i, l, C.text, C.panel) end
-  text(bx + 2, by + boxH - 2, "Tap to close", C.dim, C.panel)
-  addHit(1, 1, W, H, "popclose")       -- last hit = checked first: catches every tap
+-- the message boxes (pushNote), stacked top-right under the tabs. A tap on a
+-- box closes it; normal ones also close by themselves, errors stay.
+function drawNotes()
+  local now = os.clock()
+  for i = #state.notes, 1, -1 do
+    local n = state.notes[i]
+    if n.exp and now >= n.exp then table.remove(state.notes, i) end
+  end
+  if #state.notes == 0 or state.noteHistory then return end
+  local nw = math.min(60, math.max(40, math.floor(W * 0.34)))
+  local x = W - nw - 1
+  local top, bottom = 6, H - 4
+
+  -- which boxes fit (always at least the newest one)
+  local list, y = {}, top
+  for _, n in ipairs(state.notes) do
+    local lines = wrap(n.msg, nw - 6, 3)
+    local h = #lines + 3
+    if y + h - 1 > bottom - 2 and #list > 0 then break end
+    list[#list + 1] = { n = n, lines = lines, h = h, y = y }
+    y = y + h + 1
+  end
+  local more = #state.notes - #list
+  local footer = (more > 0 or #state.notes > 1)
+
+  -- solid backing, so the page behind does not show between the boxes
+  local backH = (y - top) + (footer and 1 or 0)
+  fill(x - 1, top - 1, nw + 2, backH + 1, C.bg)
+
+  for _, b in ipairs(list) do
+    local n, by, h = b.n, b.y, b.h
+    fill(x, by, nw, h, C.empty)
+    round(x, by, nw, h, C.empty, C.bg)
+    fill(x, by, 1, h, n.col)                                  -- coloured stripe
+    local kind = noteKind(n.col)
+    text(x + 2, by, " " .. kind .. " ", C.ink, n.col)
+    local title = n.title and trunc(n.title, nw - #kind - 16) or ""
+    text(x + #kind + 5, by, title, C.text, C.empty)
+    local right = n.when .. ((n.times and n.times > 1) and (" x" .. n.times) or "")
+    text(x + nw - #right - 5, by, right, C.dim, C.empty)
+    text(x + nw - 3, by, " x ", C.text, C.panel)              -- close mark
+    for k, l in ipairs(b.lines) do text(x + 2, by + 1 + k, l, C.text, C.empty) end
+    addHit(x, by, nw, h, "ndismiss", n.id)                    -- tap the box = close it
+  end
+
+  if footer then
+    if more > 0 then text(x, y - 1, "+" .. more .. " more", C.dim, C.bg) end
+    local ca = " CLOSE ALL "
+    text(x + nw - #ca, y - 1, ca, C.text, C.head)
+    addHit(x + nw - #ca, y - 1, #ca, 1, "nclear")
+  end
+end
+
+-- the EVENTS list: every recent message with its time (opened from the header)
+function drawNoteHistory()
+  if not state.noteHistory then return end
+  addHit(1, 1, W, H, "nhclose")                               -- a tap outside closes it
+  local bw = math.min(100, W - 10)
+  local bh = math.min(#state.noteLog + 6, H - 10)
+  bh = math.max(bh, 9)
+  local bx = math.floor((W - bw) / 2) + 1
+  local by = math.floor((H - bh) / 2) + 1
+  card(bx, by, bw, bh)
+  addHit(bx, by, bw, bh, "noop")                              -- taps inside do nothing...
+  text(bx + 2, by + 1, "EVENTS", C.label, C.panel)
+  text(bx + 9, by + 1, "(last " .. NOTE_LOG_MAX .. ")", C.dim, C.panel)
+  local cl = " CLOSE "
+  drawButton(bx + bw - #cl - 2, by + 1, #cl, 1, cl, C.accent, C.ink, "nhclose")   -- ...except the buttons
+  local cr = " CLEAR "
+  drawButton(bx + bw - #cl - #cr - 3, by + 1, #cr, 1, cr, C.empty, C.text, "nhclear")
+  local rows = bh - 4
+  if #state.noteLog == 0 then
+    text(bx + 2, by + 3, "Nothing yet.", C.dim, C.panel)
+    return
+  end
+  for i = 1, math.min(rows, #state.noteLog) do
+    local e = state.noteLog[i]
+    local ry = by + 2 + i
+    local kind = noteKind(e.col)
+    text(bx + 2, ry, e.when, C.dim, C.panel)
+    text(bx + 9, ry, kind, e.col, C.panel)
+    local m = (e.title and (e.title .. ": ") or "") .. e.msg
+    text(bx + 18, ry, trunc(m, bw - 20), C.text, C.panel)
+  end
 end
 
 -- draw the whole screen for the visible tab
