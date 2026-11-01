@@ -424,13 +424,13 @@ function uiLoop()
       os.queueEvent("chat_cmd")
 
     elseif ev == "playerChangedDimension" then
-      if type(a) == "string" and type(c) == "string" then dimCache[a] = c end
+      rememberDim(a, c)
 
     elseif ev == "playerJoin" then
-      if type(a) == "string" and type(b) == "string" then dimCache[a] = b end
+      rememberDim(a, b)
 
     elseif ev == "playerLeave" then
-      if type(a) == "string" then dimCache[a] = nil end
+      forgetDim(a)
 
     elseif ev == "terminate" then
       state.running = false

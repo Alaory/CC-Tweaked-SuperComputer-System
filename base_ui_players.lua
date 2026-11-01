@@ -16,7 +16,13 @@ function dimColor(dim)
 end
 
 -- health / air / position / dimension / facing rows (card starts at y)
-function drawStatus(x, y, w, p, dim, showDim)
+-- label for a dimension: its name, "Other dimension" or "Unknown"
+function dimLabel(dim, other)
+  if dim then return prettify(dim) end
+  return other and "Other dimension" or "Unknown"
+end
+
+function drawStatus(x, y, w, p, dim, showDim, other)
   local ix, iw = x + 2, w - 4
 
   local hp, mx = p.health or 0, p.maxHealth or 20
@@ -39,8 +45,7 @@ function drawStatus(x, y, w, p, dim, showDim)
     r = r + 1
   end
   if showDim then
-    kv(ix, r, iw, "Dimension", dim and prettify(dim) or "Unknown",
-       dimColor(dim))
+    kv(ix, r, iw, "Dimension", dimLabel(dim, other), other and not dim and C.label or dimColor(dim))
     r = r + 1
   end
   if p.yaw then
@@ -59,7 +64,7 @@ function drawPlayer(x, y, w, h)
          C.dim, C.panel)
     return
   end
-  drawStatus(x, y, w, p, state.playerDim, true)
+  drawStatus(x, y, w, p, state.playerDim, true, state.playerDimOther)
 end
 
 -- page 2: one card per online player
@@ -70,8 +75,8 @@ function drawPlayerCard(x, y, w, h, e)
   text(x + 2, y + 1, trunc(name, iw - 20), C.text, C.panel)
   if e.isOwner then text(x + 2, y + 1, "\7", C.accent, C.panel) end
 
-  local d = e.dim and prettify(e.dim) or "Unknown"
-  text(x + w - #d - 4, y + 1, " " .. d .. " ", C.ink, dimColor(e.dim))
+  local d = dimLabel(e.dim, e.dimOther)
+  text(x + w - #d - 4, y + 1, " " .. d .. " ", C.ink, (e.dimOther and not e.dim) and C.label or dimColor(e.dim))
 
   if not e.p then
     text(ix, y + 4, trunc(e.err or "No data", iw), C.warn, C.panel)
