@@ -26,6 +26,7 @@ HELP = {
   " turtles              list connected turtles",
   " turtle <id|name> <cmd> [args]   e.g. goto x y z, home,",
   " turtle <id> log [n]  the turtle's last n log lines in full",
+  " survey               the big survey: progress, what each turtle is waiting for",
   "      sethome [x y z], setpos x y z north, locate, move up 3, stop",
   " map clear            delete all map scans",
   " exit [clear]         the turtles' exit route out of the base (or delete it)",
@@ -445,6 +446,31 @@ function handleCommand(line)
     local nd = 0
     for _ in pairs(KNOW.dead) do nd = nd + 1 end
     say("Shared knowledge: " .. KNOW.n .. " walls, " .. nd .. " dead ends.")
+
+  elseif cmd == "survey" then
+    -- the big survey: progress and what the base sees for every turtle
+    local q = MAP.queue
+    if not q then
+      say("No big survey running.")
+    else
+      local frac, total = MAP.surveyProgress()
+      say(string.format("Big survey %d %d -> %d %d: %d of %d spots checked, %d sent, %d already mapped",
+          q.x1, q.z1, q.x2, q.z2, q.cursor, total, q.sent, q.skipped))
+      say("Turtles: " .. (q.ids and "chosen ones" or "all free ones") .. " - free now: " .. #TT.available())
+      for _, t in ipairs(TT.list()) do
+        local fuel = tonumber(t.fuel)
+        say(string.format("  %s #%d: %s, task %s, pos %s, fuel %s%s%s%s%s%s",
+            t.label, t.id, TT.online(t) and "online" or "OFFLINE", tostring(t.task),
+            (t.pos and t.pos.x) and "ok" or "UNKNOWN", tostring(t.fuel),
+            t.held and ", HELD (stopped)" or "", (q.excluded and q.excluded[t.id]) and ", EXCLUDED" or "",
+            t.anchor and ", anchor" or "", t.rescuerRole and ", rescuer" or "",
+            (t.queueAt and os.clock() - t.queueAt < 15) and ", just got a batch" or ""))
+      end
+      local n0 = #state.tOut
+      local okF, errF = pcall(MAP.feedSurvey)
+      if not okF then say("Handing out FAILED: " .. tostring(errF))
+      else say("Handing out now: " .. (#state.tOut - n0) .. " batch(es) sent.") end
+    end
 
   elseif cmd == "map" then
     if words[2] == "clear" then

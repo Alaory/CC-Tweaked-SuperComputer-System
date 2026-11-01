@@ -290,7 +290,11 @@ function commsWorker()
       tick = os.startTimer(2)
       if KNOW.dirty and os.clock() - KNOW.saved > 30 then pcall(KNOW.save) end
       pcall(MAP.autoSave)                -- changed map regions, at most once a minute
-      pcall(MAP.feedSurvey)              -- a big survey: next batch to each idle turtle
+      local okF, errF = pcall(MAP.feedSurvey)  -- a big survey: next batch to each idle turtle
+      if not okF and (not state.feedErrAt or os.clock() - state.feedErrAt > 60) then
+        state.feedErrAt = os.clock()
+        setToast("Big survey error: " .. tostring(errF), C.bad)
+      end
       pcall(TT.updateTick)               -- turtle program updates, one turtle at a time
       pcall(TT.stopTick)                 -- STOP again until the turtle answers
       pcall(TT.patrolTick)               -- the rescue turtle: send it where it is needed

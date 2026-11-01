@@ -876,8 +876,8 @@ function MAP.feedSurvey()
     end
   end
   -- nobody works on it: say why (at most once a minute)
-  if not busy and q.cursor < total and (not q.toldAt or os.clock() - q.toldAt > 60) then
-    q.toldAt = os.clock()
+  if not busy and q.cursor < total and (not MAP.queueToldAt or os.clock() - MAP.queueToldAt > 60) then
+    MAP.queueToldAt = os.clock()
     setPopup("SURVEY WAITING", (#list == 0 and "No turtle can survey (online, idle, position known, not anchor/rescuer)."
              or ("No turtle takes a batch - " .. table.concat(why, ", "))), C.warn)
   end
