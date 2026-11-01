@@ -61,6 +61,7 @@ function pushNote(title, msg, col, secs)
   table.insert(state.noteLog, 1, { title = title, msg = msg, col = col, when = realTime("%d.%m %H:%M") })
   while #state.noteLog > noteSetting("keep") do table.remove(state.noteLog) end
   if state.page ~= "events" then state.noteUnread = (state.noteUnread or 0) + 1 end
+  if notifyChat then pcall(notifyChat, title, msg, col) end    -- '$drone notify' (base_chat.lua)
   os.queueEvent("inv_update")
 end
 

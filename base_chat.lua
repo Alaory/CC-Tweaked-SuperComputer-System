@@ -149,7 +149,27 @@ function handleChat(m)
           ((owner or CONFIG.chat.othersToPlayers) and "|player" or "") .. "> | " .. c .. " back | " ..
           c .. " places | " .. c .. " status | " .. c .. " stop")
     if owner then reply("Owner: " .. c .. " allow/deny <name> | " ..
-                        c .. " allowed | " .. c .. " yes/no <name>") end
+                        c .. " allowed | " .. c .. " yes/no <name> | " .. c .. " notify on/all/off") end
+
+  elseif sub == "notify" then
+    -- the base's messages in chat (owner only): on = warnings + errors, all, off
+    if not owner then reply("Only " .. tostring(state.owner) .. " can get the base's messages.") return end
+    local want = (words[3] or ""):lower()
+    local k = name:lower()
+    if want == "on" or want == "important" then
+      state.notifySubs[k] = { name = name, level = "important" }
+    elseif want == "all" then
+      state.notifySubs[k] = { name = name, level = "all" }
+    elseif want == "off" then
+      state.notifySubs[k] = nil
+    elseif want ~= "" then
+      reply("Use: " .. c .. " notify on (warnings + errors) | all (everything) | off")
+      return
+    end
+    if want ~= "" then pcall(saveNotifySubs) end
+    local cur = state.notifySubs[k]
+    reply("Base messages in chat: " .. (cur and (cur.level == "all" and "ALL (everything)" or "ON (warnings + errors)")
+          or "OFF") .. ".  " .. c .. " notify on | all | off")
 
   elseif sub == "places" then
     local n = {}
@@ -296,3 +316,48 @@ function handleChat(m)
   end
 end
 
+
+
+---------------------------------------------------------------------
+-- '$drone notify': the base's messages (pushNote) in chat, privately.
+-- At most NOTIFY_PER_MIN per minute and player; the rest is counted and
+-- summed up in the next one ("+N more - see the EVENTS tab").
+---------------------------------------------------------------------
+local NOTIFY_FILE, NOTIFY_PER_MIN = "chat_notify.dat", 6
+state.notifySubs = {}
+do
+  if fs.exists(NOTIFY_FILE) then
+    local h = fs.open(NOTIFY_FILE, "r")
+    local t = h and textutils.unserialize(h.readAll() or "")
+    if h then h.close() end
+    if type(t) == "table" then state.notifySubs = t end
+  end
+end
+function saveNotifySubs()
+  saveFileSafe(NOTIFY_FILE, textutils.serialize(state.notifySubs))
+end
+
+local sentAt, skipped = {}, {}       -- [player] = times of the last messages / messages not sent
+-- called for every message the monitor shows (pushNote in base_me.lua)
+function notifyChat(title, msg, col)
+  if not next(state.notifySubs) then return end
+  local kind = noteKind(col)
+  local important = (kind == "ERROR" or kind == "WARNING")
+  local now = os.clock()
+  for k, sub in pairs(state.notifySubs) do
+    if sub.level == "all" or important then
+      -- the last minute's messages to this player
+      local list, keep = sentAt[k] or {}, {}
+      for _, t in ipairs(list) do if now - t < 60 then keep[#keep + 1] = t end end
+      sentAt[k] = keep
+      if #keep >= NOTIFY_PER_MIN then
+        skipped[k] = (skipped[k] or 0) + 1
+      else
+        local more = skipped[k] and (" (+" .. skipped[k] .. " more - see the EVENTS tab)") or ""
+        skipped[k] = nil
+        keep[#keep + 1] = now
+        chatTell(sub.name, (important and (kind .. ": ") or "") .. (title and (title .. ": ") or "") .. tostring(msg) .. more)
+      end
+    end
+  end
+end

@@ -66,6 +66,9 @@ PneumaticCraft drone rides, turtle mapping/surveys, and an AE2 ME network view.
   or more turtles are offline (server trouble); called off when the turtle
   is fine again; max 3 tries, 30 min apart. Rescuer goes home after each
   rescue, gets no big-survey batches.
+- `$drone notify on|all|off` (owner): pushNote -> notifyChat (base_chat.lua)
+  sends the monitor's messages privately in chat; max 6/min, rest summed up;
+  saved in chat_notify.dat.
 - Autostart: `startup.lua` (top level of the computer) finds inventory.lua
   in any folder and restarts it after a crash (inventory.lua raises an error
   on a crash, returns normally on Ctrl+T). inventory.lua turns off

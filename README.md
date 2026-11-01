@@ -126,6 +126,7 @@ The replies are private.
 | `$drone allow / deny <name>` | owner: who may ride |
 | `$drone allowed` | owner: show the allow list |
 | `$drone yes / no <name>` | owner: approve or decline a ride request |
+| `$drone notify on / all / off` | owner: the base's messages in chat - `on` = warnings and errors, `all` = everything (at most 6 a minute) |
 
 Players who are not on the allow list need the owner's OK for each ride.
 
