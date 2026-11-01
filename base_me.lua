@@ -823,6 +823,10 @@ function curioSignature(fn, slotType)
     args[n] = (ty == "string") and ("__p" .. n .. "__") or PLACEHOLDER[ty]
   end
   CURIO_SIG[fn] = { types = types, roles = roles }
+  local NAMES, parts = { slot = "slot type", target = "chest", item = "item name" }, {}
+  for k, ty in ipairs(types) do parts[k] = (roles[k] and NAMES[roles[k]]) or ty end
+  table.insert(state.noteLog, 1, { title = "Curios", col = C.label, when = realTime("%d.%m %H:%M"),
+    msg = fn .. " wants (" .. table.concat(parts, ", ") .. ")" })
   return CURIO_SIG[fn]
 end
 
@@ -885,9 +889,56 @@ end
 -- until the wanted change shows in listCurios. check(before, after) -> true
 -- when the right thing happened. Returns how many moved, error
 local SLOT_SHIFT      -- the slot-number shift that worked (learnt from exact matches only)
+-- one line in the EVENTS list (no box): what a curios call sent and what really changed
+local function curioLog(fn, args, n, target, ok, r, before, after)
+  local shown = {}
+  for k = 1, n do
+    local v = args[k]
+    if v == target then shown[k] = "<chest>"
+    elseif type(v) == "string" then shown[k] = '"' .. v .. '"'
+    elseif type(v) == "table" then shown[k] = "{" .. tostring(v.name) .. "}"
+    else shown[k] = tostring(v) end
+  end
+  local changed = {}
+  if before and after then
+    for k, nm in pairs(before) do if after[k] ~= nm then changed[#changed + 1] = "off " .. prettify(nm) .. " (" .. k .. ")" end end
+    for k, nm in pairs(after) do if before[k] ~= nm then changed[#changed + 1] = "on " .. prettify(nm) .. " (" .. k .. ")" end end
+  end
+  local res = ok and ("-> " .. tostring(type(r) == "table" and (r.count or "table") or r)) or ("error: " .. cleanErr(r))
+  table.insert(state.noteLog, 1, { title = "Curios call", col = C.label, when = realTime("%d.%m %H:%M"),
+    msg = fn .. "(" .. table.concat(shown, ", ") .. ") " .. res ..
+          (#changed > 0 and ("; " .. table.concat(changed, ", ")) or (ok and "; nothing changed" or "")) })
+  while #state.noteLog > noteSetting("keep") do table.remove(state.noteLog) end
+end
+
+-- can the function be told WHICH item (a filter table or an item-name text)?
+local function canChooseItem(sig)
+  for k, ty in ipairs(sig.types) do
+    if ty == "table" or (ty == "string" and sig.roles[k] == "item") then return true end
+  end
+  return false
+end
+
+-- does the chest hold nothing but `name`? (read with the normal inventory
+-- functions; nil = cannot be read)
+local function chestHoldsOnly(chestName, name)
+  if not (peripheral.isPresent(chestName) and peripheral.hasType(chestName, "inventory")) then return nil end
+  local ok, list = pcall(peripheral.call, chestName, "list")
+  if not ok or type(list) ~= "table" then return nil end
+  for _, it in pairs(list) do
+    if type(it) == "table" and it.name and it.name ~= name then return false end
+  end
+  return true
+end
+
 local function curioCall(fn, target, slotType, slotNo, name, count, check)
   local sig, err = curioSignature(fn, slotType)
   if not sig then return 0, err end
+  -- putting on without saying which item takes ANY fitting item from the chest:
+  -- only allowed when the chest holds nothing else (it may hold your own items)
+  if fn == "importCuriosItem" and not canChooseItem(sig) and chestHoldsOnly(target, name) ~= true then
+    return 0, "this Inventory Manager cannot be told which item to put on, and the buffer holds other items too"
+  end
   local function hasNumber()
     for _, ty in ipairs(sig.types) do if ty == "number" then return true end end
     return false
@@ -912,6 +963,7 @@ local function curioCall(fn, target, slotType, slotNo, name, count, check)
     for _ = 1, 6 do
       args = curioArgs(sig, target, slotType, (tonumber(slotNo) or 1) + sh, name, count)
       ok, r = pcall(inv[fn], unpack(args, 1, #sig.types))
+      if not ok then curioLog(fn, args, #sig.types, target, ok, r) end
       if ok then break end
       -- one more argument wanted: learn it; a value in the wrong place: swap
       local n, ty = tostring(r):match("bad argument #(%d+) %((%a+) expected, got no value")
@@ -926,6 +978,7 @@ local function curioCall(fn, target, slotType, slotNo, name, count, check)
       lastErr = cleanErr(r)
     else
       local after = curiosNow()
+      curioLog(fn, args, #sig.types, target, ok, r, before, after)
       local good, wrongName, exact = true, nil, false
       if before and after then good, wrongName, exact = check(before, after, hasNumber(), (tonumber(slotNo) or 1) + sh) end
       local m = tonumber(numOf(r)) or (good and before and after and 1) or 0
@@ -949,7 +1002,7 @@ local function curioCall(fn, target, slotType, slotNo, name, count, check)
         -- back on - checked; if it does not go back on, it goes into the
         -- inventory (never left in the chest)
         local osig = curioSignature("importCuriosItem", slotType)
-        if osig then
+        if osig and (canChooseItem(osig) or chestHoldsOnly(target, wrongName) == true) then
           local back = curioArgs(osig, target, slotType, (tonumber(slotNo) or 1) + sh, wrongName, 1)
           pcall(inv.importCuriosItem, unpack(back, 1, #osig.types))
         end
