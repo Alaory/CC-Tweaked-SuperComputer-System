@@ -146,8 +146,10 @@ function TT.receive(id, m)
     if x1 and z1 and x2 and z2 then
       local okA, walls, dead = pcall(KNOW.around, x1, z1, x2, z2)
       if okA then
+        -- the cruise altitude for this trip, from the map (nil = not known)
+        local okC, cruise = pcall(TT.cruiseHeight, tonumber(m.fx), tonumber(m.fz), tonumber(m.tx), tonumber(m.tz))
         TT.send(id, "know", { walls, dead, EXITROUTE and EXITROUTE.route or "none",
-                              EXITROUTE and EXITROUTE.t or 0 }, true)
+                              EXITROUTE and EXITROUTE.t or 0, (okC and cruise) or "none" }, true)
       end
     end
   elseif m.t == "exitroute" and type(m.route) == "string" then
@@ -722,6 +724,46 @@ function TT.rescue(targetId, x, y, z, radius, forced)
   TT.log(target, "Rescue on its way: " .. r.label .. " (" .. mode .. ")")
   target.rescuer = r.id
   return true, r.label .. " is on its way (" .. (mode == "install" and "reinstall" or "supplies") .. ")"
+end
+
+-- ===== cruise altitude =====
+-- How high a turtle has to fly for a trip, from the map: the highest known
+-- ground along its way (turtles go along X first, then Z - an L shape) plus a
+-- few blocks. Detail columns are exact (+3); where only the overview (one
+-- AVERAGE height per chunk) is known, +10 for hills inside the chunk. nil when
+-- too much of the way is not mapped (the turtle then uses the sky highway).
+function TT.cruiseHeight(fx, fz, tx, tz)
+  if not (fx and fz and tx and tz) then return nil end
+  local top, known, total = -64, 0, 0
+  local function look(x, z)
+    total = total + 1
+    local h = MAP.get(x, z)
+    if h then
+      known = known + 1
+      if h + 3 > top then top = h + 3 end
+      return
+    end
+    h = MAP.getOverview(x, z)
+    if h then
+      known = known + 1
+      if h + 10 > top then top = h + 10 end
+    end
+  end
+  local function line(ax, az, bx, bz)
+    local n = math.max(math.abs(bx - ax), math.abs(bz - az))
+    local steps = math.max(1, math.floor(n / 4))
+    for i = 0, steps do
+      local x = ax + math.floor((bx - ax) * i / steps + 0.5)
+      local z = az + math.floor((bz - az) * i / steps + 0.5)
+      for d = -2, 2, 2 do                          -- a little to each side too
+        if ax == bx then look(x + d, z) else look(x, z + d) end
+      end
+    end
+  end
+  line(fx, fz, tx, fz)                             -- first along X ...
+  line(tx, fz, tx, tz)                             -- ... then along Z
+  if total == 0 or known / total < 0.7 then return nil end
+  return math.floor(top)
 end
 
 -- ===== the permanent RESCUE turtle =====

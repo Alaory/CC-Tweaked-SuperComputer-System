@@ -443,7 +443,11 @@ local findWay    -- defined further down (scan + plan a way around)
 function stepForward()
   if fwd() then return true end
   if tryDig("forward") and fwd() then return true end
-  for _ = 1, CONFIG.climb do
+  -- with a Geo Scanner a route is planned after a short climb (cheaper than
+  -- climbing up to CONFIG.climb blindly and coming down again)
+  local maxClimb = CONFIG.climb
+  if findItem(CONFIG.geoItem) then maxClimb = math.min(6, CONFIG.climb) end
+  for _ = 1, maxClimb do
     if stopFlag then return false end
     if not up() then
       if not (tryDig("up") and up()) then return false end
@@ -956,6 +960,17 @@ function addDead(x, y, z)
   DEAD[k] = { x = x, y = y, z = z, t = now() }
   pend.dead[#pend.dead + 1] = k
 end
+-- is x y z inside a remembered dead end (still fresh)?
+function deadNear(x, y, z)
+  local r, t = CONFIG.deadRadius, now()
+  for _, d in pairs(DEAD) do
+    if t - d.t < CONFIG.deadLife and math.abs(d.x - x) <= r and math.abs(d.z - z) <= r
+       and math.abs(d.y - y) <= r then
+      return true
+    end
+  end
+  return false
+end
 
 -- route recording (the exit route): every block moved through, loops cut out
 local REC, recIdx = nil, nil
@@ -1118,11 +1133,16 @@ function note(cmd, msg) send("result", { cmd = cmd, ok = false, msg = msg }) end
 local knowReady = false
 -- ask the base what is known around here and around the target (walls with
 -- their age, dead ends, the exit route); waits up to 3 s for the answer
+-- CRUISE = how high this trip has to fly (from the base's map; nil = not known
+-- -> the sky highway CONFIG.skyY). CRUISE_FOR = the target it was asked for.
+CRUISE, CRUISE_FOR = nil, nil
 function requestKnowledge(tx, tz)
   if not (S.pos and S.pos.x) then return end
   knowReady = false
+  CRUISE, CRUISE_FOR = nil, tx .. "," .. tz
   send("need", { x1 = math.min(S.pos.x, tx), z1 = math.min(S.pos.z, tz),
-                 x2 = math.max(S.pos.x, tx), z2 = math.max(S.pos.z, tz) })
+                 x2 = math.max(S.pos.x, tx), z2 = math.max(S.pos.z, tz),
+                 fx = S.pos.x, fz = S.pos.z, tx = tx, tz = tz })
   for _ = 1, 15 do
     if knowReady then return end
     sleep(0.2)
@@ -1378,6 +1398,14 @@ function moveToXZ(tx, tz)
         if axis == "x" then f = (target > S.pos.x) and 3 or 1
         else f = (target > S.pos.z) and 0 or 2 end
         face(f)
+        -- a known dead end straight ahead: plan a way around it instead of
+        -- walking back into it
+        if planned < CONFIG.pathfind and deadNear(S.pos.x + DX[f], S.pos.y, S.pos.z + DZ[f]) then
+          planned = planned + 1
+          local okW, why = findWay(tx, nil, tz)
+          if okW then break end
+          if isStop(why) then return false, why end
+        end
         if not stepForward() then
           tries = tries + 1
           if tries > CONFIG.sidestep or not sidestep(f) then
@@ -1427,8 +1455,10 @@ end
 
 -- up to the sky highway (straight up, or a planned way up past a roof)
 function climbToSky()
+  -- as high as this trip needs (the base's map), the sky highway otherwise
   local sky = CONFIG.skyY
-  task = "climbing to the sky highway"
+  if CRUISE and CRUISE < sky then sky = CRUISE end
+  task = (sky < CONFIG.skyY) and ("climbing to cruise height " .. sky) or "climbing to the sky highway"
   while S.pos.y < sky do
     if stopFlag then return false, "stopped" end
     if noFuel() then return false, "out of fuel" end
@@ -1697,6 +1727,9 @@ end
 -- along the sky highway if far, and back in through the exit route if the
 -- target is inside the base. Short trips go directly.
 function travelOnce(tx, ty, tz)
+  if math.abs(tx - S.pos.x) + math.abs(tz - S.pos.z) > CONFIG.skyMinDist and CRUISE_FOR ~= tx .. "," .. tz then
+    requestKnowledge(tx, tz)
+  end
   -- End Automata Core: teleport to the saved point nearest the target first
   local wp = bestWarpFor(tx, ty, tz)
   if wp then
@@ -1742,6 +1775,10 @@ end
 function withLadder(what, fn)
   local ok, err = fn()
   if ok or isStop(err) then return ok, err end
+  -- stuck here: remember it NOW, so the tries below go around it instead of
+  -- walking straight back into it (shared with every turtle)
+  addDead(S.pos.x, S.pos.y, S.pos.z)
+  learnFlush()
   for _, n in ipairs(CONFIG.backoff) do
     if #trail <= 1 then break end
     note(what, tostring(err) .. " - going back " .. n .. " steps to try another way")
@@ -2383,6 +2420,7 @@ function immediate(cmd, a)
     local pts = routeFromString(a[3])
     if #pts >= 2 then EXIT = { points = pts, t = tonumber(a[4]) or now() }
     elseif tostring(a[3] or "") == "none" then EXIT = nil end
+    CRUISE = tonumber(a[5])                       -- nil when the map does not know the way
     knowReady = true
     return nil, "quiet"
   elseif cmd == "exitrec" then
