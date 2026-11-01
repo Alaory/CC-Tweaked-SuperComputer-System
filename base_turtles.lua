@@ -90,6 +90,8 @@ function TT.receive(id, m)
   t.stuck, t.trail = m.stuck, m.trail
   t.anchor, t.waiting = m.anchor, m.waiting
   t.rec = m.rec
+  -- STOP arrived (it answers) or it is idle anyway
+  if t.stopAsk and ((m.t == "result" and m.cmd == "stop") or m.task == "idle") then t.stopAsk = nil end
   local oldVer = t.ver
   if m.ver then t.ver = m.ver end
   t.updReady = m.updReady
@@ -732,7 +734,27 @@ function TT.sendSpots(id, spots, r)
 end
 
 -- queue a signed command for a turtle (sent by the comms worker)
-function TT.send(id, cmd, args, quiet)
+-- STOP must arrive: a surveying turtle takes its modem off for every scan
+-- (the Geo Scanner goes in its place) and hears nothing then. So STOP is sent
+-- again every 3 s until the turtle answers or is idle (up to a minute), and
+-- the turtle gets no more batches from a big survey.
+function TT.stopTick()
+  for _, t in pairs(state.turtles) do
+    local s = t.stopAsk
+    if s and os.clock() - s.last >= 3 then
+      if s.tries >= 20 then
+        t.stopAsk = nil
+        TT.log(t, "STOP: no answer for a minute")
+        setToast(t.label .. " does not answer STOP (out of range or busy scanning?)", C.warn)
+      else
+        s.tries, s.last = s.tries + 1, os.clock()
+        TT.send(t.id, "stop", {}, true, true)
+      end
+    end
+  end
+end
+
+function TT.send(id, cmd, args, quiet, again)
   local n = os.epoch("utc")
   if n <= state.tLastN then n = state.tLastN + 1 end
   state.tLastN = n
@@ -741,6 +763,13 @@ function TT.send(id, cmd, args, quiet)
   state.tOut[#state.tOut + 1] = { id = id, msg = { t = "cmd", n = n, cmd = cmd, args = a,
                                     sig = TT.sign(CONFIG.turtles.key, "cmd", n, cmd, a) } }
   local t = state.turtles[id]
+  if cmd == "stop" and t and not again then
+    t.stopAsk = { tries = 1, last = os.clock() }
+    if MAP.queue then
+      MAP.queue.excluded = MAP.queue.excluded or {}
+      MAP.queue.excluded[id] = true                -- no more big-survey batches for it
+    end
+  end
   if t and not quiet then
     local shown = {}
     for i, v in ipairs(a) do shown[i] = tostring(v) end

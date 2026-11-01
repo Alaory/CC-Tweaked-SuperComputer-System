@@ -179,6 +179,7 @@ function handleTouch(tx, ty)
         if x then V.cx, V.cz = math.floor(x), math.floor(z)
         else setToast("Position unknown", C.warn, 3) end
       elseif h[5] == "tstopall" then
+        if MAP.queue then MAP.stopSurvey() end   -- STOP ALL also ends a big survey
         local n = 0
         for id, t in pairs(state.turtles) do
           if TT.online(t) then TT.send(id, "stop", {}) n = n + 1 end
