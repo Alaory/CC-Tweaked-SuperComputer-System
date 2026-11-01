@@ -360,7 +360,30 @@ function blockedOrWait(move, detect, dir)
   return false
 end
 
+-- before every move: nearly empty? Top up from reusable fuel; really empty and
+-- none of that? Burn real fuel items (coal, charcoal, lava, blaze rods) - never
+-- anything else. Checking costs no game tick.
+function ensureFuel()
+  local f = turtle.getFuelLevel()
+  if f == "unlimited" or f >= 20 then return end
+  if S.reuse and next(S.reuse) then
+    topUp(math.min(refuelTarget(), f + 2000), true)
+    if turtle.getFuelLevel() >= 20 then return end
+  end
+  local sel = turtle.getSelectedSlot()
+  for i = 1, 16 do
+    local d = turtle.getItemDetail(i)
+    if d and isFuel(d.name) then
+      turtle.select(i)
+      while turtle.getFuelLevel() < 500 and turtle.refuel(1) do end
+      if turtle.getFuelLevel() >= 500 then break end
+    end
+  end
+  turtle.select(sel)
+end
+
 function fwd()
+  ensureFuel()
   if not turtle.forward() and not blockedOrWait(turtle.forward, turtle.detect, "forward") then
     return false
   end
@@ -369,18 +392,21 @@ function fwd()
   return true
 end
 function bck()
+  ensureFuel()
   if not turtle.back() then return false end
   if S.pos and S.pos.f then moved(-DX[S.pos.f], 0, -DZ[S.pos.f]) end
   frameMove("b")
   return true
 end
 function up()
+  ensureFuel()
   if not turtle.up() and not blockedOrWait(turtle.up, turtle.detectUp, "up") then return false end
   moved(0, 1, 0)
   frameMove("u")
   return true
 end
 function down()
+  ensureFuel()
   if not turtle.down() and not blockedOrWait(turtle.down, turtle.detectDown, "down") then return false end
   moved(0, -1, 0)
   frameMove("d")
@@ -442,6 +468,7 @@ function sidestep(f)
 end
 
 function noFuel()
+  ensureFuel()
   local f = turtle.getFuelLevel()
   return f ~= "unlimited" and f < 1
 end
