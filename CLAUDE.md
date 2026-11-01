@@ -59,6 +59,12 @@ PneumaticCraft drone rides, turtle mapping/surveys, and an AE2 ME network view.
   environment), not `local function`. Check with
   `python3 tools/check_locals.py node.lua` (must stay well under 200). The
   base also compiles node.lua before sending it (TT.codeLoad).
+- STOP (node.lua): clears the saved job at once (no resume after a reload);
+  a job that ignores it for 2 s is cut off (FORCE_STOP: no new move/turn;
+  stopWatch kills it when not STEPPING / modem on / no slot lock, then
+  afterForcedStop). Base: t.held (saved) after STOP - STOP is sent again if
+  the turtle reports a task after a reload; no patrol/survey batches; any
+  non-quiet command releases it. A resumed job waits 6 s first.
 - Permanent rescuer: t.rescuerRole (RESCUER button, saved in turtles.dat;
   base only). TT.patrolTick (comms worker) sends it to: no fuel (<20 for
   60 s), stuck (60 s idle), lost (silent CONFIG.turtles.rescueAfter, default

@@ -92,6 +92,13 @@ function TT.receive(id, m)
   t.rec = m.rec
   -- STOP arrived (it answers) or it is idle anyway
   if t.stopAsk and ((m.t == "result" and m.cmd == "stop") or m.task == "idle") then t.stopAsk = nil end
+  -- STOPPED by you (t.held) but busy again - e.g. it was unloaded and
+  -- continued its job after a reload: send STOP again
+  if t.held and (m.t == "status" or m.t == "hello") and m.task and m.task ~= "idle" and not t.stopAsk then
+    TT.log(t, "Busy again after STOP (" .. tostring(m.task) .. ") - sending STOP again")
+    t.stopAsk = { tries = 1, last = os.clock() }
+    TT.send(id, "stop", {}, true, true)
+  end
   local oldVer = t.ver
   if m.ver then t.ver = m.ver end
   t.updReady = m.updReady
@@ -136,7 +143,7 @@ function TT.receive(id, m)
       end
     end
     setToast((m.ok and "Rescue done: " or "Rescue failed: ") .. tostring(m.msg), m.ok and C.good or C.warn, 8)
-    if t.rescuerRole then TT.send(id, "home", {}) end           -- the rescuer goes back home
+    if t.rescuerRole and not t.held then TT.send(id, "home", {}) end   -- the rescuer goes back home
   elseif m.t == "learn" then
     pcall(KNOW.learn, m)
   elseif m.t == "need" then
@@ -591,7 +598,8 @@ function TT.saveList()
   local out = {}
   for id, t in pairs(state.turtles) do
     out[#out + 1] = { id = id, label = t.label, pos = t.pos, home = t.home, seen = t.seenEpoch,
-                      task = t.task, ver = t.ver, gear = t.gear, anchor = t.anchor, rescuerRole = t.rescuerRole }
+                      task = t.task, ver = t.ver, gear = t.gear, anchor = t.anchor, rescuerRole = t.rescuerRole,
+                      held = t.held }
   end
   local h = fs.open(CONFIG.turtles.listFile, "w")
   if h then h.write(textutils.serialize(out)) h.close() end
@@ -611,6 +619,7 @@ function TT.loadList()
       t.pos, t.home, t.seenEpoch, t.task = e.pos, e.home, e.seen, e.task
       t.ver, t.gear, t.anchor = e.ver, e.gear, e.anchor
       t.rescuerRole = e.rescuerRole
+      t.held = e.held
     end
   end
 end
@@ -845,7 +854,7 @@ function TT.patrolTick()
     end
   end
   for _, r in ipairs(rescuers) do
-    local free = TT.online(r) and (r.task == nil or r.task == "idle") and not r.stopAsk
+    local free = TT.online(r) and (r.task == nil or r.task == "idle") and not r.stopAsk and not r.held
     if free then
       -- the turtle with the oldest problem first
       local pick, pickKind
@@ -898,7 +907,7 @@ function TT.available()
   local list = {}
   for id, t in pairs(state.turtles) do
     if TT.online(t) and t.pos and t.pos.x and (t.task == nil or t.task == "idle") and not t.anchor
-       and not t.rescuerRole then
+       and not t.rescuerRole and not t.held then
       list[#list + 1] = id
     end
   end
@@ -985,8 +994,8 @@ function TT.stopTick()
     if s and os.clock() - s.last >= 3 then
       if s.tries >= 20 then
         t.stopAsk = nil
-        TT.log(t, "STOP: no answer for a minute")
-        setToast(t.label .. " does not answer STOP (out of range or busy scanning?)", C.warn)
+        TT.log(t, "STOP: no answer for a minute - sent again when it is back")
+        setToast(t.label .. " does not answer STOP - it gets STOP again as soon as it is back", C.warn)
       else
         s.tries, s.last = s.tries + 1, os.clock()
         TT.send(t.id, "stop", {}, true, true)
@@ -1004,8 +1013,12 @@ function TT.send(id, cmd, args, quiet, again)
   state.tOut[#state.tOut + 1] = { id = id, msg = { t = "cmd", n = n, cmd = cmd, args = a,
                                     sig = TT.sign(CONFIG.turtles.key, "cmd", n, cmd, a) } }
   local t = state.turtles[id]
+  -- any command you give (not the quiet automatic ones) ends a STOP hold
+  if t and t.held and cmd ~= "stop" and not quiet then t.held = nil TT.listDirty = true end
   if cmd == "stop" and t and not again then
     t.stopAsk = { tries = 1, last = os.clock() }
+    t.held = true                                -- stays stopped (also after a reload)
+    TT.listDirty = true
     if MAP.queue then
       MAP.queue.excluded = MAP.queue.excluded or {}
       MAP.queue.excluded[id] = true                -- no more big-survey batches for it

@@ -382,45 +382,78 @@ function ensureFuel()
   turtle.select(sel)
 end
 
+-- STEPPING = a move/turn/equip is under way: a forced STOP waits for it to
+-- finish, so the saved position and the equipment always stay right
+STEPPING = false
+-- FORCE_STOP = a STOP was not obeyed within 2 s: no new move or turn starts
+FORCE_STOP = false
+function forceCheck()
+  if FORCE_STOP then error("stopped (forced) at " .. fmt(), 0) end
+end
+
 function fwd()
+  forceCheck()
+  STEPPING = true
   ensureFuel()
-  if not turtle.forward() and not blockedOrWait(turtle.forward, turtle.detect, "forward") then
-    return false
+  local ok = turtle.forward() or blockedOrWait(turtle.forward, turtle.detect, "forward")
+  if ok then
+    if S.pos and S.pos.f then moved(DX[S.pos.f], 0, DZ[S.pos.f]) end
+    frameMove("f")
   end
-  if S.pos and S.pos.f then moved(DX[S.pos.f], 0, DZ[S.pos.f]) end
-  frameMove("f")
-  return true
+  STEPPING = false
+  return ok
 end
 function bck()
+  forceCheck()
+  STEPPING = true
   ensureFuel()
-  if not turtle.back() then return false end
-  if S.pos and S.pos.f then moved(-DX[S.pos.f], 0, -DZ[S.pos.f]) end
-  frameMove("b")
-  return true
+  local ok = turtle.back()
+  if ok then
+    if S.pos and S.pos.f then moved(-DX[S.pos.f], 0, -DZ[S.pos.f]) end
+    frameMove("b")
+  end
+  STEPPING = false
+  return ok
 end
 function up()
+  forceCheck()
+  STEPPING = true
   ensureFuel()
-  if not turtle.up() and not blockedOrWait(turtle.up, turtle.detectUp, "up") then return false end
-  moved(0, 1, 0)
-  frameMove("u")
-  return true
+  local ok = turtle.up() or blockedOrWait(turtle.up, turtle.detectUp, "up")
+  if ok then
+    moved(0, 1, 0)
+    frameMove("u")
+  end
+  STEPPING = false
+  return ok
 end
 function down()
+  forceCheck()
+  STEPPING = true
   ensureFuel()
-  if not turtle.down() and not blockedOrWait(turtle.down, turtle.detectDown, "down") then return false end
-  moved(0, -1, 0)
-  frameMove("d")
-  return true
+  local ok = turtle.down() or blockedOrWait(turtle.down, turtle.detectDown, "down")
+  if ok then
+    moved(0, -1, 0)
+    frameMove("d")
+  end
+  STEPPING = false
+  return ok
 end
 function right()
+  forceCheck()
+  STEPPING = true
   turtle.turnRight()
   if S.pos and S.pos.f then S.pos.f = (S.pos.f + 1) % 4 save() end
   T.f = (T.f + 1) % 4
+  STEPPING = false
 end
 function left()
+  forceCheck()
+  STEPPING = true
   turtle.turnLeft()
   if S.pos and S.pos.f then S.pos.f = (S.pos.f + 3) % 4 save() end
   T.f = (T.f + 3) % 4
+  STEPPING = false
 end
 -- turn to a direction of the trail frame
 function faceFrame(tf)
@@ -675,7 +708,10 @@ end
 function gpsFix()
   local x, y, z = gpsRaw(2)
   if not x then return false, "no GPS signal - use setpos instead" end
-  local f, rx, ry, rz = detectFacing(x, y, z)
+  STEPPING = true                              -- test moves: never cut by a STOP
+  local okF, f, rx, ry, rz = pcall(detectFacing, x, y, z)
+  STEPPING = false
+  if not okF then error(f, 0) end
   local oldF = S.pos and S.pos.f or nil
   local changed = not (S.pos and S.pos.x == rx and S.pos.y == ry and S.pos.z == rz and (f == nil or f == oldF))
   S.pos = { x = rx, y = ry, z = rz, f = f or oldF }
@@ -721,8 +757,12 @@ function findItem(name)
 end
 
 function equipOn(side)
-  if side == "left" then return turtle.equipLeft() end
-  return turtle.equipRight()
+  local was = STEPPING
+  STEPPING = true
+  local ok
+  if side == "left" then ok = turtle.equipLeft() else ok = turtle.equipRight() end
+  STEPPING = was
+  return ok
 end
 
 -- run fn(scanner) with the Geo Scanner equipped where the modem was
@@ -2449,7 +2489,10 @@ function immediate(cmd, a)
   elseif cmd == "status" then return true, "status sent"
   elseif cmd == "stop" then
     stopFlag = true
-    return true, "stopping"
+    if S.job then S.job = nil end            -- never continue it after a reload
+    save()
+    os.queueEvent("node_stop")               -- wakes the STOP watcher at once
+    return true, job and "stopping" or "stopped (idle)"
   elseif (cmd == "setpos" or cmd == "refuel") and job then
     -- these touch the selected slot / the position: never in the middle of a
     -- job (a scan swaps the modem using the selected slot)
@@ -2514,6 +2557,7 @@ function listener()
       elseif job then
         reply(m.cmd, false, "busy: " .. task .. " (press STOP first)")
       else
+        stopFlag = false
         job = { cmd = m.cmd, args = a }
       end
     end
@@ -2523,19 +2567,77 @@ end
 -- jobs worth continuing after a restart (long trips and searches)
 local RESUMABLE = { ["goto"] = true, home = true, survey = true, surveypts = true, rescue = true, sweep = true }
 
+-- after a job was cut off by a forced STOP: put the modem back if it was
+-- swapped out, free the slot locks, end a route recording, check the position
+function afterForcedStop()
+  STEPPING, SLOT_LOCK, TOPUP_RUNNING = false, false, false
+  if not findModemSide() and (modem == "left" or modem == "right") then
+    local slot = findItemLike("modem")
+    if slot then
+      turtle.select(slot)
+      equipOn(modem)
+      sleep(0.2)
+    end
+  end
+  pcall(rednet.open, modem)
+  modemAttached = findModemSide() ~= nil
+  turtle.select(1)
+  if not S.recording then recStop() end
+  pcall(gpsCheck)
+end
+
+-- STOP watcher (runs next to a job): after a STOP the job gets 2 s to end by
+-- itself; then no new move or turn may start (FORCE_STOP), and the job is cut
+-- off at the next safe moment (not in the middle of a move, a turn or an
+-- equipment swap). Returns true when it cut the job off.
+function stopWatch()
+  while not stopFlag do os.pullEvent("node_stop") end
+  local t0 = os.clock()
+  while os.clock() - t0 < 2 do sleep(0.1) end
+  FORCE_STOP = true                          -- every next move/turn ends the job
+  while true do
+    local safe = not STEPPING and modemAttached and not SLOT_LOCK and not TOPUP_RUNNING
+    if safe or os.clock() - t0 > 60 then return true end
+    sleep(0.05)
+  end
+end
+
 function worker()
   while true do
     if job then
       local j = job
-      stopFlag = false
       -- remember the job on disk: after a restart (server restart, chunk
       -- reload, update) the turtle continues it by itself
-      if RESUMABLE[j.cmd] then
+      if RESUMABLE[j.cmd] and not stopFlag then
         S.job = { cmd = j.cmd, args = j.args, left = j.left, resumes = j.resumes or 0 }
         save()
       end
-      local okRun, ok, msg = pcall(runJob, j)
+      -- a job continued after a restart waits a few seconds first, so a STOP
+      -- the base sends again (it remembers it) arrives before the first move
+      if j.delay and not stopFlag then
+        task = "restarted - continuing " .. j.cmd .. " in " .. j.delay .. " s"
+        send("status")
+        local t0 = os.clock()
+        while os.clock() - t0 < j.delay and not stopFlag do sleep(0.25) end
+      end
+      local okRun, ok, msg
+      if stopFlag then
+        okRun, ok, msg = true, false, "stopped (before it started)"
+      else
+        local forced = false
+        parallel.waitForAny(
+          function() okRun, ok, msg = pcall(runJob, j) end,
+          function() forced = stopWatch() end)
+        if forced and okRun == nil then
+          afterForcedStop()
+          okRun, ok, msg = true, false, "stopped (forced) at " .. fmt()
+        end
+      end
       if not okRun then ok, msg = false, tostring(ok) end
+      if FORCE_STOP then
+        FORCE_STOP = false
+        if not modemAttached or SLOT_LOCK or TOPUP_RUNNING then afterForcedStop() end
+      end
       job, task = nil, "idle"
       S.job = nil                                -- finished, failed or stopped: forget it
       trailSave()
@@ -2641,7 +2743,7 @@ if type(S.job) == "table" and RESUMABLE[S.job.cmd] then
     S.resumedNote = "restarted - NOT continuing '" .. sj.cmd .. "' (it was interrupted 5 times)"
     S.job = nil
   else
-    job = { cmd = sj.cmd, args = sj.args or {}, left = sj.left, resumes = sj.resumes }
+    job = { cmd = sj.cmd, args = sj.args or {}, left = sj.left, resumes = sj.resumes, delay = 6 }
     local what = sj.cmd
     if type(sj.left) == "table" then what = what .. " (" .. #sj.left .. " spots left)" end
     print("Continuing the interrupted job: " .. what)

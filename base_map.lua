@@ -843,7 +843,7 @@ function MAP.feedSurvey()
     local t = state.turtles[id]
     local free = t and TT.online(t) and t.pos and t.pos.x and (t.task == nil or t.task == "idle") and not t.anchor
                  and not (q.excluded and q.excluded[id])      -- stopped by the owner
-                 and not t.rescuerRole                        -- the rescuer stays free
+                 and not t.rescuerRole and not t.held         -- the rescuer stays free; STOPPED stays stopped
     local fuel = t and tonumber(t.fuel)
     if free and t.queueAt and os.clock() - t.queueAt < 15 then free = false busy = true end
     if free and fuel and fuel < minFuel then free = false end
