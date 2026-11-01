@@ -404,7 +404,13 @@ function handleCommand(line)
     end
 
   elseif cmd == "update" then
-    pcall(TT.codeLoad)
+    local okL, errL = pcall(TT.codeLoad, true)       -- always read node.lua again
+    if not okL then say("Reading node.lua failed: " .. tostring(errL)) end
+    if TT.codeError then say("The new node.lua does NOT compile (not sent): " .. TT.codeError) end
+    if CODE then
+      say("Program file: " .. tostring(CODE.path or TT.codePath()) .. " (" .. #CODE.text .. " bytes) = " ..
+          TT.verName(CODE.ver))
+    end
     if not CODE then
       say("No " .. TT.codePath() .. " on this computer - copy node.lua next to inventory.lua.")
     else

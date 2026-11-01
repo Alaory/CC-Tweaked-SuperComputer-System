@@ -361,9 +361,20 @@ end
 
 -- node.lua: in the program folder, or (if it is not there) on a floppy -
 -- the install floppy always has a copy
+local function modTime(p)
+  local ok, a = pcall(function() return fs.attributes and fs.attributes(p) end)
+  return (ok and type(a) == "table" and tonumber(a.modified)) or 0
+end
+
 function TT.codePath()
   local name = CONFIG.turtles.codeFile or "node.lua"
   local here = fs.combine(BASE_DIR or "", name)
+  -- a file dropped onto the computer can land in the top level instead of
+  -- the program folder: use whichever of the two is newer
+  local top = name
+  if top ~= here and fs.exists(top) and (not fs.exists(here) or modTime(top) > modTime(here)) then
+    return top
+  end
   if fs.exists(here) then return here end
   for _, d in ipairs(mountedDisks()) do
     local p = fs.combine(d.mount, name)
@@ -373,11 +384,12 @@ function TT.codePath()
 end
 
 -- (re)read node.lua if it is new or changed
-function TT.codeLoad()
+function TT.codeLoad(force)
   local path = TT.codePath()
   if not fs.exists(path) then CODE = nil return end
-  local mod = fs.attributes and (fs.attributes(path).modified) or fs.getSize(path)
-  if CODE and CODE.mod == mod then return end
+  -- changed? path, time AND size (a dropped-in file may keep its old time)
+  local mod = path .. ":" .. modTime(path) .. ":" .. fs.getSize(path)
+  if CODE and CODE.mod == mod and not force then return end
   local h = fs.open(path, "r")
   local text = h.readAll() or ""
   h.close()
@@ -387,6 +399,7 @@ function TT.codeLoad()
   -- the base runs the same Lua as the turtles: if it does not compile here,
   -- it would not compile there either - keep the version the turtles have
   local okC, errC = load(text, "node", "t", {})
+  TT.codeError = (not okC) and (path .. ": " .. tostring(errC)) or nil
   if not okC then
     if not (CODE and CODE.badMod == mod) then
       setPopup("TURTLE PROGRAM", "The new node.lua does not compile - not sent to the turtles: " ..
@@ -397,7 +410,9 @@ function TT.codeLoad()
   end
   local pieces = {}
   for i = 1, #text, CHUNK do pieces[#pieces + 1] = text:sub(i, i + CHUNK - 1) end
-  CODE = { text = text, ver = codeHash(text), mod = mod, pieces = pieces }
+  local ver = codeHash(text)
+  if CODE and CODE.ver == ver then CODE.mod, CODE.path = mod, path return end   -- the same program
+  CODE = { text = text, ver = ver, mod = mod, pieces = pieces, path = path }
   if not TT.versions.byHash[CODE.ver] then
     TT.versions.byHash[CODE.ver] = TT.versions.next
     TT.versions.next = TT.versions.next + 1
