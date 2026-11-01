@@ -751,49 +751,83 @@ end
 
 -- ===== Curios: worn items <-> ME network / inventory (through the buffer chest) =====
 -- exportCuriosItem / importCuriosItem take different arguments in different
--- Advanced Peripherals versions. Their argument TYPES are learnt by asking:
--- a call with too few arguments fails with "bad argument #n (TYPE expected,
--- got no value)". The probe uses "__probe__" for every text (no slot type and
--- no item has that name), so a probe never moves anything.
-CURIO_SIG = {}          -- [function name] = { "string", "string", "number", ... }
+-- Advanced Peripherals versions, so the program asks the function itself:
+-- - a call with too few arguments fails with "bad argument #n (TYPE expected,
+--   got no value)": that gives the TYPE of every argument;
+-- - every text gets its own marker (__p1__, __p2__ ...); the error names the
+--   marker it did not like: "Curios slot '__p1__' does not exist" -> argument
+--   1 is the SLOT TYPE (it then gets a real one and the function is asked
+--   again), "Target '__p2__' does not exist" -> argument 2 is the CHEST.
+-- The chest is always a marker while asking, so asking never moves anything.
+CURIO_SIG = {}          -- [function name] = { types = {...}, roles = { [n] = "slot"/"target"/"item" } }
 local unpack = table.unpack or unpack
 local PLACEHOLDER = { string = "__probe__", number = 1, table = {}, boolean = false }
 
--- the argument types of an Inventory Manager function (learnt once)
-function curioSignature(fn, target)
-  if CURIO_SIG[fn] then return CURIO_SIG[fn] end
-  if type(inv[fn]) ~= "function" then return nil, "this Inventory Manager has no " .. fn end
-  local args, types = {}, {}
-  for _ = 1, 8 do
-    local ok, err = pcall(inv[fn], unpack(args, 1, #types))
-    if ok then break end                              -- everything given: done
-    local n, ty = tostring(err):match("bad argument #(%d+) %((%a+) expected")
-    n = tonumber(n)
-    if not n or not PLACEHOLDER[ty] then break end    -- another error (wrong slot ...): done
-    if n == 1 and #types == 0 then args[1], types[1] = target, ty   -- arg 1 = the chest
-    else args[n], types[n] = PLACEHOLDER[ty], ty end
-    for k = 1, n do if not types[k] then types[k], args[k] = "string", "__probe__" end end
+-- which argument a "... '<value>' does not exist" error is about, and its role
+local function roleFromError(err, args)
+  local low = tostring(err):lower()
+  for k, v in pairs(args) do
+    if type(v) == "string" and v ~= "" and tostring(err):find("'" .. v .. "'", 1, true) then
+      if low:find("slot", 1, true) or low:find("curio", 1, true) then return k, "slot" end
+      if low:find("target", 1, true) or low:find("inventory", 1, true) or low:find("peripheral", 1, true) then
+        return k, "target"
+      end
+      return k, "item"
+    end
   end
-  if #types == 0 then return nil, "could not find out how " .. fn .. " is called" end
-  CURIO_SIG[fn] = types
-  return types
 end
 
--- the arguments for a call, from the learnt types: arg 1 = the chest; texts:
--- the slot type, then the item name (swapped = item name first); numbers: the
--- slot number, then the count; a table: the item filter
-local function curioArgs(types, target, slotType, slotNo, name, count, swapped)
-  local args, s, n = { target }, 0, 0
-  for k = 2, #types do
-    local ty = types[k]
+-- the argument types and roles of an Inventory Manager curios function
+-- (slotType = a real slot type of the player, used while asking)
+function curioSignature(fn, slotType)
+  if CURIO_SIG[fn] then return CURIO_SIG[fn] end
+  if type(inv[fn]) ~= "function" then return nil, "this Inventory Manager has no " .. fn end
+  local types, roles, args = {}, {}, {}
+  for _ = 1, 12 do
+    local ok, err = pcall(inv[fn], unpack(args, 1, #types))
+    if ok then break end
+    local n, ty = tostring(err):match("bad argument #(%d+) %((%a+) expected")
+    n = tonumber(n)
+    if n and PLACEHOLDER[ty] then
+      for k = #types + 1, n do                      -- (missing ones in between: text)
+        types[k] = (k == n) and ty or "string"
+        args[k] = (types[k] == "string") and ("__p" .. k .. "__") or PLACEHOLDER[types[k]]
+      end
+      if types[n] ~= ty then
+        types[n] = ty
+        args[n] = (ty == "string") and ("__p" .. n .. "__") or PLACEHOLDER[ty]
+      end
+    else
+      local k, role = roleFromError(err, args)
+      if not k or roles[k] then break end
+      roles[k] = role
+      if role ~= "slot" then break end              -- chest or item found: stop asking
+      args[k] = slotType                            -- a real slot type, ask again
+    end
+  end
+  if #types == 0 then return nil, "could not find out how " .. fn .. " is called" end
+  CURIO_SIG[fn] = { types = types, roles = roles }
+  return CURIO_SIG[fn]
+end
+
+-- the arguments for a real call: texts by role (chest, slot type, item name),
+-- numbers: the slot number, then the count; a table: the item filter
+local function curioArgs(sig, target, slotType, slotNo, name, count)
+  local have, args, nNum = {}, {}, 0
+  for _, r in pairs(sig.roles) do have[r] = true end
+  for k, ty in ipairs(sig.types) do
     if ty == "string" then
-      s = s + 1
-      local first, second = slotType, name
-      if swapped then first, second = name, slotType end
-      args[k] = (s == 1) and first or second
+      local r = sig.roles[k]
+      if not r then                                 -- not seen yet: the missing role (a guess)
+        r = (not have.slot and "slot") or (not have.target and "target") or "item"
+        sig.roles[k], have[r] = r, true
+        sig.guessed = sig.guessed or {}
+        sig.guessed[k] = true
+      end
+      args[k] = (r == "target" and target) or (r == "slot" and slotType) or name
     elseif ty == "number" then
-      n = n + 1
-      args[k] = (n == 1) and slotNo or count
+      nNum = nNum + 1
+      args[k] = (nNum == 1) and slotNo or count
     elseif ty == "table" then
       args[k] = { name = name, count = count }
     else
@@ -801,6 +835,18 @@ local function curioArgs(types, target, slotType, slotNo, name, count, swapped)
     end
   end
   return args
+end
+
+-- a real call failed with "... '<value>' does not exist": that value is in the
+-- wrong place - swap the roles of the two arguments. true if something changed
+local function fixRoles(sig, args, err)
+  local k, role = roleFromError(err, args)
+  if not k or sig.roles[k] == role then return false end
+  for j, r in pairs(sig.roles) do
+    if r == role and j ~= k then sig.roles[j] = sig.roles[k] end
+  end
+  sig.roles[k] = role
+  return true
 end
 
 -- what is worn where: [slot type .. "|" .. key] = item name (nil if unreadable)
@@ -824,49 +870,73 @@ end
 -- when the right thing happened. Returns how many moved, error
 local SLOT_SHIFT      -- the slot-number shift that worked (learnt from exact matches only)
 local function curioCall(fn, target, slotType, slotNo, name, count, check)
-  local types, err = curioSignature(fn, target)
-  if not types then return 0, err end
-  local hasNumber, hasString2 = false, 0
-  for k = 2, #types do
-    if types[k] == "number" then hasNumber = true end
-    if types[k] == "string" then hasString2 = hasString2 + 1 end
+  local sig, err = curioSignature(fn, slotType)
+  if not sig then return 0, err end
+  local function hasNumber()
+    for _, ty in ipairs(sig.types) do if ty == "number" then return true end end
+    return false
   end
   local lastErr
   local first = curiosNow()
-  -- without a readable listCurios the result cannot be checked: no guessing
-  local shifts = SLOT_SHIFT and { SLOT_SHIFT } or ((hasNumber and first) and { 0, -1, 1 } or { 0 })
-  for _, swapped in ipairs(hasString2 >= 1 and { false, true } or { false }) do
-    for _, sh in ipairs(shifts) do
-      local before = curiosNow()
-      local args, ok, r
-      for _ = 1, 4 do
-        args = curioArgs(types, target, slotType, (tonumber(slotNo) or 1) + sh, name, count, swapped)
-        ok, r = pcall(inv[fn], unpack(args, 1, #types))
-        -- the function wants one more argument than the probe found: learn it
-        local n, ty = tostring(r):match("bad argument #(%d+) %((%a+) expected, got no value")
-        if ok or tonumber(n) ~= #types + 1 or not PLACEHOLDER[ty] then break end
-        types[#types + 1] = ty
-        if ty == "number" then hasNumber = true end
+  -- slot numbers counted from 0 or 1: also try one lower / higher - but only
+  -- when listCurios can show what really moved (no guessing otherwise)
+  local shifts = { SLOT_SHIFT or 0 }
+  local function moreShifts()
+    if not SLOT_SHIFT and first and hasNumber() and #shifts == 1 then
+      shifts[2], shifts[3] = -1, 1
+    end
+  end
+  local roleRetry = false
+  local idx = 0
+  while idx < #shifts do
+    idx = idx + 1
+    local sh = shifts[idx]
+    local before = curiosNow()
+    local args, ok, r
+    for _ = 1, 6 do
+      args = curioArgs(sig, target, slotType, (tonumber(slotNo) or 1) + sh, name, count)
+      ok, r = pcall(inv[fn], unpack(args, 1, #sig.types))
+      if ok then break end
+      -- one more argument wanted: learn it; a value in the wrong place: swap
+      local n, ty = tostring(r):match("bad argument #(%d+) %((%a+) expected, got no value")
+      if tonumber(n) == #sig.types + 1 and PLACEHOLDER[ty] then
+        sig.types[#sig.types + 1] = ty
+      elseif not fixRoles(sig, args, r) then
+        break
       end
-      if not ok then
-        lastErr = cleanErr(r)
-      else
-        local after = curiosNow()
-        local good, wrongName, exact = true, nil, false
-        if before and after then good, wrongName, exact = check(before, after, hasNumber, (tonumber(slotNo) or 1) + sh) end
-        local m = tonumber(numOf(r)) or (good and before and after and 1) or 0
-        if good and m == 0 and before and after then m = 1 end   -- it did move (seen in listCurios)
-        if good and m > 0 then
-          if exact and hasNumber then SLOT_SHIFT = sh end
-          return m
+    end
+    moreShifts()
+    if not ok then
+      lastErr = cleanErr(r)
+    else
+      local after = curiosNow()
+      local good, wrongName, exact = true, nil, false
+      if before and after then good, wrongName, exact = check(before, after, hasNumber(), (tonumber(slotNo) or 1) + sh) end
+      local m = tonumber(numOf(r)) or (good and before and after and 1) or 0
+      if good and m == 0 and before and after then m = 1 end   -- it did move (seen in listCurios)
+      if good and m > 0 then
+        if exact and hasNumber() then SLOT_SHIFT = sh end
+        sig.guessed = nil                             -- it worked: the roles are right
+        return m
+      end
+      -- nothing happened and a text's meaning was only guessed: the other guess
+      -- (slot type <-> item name), once, from the start
+      if not good and not wrongName and m == 0 and sig.guessed and next(sig.guessed) and not roleRetry then
+        roleRetry = true
+        for k in pairs(sig.guessed) do
+          sig.roles[k] = (sig.roles[k] == "slot") and "item" or (sig.roles[k] == "item" and "slot" or sig.roles[k])
         end
-        if wrongName then
-          -- a different item moved (wrong slot number): put it back on
-          local back = { target }
-          for k = 2, #types do back[k] = args[k] end
-          pcall(inv[fn == "exportCuriosItem" and "importCuriosItem" or "exportCuriosItem"], unpack(back, 1, #types))
-          lastErr = "the slot numbers did not match - " .. prettify(wrongName) .. " was put back"
+        idx = 0
+      end
+      if wrongName then
+        -- a different item moved (wrong slot number): put it back on
+        local other = (fn == "exportCuriosItem") and "importCuriosItem" or "exportCuriosItem"
+        local osig = curioSignature(other, slotType)
+        if osig then
+          local back = curioArgs(osig, target, slotType, (tonumber(slotNo) or 1) + sh, wrongName, 1)
+          pcall(inv[other], unpack(back, 1, #osig.types))
         end
+        lastErr = "the slot numbers did not match - " .. prettify(wrongName) .. " was put back"
       end
     end
   end
@@ -900,13 +970,24 @@ local function curioIn(name, count, chest, slotType, slotNo)
     end)
 end
 
--- 'curios probe' on the computer: what the two functions want
+-- 'curios probe' on the computer: what the two functions want (nothing moves)
 function curiosProbe(say)
   if not inv then say("No Inventory Manager.") return end
+  local slotType = "charm"
+  local okS, sizes = pcall(inv.getCuriosSizes)
+  if okS and type(sizes) == "table" then for n in pairs(sizes) do slotType = n break end end
+  local NAMES = { slot = "slot type", target = "chest", item = "item name" }
   for _, fn in ipairs({ "exportCuriosItem", "importCuriosItem" }) do
     CURIO_SIG[fn] = nil
-    local types, err = curioSignature(fn, chestManagerDir("take"))
-    say(fn .. "(" .. (types and table.concat(types, ", ") or ("? - " .. tostring(err))) .. ")")
+    local sig, err = curioSignature(fn, slotType)
+    if not sig then say(fn .. ": " .. tostring(err))
+    else
+      local parts = {}
+      for k, ty in ipairs(sig.types) do
+        parts[k] = ty .. ((ty == "string" and sig.roles[k]) and (" = " .. NAMES[sig.roles[k]]) or "")
+      end
+      say(fn .. "(" .. table.concat(parts, ", ") .. ")")
+    end
   end
 end
 
