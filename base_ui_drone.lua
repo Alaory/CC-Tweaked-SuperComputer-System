@@ -1,5 +1,8 @@
--- Part of the base-control program (started by inventory.lua).
+-- base_ui_drone.lua  -  part of the base-control program (started by inventory.lua).
 -- All base_*.lua files share one namespace and are loaded in a fixed order.
+--
+--   DRONE(S) tab: the selected drone, its air, mission steps and log,
+--   passenger / destination choice and the mission buttons.
 
 -- page drawing
 function stepMark(status)
@@ -9,6 +12,7 @@ function stepMark(status)
   return "[ ]", C.dim
 end
 
+-- the DRONE(S) tab
 function drawDronePage(G)
   if not state.drone then
     drawMessage("NO DRONE INTERFACE", deviceHelpLines("Drone Interface"), C.warn)

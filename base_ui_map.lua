@@ -1,8 +1,13 @@
--- Part of the base-control program (started by inventory.lua).
+-- base_ui_map.lua  -  part of the base-control program (started by inventory.lua).
 -- All base_*.lua files share one namespace and are loaded in a fixed order.
+--
+--   MAP tab: the terrain from turtle scans, zoom / rotate, survey. Zoomed in it
+--   shows every column (detail); from 16 blocks per cell up, and wherever the
+--   detail was dropped, one colour per chunk (overview).
 
 -- page drawing: MAP
 local BLIT = {}
+-- colour -> blit character (cached)
 local function blitc(c)
   local v = BLIT[c]
   if not v then
@@ -20,12 +25,14 @@ local function toScreen(g, V, x, z)
   if i >= 0 and i < g.mw and j >= 0 and j < g.mh then return g.mx0 + i, g.my0 + j end
 end
 
+-- world x, z under a touch on the map
 function mapWorldAt(tx, ty)
   local g = state.mapGeom
   if not g then return nil end
   return MAP.toWorld(tx - g.mx0 - g.mw / 2, ty - g.my0 - g.mh / 2)
 end
 
+-- the MAP tab
 function drawMapPage(G)
   local y0, bottom = G.y0, G.y1
   local V = MAP.view()
@@ -55,7 +62,9 @@ function drawMapPage(G)
     local B = MAP.basis()
     local zx, zy = V.zoom, V.zoom * 1.5
     local cxs, czs = V.cx, V.cz
-    local floor, get, names, colorOf = math.floor, MAP.get, MAP.names, MAP.colorOf
+    local floor, names, colorOf = math.floor, MAP.names, MAP.colorOf
+    local detail, overview = MAP.get, MAP.getOverview
+    local zoomedOut = V.zoom >= 16
     for j = 0, g.mh - 1 do
       local tx, fg, bg = {}, {}, {}
       local b2 = (j - g.mh / 2) * zy
@@ -63,11 +72,13 @@ function drawMapPage(G)
         local a2 = (i - g.mw / 2) * zx
         local wx = cxs + floor(a2 * B.rx + b2 * B.dx)
         local wz = czs + floor(a2 * B.rz + b2 * B.dz)
-        local c = get(wx, wz)
-        if c then
+        local hgt, blk
+        if not zoomedOut then hgt, blk = detail(wx, wz) end
+        if not hgt then hgt, blk = overview(wx, wz) end
+        if hgt then
           tx[i + 1] = " "
           fg[i + 1] = fgGrid
-          bg[i + 1] = blitc(colorOf(names[c[2]] or ""))
+          bg[i + 1] = blitc(colorOf(names[blk] or ""))
         else
           -- unscanned: dark, with faint dots on chunk borders (zoomed in)
           local edge = V.zoom == 1 and (wx % 16 == 0 or wz % 16 == 0)
@@ -132,8 +143,9 @@ function drawMapPage(G)
   card(rx, y0, rw, 15, "VIEW")
   actButton(rx + rw - 15, y0 + 1, 13, 1, "CLEAR MAP", { kind = "mapclear", name = "map", count = 0 })
   kv(rix, y0 + 3, riw, "Centre", V.cx .. ", " .. V.cz)
-  kv(rix, y0 + 4, riw, "Mapped chunks", tostring(#MAP.order))
-  kv(rix, y0 + 5, riw, "Scans", tostring(MAP.scans))
+  kv(rix, y0 + 4, riw, "Chunks (overview)", tostring(MAP.ovN))
+  kv(rix, y0 + 5, riw, "Chunks (detail)", tostring(#MAP.order))
+
   local bw = math.floor((riw - 3) / 4)
   local b1 = y0 + 7
   drawButton(rix,                b1, bw, 1, "\27",  C.empty, C.text, "mpan", { -1, 0 })
@@ -155,11 +167,16 @@ function drawMapPage(G)
   local sy0 = y0 + 16
   card(rx, sy0, rw, 7, "SELECTED")
   if sel then
-    local c = MAP.get(sel.x, sel.z)
-    kv(rix, sy0 + 3, riw, "Column", sel.x .. ", " .. sel.z)
-    if c then
-      kv(rix, sy0 + 4, riw, "Top block", trunc(prettify(MAP.names[c[2]] or "?"), riw - 12))
-      kv(rix, sy0 + 5, riw, "Height", "Y " .. c[1])
+    local hgt, blk = MAP.get(sel.x, sel.z)
+    local whole = false
+    if not hgt then
+      hgt, blk = MAP.getOverview(sel.x, sel.z)
+      whole = hgt ~= nil
+    end
+    kv(rix, sy0 + 3, riw, whole and "Chunk (overview)" or "Column", sel.x .. ", " .. sel.z)
+    if hgt then
+      kv(rix, sy0 + 4, riw, whole and "Mostly" or "Top block", trunc(prettify(MAP.names[blk] or "?"), riw - 12))
+      kv(rix, sy0 + 5, riw, whole and "Average height" or "Height", "Y " .. hgt)
     else
       text(rix, sy0 + 4, "Not scanned yet", C.dim, C.panel)
     end

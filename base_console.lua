@@ -1,5 +1,8 @@
--- Part of the base-control program (started by inventory.lua).
+-- base_console.lua  -  part of the base-control program (started by inventory.lua).
 -- All base_*.lua files share one namespace and are loaded in a fixed order.
+--
+--   Commands typed on the base computer's keyboard (type 'help' there):
+--   drone control, saved places, turtles, map, ME setup and checks, report, disks.
 
 -- console on the computer's keyboard ---------------------------------------
 HELP = {
@@ -40,6 +43,7 @@ HELP = {
   " turtle <id> setting <name> <value>   e.g. turtle 7 setting dig true",
 }
 
+-- one command typed on the computer; returns the lines to print
 function handleCommand(line)
   local words = {}
   for w in line:gmatch("%S+") do words[#words + 1] = w end
@@ -132,6 +136,7 @@ function handleCommand(line)
       if x and y and z then
         addWaypoint(name, x, y, z)
         say("Saved '" .. name .. "' at " .. fmtPos(x, y, z))
+      elseif D and D.dest then say("Cannot save: " .. cleanErr(y))
       else say("No destination chosen yet: give x y z, or choose one first") end
     end
 
@@ -320,14 +325,16 @@ function handleCommand(line)
       end
       local before = fs.getFreeSpace("/")
       local chunks0, walls0 = #MAP.order, KNOW.n
-      pcall(MAP.save)
+      pcall(MAP.save, true)              -- every region: moves them onto the floppies
       pcall(KNOW.save)
       pcall(saveLogs)
       local function where(p)
         local d = dataFile(p)
         return (fs.exists(d) and (d .. " (" .. math.ceil(fs.getSize(d) / 1024) .. " KB)")) or "not saved"
       end
-      say("Map:              " .. where(CONFIG.map.file) ..
+      local total, onPc, files = MAP.diskUse()
+      say("Map:              " .. files .. " files, " .. math.ceil((total - onPc) / 1024) ..
+          " KB on floppies, " .. math.ceil(onPc / 1024) .. " KB on the computer" ..
           (#MAP.order < chunks0 and ("  - trimmed to the newest " .. #MAP.order .. " chunks") or ""))
       say("Turtle knowledge: " .. where(CONFIG.turtles.knowFile) ..
           (KNOW.n < walls0 and ("  - trimmed to the newest " .. KNOW.n .. " walls") or ""))
@@ -350,7 +357,7 @@ function handleCommand(line)
         say("No empty floppy found. Put an EMPTY floppy into a Disk Drive on this computer, then try again.")
       else
         say(n .. " floppy disk(s) are now data disks. Moving the map, turtle knowledge and drone logs there ...")
-        pcall(MAP.save)
+        pcall(MAP.save, true)
         pcall(KNOW.save)
         pcall(saveLogs)
         say("Done. Free on this computer now: " .. math.floor(fs.getFreeSpace("/") / 1024) .. " KB")
@@ -402,7 +409,12 @@ function handleCommand(line)
       MAP.clear()
       say("Map cleared (all scans deleted).")
     else
-      say("Map: " .. #MAP.order .. " chunks.   'map clear' deletes all scans.")
+      pcall(MAP.save)
+      local total, onPc, files = MAP.diskUse()
+      say("Map: overview " .. MAP.ovN .. " chunks, detail " .. #MAP.order .. " chunks, in " .. files .. " files, " ..
+          math.ceil(total / 1024) .. " KB (" .. math.ceil((total - onPc) / 1024) .. " KB on data floppies, " ..
+          math.ceil(onPc / 1024) .. " KB on this computer).")
+      say("'map clear' deletes all scans. 'disks data' makes empty floppies data disks for the map.")
     end
 
   elseif cmd == "turtles" then

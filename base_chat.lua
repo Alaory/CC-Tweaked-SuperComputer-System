@@ -1,5 +1,10 @@
--- Part of the base-control program (started by inventory.lua).
+-- base_chat.lua  -  part of the base-control program (started by inventory.lua).
 -- All base_*.lua files share one namespace and are loaded in a fixed order.
+--
+--   '$drone' chat commands (home, to, back, places, status, stop; the owner
+--   also allow / deny / yes / no). Checks who asks and that they are in the
+--   overworld, asks the owner to approve strangers, then picks the free drone with
+--   the most air. Replies are private (chatTell -> chat worker).
 
 -- chat requests ------------------------------------------------------------
 -- Ride for `name` to saved place `w`: the nearest free drone with enough air
@@ -20,9 +25,30 @@ function ownerIsOnline()
   return (playerPos(state.owner)) ~= nil
 end
 
+-- why this ride cannot happen (nil = it can): the rider, and a player they
+-- want to fly to, must both be in the overworld
+function rideProblem(name, dest)
+  local px, _, dim = playerPos(name)
+  if not px then
+    if dim then return "You are in " .. dimName(dim) .. " - drones only fly in the overworld." end
+    return "I cannot find you (out of the Player Detector's range?)."
+  end
+  if dest and dest.kind == "player" then
+    local tx, why = playerPos(dest.name)
+    if not tx then return "Cannot fly you to " .. dest.name .. ": " .. cleanErr(why) .. "." end
+  end
+end
+
+-- send the best free drone to give `name` a ride to `dest` (tells them in chat)
 function startRide(name, dest, owner)
   local label = dest.name
   refreshDrones()
+  -- checked again here: the rider may have gone through a portal while waiting
+  local problem = rideProblem(name, dest)
+  if problem then
+    chatTell(name, problem)
+    return
+  end
   local px, py, pz = playerPos(name)
   if not px then
     chatTell(name, "I cannot find you (out of the Player Detector's range?).")
@@ -86,6 +112,7 @@ function startRide(name, dest, owner)
   end
 end
 
+-- exact online player name for `n` (any case, leading @ allowed), or nil
 function findOnlinePlayer(n)
   n = tostring(n or ""):gsub("^@", "")
   if n == "" or not det or not det.getOnlinePlayers then return nil end
@@ -96,6 +123,7 @@ function findOnlinePlayer(n)
   end
 end
 
+-- one chat message: runs the '$drone ...' command it contains
 function handleChat(m)
   local text = tostring(m.msg or ""):gsub("^%$", "")
   local words = {}
@@ -197,9 +225,9 @@ function handleChat(m)
               "of more than " .. CONFIG.back.jump .. " blocks - in the overworld only.")
         return
       end
-      local dim = playerDim(name)
+      local dim = playerDimNow(name)
       if dim and dim ~= "minecraft:overworld" then
-        reply("That only works in the overworld - you are in " .. dim .. ".")
+        reply("That only works in the overworld - you are in " .. dimName(dim) .. ".")
         return
       end
       dest = { kind = "coords", name = b.why .. " (" .. b.x .. " " .. b.y .. " " .. b.z .. ")",
@@ -226,6 +254,12 @@ function handleChat(m)
       dest = { kind = "player", name = p }
     end
     local label = dest.name
+    -- refused rides are told to the rider only: no monitor toast, no owner request
+    local problem = rideProblem(name, dest)
+    if problem then
+      reply(problem)
+      return
+    end
     setToast("Chat: " .. name .. " asked for a ride to " .. label, C.label, 6)
 
     if not trusted then

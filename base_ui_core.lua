@@ -1,5 +1,9 @@
--- Part of the base-control program (started by inventory.lua).
+-- base_ui_core.lua  -  part of the base-control program (started by inventory.lua).
 -- All base_*.lua files share one namespace and are loaded in a fixed order.
+--
+--   Shared drawing pieces: header with the tabs, boxes, buttons, bars, pager,
+--   footer (hints + toasts), the popup, and draw() which draws the visible tab.
+--   A tab is only shown when its block is connected.
 
 ---------------------------------------------------------------------
 -- DRAWING
@@ -14,6 +18,7 @@ function px(x, y, code, fg, bg)
   win.write(string.char(code))
 end
 
+-- is the "rounded" style on?
 function rounded() return CONFIG.style == "rounded" end
 
 -- round the corners of a box filled with `inner` that sits on `outer`
@@ -47,6 +52,7 @@ function mark(x, y, col)
   else text(x, y, " ", C.text, col) end
 end
 
+-- a box (panel) with an optional title
 function card(x, y, w, h, label)
   fill(x, y, w, h, C.panel)
   round(x, y, w, h, C.panel, C.bg)
@@ -56,6 +62,7 @@ function card(x, y, w, h, label)
   end
 end
 
+-- make an area touchable (handled in base_input.lua)
 function addHit(x, y, w, h, kind, value)
   hits[#hits + 1] = { x, y, x + w - 1, y + h - 1, kind, value }
 end
@@ -105,47 +112,112 @@ function drawCell(x, y, w, h, item, emptyLabel)
   end
 end
 
+-- the tabs to show: { page, label, badge, badge colour } (a tab only when its block is there)
+function headerTabs()
+  local tabs = { { "inventory", "INVENTORY" } }
+  local np = det and #(state.players or {}) or 0
+  tabs[#tabs + 1] = { "players", "PLAYERS", np > 0 and tostring(np) or nil }
+  if invCaps.storage then tabs[#tabs + 1] = { "storage", "STORAGE" } end
+  if invCaps.curios then tabs[#tabs + 1] = { "curios", "CURIOS" } end
+  if bridge then tabs[#tabs + 1] = { "me", bridgeKind } end
+  if #droneOrder > 0 then
+    tabs[#tabs + 1] = { "drone", #droneOrder > 1 and "DRONES" or "DRONE",
+                        #droneOrder > 1 and tostring(#droneOrder) or nil }
+  end
+  if chatBox then
+    local req = 0
+    for _ in pairs(state.rideRequests or {}) do req = req + 1 end
+    tabs[#tabs + 1] = { "access", "CHAT", req > 0 and tostring(req) or nil, req > 0 and C.warn or nil }
+  end
+  if state.tModem or next(state.turtles) then
+    local on, all = 0, 0
+    for _, t in pairs(state.turtles) do
+      all = all + 1
+      if TT.online(t) then on = on + 1 end
+    end
+    tabs[#tabs + 1] = { "turtles", "TURTLES", all > 0 and (on .. "/" .. all) or nil }
+  end
+  if state.tModem or next(state.turtles) or MAP.hasData() then tabs[#tabs + 1] = { "map", "MAP" } end
+  -- EVENTS: the number of new messages (red if one of them is an error)
+  local unread = state.noteUnread or 0
+  local anyErr = false
+  for i = 1, math.min(unread, #state.noteLog) do
+    if state.noteLog[i].col == C.bad then anyErr = true break end
+  end
+  tabs[#tabs + 1] = { "events", "EVENTS", unread > 0 and tostring(unread) or nil,
+                      unread > 0 and (anyErr and C.bad or C.warn) or nil }
+  return tabs
+end
+
+-- the title, the tabs, the owner and the clock
 function drawHeader()
   fill(1, 1, W, 3, C.panel)
-  -- slim separator line under the header (rounded style only)
-  if rounded() then text(1, 4, string.char(131):rep(W), C.head, C.bg) end
 
   local title = CONFIG.title:gsub(".", "%0 "):sub(1, -2)
   text(3, 2, "\4", C.accent, C.panel)
   text(5, 2, title, C.text, C.panel)
   text(5, 3, "Advanced Peripherals", C.dim, C.panel)
 
-  -- page tabs: pills, the active one filled and underlined
-  local tabs = { { "inventory", "INVENTORY" }, { "players", "PLAYERS" } }
-  if invCaps.storage then tabs[#tabs + 1] = { "storage", "STORAGE" } end
-  if invCaps.curios then tabs[#tabs + 1] = { "curios", "CURIOS" } end
-  if bridge then tabs[#tabs + 1] = { "me", bridgeKind } end
-  if #droneOrder > 0 then
-    tabs[#tabs + 1] = { "drone", #droneOrder > 1 and ("DRONES " .. #droneOrder) or "DRONE" }
-  end
-  if chatBox then tabs[#tabs + 1] = { "access", "CHAT" } end
-  if state.tModem or next(state.turtles) then tabs[#tabs + 1] = { "turtles", "TURTLES" } end
-  if state.tModem or next(state.turtles) or MAP.hasData() then tabs[#tabs + 1] = { "map", "MAP" } end
-  local tx = 50
-  for _, t in ipairs(tabs) do
-    local active = state.page == t[1]
-    local lab = "  " .. t[2] .. "  "
-    local bg = active and C.accent or C.empty
-    text(tx, 2, lab, active and C.ink or C.text, bg)
-    round(tx, 2, #lab, 1, bg, C.panel)
-    if active and rounded() then text(tx, 4, string.char(131):rep(#lab), C.accent, C.bg) end
-    addHit(tx, 1, #lab, 3, "page", t[1])
-    tx = tx + #lab + 1
-  end
-
+  -- right side: owner and clock
   local owner = state.owner or "no player"
+  local ex = W - math.max(#owner + 4, 8) - 1
   local dot = state.status == "ok" and C.good or C.bad
   text(W - #owner - 2, 2, owner, C.text, C.panel)
   text(W - #owner - 4, 2, "\7", dot, C.panel)
   local t = textutils.formatTime(os.time(), true)
   text(W - #t - 2, 3, t, C.dim, C.panel)
+
+  -- the tabs: full header height; the active one is filled and joins the page
+  local tabs = headerTabs()
+  local x0 = 5 + math.max(#title, 20) + 3
+  local avail = ex - 2 - x0
+  local function widthOf(t, pad, badges)
+    local w = #t[2] + 2 * pad
+    if badges and t[3] then w = w + #t[3] + 3 end
+    return w
+  end
+  local pad, badges = 3, true
+  local function total()
+    local s = 0
+    for _, t in ipairs(tabs) do s = s + widthOf(t, pad, badges) + 1 end
+    return s - 1
+  end
+  -- too wide for the monitor: less padding, then no title, then no badges,
+  -- then short names
+  while total() > avail and pad > 1 do pad = pad - 1 end
+  if total() > avail then
+    x0 = 2
+    avail = ex - 2 - x0
+    fill(1, 1, ex - 1, 3, C.panel)                            -- hide the title
+  end
+  if total() > avail then badges = false end
+  if total() > avail then
+    for _, t in ipairs(tabs) do t[2] = t[2]:sub(1, 4) end
+  end
+
+  local tx = x0
+  for _, t in ipairs(tabs) do
+    local active = state.page == t[1]
+    local w = widthOf(t, pad, badges)
+    local bg = active and C.accent or C.head
+    local fg = active and C.ink or C.text
+    fill(tx, 1, w, 3, bg)
+    round(tx, 1, w, 3, bg, C.panel)
+    text(tx + pad, 2, t[2], fg, bg)
+    if badges and t[3] then
+      local bcol = t[4] or (active and C.ink or C.label)
+      local bbg = active and C.label or C.empty
+      if t[4] then bbg = t[4]; bcol = C.ink end
+      text(tx + pad + #t[2] + 1, 2, " " .. t[3] .. " ", bcol, bbg)
+    end
+    -- the active tab runs into the page: a thin line in its colour under it
+    if active then text(tx, 4, string.char(131):rep(w), C.accent, C.bg) end
+    addHit(tx, 1, w, 3, "page", t[1])
+    tx = tx + w + 1
+  end
 end
 
+-- a box in the middle with a title and text (loading, errors)
 function drawMessage(title, lines, col)
   local boxW = math.min(W - 6, 58)
   local n = 0
@@ -164,6 +236,7 @@ function drawMessage(title, lines, col)
   end
 end
 
+-- "Key ........ value" row
 function kv(x, y, w, k, v, vcol)
   text(x, y, k, C.dim, C.panel)
   local gap = w - #k - #v - 2
@@ -185,6 +258,7 @@ function pill(x, y, label, fg, bg, outer)
   return #l
 end
 
+-- label + value at a fixed column
 function field(x, y, label, value, col)
   text(x, y, label, C.dim, C.panel)
   text(x + 11, y, value, col or C.text, C.panel)
@@ -207,6 +281,7 @@ function geometry()
   return G
 end
 
+-- a touchable button
 function drawButton(x, y, w, h, label, bg, fg, kind, value)
   fill(x, y, w, h, bg)
   round(x, y, w, h, bg, C.panel)
@@ -228,6 +303,7 @@ function actButton(x, y, w, h, label, act, primary)
   end
 end
 
+-- PREV / NEXT buttons for a list with several pages
 function drawPager(y0, key, pages, xr)
   if pages <= 1 then return end
   local pl = string.format("PAGE %d/%d", state[key], pages)
@@ -274,6 +350,7 @@ function scrollBar(x, y, w, key, total, rows)
   return off
 end
 
+-- the bottom line: hint, toast or disk warning, LIVE status (+ the popup)
 function drawFooter()
   -- slim separator line above the footer (rounded style only)
   if rounded() then text(1, H - 1, string.char(143):rep(W), C.bg, C.head) end
@@ -281,19 +358,16 @@ function drawFooter()
   local hint = {
     players = "Touch a player to see raw data",
     storage = "Contents of backpacks and other storage items",
-    curios  = "Curios slots (rings, charms, backpacks, ...)",
+    curios  = "Tap a slot: store a worn item in ME / move it to your inventory, or put on what fits from ME (tap twice)",
     me      = "Select an item, then use the buttons (tap twice to confirm)",
     access  = "Who may use the $drone chat commands (REMOVE needs a second tap)",
     map     = "Tap the map to inspect a spot. SURVEY maps the area on screen (needs a Geo Scanner in the turtle)",
     turtles = "Select a turtle, then use the pad. On the computer:  turtle <id> goto x y z",
     drone   = "Pick a passenger + destination, then FERRY (tap twice). Type 'help' on the computer for coordinates",
+    events  = "Every message, newest first. Tap a filter to show one kind only",
   }
   if state.diskLow then
     text(3, H, trunc("  " .. state.diskLow .. "  ", W - 24), C.ink, C.bad)
-  elseif state.toast and os.clock() < state.toast.exp then
-    local m = "  " .. trunc(state.toast.msg, W - 24) .. "  "
-    text(3, H, m, C.ink, state.toast.col)
-    round(3, H, #m, 1, state.toast.col, C.panel)
   else
     text(3, H, hint[state.page] or "Touch an item to highlight it", C.dim, C.panel)
   end
@@ -301,8 +375,69 @@ function drawFooter()
   if state.status ~= "ok" then msg, col = "\7 OFFLINE", C.bad
   elseif state.dropped > 0 then msg, col = "\7 SLOT MISMATCH (see slotBase)", C.warn end
   text(W - #msg - 2, H, msg, col, C.panel)
+  drawNotes()
 end
 
+-- the message boxes (pushNote), stacked top-right under the tabs. A tap on a
+-- box closes it; each also closes by itself (the bar at its bottom shows the
+-- time left).
+function drawNotes()
+  local now = os.clock()
+  for i = #state.notes, 1, -1 do
+    local n = state.notes[i]
+    if n.exp and now >= n.exp then table.remove(state.notes, i) end
+  end
+  if #state.notes == 0 or state.page == "events" then return end
+  local nw = math.min(60, math.max(40, math.floor(W * 0.34)))
+  local x = W - nw - 1
+  local top, bottom = 6, H - 4
+
+  -- which boxes fit (always at least the newest one)
+  local list, y = {}, top
+  for _, n in ipairs(state.notes) do
+    local lines = wrap(n.msg, nw - 6, 3)
+    local h = #lines + 3
+    if y + h - 1 > bottom - 2 and #list > 0 then break end
+    list[#list + 1] = { n = n, lines = lines, h = h, y = y }
+    y = y + h + 1
+  end
+  local more = #state.notes - #list
+  local footer = (more > 0 or #state.notes > 1)
+
+  -- solid backing, so the page behind does not show between the boxes
+  local backH = (y - top) + (footer and 1 or 0)
+  fill(x - 1, top - 1, nw + 2, backH + 1, C.bg)
+
+  for _, b in ipairs(list) do
+    local n, by, h = b.n, b.y, b.h
+    fill(x, by, nw, h, C.empty)
+    round(x, by, nw, h, C.empty, C.bg)
+    fill(x, by, 1, h, n.col)                                  -- coloured stripe
+    local kind = noteKind(n.col)
+    text(x + 2, by, " " .. kind .. " ", C.ink, n.col)
+    local title = n.title and trunc(n.title, nw - #kind - 16) or ""
+    text(x + #kind + 5, by, title, C.text, C.empty)
+    local right = n.when .. ((n.times and n.times > 1) and (" x" .. n.times) or "")
+    text(x + nw - #right - 5, by, right, C.dim, C.empty)
+    text(x + nw - 3, by, " x ", C.text, C.panel)              -- close mark
+    for k, l in ipairs(b.lines) do text(x + 2, by + 1 + k, l, C.text, C.empty) end
+    if n.exp and n.life and n.life > 0 then                    -- time left: a thin bar
+      local left = math.max(0, math.min(1, (n.exp - now) / n.life))
+      local bw = math.floor((nw - 1) * left + 0.5)
+      if bw > 0 then text(x + 1, by + h - 1, string.char(143):rep(bw), C.empty, n.col) end
+    end
+    addHit(x, by, nw, h, "ndismiss", n.id)                    -- tap the box = close it
+  end
+
+  if footer then
+    if more > 0 then text(x, y - 1, "+" .. more .. " more", C.dim, C.bg) end
+    local ca = " CLOSE ALL "
+    text(x + nw - #ca, y - 1, ca, C.text, C.head)
+    addHit(x + nw - #ca, y - 1, #ca, 1, "nclear")
+  end
+end
+
+-- draw the whole screen for the visible tab
 function draw()
   win.setVisible(false)
   hits = {}
@@ -327,6 +462,8 @@ function draw()
     drawTurtlesPage(G)
   elseif state.page == "map" then
     drawMapPage(G)
+  elseif state.page == "events" then
+    drawEventsPage(G)
   elseif state.status == "nocard" then
     drawMessage("NO PLAYER LINKED",
       { "Bind a Memory Card to yourself (right-click with it),",

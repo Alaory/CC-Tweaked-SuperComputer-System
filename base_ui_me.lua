@@ -1,5 +1,8 @@
--- Part of the base-control program (started by inventory.lua).
+-- base_ui_me.lua  -  part of the base-control program (started by inventory.lua).
 -- All base_*.lua files share one namespace and are loaded in a fixed order.
+--
+--   ME tab (shows 'RS' with an RS Bridge): network status, item / fluid browser,
+--   and the buttons to take, store and craft.
 
 -- page drawing
 -- colour from the name only (does not use up the inventory's colour slots)
@@ -17,6 +20,7 @@ function fmtBuckets(mb)
   return commas(mb) .. " mB"
 end
 
+-- the ME list as shown (sorted / filtered), cached until something changes
 function meView()
   local me = state.me
   local key = table.concat({ state.meVersion, state.meSort, tostring(state.meType),
@@ -42,6 +46,7 @@ function meView()
   return out
 end
 
+-- the ME tab
 function drawMEPage(G)
   local y0 = G.y0
   if not bridge then

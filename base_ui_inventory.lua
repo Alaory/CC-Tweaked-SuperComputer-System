@@ -1,5 +1,8 @@
--- Part of the base-control program (started by inventory.lua).
+-- base_ui_inventory.lua  -  part of the base-control program (started by inventory.lua).
 -- All base_*.lua files share one namespace and are loaded in a fixed order.
+--
+--   INVENTORY tab: the owner's inventory grid, equipment, overview, item list
+--   and details of the selected item.
 
 -- page drawing
 function drawBackpack(x, y, w, h, G)
@@ -37,6 +40,7 @@ function drawBackpack(x, y, w, h, G)
   end
 end
 
+-- armour and offhand slots
 function drawEquip(x, y, w, h, G)
   card(x, y, w, h, "EQUIPMENT")
   local labels = { "Helm", "Chest", "Legs", "Boots", "Offhand" }
@@ -49,6 +53,7 @@ function drawEquip(x, y, w, h, G)
   end
 end
 
+-- how full the inventory is
 function drawOverview(x, y, w, h)
   card(x, y, w, h, "OVERVIEW")
   local ix, iw = x + 2, w - 4
@@ -64,6 +69,7 @@ function drawOverview(x, y, w, h)
   kv(ix, r + 2 * s, iw, "Unique types", tostring(#state.list))
 end
 
+-- the item list with the SORT button
 function drawList(x, y, w, h)
   card(x, y, w, h, "ITEMS")
   local label = "SORT: " .. sortMode:upper()
@@ -118,6 +124,7 @@ function drawList(x, y, w, h)
   end
 end
 
+-- details of the selected item
 function drawDetail(x, y, w, h)
   card(x, y, w, h, "DETAILS")
   local ix, iw = x + 2, w - 4

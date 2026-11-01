@@ -1,5 +1,8 @@
--- Part of the base-control program (started by inventory.lua).
+-- base_input.lua  -  part of the base-control program (started by inventory.lua).
 -- All base_*.lua files share one namespace and are loaded in a fixed order.
+--
+--   Monitor touches: tabs, buttons (two-tap confirm), selecting items /
+--   players / drones / turtles / map spots, closing the popup.
 
 ---------------------------------------------------------------------
 -- INPUT
@@ -15,6 +18,7 @@ function handleTouch(tx, ty)
         sortList()
       elseif h[5] == "page" then
         state.page = h[6]
+        if h[6] == "events" then state.noteUnread = 0 end   -- seen
       elseif h[5] == "meitem" then
         state.meSel = (state.meSel ~= h[6]) and h[6] or nil
       elseif h[5] == "meletter" then
@@ -140,13 +144,10 @@ function handleTouch(tx, ty)
         local _, _, _, _, upName = MAP.compass()
         setToast("Map: " .. upName .. " is up", C.label, 3)
       elseif h[5] == "mzoom" then
-        local V, steps = MAP.view(), { 1, 2, 4, 8, 16 }
+        local V, steps = MAP.view(), { 1, 2, 4, 8, 16, 32, 64, 128 }
         local i = 1
         for k, z in ipairs(steps) do if z == V.zoom then i = k end end
         V.zoom = steps[math.max(1, math.min(#steps, i + h[6]))]
-      elseif h[5] == "mores" then
-        local V = MAP.view()
-        V.ores = not V.ores
       elseif h[5] == "mcenter" then
         local V = MAP.view()
         local x, z
@@ -214,6 +215,8 @@ function handleTouch(tx, ty)
           while findWaypoint(n) do i = i + 1; n = "Place " .. i end
           addWaypoint(n, x, y, z)
           setToast("Saved as '" .. n .. "' (rename: save <name> in the console)", C.good, 5)
+        elseif state.drone and state.drone.dest and state.drone.dest.kind == "player" then
+          setPopup("CANNOT SAVE", state.drone.dest.name .. " is not in the overworld (or not found).", C.warn)
         end
       elseif h[5] == "dstop" then
         if submitDrone(state.drone, { kind = "stop" }) then
@@ -225,6 +228,20 @@ function handleTouch(tx, ty)
         state.rawView[h[6]] = not state.rawView[h[6]] or nil
       elseif h[5] == "item" then
         if h[6] and h[6] ~= selName then selName = h[6] else selName = nil end
+      elseif h[5] == "ndismiss" then
+        dismissNote(h[6])
+      elseif h[5] == "nclear" then
+        state.notes = {}
+      elseif h[5] == "csel" then
+        local cur = state.curiosSel
+        if cur and cur.type == h[6][1] and cur.pos == h[6][2] then state.curiosSel = nil
+        else state.curiosSel = { type = h[6][1], pos = h[6][2] } state.curiosFitPage = 1 end
+      elseif h[5] == "evfilter" then
+        state.eventsFilter = h[6]
+        state.eventsPage = 1
+      elseif h[5] == "evclear" then
+        state.noteLog = {}
+        state.eventsPage = 1
       end
       return h[5] == "page" or h[5] == "act" or h[5] == "mecraft"
     end

@@ -1,22 +1,80 @@
--- Part of the base-control program (started by inventory.lua).
+-- base_players.lua  -  part of the base-control program (started by inventory.lua).
 -- All base_*.lua files share one namespace and are loaded in a fixed order.
+--
+--   Player Detector data: online players, positions, health, and which
+--   dimension each one is in (saved in player_dims.dat). The owner's armour and
+--   hands via the Inventory Manager. '$drone back' tracking: remembers where a
+--   player was before a big jump or where they died (overworld only).
 
 ---------------------------------------------------------------------
 -- PLAYER DATA (Player Detector)
 ---------------------------------------------------------------------
 DIM_KEYS = { "dimension", "dim", "dimensionName", "dimensionId", "world", "level" }
 
+-- a dimension name from a text or a {location/name/id} table
+local function dimValue(v)
+  if type(v) == "string" and v ~= "" then return v end
+  if type(v) == "table" then
+    local sv = v.location or v.name or v.id
+    if type(sv) == "string" and sv ~= "" then return sv end
+  end
+end
+
+-- the dimension in the detector's data for a player (nil if it has none)
 function dimFromData(p)
+  if type(p) ~= "table" then return nil end
   for _, k in ipairs(DIM_KEYS) do
-    local v = p[k]
-    if type(v) == "string" and v ~= "" then return v end
-    if type(v) == "table" then
-      local sv = v.location or v.name or v.id
-      if type(sv) == "string" then return sv end
+    local v = dimValue(p[k])
+    if v then return v end
+  end
+  -- other spellings ("Dimension", "currentDimension" ...), but never the
+  -- respawn / spawn dimension: that is where the bed is, not where they are
+  for k, v in pairs(p) do
+    if type(k) == "string" then
+      local lk = k:lower()
+      if (lk:find("dim") or lk == "world" or lk == "level") and not lk:find("spawn") then
+        local d = dimValue(v)
+        if d then return d end
+      end
     end
   end
 end
 
+-- dimensions from playerJoin / playerChangedDimension events, kept in a small
+-- file so a restart does not forget players who are already in another dimension
+DIM_FILE = "player_dims.dat"
+do
+  local h = fs.exists(DIM_FILE) and fs.open(DIM_FILE, "r")
+  local t = h and textutils.unserialize(h.readAll() or "")
+  if h then h.close() end
+  if type(t) == "table" then
+    for n, d in pairs(t) do
+      if type(n) == "string" and type(d) == "string" then dimCache[n] = d end
+    end
+  end
+end
+
+-- write the known dimensions to player_dims.dat
+local function saveDims()
+  saveFileSafe(DIM_FILE, textutils.serialize(dimCache))
+end
+
+-- remember (and save) which dimension a player is in
+function rememberDim(name, dim)
+  if type(name) ~= "string" or type(dim) ~= "string" or dim == "" then return end
+  if dimCache[name] == dim then return end
+  dimCache[name] = dim
+  saveDims()
+end
+
+-- forget a player's dimension (they left the server)
+function forgetDim(name)
+  if type(name) ~= "string" or dimCache[name] == nil then return end
+  dimCache[name] = nil
+  saveDims()
+end
+
+-- the dimension the base is in (Environment Detector, else CONFIG.homeDimension)
 function homeDimension()
   if envDet then
     local fn = envDet.getDimensionPaN or envDet.getDimension
@@ -29,20 +87,21 @@ function homeDimension()
 end
 
 -- players the detector can reach in its own dimension
+-- (2nd result: true when the full CONFIG.detectRange was searched)
 function playersInRangeSet()
   local set = {}
-  if not det.getPlayersInRange then return set end
-  for _, r in ipairs({ CONFIG.detectRange, 1024, 256 }) do
+  if not det.getPlayersInRange then return set, false end
+  for i, r in ipairs({ CONFIG.detectRange, 1024, 256 }) do
     local ok, list = pcall(det.getPlayersInRange, r)
     if ok and type(list) == "table" then
       for _, n in pairs(list) do
         if type(n) == "string" then set[n] = true
         elseif type(n) == "table" and n.name then set[n.name] = true end
       end
-      return set
+      return set, (i == 1)
     end
   end
-  return set
+  return set, false
 end
 
 -- full = every online player (PLAYERS page); otherwise only the owner
@@ -89,13 +148,13 @@ function refreshPlayers(full)
       needRange = true
     end
   end
-  local inRange, home = {}, nil
+  local inRange, home, fullRange = {}, nil, false
   if needRange then
     if state.inRange and state.inRangeT and os.clock() - state.inRangeT < 5 then
-      inRange = state.inRange
+      inRange, fullRange = state.inRange, state.inRangeFull
     else
-      inRange = playersInRangeSet()
-      state.inRange, state.inRangeT = inRange, os.clock()
+      inRange, fullRange = playersInRangeSet()
+      state.inRange, state.inRangeT, state.inRangeFull = inRange, os.clock(), fullRange
     end
     home = homeDimension()
   end
@@ -106,9 +165,14 @@ function refreshPlayers(full)
     local r = res[i]
     if r and r.ok and type(r.pl) == "table" and next(r.pl) then
       e.p = r.pl
-      e.dim = dimFromData(r.pl) or dimCache[name] or (inRange[name] and home) or nil
+      local fromData = dimFromData(r.pl)
+      if fromData then rememberDim(name, fromData) end
+      e.dim = fromData or dimCache[name] or (inRange[name] and home) or nil
+      -- not in the detector's own dimension, but which one is not known yet
+      e.dimOther = (not e.dim) and fullRange and not inRange[name] or nil
     else
       e.err = (r and r.ok) and "Not found by detector" or tostring(r and r.pl or "no data")
+      e.dim = dimCache[name]            -- known from an earlier portal trip / join
     end
     entries[#entries + 1] = e
     if e.isOwner then ownerE = e end
@@ -120,8 +184,10 @@ function refreshPlayers(full)
   end
   if ownerE then
     state.player, state.playerDim, state.playerMsg = ownerE.p, ownerE.dim, ownerE.err
+    state.playerDimOther = ownerE.dimOther
   else
     state.player, state.playerDim, state.playerMsg = nil, nil, nil
+    state.playerDimOther = nil
   end
   state.t.owner = os.clock()
 end
@@ -305,6 +371,7 @@ backSpots = {}                 -- [lower name] = { x, y, z, t = epoch ms, why, n
 local trackLast = {}           -- [lower name] = last position + health
 local OVERWORLD = "minecraft:overworld"
 
+-- write the '$drone back' spots to their file
 local function backSave()
   local h = fs.open(CONFIG.back.file, "w")
   if h then h.write(textutils.serialize(backSpots)) h.close() end
@@ -321,6 +388,7 @@ function playerDim(name, pl)
   return (pl and dimFromData(pl)) or dimCache[name]
 end
 
+-- check every player's position: remember the spot before a big jump or a death
 function trackPlayers()
   if not det or not CONFIG.back then return end
   local now = os.epoch("utc")

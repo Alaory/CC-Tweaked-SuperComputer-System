@@ -1,0 +1,5 @@
+-- sample messages (scenario for run.lua)
+setToast("Drone 1: Ferry Zed > Base - done", C.good, 8)
+setToast("Craft job #12: started", C.label, 8)
+setPopup("Drone 2 - CANNOT START", "Zed is in another dimension - drones only fly in the overworld", C.warn)
+setToast("Transfer failed: the ME Bridge cannot reach the buffer chest. Type mesetup on the computer.", C.bad)

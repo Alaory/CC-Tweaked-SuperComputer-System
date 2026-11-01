@@ -1,5 +1,11 @@
--- Part of the base-control program (started by inventory.lua).
+-- base_theme.lua  -  part of the base-control program (started by inventory.lua).
 -- All base_*.lua files share one namespace and are loaded in a fixed order.
+--
+--   Colours, the off-screen window and small helpers used everywhere.
+--   - flushWindow(): copies only the changed rows to the monitor (keep it: speed)
+--   - saveFileSafe(): writes a data file only if it fits, through a temp file
+--   - dataFile() / mountedDisks(): big data files can live on data floppies
+--   - pmap(): runs game calls at the same time;  waitFor(): sleep or wake on an event
 
 ---------------------------------------------------------------------
 -- THEME
@@ -38,10 +44,12 @@ ITEM_COLORS = {
   colors.lightBlue,
 }
 
+-- set the program's colours on a monitor or window
 function applyPalette(dev)
   for c, rgb in pairs(PALETTE) do dev.setPaletteColor(c, rgb) end
 end
 
+-- give the monitor its normal colours back (on exit)
 function restorePalette()
   for c in pairs(PALETTE) do
     mon.setPaletteColor(c, term.nativePaletteColor(c))
@@ -145,6 +153,7 @@ function dropOldCopy(configPath, savedPath, nothingInMemory)
   end
 end
 
+-- (re)create the off-screen window at the monitor's size
 function buildWindow()
   applyPalette(mon)
   W, H = mon.getSize()
@@ -183,6 +192,7 @@ function fill(x, y, w, h, bg)
   end
 end
 
+-- write text into the off-screen window
 function text(x, y, s, fg, bg)
   if bg then win.setBackgroundColor(bg) end
   win.setTextColor(fg)
@@ -190,6 +200,7 @@ function text(x, y, s, fg, bg)
   win.write(s)
 end
 
+-- cut a text to n characters (ends with "." when cut)
 function trunc(s, n)
   if n <= 0 then return "" end
   if #s <= n then return s end
@@ -197,12 +208,14 @@ function trunc(s, n)
   return s:sub(1, n - 1) .. "."
 end
 
+-- 1234567 -> "1,234,567"
 function commas(n)
   local s = tostring(math.floor(n))
   local r = s:reverse():gsub("(%d%d%d)", "%1,"):reverse()
   return (r:gsub("^,", ""))
 end
 
+-- 1234 -> "1.2k", 2500000 -> "2.5m"
 function compact(n)
   if n < 1000 then return tostring(n) end
   if n < 100000 then
@@ -215,6 +228,7 @@ end
 
 -- every item gets its own colour while there are free ones
 assigned, usedBy = {}, {}
+-- a colour for an item, different from the other items shown where possible
 function colorFor(name)
   local c = assigned[name]
   if c then return c end

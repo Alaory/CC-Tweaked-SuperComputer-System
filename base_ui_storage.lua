@@ -1,9 +1,12 @@
--- Part of the base-control program (started by inventory.lua).
+-- base_ui_storage.lua  -  part of the base-control program (started by inventory.lua).
 -- All base_*.lua files share one namespace and are loaded in a fixed order.
+--
+--   STORAGE tab (inside backpacks / tanks) and CURIOS tab (worn curios slots).
 
 -- page drawing
 function me_available() return bridge ~= nil and inv ~= nil end
 
+-- one storage item (backpack, tank ...) and what is inside
 function drawStorageCard(x, y, w, h, sInfo)
   card(x, y, w, h)
   local ix, iw = x + 2, w - 4
@@ -83,6 +86,7 @@ function drawStorageCard(x, y, w, h, sInfo)
   end
 end
 
+-- the STORAGE tab
 function drawStoragePage(G)
   local y0 = G.y0
   if not state.t.storage then
@@ -121,6 +125,10 @@ function drawStoragePage(G)
   end
 end
 
+-- the CURIOS tab
+-- the CURIOS tab: every slot type with all its slots (boxes wrap onto more
+-- lines, pages when they do not fit), and on the right the selected slot
+-- with its actions: STORE IN ME / TO INVENTORY, or what fits from the ME network
 function drawCuriosPage(G)
   local rows = state.curios
   if not rows then
@@ -142,35 +150,139 @@ function drawCuriosPage(G)
   end
 
   local y0 = G.y0
-  local equipped = 0
+  local sideW = 44
+  local lw = W - 3 - sideW
+  local rx = 2 + lw + 1
+
+  local equipped, slots = 0, 0
   for _, row in ipairs(rows) do
+    slots = slots + row.count
     for _ in pairs(row.cells) do equipped = equipped + 1 end
   end
-  local title = string.format("CURIOS: %d slot types, %d equipped", #rows, equipped)
-  if state.curiosNote then title = string.format("CURIOS: %d slot types", #rows) end
+  local title = string.format("CURIOS: %d slot types, %d slots, %d worn", #rows, slots, equipped)
   text(2, y0, title, C.label, C.bg)
-  if state.curiosNote then
-    text(2 + #title + 3, y0, state.curiosNote, C.warn, C.bg)
+  if state.curiosNote then text(2 + #title + 3, y0, trunc(state.curiosNote, lw - #title - 4), C.warn, C.bg) end
+
+  -- layout: one box per slot type, as wide as its slots need (up to a full
+  -- line); small types sit side by side, big ones wrap onto more lines.
+  -- Pages when they do not fit.
+  local cw, ch, pitch = 13, 3, 14
+  local perLine = math.max(1, math.floor((lw - 4) / pitch))
+  local function sizeOf(row)
+    local across = math.min(row.count, perLine)
+    local w = math.max(4 + across * pitch, #row.name + 22)
+    return math.min(lw, w), 2 + math.ceil(row.count / perLine) * (ch + 1)
+  end
+  local top, bottom = y0 + 2, G.y1
+  local pages = { {} }
+  local x, y, lineH = 2, top, 0
+  for _, row in ipairs(rows) do
+    local w, h = sizeOf(row)
+    if x > 2 and x + w - 1 > 2 + lw - 1 then          -- next line of boxes
+      x, y, lineH = 2, y + lineH + 1, 0
+    end
+    if y > top and y + h - 1 > bottom then            -- next page
+      pages[#pages + 1] = {}
+      x, y, lineH = 2, top, 0
+    end
+    local pg = pages[#pages]
+    pg[#pg + 1] = { row = row, x = x, y = y, w = w, h = math.min(h, bottom - y + 1) }
+    x = x + w + 1
+    if h > lineH then lineH = h end
+  end
+  state.curiosPage = math.max(1, math.min(state.curiosPage or 1, #pages))
+  drawPager(y0, "curiosPage", #pages, 2 + lw)
+
+  local sel = state.curiosSel
+  for _, b in ipairs(pages[state.curiosPage]) do
+    local row, bx, by, h = b.row, b.x, b.y, b.h
+    card(bx, by, b.w, h)
+    local worn = 0
+    for _ in pairs(row.cells) do worn = worn + 1 end
+    text(bx + 2, by + 1, prettify(row.name):upper(), C.label, C.panel)
+    text(bx + 3 + #row.name, by + 1, row.count .. (row.count == 1 and " slot" or " slots") ..
+         ", " .. worn .. " worn" .. (row.stale and " (last known)" or ""), C.dim, C.panel)
+    for pos = 1, row.count do
+      local line, col = math.floor((pos - 1) / perLine), (pos - 1) % perLine
+      local cx, cy = bx + 2 + col * pitch, by + 2 + line * (ch + 1)
+      if cy + ch - 1 > by + h - 1 then break end
+      local it = row.cells[pos]
+      drawCell(cx, cy, cw, ch, it, row.unreadable and "?" or "empty")
+      if sel and sel.type == row.name and sel.pos == pos then
+        fill(cx - 1, cy, 1, ch, C.accent)                     -- the selected slot
+      end
+      if not row.unreadable then addHit(cx, cy, cw, ch, "csel", { row.name, pos }) end
+    end
   end
 
-  local n = #rows
-  local avail = G.bodyH - 2
-  local cardH = math.max(4, math.min(10, math.floor((avail + 1) / n) - 1))
-  local cellH = cardH - 2
-  local labelW, pitch, cw = 18, 15, 14
-  local maxCells = math.floor((W - 2 - labelW - 3) / pitch)
-
-  for i, row in ipairs(rows) do
-    local cy = y0 + 2 + (i - 1) * (cardH + 1)
-    if cy + cardH - 1 > G.y1 then break end
-    card(2, cy, W - 2, cardH)
-    text(4, cy + 1, prettify(row.name):upper(), C.label, C.panel)
-    text(4, cy + 2, row.count .. (row.count == 1 and " slot" or " slots"), C.dim, C.panel)
-    if row.stale and cardH >= 4 then text(4, cy + 3, "last known", C.warn, C.panel) end
-    for pos = 1, math.min(row.count, maxCells) do
-      local it = row.cells[pos]
-      drawCell(2 + labelW + (pos - 1) * pitch, cy + 1, cw, cellH, it,
-               row.unreadable and "?" or "empty")
+  ------------------------------------------------ right: the selected slot
+  local rw = W - rx
+  local ix, iw = rx + 2, rw - 4
+  card(rx, top, rw, bottom - top + 1, "SELECTED")
+  -- the selection may be gone (slot removed) or its item changed
+  local row
+  for _, r in ipairs(rows) do if sel and r.name == sel.type then row = r end end
+  if not row or sel.pos > row.count then
+    state.curiosSel = nil
+    text(ix, top + 3, "Tap a slot.", C.dim, C.panel)
+    text(ix, top + 5, trunc("Worn item: store it in the ME network", iw), C.dim, C.panel)
+    text(ix, top + 6, trunc("or move it into your inventory.", iw), C.dim, C.panel)
+    text(ix, top + 8, trunc("Empty slot: see what fits from the", iw), C.dim, C.panel)
+    text(ix, top + 9, trunc("ME network and put it on.", iw), C.dim, C.panel)
+    return
+  end
+  local it = row.cells[sel.pos]
+  sel.item = it and it.name or nil
+  kv(ix, top + 3, iw, "Slot", prettify(row.name) .. " " .. sel.pos .. " of " .. row.count)
+  local by = top + 6
+  if it then
+    kv(ix, top + 4, iw, "Worn", trunc(it.displayName or prettify(it.name), iw - 8))
+    local n = tonumber(it.count) or 1
+    if bridge then
+      actButton(ix, by, iw, 3, "STORE IN ME", { kind = "cstore", name = it.name, count = n }, true)
+      by = by + 4
     end
+    actButton(ix, by, iw, 3, "TO INVENTORY", { kind = "cunequip", name = it.name, count = n })
+    text(ix, by + 4, "Tap twice to confirm.", C.dim, C.panel)
+    return
+  end
+
+  kv(ix, top + 4, iw, "Worn", "nothing")
+  if not bridge then
+    text(ix, by, trunc("No ME Bridge: nothing to put on from it.", iw), C.dim, C.panel)
+    return
+  end
+  text(ix, by, "FITS HERE (in the ME network)", C.label, C.panel)
+  local me = state.me
+  if not me or not me.items then
+    text(ix, by + 2, "Reading the ME network...", C.dim, C.panel)
+    return
+  end
+  local fits = {}
+  for _, e in ipairs(me.items) do
+    if e.curios and e.curios[row.name] and (e.count or 0) > 0 then fits[#fits + 1] = e end
+  end
+  table.sort(fits, function(a, b) return a.display:lower() < b.display:lower() end)
+  if #fits == 0 then
+    text(ix, by + 2, trunc("Nothing tagged curios:" .. row.name, iw), C.dim, C.panel)
+    text(ix, by + 3, trunc("in the network.", iw), C.dim, C.panel)
+    return
+  end
+  local per = math.max(1, math.floor((bottom - by - 3) / 2))
+  local pages2 = math.max(1, math.ceil(#fits / per))
+  state.curiosFitPage = math.max(1, math.min(state.curiosFitPage or 1, pages2))
+  if pages2 > 1 then
+    text(ix, bottom - 1, "page " .. state.curiosFitPage .. "/" .. pages2, C.dim, C.panel)
+    drawButton(ix + iw - 17, bottom - 1, 8, 1, "< PREV", C.empty, C.text, "pg", { "curiosFitPage", -1 })
+    drawButton(ix + iw - 8, bottom - 1, 8, 1, "NEXT >", C.empty, C.text, "pg", { "curiosFitPage", 1 })
+  end
+  local first = (state.curiosFitPage - 1) * per
+  for k = 1, per do
+    local e = fits[first + k]
+    if not e then break end
+    local ry = by + 2 + (k - 1) * 2
+    text(ix, ry, trunc(e.display, iw - 12), C.text, C.panel)
+    text(ix, ry + 1, compact(e.count) .. " in the network", C.dim, C.panel)
+    actButton(ix + iw - 10, ry, 10, 2, "PUT ON", { kind = "cequip", name = e.name, count = 1 })
   end
 end

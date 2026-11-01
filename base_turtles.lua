@@ -1,5 +1,10 @@
--- Part of the base-control program (started by inventory.lua).
+-- base_turtles.lua  -  part of the base-control program (started by inventory.lua).
 -- All base_*.lua files share one namespace and are loaded in a fixed order.
+--
+--   Talking to the turtles (node.lua) over a wireless / ender modem, with
+--   signed messages. Shared terrain knowledge (walls, dead ends, exit route),
+--   sending node.lua updates and keeping the install floppy current, the saved
+--   turtle list, rescue / findlost, and splitting surveys between turtles.
 
 -- TURTLES  (remote control over a wireless / ender modem) -----------------
 TT = {}
@@ -33,6 +38,7 @@ function TT.findModem()
   end
 end
 
+-- a turtle's record (created on first contact)
 function TT.get(id)
   local t = state.turtles[id]
   if not t then
@@ -42,15 +48,18 @@ function TT.get(id)
   return t
 end
 
+-- add a line to a turtle's log (40 kept)
 function TT.log(t, msg)
   table.insert(t.log, 1, { t = textutils.formatTime(os.time(), true), msg = msg })
   while #t.log > 40 do table.remove(t.log) end
 end
 
+-- has the turtle reported recently?
 function TT.online(t)
   return t.lastSeen ~= nil and (os.clock() - t.lastSeen) < CONFIG.turtles.offlineAfter
 end
 
+-- all turtles, sorted by ID
 function TT.list()
   local out = {}
   for _, t in pairs(state.turtles) do out[#out + 1] = t end
@@ -58,6 +67,7 @@ function TT.list()
   return out
 end
 
+-- a turtle by ID or label
 function TT.find(word)
   local n = tonumber(word)
   if n and state.turtles[n] then return state.turtles[n] end
@@ -153,8 +163,10 @@ local KNOW_LIFE = { hard = 6 * 3600000 + 600000, short = 32 * 60000, door = 11 *
 local DEAD_LIFE = 3 * 3600000
 KNOW = { walls = {}, dead = {}, n = 0, dirty = false, saved = 0 }
 EXITROUTE = nil          -- { route = "x,y,z;...", t = time, n = corners }
+-- real time in ms
 local function epoch() return os.epoch("utc") end
 
+-- drop knowledge that is too old, and the oldest walls over knowMax
 function KNOW.prune()
   local t = epoch()
   for k, w in pairs(KNOW.walls) do
@@ -172,6 +184,7 @@ function KNOW.prune()
   end
 end
 
+-- save the shared knowledge (shrinks it if the disk is full)
 function KNOW.save()
   KNOW.prune()
   local path = dataFile(CONFIG.turtles.knowFile, true)
@@ -202,6 +215,7 @@ function KNOW.save()
   KNOW.dirty, KNOW.saved = false, os.clock()
 end
 
+-- read the saved knowledge, exit route and turtle list
 function KNOW.load()
 TT.loadList()
   if fs.exists(dataFile(CONFIG.turtles.knowFile)) then
@@ -279,6 +293,7 @@ end
 CODE = nil               -- { text, ver, mod, pieces = {...} }
 local CHUNK = 8000
 
+-- checksum of node.lua (the turtles' version number)
 local function codeHash(str)
   local h1, h2 = 5381, 52711
   for i = 1, #str do
@@ -289,6 +304,7 @@ local function codeHash(str)
   return string.format("%08x%08x", h1, h2)
 end
 
+-- replace the text value of a setting in node.lua (e.g. the key)
 local function setStr(code, name, val)
   val = tostring(val):gsub("%%", "%%%%")
   return (code:gsub('(\n%s*' .. name .. '%s*=%s*)"[^"\n]*"', '%1"' .. val .. '"', 1))
@@ -366,6 +382,7 @@ print("Move it away from the drive or take the disk out. Starting now...")
 sleep(2)
 shell.run("/startup.lua")
 ]]
+-- keep the install floppy up to date with the current node.lua
 function TT.writeInstallDisk()
   if not CODE or not disk then return end
   -- the install floppy, or (only if there is none yet) the first empty one -
@@ -399,6 +416,7 @@ end
 -- Every turtle ever seen, with its last position and when it was last seen,
 -- so a turtle that went quiet (e.g. while you were offline) can be found.
 TT.listDirty = false
+-- save every known turtle (turtles.dat)
 function TT.saveList()
   local out = {}
   for id, t in pairs(state.turtles) do
@@ -409,6 +427,7 @@ function TT.saveList()
   if h then h.write(textutils.serialize(out)) h.close() end
   TT.listDirty = false
 end
+-- read the saved turtle list
 function TT.loadList()
   if not fs.exists(CONFIG.turtles.listFile) then return end
   local h = fs.open(CONFIG.turtles.listFile, "r")
@@ -528,6 +547,7 @@ function TT.rescue(targetId, x, y, z, radius)
   return true, r.label .. " is on its way (" .. (mode == "install" and "reinstall" or "supplies") .. ")"
 end
 
+-- the anchor turtle, and whether it is in the base's chunk
 function TT.anchorInfo()
   for _, t in pairs(state.turtles) do
     if t.anchor then
@@ -623,6 +643,7 @@ function TT.sendSpots(id, spots, r)
   TT.send(id, "surveypts", args)
 end
 
+-- queue a signed command for a turtle (sent by the comms worker)
 function TT.send(id, cmd, args, quiet)
   local n = os.epoch("utc")
   if n <= state.tLastN then n = state.tLastN + 1 end

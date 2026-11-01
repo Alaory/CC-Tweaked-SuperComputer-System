@@ -1,12 +1,81 @@
--- Part of the base-control program (started by inventory.lua).
+-- base_me.lua  -  part of the base-control program (started by inventory.lua).
 -- All base_*.lua files share one namespace and are loaded in a fixed order.
+--
+--   The ME (AE2) / RS network: reading it (with a 'partial view' when getItems()
+--   crashes), moving items through the buffer chest, fluids to/from your tanks,
+--   crafting, 'mesetup', and the OWED list (items the program put in a buffer and
+--   still has to deliver - only those exact amounts are ever moved).
+--   Also: setToast() / setPopup(), and runAction() which runs confirmed button presses.
 
 ---------------------------------------------------------------------
 -- ME / RS BRIDGE
 ---------------------------------------------------------------------
-function setToast(msg, col, secs)
-  state.toast = { msg = msg, col = col or C.good, exp = os.clock() + (secs or 6) }
+-- ===== messages (shown as boxes top-right; see drawNotes in base_ui_core.lua) =====
+-- Every message also goes into the EVENTS tab (the last few, in memory only).
+-- How long a box stays, in seconds, by kind (0 = until it is tapped). Can be
+-- changed with CONFIG.notes = { info = 8, done = 8, warning = 20, error = 60, keep = 100 }
+local NOTE_DEFAULTS = { info = 8, done = 8, warning = 20, error = 60, keep = 100 }
+function noteSetting(k)
+  local v = CONFIG.notes and tonumber(CONFIG.notes[k])
+  if v == nil then v = NOTE_DEFAULTS[k] end
+  return v
 end
+local noteId = 0
+
+-- the label of a message, from its colour
+function noteKind(col)
+  if col == C.bad then return "ERROR" end
+  if col == C.warn then return "WARNING" end
+  if col == C.good then return "DONE" end
+  return "INFO"
+end
+
+-- real time for the EVENTS tab ("01.11 14:30"); game time if os.date is missing
+local function realTime(fmt)
+  local ok, r = pcall(os.date, fmt)
+  if ok and type(r) == "string" then return r end
+  return textutils.formatTime(os.time(), true)
+end
+
+-- show a message. secs = at least this long (the kind's time is the minimum);
+-- every box closes by itself (unless that kind's time is 0), or when tapped
+function pushNote(title, msg, col, secs)
+  col = col or C.good
+  msg = tostring(msg or "")
+  local now = os.clock()
+  local life = noteSetting(noteKind(col):lower())
+  if life > 0 then life = math.max(life, secs or 0) end
+  local exp = (life > 0) and (now + life) or nil
+  -- the same message again while it is shown: refresh it instead of stacking
+  for _, n in ipairs(state.notes) do
+    if n.msg == msg and n.title == title then
+      n.t, n.exp, n.life, n.times = now, exp, life, (n.times or 1) + 1
+      os.queueEvent("inv_update")
+      return
+    end
+  end
+  noteId = noteId + 1
+  local when = realTime("%H:%M")
+  table.insert(state.notes, 1, { id = noteId, title = title, msg = msg, col = col, t = now,
+                                 exp = exp, life = life, when = when })
+  table.insert(state.noteLog, 1, { title = title, msg = msg, col = col, when = realTime("%d.%m %H:%M") })
+  while #state.noteLog > noteSetting("keep") do table.remove(state.noteLog) end
+  if state.page ~= "events" then state.noteUnread = (state.noteUnread or 0) + 1 end
+  os.queueEvent("inv_update")
+end
+
+-- close one message box
+function dismissNote(id)
+  for i, n in ipairs(state.notes) do
+    if n.id == id then table.remove(state.notes, i) return end
+  end
+end
+
+-- a short message
+function setToast(msg, col, secs) pushNote(nil, msg, col, secs) end
+
+-- an important message with a title (a warning unless another colour is given)
+function setPopup(title, msg, col) pushNote(title, msg, col or C.warn) end
 
 -- pcall wrapper: returns ok, r1, r2
 function callx(obj, fn, ...)
@@ -40,7 +109,10 @@ end
 -- ME Bridge: chest <-> ME;  Inventory Manager: chest <-> player
 local ME_IN, ME_OUT = { "importItem" }, { "exportItem" }
 local INV_TO_PLAYER, INV_FROM_PLAYER = { "importItem", "addItemToPlayer" }, { "exportItem", "removeItemFromPlayer" }
+-- Curios slots <-> a chest (Inventory Manager): same style as importItem / exportItem
+local CURIO_IN, CURIO_OUT = { "importCuriosItem" }, { "exportCuriosItem" }
 
+-- a count from a number or a {count / amount} table
 function numOf(r)
   if type(r) == "number" then return r end
   if type(r) == "table" then return tonumber(r.count or r.amount) end
@@ -66,7 +138,25 @@ ME_TAGS = {
   "minecraft:dirt", "minecraft:sand", "minecraft:stone_bricks", "minecraft:wool_carpets",
   "minecraft:signs", "minecraft:fishes", "minecraft:music_discs", "minecraft:decorated_pot_sherds",
   "minecraft:trim_templates", "minecraft:bookshelf_books", "minecraft:anvil",
+  -- Curios slot tags: the CURIOS tab lists what fits an empty slot
+  "curios:ring", "curios:charm", "curios:necklace", "curios:belt", "curios:bracelet",
+  "curios:hands", "curios:head", "curios:back", "curios:body", "curios:feet", "curios:curio",
 }
+
+-- the Curios slot types an item fits, from its tags: { ring = true, ... }
+function curioSlotsOf(it)
+  local out
+  if type(it.tags) ~= "table" then return nil end
+  for k, v in pairs(it.tags) do
+    local tg = type(v) == "string" and v or (type(k) == "string" and k or nil)
+    local slot = tg and tg:gsub("^#", ""):match("^curios:(.+)$")
+    if slot then
+      out = out or {}
+      out[slot] = true
+    end
+  end
+  return out
+end
 
 -- what kind of storage a cell holds (AE2 key type ids -> readable)
 function cellTypeLabel(t)
@@ -113,12 +203,14 @@ do
   end
 end
 local namesDirty, namesSavedAt = false, -100
+-- remember an item name seen in the network (for the partial view)
 function meRememberName(n)
   if type(n) == "string" and n:find(":", 1, true) and not ME_NAMES[n] then
     ME_NAMES[n] = true
     namesDirty = true
   end
 end
+-- save the remembered item names (at most once a minute unless forced)
 local function saveNames(force)
   if not namesDirty or (not force and os.clock() - namesSavedAt < 60) then return end
   local list = {}
@@ -127,8 +219,10 @@ local function saveNames(force)
   local okS, text = pcall(textutils.serialize, list)
   if okS and saveFileSafe(NAMES_FILE, text) then namesDirty, namesSavedAt = false, os.clock() end
 end
+-- 'me add <id>': look this item up in the partial view from now on
 function meAddName(n) meRememberName(n) saveNames(true) state.meNameCache = nil end
 
+-- read the whole ME / RS network (items, fluids, energy, storage, crafting)
 function fetchME()
   local me = { kind = bridgeKind, items = {}, tasks = {}, byName = {},
                energy = {}, storage = {}, fstorage = {}, cstorage = {},
@@ -333,7 +427,8 @@ function fetchME()
       cur.craftable = cur.craftable or craftable
     else
       cur = { name = it.name, count = cnt, craftable = craftable,
-              display = cleanName(it.displayName or prettify(it.name)) }
+              display = cleanName(it.displayName or prettify(it.name)),
+              curios = curioSlotsOf(it) }
       me.byName[it.name] = cur
       me.items[#me.items + 1] = cur
     end
@@ -418,7 +513,9 @@ end
 -- network name; the Inventory Manager can ONLY use a direction (the chest must
 -- touch it).
 local function dirOf(d, default) return (tostring(d or default):gsub("^@", "")) end
+-- how the ME Bridge reaches the buffer chest
 function bufBridge() return CONFIG.me.buffer or dirOf(CONFIG.me.bufferFromBridge, "up") end
+-- how the Inventory Manager reaches the buffer chest
 function bufManager() return dirOf(CONFIG.me.bufferFromManager, "east") end
 
 -- Two chests: "give" (items going TO the player) and "take" (items coming FROM
@@ -427,6 +524,7 @@ function chestManagerDir(which)
   local d = (which == "give") and CONFIG.me.giveFromManager or CONFIG.me.takeFromManager
   return dirOf(d or CONFIG.me.bufferFromManager, "east")
 end
+-- how the ME Bridge reaches the give / take chest
 function chestBridge(which)
   local manual = (which == "give") and CONFIG.me.giveChest or CONFIG.me.takeChest
   if manual then return dirOf(manual) end
@@ -444,6 +542,7 @@ local function chestSig(list)
   table.sort(parts)
   return table.concat(parts, ",")
 end
+-- work out which chest is which for the bridge, by their contents
 function autoFindChests(chests)
   state.meAuto = state.meAuto or {}
   local want = {}
@@ -522,11 +621,14 @@ do
     if type(t) == "table" then OWED = t end
   end
 end
+-- save the OWED list
 local function saveOwed()
   local okS, text = pcall(textutils.serialize, OWED)
   if okS then saveFileSafe(OWED_FILE, text) end
 end
+-- save the OWED list (for other files)
 function saveOwedNow() saveOwed() end
+-- remember n of an item left in a buffer that still has to go `to` ME or the player
 local function owe(name, n, to, chest)
   if n <= 0 then return end
   for _, o in ipairs(OWED) do
@@ -579,12 +681,14 @@ function settleOwed()
   end
   if changed then saveOwed() end
 end
+-- how many items are still owed, and in how many entries
 function owedCount()
   local n = 0
   for _, o in ipairs(OWED) do n = n + o.count end
   return n, #OWED
 end
 
+-- ME -> player: exactly `count` (in chunks); returns moved, error
 function takeFromME(name, count)
   pcall(settleOwed)
   local remaining, total = count, 0
@@ -615,6 +719,7 @@ function takeFromME(name, count)
   end
   return total
 end
+-- player -> ME: exactly `count` (in chunks); returns sent, error
 function sendToME(name, count)
   pcall(settleOwed)
   local remaining, sent = count, 0
@@ -642,6 +747,76 @@ function sendToME(name, count)
     if remaining <= 0 then break end
   end
   return sent
+end
+
+-- ===== Curios: worn items <-> ME network / inventory (through the buffer chest) =====
+-- a worn curio -> the "take" chest; returns how many left the slot, error
+local function curioOut(name, count)
+  local ok, r = transfer(inv, CURIO_OUT, chestManagerDir("take"), { name = name, count = count })
+  if not ok then return 0, tostring(r) end
+  return tonumber(numOf(r)) or 0
+end
+-- the "give"/"take" chest -> a Curios slot (the first free slot it fits); returns how many
+local function curioIn(name, count, chest)
+  local done = 0
+  for _ = 1, 4 do
+    if done >= count then break end
+    local ok, r = transfer(inv, CURIO_IN, chestManagerDir(chest), { name = name, count = count - done })
+    local m = ok and tonumber(numOf(r)) or 0
+    if m <= 0 then return done, (not ok) and tostring(r) or nil end
+    done = done + m
+  end
+  return done
+end
+
+-- a worn curio -> ME. Whatever the network refuses goes back on (or into
+-- the inventory). Returns moved, error
+function curioToME(name, count)
+  pcall(settleOwed)
+  local out, err = curioOut(name, count)
+  if out <= 0 then return 0, err or "the item did not come off (not worn?)" end
+  local stored = bufferToME(name, out, "take")
+  local left = out - stored
+  if left > 0 then
+    local back = curioIn(name, left, "take")
+    if back < left then back = back + bufferToPlayer(name, left - back, "take") end
+    if back < left then owe(name, left - back, "player", "take") end
+    return stored, "the network did not accept " .. left .. " - given back to you"
+  end
+  return stored
+end
+
+-- a worn curio -> the inventory. Returns moved, error
+function curioToInventory(name, count)
+  pcall(settleOwed)
+  local out, err = curioOut(name, count)
+  if out <= 0 then return 0, err or "the item did not come off (not worn?)" end
+  local moved = bufferToPlayer(name, out, "take")
+  local left = out - moved
+  if left > 0 then
+    local back = curioIn(name, left, "take")
+    if back < left then owe(name, left - back, "player", "take") end
+    return moved, "your inventory is full - " .. (back >= left and "put back on" or "kept in the buffer, retried")
+  end
+  return moved
+end
+
+-- ME -> a Curios slot (the first free one it fits). What does not go on goes
+-- back to the network. Returns moved, error
+function meToCurio(name, count)
+  pcall(settleOwed)
+  local ok, r, e = transfer(bridge, ME_OUT, chestBridge("give"), { name = name, count = count })
+  if not ok then return 0, tostring(r) end
+  local exported = numOf(r) or 0
+  if exported <= 0 then return 0, tostring(e or "not in the network") end
+  local on, err = curioIn(name, exported, "give")
+  local left = exported - on
+  if left > 0 then
+    local back = bufferToME(name, left, "give")
+    if back < left then owe(name, left - back, "me", "give") end
+    return on, (err or "no free slot it fits") .. " - " .. left .. " back to the network"
+  end
+  return on
 end
 
 -- ===== fluids: between the ME network and a fluid storage on the network =====
@@ -691,6 +866,7 @@ end
 local function sameRef(a, b)
   return a and b and a.kind == b.kind and a.raw == b.raw and a.slot == b.slot and a.idx == b.idx
 end
+-- the owner's fluid containers (from the STORAGE scan)
 function playerTanks(onlyRef)
   -- the list is built by the STORAGE tab; fresh if it is old or missing
   if not state.storage or os.clock() - ((state.t and state.t.storage) or -100) > 5 then
@@ -702,12 +878,14 @@ function playerTanks(onlyRef)
   end
   return out
 end
+-- open a storage item again from its saved reference
 local function openRef(ref)
   local ok, w
   if ref.kind == "slot" then ok, w = pcall(inv.wrapStorageItem, ref.raw)
   else ok, w = pcall(inv.wrapCuriosStorageItem, ref.slot, ref.idx) end
   if ok and type(w) == "table" then return w end
 end
+-- remember fluid left in the buffer that still has to go back to ME
 local function oweFluid(name, mb)
   if mb <= 0 then return end
   for _, o in ipairs(OWED) do
@@ -720,12 +898,14 @@ end
 -- what an opened container may call filling / emptying (versions differ)
 local TANK_IN  = { "pullFluid", "importFluid", "insertFluid" }
 local TANK_OUT = { "pushFluid", "exportFluid", "extractFluid" }
+-- the function names of a wrapped object, as one text
 local function fnList(w)
   local fns = {}
   for k, v in pairs(w) do if type(v) == "function" then fns[#fns + 1] = k end end
   table.sort(fns)
   return table.concat(fns, ", ")
 end
+-- does the object have any of these functions?
 local function hasAny(w, names)
   for _, n in ipairs(names) do if type(w[n]) == "function" then return true end end
 end
@@ -913,6 +1093,7 @@ function tankReport(say)
   end
 end
 
+-- ask the ME network to craft a fluid
 function craftFluidME(name, mb)
   local ok, r, e = callx(bridge, "craftFluid", { name = name, amount = mb })
   if not ok then return false, tostring(r) end
@@ -920,6 +1101,7 @@ function craftFluidME(name, mb)
   return true
 end
 
+-- ask the ME network to craft an item
 function craftME(name, count)
   local ok, r, e = callx(bridge, "craftItem", { name = name, count = count })
   if not ok then return false, tostring(r) end
@@ -950,6 +1132,21 @@ function runAction(a)
       setToast(prob, C.bad, 12)
       return
     end
+  end
+
+  if a.kind == "cstore" or a.kind == "cunequip" or a.kind == "cequip" then
+    local n, err
+    if a.kind == "cstore" then n, err = curioToME(a.name, a.count)
+    elseif a.kind == "cunequip" then n, err = curioToInventory(a.name, a.count)
+    else n, err = meToCurio(a.name, a.count) end
+    local verb = (a.kind == "cstore" and "Stored in the network: ") or (a.kind == "cunequip" and "Moved to your inventory: ")
+                 or "Put on: "
+    if n > 0 then setToast(verb .. disp .. (err and (" - " .. err) or ""), err and C.warn or C.good, 8)
+    else setToast("Curios: " .. disp .. " not moved - " .. tostring(err or "nothing happened"), C.bad, 12) end
+    state.force.curios = true
+    state.meForce = true
+    os.queueEvent("inv_wake")
+    return
   end
 
   if a.kind == "take" then
@@ -1042,6 +1239,7 @@ end
 local SETUP_FILE = "me_setup.dat"
 local SIDES = { "north", "south", "east", "west", "up", "down" }
 
+-- use the buffer chest found by 'mesetup' (me_setup.dat)
 function loadMESetup()
   if not fs.exists(SETUP_FILE) then return end
   local h = fs.open(SETUP_FILE, "r")
@@ -1061,6 +1259,7 @@ function loadMESetup()
   end
 end
 
+-- save what 'mesetup' found and report it
 local function saveSetup(side, cd, say)
   local h = fs.open(SETUP_FILE, "w")
   if h then
@@ -1075,6 +1274,7 @@ local function saveSetup(side, cd, say)
       or ("on its " .. cd.target .. " side")) .. ". Saved - TAKE on the ME tab works now.")
 end
 
+-- 'mesetup' help: the bridge cannot reach the buffer
 local function cannotReach(say)
   say("The ME Bridge cannot reach the buffer. Either put a WIRED MODEM on it (connected to")
   say("this computer's network, right-click it), or move the ME Bridge so it touches it.")
@@ -1172,6 +1372,7 @@ local function meSetupByMoving(say)
   cannotReach(say)
 end
 
+-- 'mesetup': find the buffer chest (needs ONE item in it)
 function meSetup(say)
   if not inv then say("No Inventory Manager found on this computer.") return end
   if not bridge then say("No ME Bridge found on this computer.") return end

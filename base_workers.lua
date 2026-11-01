@@ -1,5 +1,9 @@
--- Part of the base-control program (started by inventory.lua).
+-- base_workers.lua  -  part of the base-control program (started by inventory.lua).
 -- All base_*.lua files share one namespace and are loaded in a fixed order.
+--
+--   The background workers (all slow game calls happen here) and the screen
+--   loop. inventory.lua runs these together: uiLoop, invWorker, pageWorker,
+--   actionWorker, droneWorker, terminalWorker, chatWorker, commsWorker.
 
 ---------------------------------------------------------------------
 -- MAIN
@@ -12,6 +16,7 @@ function fresh(key, ttl)
   return t ~= nil and (os.clock() - t) < ttl
 end
 
+-- ask the screen to redraw
 function notify() os.queueEvent("inv_update") end
 
 -- run fn; if it crashes, remember that the data was "read" so we do not spin
@@ -75,6 +80,15 @@ function pageWorker()
           state.curios, state.curiosMsg, state.curiosNote = nil, tostring(rows), nil
         end
         state.t.curios = os.clock()
+        did = true
+      end
+      -- an empty slot is selected: the ME list shows what fits (read once a minute)
+      local sel = state.curiosSel
+      if bridge and sel and not sel.item and (state.meForce or not fresh("me", 60)) then
+        state.meForce = false
+        local ok, me = pcall(fetchME)
+        if ok then state.me = me end
+        state.t.me = os.clock()
         did = true
       end
 
@@ -272,6 +286,7 @@ function commsWorker()
     elseif ev == "timer" and a == tick then
       tick = os.startTimer(2)
       if KNOW.dirty and os.clock() - KNOW.saved > 30 then pcall(KNOW.save) end
+      pcall(MAP.autoSave)                -- changed map regions, at most once a minute
       if TT.listDirty and codeTick % 15 == 0 then pcall(TT.saveList) end
       codeTick = codeTick + 1
       if codeTick % 15 == 1 then pcall(TT.codeLoad) end     -- every 30 s
@@ -280,6 +295,7 @@ function commsWorker()
   end
 end
 
+-- worker 4: handles chat commands and sends the private replies (1 per second)
 function chatWorker()
   local lastSend = -10
   while state.running do
@@ -292,7 +308,10 @@ function chatWorker()
         state.chatOut = {}
       elseif os.clock() - lastSend >= 1.05 then
         local o = table.remove(state.chatOut, 1)
-        pcall(chatBox.sendMessage, o.text, { player = o.name, prefix = CONFIG.chat.replyPrefix })
+        -- private: only that player sees it (never sendMessage, which goes to everyone)
+        if chatBox.sendMessageToPlayer then
+          pcall(chatBox.sendMessageToPlayer, o.text, o.name, CONFIG.chat.replyPrefix)
+        end
         lastSend = os.clock()
       else
         -- never wait less than 0.1 s (no busy loop on rounding)
@@ -421,13 +440,13 @@ function uiLoop()
       os.queueEvent("chat_cmd")
 
     elseif ev == "playerChangedDimension" then
-      if type(a) == "string" and type(c) == "string" then dimCache[a] = c end
+      rememberDim(a, c)
 
     elseif ev == "playerJoin" then
-      if type(a) == "string" and type(b) == "string" then dimCache[a] = b end
+      rememberDim(a, b)
 
     elseif ev == "playerLeave" then
-      if type(a) == "string" then dimCache[a] = nil end
+      forgetDim(a)
 
     elseif ev == "terminate" then
       state.running = false
