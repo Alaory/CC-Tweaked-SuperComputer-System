@@ -54,6 +54,7 @@ local CONFIG = {
   geoItem   = "advancedperipherals:geo_scanner",
   scanRadius = 8,            -- 8 = free scan (17x17x17); the base can ask for another
   minFuel   = 200,           -- a survey stops below this fuel level
+  refuelTo  = nil,           -- reusable fuel: fill up to this (nil = the turtle's full tank)
   maxSurveyPoints = 400,
 }
 
@@ -441,6 +442,53 @@ end
 local function noFuel()
   local f = turtle.getFuelLevel()
   return f ~= "unlimited" and f < 1
+end
+
+-- REUSABLE fuel: an item that is still there after turtle.refuel (e.g. one
+-- that gives 10 fuel per use and can be used again). topUp refuels from it
+-- again and again until the fuel level reaches `target`.
+--   onlyReusable = true: only items already known to be reusable (S.reuse) -
+--     used when the turtle tops itself up, so it never burns anything else
+--   budget = at most this many refuel calls (one game tick each); nil = no limit
+-- Normal fuel (coal ...) is burnt one item at a time, only as far as needed.
+-- Returns the fuel gained and whether it stopped because of the budget.
+local function topUp(target, onlyReusable, budget)
+  local f0 = turtle.getFuelLevel()
+  if f0 == "unlimited" then return 0, false end
+  local limit = turtle.getFuelLimit()
+  target = math.min(target or limit, limit)
+  S.reuse = S.reuse or {}
+  local calls, sel, learnt = 0, turtle.getSelectedSlot(), false
+  for i = 1, 16 do
+    if turtle.getFuelLevel() >= target then break end
+    local d = turtle.getItemDetail(i)
+    if d and (not onlyReusable or S.reuse[d.name]) then
+      turtle.select(i)
+      while turtle.getFuelLevel() < target do
+        if budget and calls >= budget then break end
+        if job and stopFlag then break end
+        local before = turtle.getFuelLevel()
+        if not turtle.refuel(1) then break end
+        calls = calls + 1
+        if turtle.getFuelLevel() <= before then break end
+        local after = turtle.getItemDetail(i)
+        if not after then break end                  -- used up (normal fuel)
+        if after.name == d.name and after.count >= d.count and not S.reuse[d.name] then
+          S.reuse[d.name] = true                     -- still there: reusable
+          learnt = true
+        end
+      end
+    end
+  end
+  turtle.select(sel)
+  if learnt then save() end
+  return turtle.getFuelLevel() - f0, (budget ~= nil and calls >= budget)
+end
+
+-- the fuel level the turtle fills itself up to with reusable fuel
+local function refuelTarget()
+  local limit = turtle.getFuelLimit()
+  return math.min(limit, tonumber(CONFIG.refuelTo) or limit)
 end
 
 -- one block to an ADJACENT position (used to retrace the trail)
@@ -1239,6 +1287,10 @@ local function moveToXZ(tx, tz)
       while S.pos[axis] ~= target do
         if stopFlag then return false, "stopped at " .. fmt() end
         local fl = turtle.getFuelLevel()
+        if fl ~= "unlimited" and fl < 50 and S.reuse and next(S.reuse) then
+          topUp(math.min(refuelTarget(), fl + 2000), true)
+          fl = turtle.getFuelLevel()
+        end
         if fl ~= "unlimited" and fl < 1 then return false, "out of fuel at " .. fmt() end
         if watchStalled() then return false, "no progress (going in circles) at " .. fmt() end
         local f
@@ -1631,6 +1683,11 @@ surveyPoints = function(points, r)
       save()
     end
     local f = turtle.getFuelLevel()
+    if f ~= "unlimited" and f < CONFIG.minFuel * 2 and S.reuse and next(S.reuse) then
+      task = "refuelling (reusable fuel)"
+      topUp(math.min(refuelTarget(), f + 2000), true)
+      f = turtle.getFuelLevel()
+    end
     if f ~= "unlimited" and f < CONFIG.minFuel then
       return false, "low fuel (" .. f .. ") after " .. (i - 1) .. " of " .. #points .. " scans"
     end
@@ -2156,13 +2213,15 @@ local function immediate(cmd, a)
     local okW = select(1, warpSave("home"))
     return true, "home set to " .. fmt() .. " (here)" .. (okW and " + warp point 'home' (GO HOME teleports)" or "")
   elseif cmd == "refuel" then
+    -- every slot, like before; a reusable item is used again and again (up to
+    -- 10 s here - the rest it does by itself while idle)
     local before = turtle.getFuelLevel()
-    for i = 1, 16 do
-      turtle.select(i)
-      turtle.refuel()
-    end
-    turtle.select(1)
-    return true, "fuel " .. tostring(before) .. " -> " .. tostring(turtle.getFuelLevel())
+    local _, more = topUp(refuelTarget(), false, 200)
+    local names = {}
+    for n in pairs(S.reuse or {}) do names[#names + 1] = n:gsub("^.*:", "") end
+    return true, "fuel " .. tostring(before) .. " -> " .. tostring(turtle.getFuelLevel()) ..
+                 (#names > 0 and ("; reusable fuel: " .. table.concat(names, ", ") ..
+                  (more and " - it keeps filling up by itself while idle" or "")) or "")
   end
   return nil
 end
@@ -2224,7 +2283,14 @@ local function worker()
       save()
       reply(j.cmd, ok and true or false, msg)
     else
-      sleep(0.2)
+      -- idle: fill up with reusable fuel, a little at a time (stays responsive)
+      local f = turtle.getFuelLevel()
+      if f ~= "unlimited" and S.reuse and next(S.reuse) and f < refuelTarget() then
+        local gained = topUp(refuelTarget(), true, 20)
+        if gained <= 0 then sleep(5) end             -- nothing to use right now
+      else
+        sleep(0.2)
+      end
     end
   end
 end
