@@ -138,7 +138,7 @@ function fetchCurios()
     end
     local count = math.max(tonumber(sizes[n]) or 0, maxPos)
     if count > 0 then
-      rows[#rows + 1] = { name = n, count = count, cells = cells, raw = raw }
+      rows[#rows + 1] = { name = n, count = count, cells = cells, raw = raw, base = base }
     end
   end
   pcall(rememberCurios, rows)

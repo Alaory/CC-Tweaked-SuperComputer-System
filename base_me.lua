@@ -750,35 +750,176 @@ function sendToME(name, count)
 end
 
 -- ===== Curios: worn items <-> ME network / inventory (through the buffer chest) =====
--- a worn curio -> the "take" chest; returns how many left the slot, error
-local function curioOut(name, count)
-  local ok, r = transfer(inv, CURIO_OUT, chestManagerDir("take"), { name = name, count = count })
-  if not ok then return 0, tostring(r) end
-  return tonumber(numOf(r)) or 0
-end
--- the "give"/"take" chest -> a Curios slot (the first free slot it fits); returns how many
-local function curioIn(name, count, chest)
-  local done = 0
-  for _ = 1, 4 do
-    if done >= count then break end
-    local ok, r = transfer(inv, CURIO_IN, chestManagerDir(chest), { name = name, count = count - done })
-    local m = ok and tonumber(numOf(r)) or 0
-    if m <= 0 then return done, (not ok) and tostring(r) or nil end
-    done = done + m
+-- exportCuriosItem / importCuriosItem take different arguments in different
+-- Advanced Peripherals versions. Their argument TYPES are learnt by asking:
+-- a call with too few arguments fails with "bad argument #n (TYPE expected,
+-- got no value)". The probe uses "__probe__" for every text (no slot type and
+-- no item has that name), so a probe never moves anything.
+CURIO_SIG = {}          -- [function name] = { "string", "string", "number", ... }
+local unpack = table.unpack or unpack
+local PLACEHOLDER = { string = "__probe__", number = 1, table = {}, boolean = false }
+
+-- the argument types of an Inventory Manager function (learnt once)
+function curioSignature(fn, target)
+  if CURIO_SIG[fn] then return CURIO_SIG[fn] end
+  if type(inv[fn]) ~= "function" then return nil, "this Inventory Manager has no " .. fn end
+  local args, types = {}, {}
+  for _ = 1, 8 do
+    local ok, err = pcall(inv[fn], unpack(args, 1, #types))
+    if ok then break end                              -- everything given: done
+    local n, ty = tostring(err):match("bad argument #(%d+) %((%a+) expected")
+    n = tonumber(n)
+    if not n or not PLACEHOLDER[ty] then break end    -- another error (wrong slot ...): done
+    if n == 1 and #types == 0 then args[1], types[1] = target, ty   -- arg 1 = the chest
+    else args[n], types[n] = PLACEHOLDER[ty], ty end
+    for k = 1, n do if not types[k] then types[k], args[k] = "string", "__probe__" end end
   end
-  return done
+  if #types == 0 then return nil, "could not find out how " .. fn .. " is called" end
+  CURIO_SIG[fn] = types
+  return types
+end
+
+-- the arguments for a call, from the learnt types: arg 1 = the chest; texts:
+-- the slot type, then the item name (swapped = item name first); numbers: the
+-- slot number, then the count; a table: the item filter
+local function curioArgs(types, target, slotType, slotNo, name, count, swapped)
+  local args, s, n = { target }, 0, 0
+  for k = 2, #types do
+    local ty = types[k]
+    if ty == "string" then
+      s = s + 1
+      local first, second = slotType, name
+      if swapped then first, second = name, slotType end
+      args[k] = (s == 1) and first or second
+    elseif ty == "number" then
+      n = n + 1
+      args[k] = (n == 1) and slotNo or count
+    elseif ty == "table" then
+      args[k] = { name = name, count = count }
+    else
+      args[k] = PLACEHOLDER[ty]
+    end
+  end
+  return args
+end
+
+-- what is worn where: [slot type .. "|" .. key] = item name (nil if unreadable)
+local function curiosNow()
+  local ok, list = pcall(inv.listCurios)
+  if not ok or type(list) ~= "table" then return nil end
+  local out = {}
+  for t, items in pairs(list) do
+    if type(items) == "table" then
+      for k, it in pairs(items) do
+        if type(it) == "table" and it.name then out[t .. "|" .. tostring(k)] = it.name end
+      end
+    end
+  end
+  return out
+end
+
+-- call fn with the learnt arguments; tries the slot number as listed and one
+-- lower/higher (versions count slots from 0 or 1) and both orders of the texts,
+-- until the wanted change shows in listCurios. check(before, after) -> true
+-- when the right thing happened. Returns how many moved, error
+local SLOT_SHIFT      -- the slot-number shift that worked (learnt from exact matches only)
+local function curioCall(fn, target, slotType, slotNo, name, count, check)
+  local types, err = curioSignature(fn, target)
+  if not types then return 0, err end
+  local hasNumber, hasString2 = false, 0
+  for k = 2, #types do
+    if types[k] == "number" then hasNumber = true end
+    if types[k] == "string" then hasString2 = hasString2 + 1 end
+  end
+  local lastErr
+  local first = curiosNow()
+  -- without a readable listCurios the result cannot be checked: no guessing
+  local shifts = SLOT_SHIFT and { SLOT_SHIFT } or ((hasNumber and first) and { 0, -1, 1 } or { 0 })
+  for _, swapped in ipairs(hasString2 >= 1 and { false, true } or { false }) do
+    for _, sh in ipairs(shifts) do
+      local before = curiosNow()
+      local args, ok, r
+      for _ = 1, 4 do
+        args = curioArgs(types, target, slotType, (tonumber(slotNo) or 1) + sh, name, count, swapped)
+        ok, r = pcall(inv[fn], unpack(args, 1, #types))
+        -- the function wants one more argument than the probe found: learn it
+        local n, ty = tostring(r):match("bad argument #(%d+) %((%a+) expected, got no value")
+        if ok or tonumber(n) ~= #types + 1 or not PLACEHOLDER[ty] then break end
+        types[#types + 1] = ty
+        if ty == "number" then hasNumber = true end
+      end
+      if not ok then
+        lastErr = cleanErr(r)
+      else
+        local after = curiosNow()
+        local good, wrongName, exact = true, nil, false
+        if before and after then good, wrongName, exact = check(before, after, hasNumber, (tonumber(slotNo) or 1) + sh) end
+        local m = tonumber(numOf(r)) or (good and before and after and 1) or 0
+        if good and m == 0 and before and after then m = 1 end   -- it did move (seen in listCurios)
+        if good and m > 0 then
+          if exact and hasNumber then SLOT_SHIFT = sh end
+          return m
+        end
+        if wrongName then
+          -- a different item moved (wrong slot number): put it back on
+          local back = { target }
+          for k = 2, #types do back[k] = args[k] end
+          pcall(inv[fn == "exportCuriosItem" and "importCuriosItem" or "exportCuriosItem"], unpack(back, 1, #types))
+          lastErr = "the slot numbers did not match - " .. prettify(wrongName) .. " was put back"
+        end
+      end
+    end
+  end
+  return 0, lastErr
+end
+
+-- the worn curio in slot `slotNo` of `slotType` -> the "take" chest; returns how many, error
+local function curioOut(name, count, slotType, slotNo)
+  return curioCall("exportCuriosItem", chestManagerDir("take"), slotType, slotNo, name, count,
+    function(before, after)
+      local key = slotType .. "|" .. tostring(slotNo)
+      if before[key] == name and after[key] == nil then return true, nil, true end
+      for k, n in pairs(before) do
+        if after[k] == nil then return false, n end      -- something else came off
+      end
+      return false
+    end)
+end
+-- the chest -> a Curios slot (`slotNo` of `slotType`, if the function lets us
+-- choose); returns how many, error
+local function curioIn(name, count, chest, slotType, slotNo)
+  return curioCall("importCuriosItem", chestManagerDir(chest), slotType, slotNo, name, count,
+    function(before, after, slotChosen, usedNo)
+      -- it is on if it appeared anywhere; "exact" only if in the chosen slot
+      local key = slotType .. "|" .. tostring(usedNo)
+      if slotChosen and after[key] == name and before[key] == nil then return true, nil, true end
+      for k, n in pairs(after) do
+        if before[k] == nil and n == name then return true, nil, false end
+      end
+      return false
+    end)
+end
+
+-- 'curios probe' on the computer: what the two functions want
+function curiosProbe(say)
+  if not inv then say("No Inventory Manager.") return end
+  for _, fn in ipairs({ "exportCuriosItem", "importCuriosItem" }) do
+    CURIO_SIG[fn] = nil
+    local types, err = curioSignature(fn, chestManagerDir("take"))
+    say(fn .. "(" .. (types and table.concat(types, ", ") or ("? - " .. tostring(err))) .. ")")
+  end
 end
 
 -- a worn curio -> ME. Whatever the network refuses goes back on (or into
 -- the inventory). Returns moved, error
-function curioToME(name, count)
+function curioToME(name, count, slotType, slotNo)
   pcall(settleOwed)
-  local out, err = curioOut(name, count)
+  local out, err = curioOut(name, count, slotType, slotNo)
   if out <= 0 then return 0, err or "the item did not come off (not worn?)" end
   local stored = bufferToME(name, out, "take")
   local left = out - stored
   if left > 0 then
-    local back = curioIn(name, left, "take")
+    local back = curioIn(name, left, "take", slotType, slotNo)
     if back < left then back = back + bufferToPlayer(name, left - back, "take") end
     if back < left then owe(name, left - back, "player", "take") end
     return stored, "the network did not accept " .. left .. " - given back to you"
@@ -787,14 +928,14 @@ function curioToME(name, count)
 end
 
 -- a worn curio -> the inventory. Returns moved, error
-function curioToInventory(name, count)
+function curioToInventory(name, count, slotType, slotNo)
   pcall(settleOwed)
-  local out, err = curioOut(name, count)
+  local out, err = curioOut(name, count, slotType, slotNo)
   if out <= 0 then return 0, err or "the item did not come off (not worn?)" end
   local moved = bufferToPlayer(name, out, "take")
   local left = out - moved
   if left > 0 then
-    local back = curioIn(name, left, "take")
+    local back = curioIn(name, left, "take", slotType, slotNo)
     if back < left then owe(name, left - back, "player", "take") end
     return moved, "your inventory is full - " .. (back >= left and "put back on" or "kept in the buffer, retried")
   end
@@ -803,13 +944,13 @@ end
 
 -- ME -> a Curios slot (the first free one it fits). What does not go on goes
 -- back to the network. Returns moved, error
-function meToCurio(name, count)
+function meToCurio(name, count, slotType, slotNo)
   pcall(settleOwed)
   local ok, r, e = transfer(bridge, ME_OUT, chestBridge("give"), { name = name, count = count })
   if not ok then return 0, tostring(r) end
   local exported = numOf(r) or 0
   if exported <= 0 then return 0, tostring(e or "not in the network") end
-  local on, err = curioIn(name, exported, "give")
+  local on, err = curioIn(name, exported, "give", slotType, slotNo)
   local left = exported - on
   if left > 0 then
     local back = bufferToME(name, left, "give")
@@ -1136,9 +1277,9 @@ function runAction(a)
 
   if a.kind == "cstore" or a.kind == "cunequip" or a.kind == "cequip" then
     local n, err
-    if a.kind == "cstore" then n, err = curioToME(a.name, a.count)
-    elseif a.kind == "cunequip" then n, err = curioToInventory(a.name, a.count)
-    else n, err = meToCurio(a.name, a.count) end
+    if a.kind == "cstore" then n, err = curioToME(a.name, a.count, a.slotType, a.slotNo)
+    elseif a.kind == "cunequip" then n, err = curioToInventory(a.name, a.count, a.slotType, a.slotNo)
+    else n, err = meToCurio(a.name, a.count, a.slotType, a.slotNo) end
     local verb = (a.kind == "cstore" and "Stored in the network: ") or (a.kind == "cunequip" and "Moved to your inventory: ")
                  or "Put on: "
     if n > 0 then setToast(verb .. disp .. (err and (" - " .. err) or ""), err and C.warn or C.good, 8)

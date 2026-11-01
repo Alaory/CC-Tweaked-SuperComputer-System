@@ -308,9 +308,16 @@ function chatWorker()
         state.chatOut = {}
       elseif os.clock() - lastSend >= 1.05 then
         local o = table.remove(state.chatOut, 1)
-        -- private: only that player sees it (never sendMessage, which goes to everyone)
-        if chatBox.sendMessageToPlayer then
-          pcall(chatBox.sendMessageToPlayer, o.text, o.name, CONFIG.chat.replyPrefix)
+        -- private reply. sendMessage(text, { player = ... }) is what this Chat
+        -- Box understands (it worked from the start); sendMessageToPlayer only
+        -- if that fails. A failure is shown once in EVENTS.
+        local okS, errS = pcall(chatBox.sendMessage, o.text, { player = o.name, prefix = CONFIG.chat.replyPrefix })
+        if not okS and chatBox.sendMessageToPlayer then
+          okS = pcall(chatBox.sendMessageToPlayer, o.text, o.name, CONFIG.chat.replyPrefix)
+        end
+        if not okS and not state.chatSendWarned then
+          state.chatSendWarned = true
+          setToast("Chat Box could not send a message to " .. o.name .. ": " .. cleanErr(errS), C.bad)
         end
         lastSend = os.clock()
       else

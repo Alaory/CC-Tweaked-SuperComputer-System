@@ -33,6 +33,7 @@ HELP = {
   " me add <item id>     make the ME tab look up an item it does not list (partial view)",
   " me check             does the full ME list work right now? (for finding the broken item)",
   " curios check         can your worn Curios items be read? (the broken item is usually worn)",
+  " curios probe         what the curios move functions want (nothing is moved)",
   " tanks                your fluid containers: contents and what they offer (for filling from ME)",
   " report [local]       all peripherals + functions -> report.txt, uploaded to pastebin",
   " disks [data|move]    floppy disks; 'disks data' makes empty floppies data disks,",
@@ -261,6 +262,10 @@ function handleCommand(line)
 
   elseif cmd == "tanks" then
     tankReport(say)
+
+  elseif cmd == "curios" and words[2] == "probe" then
+    say("How this Inventory Manager wants the curios functions called (nothing is moved):")
+    curiosProbe(say)
 
   elseif cmd == "curios" and words[2] == "check" then
     -- can the worn Curios items be read right now? (take them off one by one
