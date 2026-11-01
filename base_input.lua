@@ -159,7 +159,7 @@ function handleTouch(tx, ty)
         local _, _, _, _, upName = MAP.compass()
         setToast("Map: " .. upName .. " is up", C.label, 3)
       elseif h[5] == "mzoom" then
-        local V, steps = MAP.view(), { 1, 2, 4, 8, 16, 32, 64, 128 }
+        local V, steps = MAP.view(), { 1, 2, 4, 8, 16, 32, 64, 128, 256, 512 }
         local i = 1
         for k, z in ipairs(steps) do if z == V.zoom then i = k end end
         V.zoom = steps[math.max(1, math.min(#steps, i + h[6]))]

@@ -22,7 +22,7 @@ Made for **CC:Tweaked 1.120.2 on Minecraft 1.21.1 (NeoForge)** with
 | **CHAT** | Who may use the `$drone` chat commands (the allow list). |
 | **TURTLES** | Remote-controlled turtles: status, fuel, position, and a control pad. Also rescue and "find lost turtles". |
 | **EVENTS** | Every message the program showed, newest first, with filters (errors, warnings, done, info). |
-| **MAP** | Terrain from the turtles' Geo Scanner scans: zoom (1 to 128 blocks per cell), rotate, and send turtles to survey an area. |
+| **MAP** | Terrain from the turtles' Geo Scanner scans: zoom (1 to 512 blocks per cell - a 40,000 x 40,000 world fits), rotate, and send turtles to survey an area (big areas are handed out in batches). |
 
 A tab only appears when the block it needs is connected.
 
@@ -188,6 +188,12 @@ for at most `computerKB` (default 200 KB). Only changed files are written, at
 most once a minute and when the program stops. When the floppies are full, the
 oldest detail is dropped (the overview keeps those chunks). `map` on the
 computer shows how much room it takes.
+
+When the data floppies run low, an **empty floppy** in any Disk Drive is taken
+as a map disk automatically (one empty floppy is kept for the turtle installer
+if there is none yet), and you are told on the monitor, in chat and in the
+footer to add another one. If you run the server, CC:Tweaked's
+`floppy_space_limit` / `computer_space_limit` settings give every disk more room.
 When the disk is full, the footer shows a warning instead of writing half a file.
 
 ## Screen preview

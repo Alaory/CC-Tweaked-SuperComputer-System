@@ -39,6 +39,12 @@ PneumaticCraft drone rides, turtle mapping/surveys, and an AE2 ME network view.
   layers are TEXT, 4 bytes per cell (numbers in tables are costly in Cobalt).
   `MAP.get` / `MAP.getOverview(x, z)` return height, block. No ores (owner
   does not want them). An old `map.dat` is converted once on start-up.
+  World border is -20000..20000 (CONFIG.map.border); zoom goes to 512 so the
+  whole world fits. Big surveys (> 400x400 blocks) go through a queue
+  (MAP.queueSurvey / feedSurvey, 64 spots per idle turtle). When the data
+  floppies run low, empty floppies are made data disks automatically (one is
+  kept for the turtle installer) and the owner is warned (popup, chat,
+  footer) - MAP.checkSpace.
 - `tools/preview/` draws the monitor outside the game (Lua 5.3 + Pillow); use
   it to check screen changes. It is not game code.
 

@@ -424,13 +424,18 @@ function MAP.save(toDisks, noTrim)
     end
     if not failed then break end
     if noTrim then return false end
-    if ovFailed or tries == 4 or #MAP.order <= 20 then
-      state.diskLow = "Map not fully saved: no room on the data floppies" ..
-                      (next(mountedDisks()) and "" or " (none connected)")
+    -- full: first use any new empty floppy (then simply try again), only then
+    -- drop the oldest detail (the overview keeps those chunks)
+    if MAP.claimEmptyFloppies() > 0 then
+      setToast("A new floppy disk is now used for the map", C.good)
+    elseif ovFailed or tries == 4 or #MAP.order <= 20 then
+      state.diskLow = "Map not fully saved - the data floppies are full. Add a Disk Drive with an EMPTY floppy."
       break
+    else
+      dropped = dropped + MAP.trim(floor(#MAP.order * 0.75))
     end
-    dropped = dropped + MAP.trim(floor(#MAP.order * 0.75))
   end
+  MAP.lastDrop = dropped
   if dropped > 0 then
     setToast("Map: the disks are full - dropped the detail of the " .. dropped ..
              " oldest chunks (the overview keeps them)", C.label, 10)
@@ -441,7 +446,75 @@ end
 
 -- save if something changed and the last save is a minute ago (comms worker)
 function MAP.autoSave()
-  if next(MAP.dirty) and os.clock() - MAP.savedAt >= SAVE_EVERY then pcall(MAP.save) end
+  if next(MAP.dirty) and os.clock() - MAP.savedAt >= SAVE_EVERY then
+    pcall(MAP.save)
+    pcall(MAP.checkSpace)
+  end
+end
+
+-- ===== floppy space: new empty floppies become map disks, and the owner is
+-- told (popup + chat + footer) when the data floppies run low =====
+local LOW_KB = 40                 -- warn below this much free on all data floppies together
+local lastWarn = -100000
+
+-- make empty floppies data disks (keeps one empty floppy for the turtle
+-- installer when there is no installer disk yet). Returns how many
+function MAP.claimEmptyFloppies()
+  local disks = mountedDisks()
+  local hasInstaller = false
+  for _, d in ipairs(disks) do if d.installer then hasInstaller = true end end
+  local n = 0
+  for _, d in ipairs(disks) do
+    if d.empty and not d.installer and not d.data then
+      if not hasInstaller then
+        hasInstaller = true          -- this one stays free for the installer
+      else
+        local h = fs.open(fs.combine(d.mount, "base_data"), "w")
+        if h then h.write("data floppy of the base") h.close() end
+        pcall(disk.setLabel, d.name, "Base data")
+        n = n + 1
+      end
+    end
+  end
+  return n
+end
+
+-- free room on the data floppies (bytes) and how many there are
+function MAP.floppySpace()
+  local free, count = 0, 0
+  for _, d in ipairs(mountedDisks()) do
+    if d.data then free, count = free + (d.free or 0), count + 1 end
+  end
+  return free, count
+end
+
+-- after a save: room left? (empty floppies are claimed first)
+function MAP.checkSpace()
+  local free, count = MAP.floppySpace()
+  if free < LOW_KB * 1024 then
+    local got = MAP.claimEmptyFloppies()
+    if got > 0 then
+      setToast(got .. " new floppy disk(s) are now used for the map", C.good)
+      free, count = MAP.floppySpace()
+    end
+  end
+  local failed = next(MAP.dirty) ~= nil
+  local dropping = (MAP.lastDrop or 0) > 0             -- room was made by dropping detail
+  if free >= LOW_KB * 1024 and not failed and not dropping then
+    if state.diskLow and state.diskLow:find("floppies", 1, true) then state.diskLow = nil end
+    return
+  end
+  local msg = failed and "Map not fully saved - the data floppies are full. Add a Disk Drive with an EMPTY floppy."
+              or dropping and ("Map floppies full - the oldest map detail is being dropped (the overview stays). " ..
+                               "Add a Disk Drive with an EMPTY floppy.")
+              or string.format("Map floppies almost full (%d KB free on %d). Add a Disk Drive with an EMPTY floppy.",
+                               math.floor(free / 1024), count)
+  state.diskLow = msg                                  -- stays in the footer until there is room
+  if os.clock() - lastWarn >= 1800 or failed and os.clock() - lastWarn >= 300 then
+    lastWarn = os.clock()
+    setPopup("MAP FLOPPIES", msg, failed and C.bad or C.warn)
+    if state.owner then chatTell(state.owner, msg) end
+  end
 end
 
 -- how much room the map files take: total bytes, on the computer, files
