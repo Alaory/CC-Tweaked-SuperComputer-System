@@ -168,6 +168,8 @@ local plan = {}
 if MODE ~= "reload" then plan[#plan + 1] = { 1, function() immediate("setpos", { pos.x, pos.y, pos.z, "east" }) cmd(MODE == "deaf" and "home" or "goto", { 200, ground(200, 0) + 1, 0 }) end } end
 if MODE == "reload" then N = 1000 end
 if STOPAT > 0 then plan[#plan + 1] = { STOPAT, function() cmd("stop", {}) end } end
+-- AGAIN=<s>: a new job after the STOP (like a survey batch for a stopped turtle)
+if os.getenv("AGAIN") then plan[#plan + 1] = { tonumber(os.getenv("AGAIN")), function() cmd("goto", { 40, ground(40, 0) + 1, 0 }) end } end
 local filter
 local r = { coroutine.resume(main) } filter = r[2]
 while clock < ENDAT do
