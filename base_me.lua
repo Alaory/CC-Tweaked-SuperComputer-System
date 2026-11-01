@@ -1,0 +1,1252 @@
+-- Part of the base-control program (started by inventory.lua).
+-- All base_*.lua files share one namespace and are loaded in a fixed order.
+
+---------------------------------------------------------------------
+-- ME / RS BRIDGE
+---------------------------------------------------------------------
+function setToast(msg, col, secs)
+  state.toast = { msg = msg, col = col or C.good, exp = os.clock() + (secs or 6) }
+end
+
+-- pcall wrapper: returns ok, r1, r2
+function callx(obj, fn, ...)
+  if type(obj[fn]) ~= "function" then return false, "missing function " .. fn end
+  return pcall(obj[fn], ...)
+end
+
+-- A transfer (import/export), whatever this Advanced Peripherals version
+-- calls it and whatever order it wants: (item, target) or (target, item).
+-- A wrong order always fails with a type error before anything moves, so
+-- trying both is safe; the order that worked is remembered.
+local ORDER = {}                     -- [function name] = "it" (item first) or "ti" (target first)
+function transfer(obj, names, target, item)
+  for _, fn in ipairs(names) do
+    if type(obj[fn]) == "function" then
+      local function call(order)
+        if order == "it" then return pcall(obj[fn], item, target) end
+        return pcall(obj[fn], target, item)
+      end
+      local first = ORDER[fn] or "it"
+      local ok, r, e = call(first)
+      if ok then ORDER[fn] = first return true, r, e end
+      local other = (first == "it") and "ti" or "it"
+      local ok2, r2, e2 = call(other)
+      if ok2 then ORDER[fn] = other return true, r2, e2 end
+      return false, tostring(r2 or r)
+    end
+  end
+  return false, "missing function " .. table.concat(names, " / ")
+end
+-- ME Bridge: chest <-> ME;  Inventory Manager: chest <-> player
+local ME_IN, ME_OUT = { "importItem" }, { "exportItem" }
+local INV_TO_PLAYER, INV_FROM_PLAYER = { "importItem", "addItemToPlayer" }, { "exportItem", "removeItemFromPlayer" }
+
+function numOf(r)
+  if type(r) == "number" then return r end
+  if type(r) == "table" then return tonumber(r.count or r.amount) end
+  return nil
+end
+
+-- One modded item that the server cannot convert breaks Advanced Peripherals'
+-- whole getItems() list. A list filtered BY TAG only converts items with that
+-- tag - so the network is read tag by tag instead (the broken item is left
+-- out, unless it has that tag: those tags are reported to find it).
+ME_TAGS = {
+  "c:ingots", "c:nuggets", "c:gems", "c:dusts", "c:ores", "c:raw_materials", "c:storage_blocks",
+  "c:rods", "c:plates", "c:gears", "c:wires", "c:stones", "c:cobblestones", "c:sands", "c:gravels",
+  "c:glass_blocks", "c:glass_panes", "c:dyes", "c:seeds", "c:crops", "c:foods", "c:tools", "c:armors",
+  "c:buckets", "c:chests", "c:barrels", "c:fences", "c:fence_gates", "c:obsidians", "c:netherracks",
+  "c:end_stones", "c:sandstone_blocks", "c:strings", "c:leathers", "c:feathers", "c:eggs", "c:bones",
+  "c:gunpowders", "c:slime_balls", "c:ender_pearls", "c:mushrooms", "c:flowers", "c:clay",
+  "c:enchanting_fuels", "c:fertilizers", "c:rope", "c:tools/melee_weapon", "c:tools/mining_tool",
+  "minecraft:logs", "minecraft:planks", "minecraft:wool", "minecraft:saplings", "minecraft:leaves",
+  "minecraft:stairs", "minecraft:slabs", "minecraft:walls", "minecraft:doors", "minecraft:trapdoors",
+  "minecraft:buttons", "minecraft:rails", "minecraft:coals", "minecraft:arrows", "minecraft:boats",
+  "minecraft:candles", "minecraft:beds", "minecraft:banners", "minecraft:terracotta", "minecraft:flowers",
+  "minecraft:dirt", "minecraft:sand", "minecraft:stone_bricks", "minecraft:wool_carpets",
+  "minecraft:signs", "minecraft:fishes", "minecraft:music_discs", "minecraft:decorated_pot_sherds",
+  "minecraft:trim_templates", "minecraft:bookshelf_books", "minecraft:anvil",
+}
+
+-- what kind of storage a cell holds (AE2 key type ids -> readable)
+function cellTypeLabel(t)
+  local s = tostring(t or "?"):lower()
+  if s:find("flux", 1, true) or s:find(":fe", 1, true) or s:find("energy", 1, true) then return "Flux (FE)" end
+  if s:find("chemical", 1, true) or s:find("appmek", 1, true) or s:find("mekanism", 1, true) then return "Chemicals" end
+  if s:find("source", 1, true) then return "Source" end
+  if s:find("mana", 1, true) then return "Mana" end
+  if s:find("ae2:f", 1, true) or s:find("fluid", 1, true) then return "Fluids" end
+  if s:find("ae2:i", 1, true) or s:find("item", 1, true) then return "Items" end
+  return tostring(t)
+end
+
+-- a fluid / chemical list in the same shape as the item list
+local function normList(raw)
+  local list, by = {}, {}
+  for _, it in pairs(type(raw) == "table" and raw or {}) do
+    if type(it) == "table" and it.name then
+      local cnt = tonumber(it.count or it.amount) or 0
+      local cur = by[it.name]
+      if cur then
+        cur.count = cur.count + cnt
+      else
+        cur = { name = it.name, count = cnt, craftable = it.isCraftable and true or false,
+                display = cleanName(it.displayName or prettify(it.name)) }
+        by[it.name] = cur
+        list[#list + 1] = cur
+      end
+    end
+  end
+  return list, by
+end
+
+-- item names known from anywhere (seen on this page, craftable, carried,
+-- mapped, added by hand) - looked up one by one while the full list is broken
+local NAMES_FILE = "me_names.dat"
+ME_NAMES = {}
+do
+  if fs.exists(NAMES_FILE) then
+    local h = fs.open(NAMES_FILE, "r")
+    local t = h and textutils.unserialize(h.readAll() or "")
+    if h then h.close() end
+    if type(t) == "table" then for _, n in ipairs(t) do ME_NAMES[n] = true end end
+  end
+end
+local namesDirty, namesSavedAt = false, -100
+function meRememberName(n)
+  if type(n) == "string" and n:find(":", 1, true) and not ME_NAMES[n] then
+    ME_NAMES[n] = true
+    namesDirty = true
+  end
+end
+local function saveNames(force)
+  if not namesDirty or (not force and os.clock() - namesSavedAt < 60) then return end
+  local list = {}
+  for n in pairs(ME_NAMES) do list[#list + 1] = n end
+  table.sort(list)
+  local okS, text = pcall(textutils.serialize, list)
+  if okS and saveFileSafe(NAMES_FILE, text) then namesDirty, namesSavedAt = false, os.clock() end
+end
+function meAddName(n) meRememberName(n) saveNames(true) state.meNameCache = nil end
+
+function fetchME()
+  local me = { kind = bridgeKind, items = {}, tasks = {}, byName = {},
+               energy = {}, storage = {}, fstorage = {}, cstorage = {},
+               fluids = {}, byNameF = {}, chemicals = {}, byNameC = {}, cellTypes = {} }
+  state.meVersion = (state.meVersion or 0) + 1
+
+  local function get(fn, ...)
+    local ok, r = callx(bridge, fn, ...)
+    if ok then return r end
+  end
+
+  -- every question is asked at the same time
+  local ok, items, e
+  local craftables, tasks
+  local fluidsRaw, chemRaw, cellsRaw, craftFluidsRaw
+  me.hasChem = type(bridge.getChemicals) == "function"
+  local fns = {
+    function() ok, items, e = callx(bridge, "getItems", {}) end,
+    function() me.connected = get("isConnected") end,
+    function() me.online = get("isOnline") end,
+    function() me.energy.stored = get("getStoredEnergy") end,
+    function() me.energy.cap = get("getEnergyCapacity") end,
+    function() me.energy.usage = get("getEnergyUsage") end,
+    -- newer Advanced Peripherals renamed some functions: try the new name, then the old
+    function() me.energy.inj = get("getAverageEnergyInput") or get("getAvgPowerInjection") end,
+    function() me.storage.used = get("getUsedItemStorage") end,
+    function() me.storage.max = get("getTotalItemStorage") or get("getMaxItemStorage") end,
+    function() tasks = get("getCraftingTasks") end,
+    -- the chests next to the Inventory Manager (needed for taking / sending items)
+    function()
+      -- checked every 15 s (chests rarely move; each check costs two calls)
+      if state.meChests and os.clock() - (state.meChestsT or -100) < 15 then
+        me.chests = state.meChests
+        me.bufOk = me.chests.give and me.chests.give.ok
+        return
+      end
+      state.meChestsT = os.clock()
+      me.chests = {}
+      state.meChests = me.chests
+      if inv and inv.getItemsChest then
+        for _, w in ipairs({ "give", "take" }) do
+          local dir = chestManagerDir(w)
+          local okB, r = pcall(inv.getItemsChest, dir)
+          me.chests[w] = { dir = dir, ok = okB and type(r) == "table", items = okB and r or nil }
+        end
+        me.bufOk = me.chests.give.ok
+      end
+    end,
+    -- fluids, chemicals (Applied Mekanistics) and the cells in the drives
+    function() fluidsRaw = get("getFluids", {}) end,
+    function() craftFluidsRaw = get("getCraftableFluids", {}) end,
+    function()      -- the player's storage items (for "In your containers")
+      if inv and (not state.storage or os.clock() - ((state.t and state.t.storage) or -100) > 10) then
+        pcall(refreshStorage)
+      end
+    end,
+    function()
+      local b, err = fluidBuffer()
+      me.fluidBuf, me.fluidBufErr = b, err
+      if b then
+        local okT, t = pcall(peripheral.call, b, "tanks")
+        me.fluidBufTanks = okT and type(t) == "table" and t or {}
+      end
+    end,
+    function() me.fstorage.used = get("getUsedFluidStorage") end,
+    function() me.fstorage.max = get("getTotalFluidStorage") end,
+    function() cellsRaw = get("getCells") end,
+  }
+  if me.hasChem then
+    fns[#fns + 1] = function() chemRaw = get("getChemicals", {}) end
+    fns[#fns + 1] = function() me.cstorage.used = get("getUsedChemicalStorage") end
+    fns[#fns + 1] = function() me.cstorage.max = get("getTotalChemicalStorage") end
+  end
+  if state.meCraftOnly then
+    fns[#fns + 1] = function() craftables = get("getCraftableItems", {}) end
+  end
+  parallel.waitForAll(table.unpack(fns))
+  if me.chests then pcall(autoFindChests, me.chests) end
+
+  if me.connected == false then
+    me.err = "The bridge is not connected to a storage network."
+    return me
+  end
+
+  if not ok and isDistError(items) then
+    -- Some modded item in the network breaks the full listing. Read it tag by
+    -- tag (at most every 30 s), plus the items the player carries.
+    me.partial = true
+    local cache = state.meTagCache
+    if not cache or os.clock() - cache.t > 30 then
+      -- the common tags, plus every tag learnt from items already listed
+      -- (mod-specific ones too) - each sweep sees a bit more of the network
+      local tags, inList = {}, {}
+      for _, t in ipairs(ME_TAGS) do tags[#tags + 1] = t inList[t] = true end
+      for t in pairs(state.meLearntTags or {}) do
+        if not inList[t] and #tags < 400 then tags[#tags + 1] = t inList[t] = true end
+      end
+      local res = pmap(tags, function(tag)
+        local okT, list = callx(bridge, "getItems", { name = "#" .. tag })
+        if okT and type(list) == "table" then return list end
+        if not okT and isDistError(list) then return "BROKEN" end
+        return {}
+      end)
+      cache = { t = os.clock(), items = {}, broken = {} }
+      local seenKey = {}
+      for i, list in ipairs(res) do
+        if list == "BROKEN" then
+          cache.broken[#cache.broken + 1] = "#" .. tags[i]
+        elseif type(list) == "table" then
+          for _, it in ipairs(list) do
+            if type(it) == "table" and it.name then
+              local k = tostring(it.name) .. "|" .. (type(it.fingerprint) == "string" and it.fingerprint or "")
+              if not seenKey[k] then seenKey[k] = true cache.items[#cache.items + 1] = it end
+              -- learn this item's tags for the next sweep
+              if type(it.tags) == "table" then
+                state.meLearntTags = state.meLearntTags or {}
+                for kk, vv in pairs(it.tags) do
+                  local tg = type(vv) == "string" and vv or (type(kk) == "string" and kk or nil)
+                  if tg then
+                    tg = tg:gsub("^#", "")
+                    if tg:find(":", 1, true) then state.meLearntTags[tg] = true end
+                  end
+                end
+              end
+            end
+          end
+        end
+      end
+      state.meTagCache = cache
+    end
+    me.brokenTags = cache.broken
+    local tagItems, seen = {}, {}
+    for _, it in ipairs(cache.items) do tagItems[#tagItems + 1] = it seen[it.name] = true end
+    local names = {}
+    local function addName(n)
+      if n and not seen[n] then seen[n] = true; names[#names + 1] = n end
+    end
+    for _, it in pairs(state.slots or {}) do addName(it.name) end
+    for _, it in pairs(state.equip or {}) do addName(it.name) end
+    local carried = #names
+    local res = pmap(names, function(n)
+      local okI, it = callx(bridge, "getItem", { name = n })
+      if okI and type(it) == "table" and it.name then return it end
+      local okC, craft = callx(bridge, "isCraftable", { name = n })
+      return { name = n, count = 0, isCraftable = okC and craft and true or false }
+    end)
+    items = tagItems
+    for i = 1, carried do if res[i] then items[#items + 1] = res[i] end end
+    for _, it in ipairs(tagItems) do meRememberName(it.name) end
+
+    -- every other known name, looked up one by one (each lookup converts only
+    -- that item, so it works while the full list is broken). At most 250
+    -- per minute, rotating; the results are kept until the next round.
+    local nc = state.meNameCache
+    if not nc or os.clock() - nc.t > 60 then
+      local pool = {}
+      local function addPool(n) if type(n) == "string" and n:find(":", 1, true) and not seen[n] then seen[n] = true pool[#pool + 1] = n end end
+      for _, c in pairs(type(craftables) == "table" and craftables or {}) do if type(c) == "table" then addPool(c.name) end end
+      for n in pairs(ME_NAMES) do addPool(n) end
+      for _, n in ipairs(MAP and MAP.names or {}) do addPool(n) end
+      table.sort(pool)
+      local start = ((nc and nc.next) or 1)
+      if start > #pool then start = 1 end
+      local batch = {}
+      for i = start, math.min(#pool, start + 249) do batch[#batch + 1] = pool[i] end
+      local found, broken = (nc and nc.found) or {}, (nc and nc.broken) or nil
+      local r2 = pmap(batch, function(n)
+        local okI, it = callx(bridge, "getItem", { name = n })
+        if okI and type(it) == "table" and it.name and (tonumber(it.count) or 0) > 0 then return it end
+        if not okI and isDistError(it) then return "BROKEN" end
+        return false
+      end)
+      for i, n in ipairs(batch) do
+        if r2[i] == "BROKEN" then broken = n
+        elseif type(r2[i]) == "table" then found[n] = r2[i] meRememberName(n)
+        else found[n] = nil end
+      end
+      nc = { t = os.clock(), found = found, broken = broken, next = start + #batch }
+      state.meNameCache = nc
+    end
+    local listed = {}
+    for _, it in ipairs(items) do listed[it.name] = true end
+    for n, it in pairs(nc.found) do
+      if not listed[n] then items[#items + 1] = it listed[n] = true end   -- never twice
+    end
+    me.brokenName = nc.broken
+    saveNames(false)
+    me.partialCount = #items
+  elseif not ok then
+    me.err = tostring(items)
+    return me
+  elseif type(items) ~= "table" then
+    me.err = tostring(e or "getItems() returned nothing")
+    return me
+  end
+
+  local function add(it, craftable)
+    local cur = me.byName[it.name]
+    local cnt = tonumber(it.count or it.amount) or 0
+    if cur then
+      cur.count = cur.count + cnt
+      cur.craftable = cur.craftable or craftable
+    else
+      cur = { name = it.name, count = cnt, craftable = craftable,
+              display = cleanName(it.displayName or prettify(it.name)) }
+      me.byName[it.name] = cur
+      me.items[#me.items + 1] = cur
+    end
+  end
+
+  for _, it in pairs(items) do
+    if type(it) == "table" and it.name then
+      add(it, it.isCraftable and true or false)
+    end
+  end
+
+  if state.meCraftOnly and type(craftables) == "table" then
+    for _, it in pairs(craftables) do
+      if type(it) == "table" and it.name then
+        local cur = me.byName[it.name]
+        if cur then cur.craftable = true
+        else add({ name = it.name, count = 0, displayName = it.displayName }, true) end
+      end
+    end
+  end
+
+  local total = 0
+  for _, it in ipairs(me.items) do total = total + it.count end
+  me.total, me.types = total, #me.items
+
+  me.fluids, me.byNameF = normList(fluidsRaw)
+  -- craftable fluids: marked [C]; those not in the network right now are listed with 0
+  for _, f in pairs(type(craftFluidsRaw) == "table" and craftFluidsRaw or {}) do
+    if type(f) == "table" and f.name then
+      local cur = me.byNameF[f.name]
+      if cur then
+        cur.craftable = true
+      else
+        cur = { name = f.name, count = 0, craftable = true,
+                display = cleanName(f.displayName or prettify(f.name)) }
+        me.byNameF[f.name] = cur
+        me.fluids[#me.fluids + 1] = cur
+      end
+    end
+  end
+  me.chemicals, me.byNameC = normList(chemRaw)
+  -- the cells, per kind of storage (items, fluids, chemicals, Applied Flux ...)
+  if type(cellsRaw) == "table" then
+    local byT = {}
+    for _, c in pairs(cellsRaw) do
+      if type(c) == "table" then
+        local label = cellTypeLabel(c.type)
+        local e2 = byT[label]
+        if not e2 then
+          e2 = { label = label, n = 0, used = 0, total = 0 }
+          byT[label] = e2
+          me.cellTypes[#me.cellTypes + 1] = e2
+        end
+        e2.n = e2.n + 1
+        e2.used = e2.used + (tonumber(c.usedBytes) or 0)
+        e2.total = e2.total + (tonumber(c.bytes) or 0)
+      end
+    end
+    table.sort(me.cellTypes, function(a, b) return a.label < b.label end)
+  end
+
+  if type(tasks) == "table" then
+    for _, t in pairs(tasks) do
+      if type(t) == "table" then
+        local res = type(t.resource) == "table" and t.resource or {}
+        me.tasks[#me.tasks + 1] = {
+          name = cleanName(res.displayName or prettify(tostring(res.name or "unknown"))),
+          quantity = tonumber(t.quantity) or 0,
+          crafted = tonumber(t.crafted) or 0,
+          completion = tonumber(t.completion) or 0,
+        }
+      end
+    end
+  end
+  return me
+end
+
+-- Where the buffer chest is, as each block should address it:
+-- a network name (wired modems), or a direction like "@up" (touching).
+-- Advanced Peripherals wants plain directions ("up", "east", "left" ...): a
+-- leading "@" (old settings) is removed. The ME Bridge may also use the chest's
+-- network name; the Inventory Manager can ONLY use a direction (the chest must
+-- touch it).
+local function dirOf(d, default) return (tostring(d or default):gsub("^@", "")) end
+function bufBridge() return CONFIG.me.buffer or dirOf(CONFIG.me.bufferFromBridge, "up") end
+function bufManager() return dirOf(CONFIG.me.bufferFromManager, "east") end
+
+-- Two chests: "give" (items going TO the player) and "take" (items coming FROM
+-- the player). Without the two-chest settings both are the single buffer chest.
+function chestManagerDir(which)
+  local d = (which == "give") and CONFIG.me.giveFromManager or CONFIG.me.takeFromManager
+  return dirOf(d or CONFIG.me.bufferFromManager, "east")
+end
+function chestBridge(which)
+  local manual = (which == "give") and CONFIG.me.giveChest or CONFIG.me.takeChest
+  if manual then return dirOf(manual) end
+  if state.meAuto and state.meAuto[which] then return state.meAuto[which] end
+  return bufBridge()
+end
+
+-- find the chests on the network: the same contents as the manager sees in
+-- that direction (needs at least one item in each chest, and different contents)
+local function chestSig(list)
+  local parts = {}
+  for _, it in pairs(type(list) == "table" and list or {}) do
+    if type(it) == "table" and it.name then parts[#parts + 1] = it.name .. ":" .. (tonumber(it.count) or 0) end
+  end
+  table.sort(parts)
+  return table.concat(parts, ",")
+end
+function autoFindChests(chests)
+  state.meAuto = state.meAuto or {}
+  local want = {}
+  for _, w in ipairs({ "give", "take" }) do
+    local manual = (w == "give") and CONFIG.me.giveChest or CONFIG.me.takeChest
+    local c = chests[w]
+    if not manual and not state.meAuto[w] and c and c.ok then
+      local s = chestSig(c.items)
+      if s ~= "" then want[w] = s end
+    end
+  end
+  if not next(want) then return end
+  if want.give and want.take and want.give == want.take and chestManagerDir("give") ~= chestManagerDir("take") then
+    return                                         -- same contents: cannot tell them apart
+  end
+  if os.clock() - (state.meAutoAt or -100) < 30 then return end
+  state.meAutoAt = os.clock()
+  local found = {}
+  for _, n in ipairs(inventoriesOnNetwork()) do
+    local okL, l = pcall(peripheral.call, n, "list")
+    if okL then
+      local s = chestSig(l)
+      for w, sg in pairs(want) do
+        if s == sg then found[w] = found[w] or {} found[w][#found[w] + 1] = n end
+      end
+    end
+  end
+  for w, list in pairs(found) do
+    if #list == 1 then state.meAuto[w] = list[1] end
+  end
+end
+
+-- chests / barrels / anything with an inventory on the network
+function inventoriesOnNetwork()
+  local out = {}
+  for _, n in ipairs(peripheral.getNames()) do
+    local ok, is = pcall(peripheral.hasType, n, "inventory")
+    if ok and is then out[#out + 1] = n end
+  end
+  table.sort(out)
+  return out
+end
+
+-- returns an error text if a configured buffer chest is missing
+function bufferProblem()
+  local b = CONFIG.me.buffer
+  if b and not peripheral.isPresent(b) then
+    local list = inventoriesOnNetwork()
+    return "Buffer chest '" .. b .. "' is not on the network. Inventories seen: " ..
+           (#list > 0 and table.concat(list, ", ") or "none")
+  end
+end
+
+-- bring anything of this item still sitting in the buffer chest back into ME
+function flushToME(name, chunk)
+  for _ = 1, 8 do
+    local ok, r = transfer(bridge, ME_IN, chestBridge("give"),
+                        { name = name, count = chunk })
+    local n = ok and numOf(r) or nil
+    if not n or n <= 0 then break end
+  end
+end
+
+-- ME -> player.  returns moved, errorText
+-- ===== items the program put into a buffer and could not deliver yet =====
+-- (e.g. your inventory AND the ME network were full). Only these exact
+-- amounts are ever moved again - never anything else in the buffer (it may
+-- be a storage that holds your own items too). Retried every 30 s.
+local OWED_FILE = "me_owed.dat"
+OWED = {}
+do
+  if fs.exists(OWED_FILE) then
+    local h = fs.open(OWED_FILE, "r")
+    local t = h and textutils.unserialize(h.readAll() or "")
+    if h then h.close() end
+    if type(t) == "table" then OWED = t end
+  end
+end
+local function saveOwed()
+  local okS, text = pcall(textutils.serialize, OWED)
+  if okS then saveFileSafe(OWED_FILE, text) end
+end
+function saveOwedNow() saveOwed() end
+local function owe(name, n, to, chest)
+  if n <= 0 then return end
+  for _, o in ipairs(OWED) do
+    if o.name == name and o.to == to and o.chest == chest then o.count = o.count + n saveOwed() return end
+  end
+  OWED[#OWED + 1] = { name = name, count = n, to = to, chest = chest }
+  saveOwed()
+end
+
+-- move exactly n of an item from a buffer into the ME network; returns how many
+local function bufferToME(name, n, chest)
+  local done = 0
+  for _ = 1, 16 do
+    if done >= n then break end
+    local ok, r = transfer(bridge, ME_IN, chestBridge(chest), { name = name, count = n - done })
+    local m = ok and numOf(r) or 0
+    if not m or m <= 0 then break end
+    done = done + m
+  end
+  return done
+end
+-- move exactly n of an item from a buffer to the player; returns how many
+local function bufferToPlayer(name, n, chest)
+  local done = 0
+  for _ = 1, 16 do
+    if done >= n then break end
+    local ok, r = transfer(inv, INV_TO_PLAYER, chestManagerDir(chest), { name = name, count = n - done })
+    local m = ok and tonumber(r) or 0
+    if m <= 0 then break end
+    done = done + m
+  end
+  return done
+end
+
+-- try to deliver the waiting items (every 30 s, and before each transfer)
+function settleOwed()
+  if #OWED == 0 or not bridge then return end
+  local changed = false
+  for i = #OWED, 1, -1 do
+    local o = OWED[i]
+    local m = 0
+    if o.fluid then m = moveFluid("store", o.name, o.count)
+    elseif o.to == "me" then m = bufferToME(o.name, o.count, o.chest)
+    elseif inv then m = bufferToPlayer(o.name, o.count, o.chest) end
+    if m > 0 then
+      o.count = o.count - m
+      changed = true
+      if o.count <= 0 then table.remove(OWED, i) end
+    end
+  end
+  if changed then saveOwed() end
+end
+function owedCount()
+  local n = 0
+  for _, o in ipairs(OWED) do n = n + o.count end
+  return n, #OWED
+end
+
+function takeFromME(name, count)
+  pcall(settleOwed)
+  local remaining, total = count, 0
+  local chunk = CONFIG.me.chunk
+  for _ = 1, 60 do
+    local step = math.min(remaining, chunk)
+    local ok, r, e = transfer(bridge, ME_OUT, chestBridge("give"), { name = name, count = step })
+    if not ok then return total, tostring(r) end
+    if r == nil then return total, tostring(e or "export failed") end
+    local exported = numOf(r) or 0
+    if exported <= 0 then break end                    -- the network has no more
+
+    -- exactly what was exported goes to the player ...
+    local added = bufferToPlayer(name, exported, "give")
+    total = total + added
+    local left = exported - added
+    if left > 0 then
+      -- ... the rest (inventory full / not accepted) goes back to the network
+      local back = bufferToME(name, left, "give")
+      if back < left then
+        owe(name, left - back, "me", "give")
+        return total, (left - back) .. " could not go back to the network - kept in the buffer, retried automatically"
+      end
+      break
+    end
+    remaining = remaining - exported
+    if remaining <= 0 or exported < step then break end
+  end
+  return total
+end
+function sendToME(name, count)
+  pcall(settleOwed)
+  local remaining, sent = count, 0
+  local chunk = CONFIG.me.chunk
+  for _ = 1, 60 do
+    local step = math.min(remaining, chunk)
+    local ok, r = transfer(inv, INV_FROM_PLAYER, chestManagerDir("take"), { name = name, count = step })
+    if not ok then return sent, tostring(r) end
+    local removed = tonumber(r) or 0
+    if removed <= 0 then break end
+
+    local accepted = bufferToME(name, removed, "take")
+    sent = sent + accepted
+    local refused = removed - accepted
+    if refused > 0 then
+      -- whatever the network did not accept goes back to the player
+      local back = bufferToPlayer(name, refused, "take")
+      if back < refused then
+        owe(name, refused - back, "player", "take")
+        return sent, (refused - back) .. " could not go back to you - kept in the buffer, retried automatically"
+      end
+      return sent, "the network did not accept " .. refused .. " (full?) - given back to you"
+    end
+    remaining = remaining - removed
+    if remaining <= 0 then break end
+  end
+  return sent
+end
+
+-- ===== fluids: between the ME network and a fluid storage on the network =====
+-- CONFIG.me.fluidBuffer (network name), else the item buffer if it also holds
+-- fluids, else the only fluid storage on the network
+function fluidBuffer()
+  if CONFIG.me.fluidBuffer then return CONFIG.me.fluidBuffer end
+  local function isFluid(n)
+    local ok, t = pcall(peripheral.hasType, n, "fluid_storage")
+    return ok and t
+  end
+  if CONFIG.me.buffer and isFluid(CONFIG.me.buffer) then return CONFIG.me.buffer end
+  local list = {}
+  for _, n in ipairs(peripheral.getNames()) do
+    local okT, ty = pcall(peripheral.getType, n)
+    ty = (okT and type(ty) == "string") and ty or ""
+    if isFluid(n) and not ty:find("me_bridge", 1, true) and not ty:find("inventory_manager", 1, true) then
+      list[#list + 1] = n
+    end
+  end
+  table.sort(list)
+  if #list == 1 then return list[1] end
+  if #list == 0 then return nil, "no fluid storage on the network" end
+  return nil, "several fluid storages - set fluidBuffer in base_config.lua (me): " .. table.concat(list, ", ")
+end
+
+local FL_OUT, FL_IN = { "exportFluid" }, { "importFluid" }
+-- dir "take": ME -> fluid storage; "store": fluid storage -> ME. Returns mB moved.
+function moveFluid(dir, name, mb)
+  local b, err = fluidBuffer()
+  if not b then return 0, err end
+  local moved, left = 0, mb
+  for _ = 1, 64 do
+    local ok, r, e = transfer(bridge, dir == "take" and FL_OUT or FL_IN, b,
+                              { name = name, amount = math.min(left, 2147483647) })
+    if not ok then return moved, tostring(r) end
+    local n = tonumber(r) or 0
+    if n <= 0 then return moved, (moved == 0) and tostring(e or "nothing moved") or nil end
+    moved, left = moved + n, left - n
+    if left <= 0 then break end
+  end
+  return moved
+end
+
+-- ===== fluids into / out of the player's fluid containers (tanks, etc.) =====
+-- the containers the STORAGE scan found that hold fluids
+local function sameRef(a, b)
+  return a and b and a.kind == b.kind and a.raw == b.raw and a.slot == b.slot and a.idx == b.idx
+end
+function playerTanks(onlyRef)
+  -- the list is built by the STORAGE tab; fresh if it is old or missing
+  if not state.storage or os.clock() - ((state.t and state.t.storage) or -100) > 5 then
+    pcall(refreshStorage)
+  end
+  local out = {}
+  for _, s in ipairs(state.storage or {}) do
+    if s.isFluid and s.ref and (not onlyRef or sameRef(s.ref, onlyRef)) then out[#out + 1] = s end
+  end
+  return out
+end
+local function openRef(ref)
+  local ok, w
+  if ref.kind == "slot" then ok, w = pcall(inv.wrapStorageItem, ref.raw)
+  else ok, w = pcall(inv.wrapCuriosStorageItem, ref.slot, ref.idx) end
+  if ok and type(w) == "table" then return w end
+end
+local function oweFluid(name, mb)
+  if mb <= 0 then return end
+  for _, o in ipairs(OWED) do
+    if o.fluid and o.name == name then o.count = o.count + mb saveOwedNow() return end
+  end
+  OWED[#OWED + 1] = { name = name, count = mb, to = "me", fluid = true }
+  saveOwedNow()
+end
+
+-- what an opened container may call filling / emptying (versions differ)
+local TANK_IN  = { "pullFluid", "importFluid", "insertFluid" }
+local TANK_OUT = { "pushFluid", "exportFluid", "extractFluid" }
+local function fnList(w)
+  local fns = {}
+  for k, v in pairs(w) do if type(v) == "function" then fns[#fns + 1] = k end end
+  table.sort(fns)
+  return table.concat(fns, ", ")
+end
+local function hasAny(w, names)
+  for _, n in ipairs(names) do if type(w[n]) == "function" then return true end end
+end
+-- fill / empty an opened container: Advanced Peripherals style (a filter
+-- table, either order), else ComputerCraft style (target, amount, fluid name)
+local function tankCall(w, names, target, fluid, amount)
+  local ok, r = transfer(w, names, target, { name = fluid, amount = amount, count = amount })
+  if ok and (tonumber(r) or 0) > 0 then return true, r end
+  for _, n in ipairs(names) do
+    if type(w[n]) == "function" then
+      local ok3, r3 = pcall(w[n], target, amount, fluid)
+      if ok3 then return true, r3 end
+      if not ok then r = r3 end
+    end
+  end
+  return ok, r
+end
+
+-- many containers move at most a little per call (often 1 bucket): call
+-- again until the amount is moved or it stops taking (max 256 calls)
+local function tankLoop(w, names, target, fluid, amount)
+  local done, firstErr = 0, nil
+  for _ = 1, 256 do
+    if done >= amount then break end
+    local ok, n = tankCall(w, names, target, fluid, amount - done)
+    n = ok and (tonumber(n) or 0) or 0
+    if not ok and done == 0 then firstErr = n end
+    if n <= 0 then break end
+    done = done + n
+  end
+  return done, firstErr
+end
+
+-- ME -> buffer -> the player's containers (exactly what was exported; the
+-- rest goes back to the network). Returns mB delivered.
+function fluidToPlayer(name, mb, onlyRef)
+  local b, err = fluidBuffer()
+  if not b then return 0, err end
+  local tanks = playerTanks(onlyRef)
+  if #tanks == 0 then return 0, "no fluid container (tank) found in your inventory or curios" end
+  local exported, e1 = moveFluid("take", name, mb)
+  if exported <= 0 then return 0, e1 or "the network has none of it" end
+  local left, why = exported, {}
+  for _, t in ipairs(tanks) do
+    if left <= 0 then break end
+    local w = openRef(t.ref)
+    local label = t.display or t.name or "container"
+    if not w then
+      why[#why + 1] = label .. ": could not be opened"
+    elseif not hasAny(w, TANK_IN) then
+      why[#why + 1] = label .. ": no fill function (offers: " .. fnList(w) .. ")"
+    else
+      local n, err1 = tankLoop(w, TANK_IN, b, name, left)
+      if n > 0 then left = left - n
+      elseif err1 then why[#why + 1] = label .. ": " .. tostring(err1)
+      else why[#why + 1] = label .. ": took 0 (this fluid not allowed, or full)" end
+    end
+  end
+  if left > 0 then
+    local back = moveFluid("store", name, left)
+    if back < left then oweFluid(name, left - back) end
+    if left == exported then
+      return 0, "nothing went in - " .. table.concat(why, "; ")
+    end
+    return exported - left, "your containers had room for " .. fmtBuckets(exported - left) .. " - the rest went back"
+  end
+  return exported
+end
+
+-- the player's containers -> buffer -> ME. Returns mB stored.
+function fluidFromPlayer(name, mb, onlyRef)
+  local b, err = fluidBuffer()
+  if not b then return 0, err end
+  local stored, left = 0, mb
+  for _, t in ipairs(playerTanks(onlyRef)) do
+    if left <= 0 then break end
+    local has = false
+    for _, tk in ipairs(t.tanks or {}) do if tk.name == name then has = true end end
+    local w = has and openRef(t.ref)
+    if w and hasAny(w, TANK_OUT) then
+      local n = tankLoop(w, TANK_OUT, b, name, left)
+      if n > 0 then
+        local inME = moveFluid("store", name, n)
+        if inME < n then
+          -- the network did not take it all: back into the container, else retried later
+          local nb = tankLoop(w, TANK_IN, b, name, n - inME)
+          oweFluid(name, n - inME - nb)
+          stored = stored + inME
+          return stored, "the network did not accept all of it (full?)"
+        end
+        stored, left = stored + n, left - n
+      end
+    end
+  end
+  if stored == 0 then return 0, "none of your containers holds this fluid" end
+  return stored
+end
+
+-- the functions an opened storage item offers (for the "report" command)
+function describeStorageItem(ref)
+  local w = ref and openRef(ref)
+  return w and fnList(w) or nil
+end
+
+-- "BUFFER -> ME": everything in the buffer(s) back into the network - the
+-- item buffer(s) (by network name) and the fluid buffer. Returns a summary.
+function flushBufferToME()
+  local items, fluids, notes, seen = 0, 0, {}, {}
+  for _, w in ipairs({ "give", "take" }) do
+    local t = chestBridge(w)
+    if t and not seen[t] then
+      seen[t] = true
+      if not tostring(t):find(":", 1, true) then
+        notes[#notes + 1] = "the item buffer is reached by side (" .. t .. ") - give it a wired modem to empty it from here"
+      else
+        local okL, l = pcall(peripheral.call, t, "list")
+        if okL and type(l) == "table" then
+          local totals = {}
+          for _, it in pairs(l) do
+            if type(it) == "table" and it.name then totals[it.name] = (totals[it.name] or 0) + (tonumber(it.count) or 0) end
+          end
+          for name, n in pairs(totals) do
+            local moved = 0
+            for _ = 1, 32 do
+              if moved >= n then break end
+              local ok, r = transfer(bridge, ME_IN, t, { name = name, count = n - moved })
+              local m = ok and numOf(r) or 0
+              if not m or m <= 0 then break end
+              moved = moved + m
+            end
+            items = items + moved
+            if moved < n then notes[#notes + 1] = (n - moved) .. "x " .. name .. " not accepted" end
+          end
+        else
+          notes[#notes + 1] = "cannot read " .. t
+        end
+      end
+    end
+  end
+  local b = fluidBuffer()
+  if b then
+    local okT, tk = pcall(peripheral.call, b, "tanks")
+    for _, f in pairs(okT and type(tk) == "table" and tk or {}) do
+      if type(f) == "table" and f.name and (tonumber(f.amount) or 0) > 0 then
+        local m = moveFluid("store", f.name, tonumber(f.amount))
+        fluids = fluids + m
+        if m < tonumber(f.amount) then notes[#notes + 1] = fmtBuckets(f.amount - m) .. " " .. f.name .. " not accepted" end
+      end
+    end
+  end
+  -- what was waiting in the buffer has gone with it
+  OWED = {}
+  saveOwedNow()
+  return items, fluids, notes
+end
+
+-- console "tanks": the player's fluid containers, their contents and functions
+function tankReport(say)
+  local list = playerTanks()
+  if #list == 0 then
+    say("No fluid containers found in your inventory or curios (see the STORAGE tab).")
+    return
+  end
+  local b = fluidBuffer()
+  say("Fluid storage used in between: " .. tostring(b or "NONE FOUND"))
+  for _, t in ipairs(list) do
+    local w = openRef(t.ref)
+    local inside = {}
+    for _, tk in ipairs(t.tanks or {}) do inside[#inside + 1] = tostring(tk.name) .. " " .. fmtBuckets(tk.amount) end
+    say((t.display or t.name or "?") .. (t.where and (" (" .. tostring(t.where) .. ")") or "") .. ": " ..
+        (#inside > 0 and table.concat(inside, ", ") or "empty"))
+    if w then
+      say("  functions: " .. fnList(w))
+      local okT, tk = pcall(function() return w.tanks and w.tanks() end)
+      if okT and type(tk) == "table" then
+        for _, f in pairs(tk) do
+          if type(f) == "table" then
+            say("  tank: " .. tostring(f.name or "empty") .. " " .. tostring(f.amount or 0) .. " / " .. tostring(f.capacity or "?") .. " mB")
+          end
+        end
+      end
+    else
+      say("  could not be opened right now")
+    end
+  end
+end
+
+function craftFluidME(name, mb)
+  local ok, r, e = callx(bridge, "craftFluid", { name = name, amount = mb })
+  if not ok then return false, tostring(r) end
+  if not r then return false, tostring(e or "craft request failed") end
+  return true
+end
+
+function craftME(name, count)
+  local ok, r, e = callx(bridge, "craftItem", { name = name, count = count })
+  if not ok then return false, tostring(r) end
+  if r == nil then return false, tostring(e or "craft request failed") end
+  return true
+end
+
+-- runs a confirmed action {kind, name, count, label}
+function runAction(a)
+  local disp = prettify(a.name)
+  local known = state.me and state.me.byName and state.me.byName[a.name]
+  if known then disp = known.display end
+
+  local fluid = a.kind == "ftake" or a.kind == "fstore" or a.kind == "fcraft" or a.kind == "ftank" or a.kind == "fempty"
+                or a.kind == "ftop1" or a.kind == "fempty1" or a.kind == "flushbuf"
+  if fluid then
+    local knownF = state.me and state.me.byNameF and state.me.byNameF[a.name]
+    if knownF then disp = knownF.display end
+  end
+  if (a.kind ~= "craft" and not fluid and not inv) or not bridge then
+    setToast("Inventory Manager or bridge is disconnected right now", C.bad, 8)
+    return
+  end
+
+  if a.kind ~= "craft" and not fluid then
+    local prob = bufferProblem()
+    if prob then
+      setToast(prob, C.bad, 12)
+      return
+    end
+  end
+
+  if a.kind == "take" then
+    local n, err = takeFromME(a.name, a.count)
+    if err then
+      if n == 0 then
+        setToast("Failed: " .. err .. "  (buffer chest set up? see CONFIG.me)", C.bad, 10)
+      else
+        setToast(string.format("Took %s %s, then: %s", commas(n), disp, err), C.bad, 10)
+      end
+    elseif n == 0 then
+      setToast("Nothing moved: network empty or your inventory is full", C.warn)
+    else
+      setToast(string.format("Took %s %s from the network", commas(n), disp), C.good)
+    end
+  elseif a.kind == "send" then
+    local n, err = sendToME(a.name, a.count)
+    if err then
+      if n == 0 then
+        setToast("Failed: " .. err .. "  (buffer chest set up? see CONFIG.me)", C.bad, 10)
+      else
+        setToast(string.format("Sent %s %s, then: %s", commas(n), disp, err), C.bad, 10)
+      end
+    elseif n == 0 then
+      setToast("Nothing moved: network full or item not found", C.warn)
+    else
+      setToast(string.format("Sent %s %s to the network", commas(n), disp), C.good)
+    end
+  elseif a.kind == "flushbuf" then
+    local items, fluids, notes = flushBufferToME()
+    setToast(string.format("Buffer emptied into the network: %d items, %s of fluids%s", items, fmtBuckets(fluids),
+             #notes > 0 and (" - " .. table.concat(notes, "; ")) or ""), #notes > 0 and C.warn or C.good, 10)
+  elseif a.kind == "ftop1" or a.kind == "fempty1" then
+    -- one container only (buttons on the STORAGE tab)
+    local n, err
+    if a.kind == "ftop1" then n, err = fluidToPlayer(a.name, a.count, a.ref)
+    else n, err = fluidFromPlayer(a.name, a.count, a.ref) end
+    if n == 0 then
+      setToast("Fluid not moved: " .. tostring(err), C.bad, 10)
+    else
+      setToast(string.format("%s %s of %s%s", a.kind == "ftop1" and "Topped up with" or "Emptied", fmtBuckets(n), disp,
+               err and (" - " .. err) or (a.kind == "fempty1" and " into the network" or "")), err and C.warn or C.good, 8)
+    end
+    state.t.storage = -100                    -- show the new contents soon
+  elseif a.kind == "ftank" or a.kind == "fempty" then
+    local n, err
+    if a.kind == "ftank" then n, err = fluidToPlayer(a.name, a.count)
+    else n, err = fluidFromPlayer(a.name, a.count) end
+    if n == 0 then
+      setToast("Fluid not moved: " .. tostring(err), C.bad, 10)
+    else
+      setToast(string.format("%s %s of %s%s", a.kind == "ftank" and "Filled your containers with" or "Stored",
+               fmtBuckets(n), disp, err and (" - " .. err) or (a.kind == "fempty" and " in the network" or "")),
+               err and C.warn or C.good, 8)
+    end
+  elseif a.kind == "fcraft" then
+    local ok, err = craftFluidME(a.name, a.count)
+    if ok then
+      setToast(string.format("Crafting requested: %s of %s", fmtBuckets(a.count), disp), C.good)
+    else
+      setToast("Craft failed: " .. tostring(err), C.bad, 10)
+    end
+  elseif fluid then
+    local n, err = moveFluid(a.kind == "ftake" and "take" or "store", a.name, a.count)
+    local where = a.kind == "ftake" and "into the fluid storage" or "into the ME network"
+    if n == 0 then
+      setToast("Fluid not moved: " .. tostring(err), C.bad, 10)
+    else
+      setToast(string.format("Moved %s of %s %s%s", fmtBuckets(n), disp, where,
+               err and (" (then: " .. err .. ")") or ""), err and C.warn or C.good)
+    end
+  elseif a.kind == "craft" then
+    local ok, err = craftME(a.name, a.count)
+    if ok then
+      setToast(string.format("Crafting requested: %s x %s", commas(a.count), disp), C.good)
+    else
+      setToast("Craft failed: " .. tostring(err), C.bad, 10)
+    end
+  end
+  state.meForce = true
+end
+
+
+
+---------------------------------------------------------------------
+-- "mesetup": find the buffer chest by itself (one item in it is enough)
+-- and save how the Inventory Manager and the ME Bridge reach it - no
+-- settings to edit. The result (me_setup.dat) overrides base_config.lua.
+---------------------------------------------------------------------
+local SETUP_FILE = "me_setup.dat"
+local SIDES = { "north", "south", "east", "west", "up", "down" }
+
+function loadMESetup()
+  if not fs.exists(SETUP_FILE) then return end
+  local h = fs.open(SETUP_FILE, "r")
+  local t = h and textutils.unserialize(h.readAll() or "")
+  if h then h.close() end
+  if type(t) == "table" and t.managerSide and t.bridge then
+    CONFIG.me.bufferFromManager = t.managerSide
+    CONFIG.me.giveFromManager, CONFIG.me.takeFromManager = nil, nil   -- one chest for both ways
+    CONFIG.me.giveChest, CONFIG.me.takeChest = nil, nil
+    if t.bridgeIsName then
+      CONFIG.me.buffer = t.bridge
+    else
+      CONFIG.me.buffer = nil
+      CONFIG.me.bufferFromBridge = t.bridge
+    end
+    MESETUP = t
+  end
+end
+
+local function saveSetup(side, cd, say)
+  local h = fs.open(SETUP_FILE, "w")
+  if h then
+    h.write(textutils.serialize({ managerSide = side, bridge = cd.target, bridgeIsName = cd.isName or false }))
+    h.close()
+  end
+  loadMESetup()
+  state.meChests, state.meChestsT = nil, nil
+  say("SETUP DONE: the Inventory Manager reaches the buffer " ..
+      (side:find(":", 1, true) and ("by its network name " .. side) or ("on its " .. side .. " side")) .. ";")
+  say("the ME Bridge reaches it " .. (cd.isName and ("by its network name " .. cd.target)
+      or ("on its " .. cd.target .. " side")) .. ". Saved - TAKE on the ME tab works now.")
+end
+
+local function cannotReach(say)
+  say("The ME Bridge cannot reach the buffer. Either put a WIRED MODEM on it (connected to")
+  say("this computer's network, right-click it), or move the ME Bridge so it touches it.")
+  say("Then type  mesetup  again.")
+end
+
+-- Inventory Managers without getItemsChest (cannot look into a chest): the
+-- ONE item in the buffer is moved to the player and straight back to find
+-- the side, then pulled into the ME network to find how the bridge reaches it.
+local function meSetupByMoving(say)
+  -- containers on the network (not the Inventory Manager / ME Bridge themselves)
+  local contents = {}
+  for _, n in ipairs(inventoriesOnNetwork()) do
+    local okT, ty = pcall(peripheral.getType, n)
+    ty = (okT and type(ty) == "string") and ty or ""
+    if not (ty:find("inventory_manager", 1, true) or ty:find("inventoryManager", 1, true) or ty:find("me_bridge", 1, true)) then
+      local okL, l = pcall(peripheral.call, n, "list")
+      if okL and type(l) == "table" then contents[#contents + 1] = { name = n, list = l } end
+    end
+  end
+  -- the marker item: a container holding exactly ONE item (else a stick)
+  local single = {}
+  for _, c in ipairs(contents) do
+    local total, name = 0, nil
+    for _, it in pairs(c.list) do
+      if type(it) == "table" then total = total + (tonumber(it.count) or 0) name = it.name end
+    end
+    if total == 1 then single[#single + 1] = { name = c.name, item = name } end
+  end
+  local marker = (#single == 1) and single[1].item or "minecraft:stick"
+  -- the containers on the network holding the marker: tried first (newer
+  -- Inventory Managers only take network names, not sides)
+  local netCand = {}
+  for _, c in ipairs(contents) do
+    for _, it in pairs(c.list) do
+      if type(it) == "table" and it.name == marker then
+        netCand[#netCand + 1] = { target = c.name, isName = true }
+        break
+      end
+    end
+  end
+  local log = {}                       -- what each attempt answered (shown if it fails)
+  local function toPlayer(side)
+    local ok, r, e = transfer(inv, INV_TO_PLAYER, side, { name = marker, count = 1 })
+    local moved = ok and (tonumber(r) or 0) > 0
+    if not moved then log[#log + 1] = side .. ": " .. tostring(ok and (e or ("moved " .. tostring(r))) or r) end
+    return moved
+  end
+  local function fromPlayer(side) transfer(inv, INV_FROM_PLAYER, side, { name = marker, count = 1 }) end
+  say("Looking for the buffer with the item " .. marker .. " (it moves to you and straight back) ...")
+  -- 1. which side of the Inventory Manager (world and relative side names)
+  local side
+  local ALL = {}
+  for _, c in ipairs(netCand) do ALL[#ALL + 1] = c.target end
+  for _, sd in ipairs({ "north", "south", "east", "west", "up", "down", "top", "bottom", "front", "back", "left", "right" }) do
+    ALL[#ALL + 1] = sd
+  end
+  for _, sd in ipairs(ALL) do
+    if toPlayer(sd) then
+      fromPlayer(sd)
+      side = sd
+      break
+    end
+  end
+  if not side then
+    say("No container next to the Inventory Manager gave out the item. Check that:")
+    say(" - the buffer touches the Inventory Manager and holds exactly ONE item (e.g. one stick),")
+    say(" - you are online and have a free slot in your inventory.")
+    -- details for finding the cause
+    local fns = {}
+    for k, v in pairs(inv) do if type(v) == "function" then fns[#fns + 1] = k end end
+    table.sort(fns)
+    say("DETAILS - the Inventory Manager offers: " .. table.concat(fns, ", "))
+    say("DETAILS - marker item: " .. marker .. ((#single == 1) and (" (read from " .. single[1].name .. ")") or " (assumed)") ..
+        " - containers on the network holding it: " .. (#netCand > 0 and #netCand or "none"))
+    for i = 1, math.min(#log, 12) do say("DETAILS - " .. log[i]) end
+    return
+  end
+  -- 2. how the ME Bridge reaches it: after the bridge takes the item, the buffer must be empty
+  local cands = {}
+  for _, c in ipairs(netCand) do cands[#cands + 1] = c end
+  for _, sd in ipairs(SIDES) do cands[#cands + 1] = { target = sd } end
+  for _, cd in ipairs(cands) do
+    local ok, moved = transfer(bridge, ME_IN, cd.target, { name = marker, count = 1 })
+    if ok and (tonumber(moved) or 0) > 0 then
+      local stillThere = toPlayer(side)
+      if stillThere then fromPlayer(side) end
+      transfer(bridge, ME_OUT, cd.target, { name = marker, count = 1 })     -- put it back
+      if not stillThere then
+        saveSetup(side, cd, say)
+        return
+      end
+    end
+  end
+  cannotReach(say)
+end
+
+function meSetup(say)
+  if not inv then say("No Inventory Manager found on this computer.") return end
+  if not bridge then say("No ME Bridge found on this computer.") return end
+  if not inv.getItemsChest then return meSetupByMoving(say) end
+  -- 1. the chests touching the Inventory Manager
+  local found, withItems, names = {}, {}, {}
+  for _, s in ipairs(SIDES) do
+    local ok, r = pcall(inv.getItemsChest, s)
+    if ok and type(r) == "table" then
+      local items = {}
+      for _, it in pairs(r) do if type(it) == "table" and it.name then items[#items + 1] = it end end
+      found[#found + 1] = { side = s, items = items }
+      if #items > 0 then withItems[#withItems + 1] = found[#found] end
+      names[#names + 1] = s .. (#items > 0 and " (has items)" or " (empty)")
+    end
+  end
+  if #found == 0 then
+    say("No chest touches the Inventory Manager. Place a chest directly next to it (any side),")
+    say("put ONE item in it, then type  mesetup  again.")
+    return
+  end
+  say("Chests next to the Inventory Manager: " .. table.concat(names, ", "))
+  if #withItems == 0 then
+    say("Put ONE item (e.g. a stick) into the chest you want as buffer, then type  mesetup  again.")
+    return
+  end
+  if #withItems > 1 then
+    say("More than one of them has items. Leave items only in the buffer chest, then type  mesetup  again.")
+    return
+  end
+  local c = withItems[1]
+  local marker = c.items[1].name
+  local function countIn()
+    local ok, r = pcall(inv.getItemsChest, c.side)
+    local n = 0
+    if ok and type(r) == "table" then
+      for _, it in pairs(r) do if type(it) == "table" and it.name == marker then n = n + (tonumber(it.count) or 0) end end
+    end
+    return n
+  end
+  -- 2. how the ME Bridge reaches it: chests on the network with the same
+  -- contents first, then each side of the bridge. Each try moves ONE item
+  -- into the ME network and straight back; it only counts if that item
+  -- really left THIS chest.
+  local cands = {}
+  local sig = chestSig(c.items)
+  for _, n in ipairs(inventoriesOnNetwork()) do
+    local okL, l = pcall(peripheral.call, n, "list")
+    if okL and chestSig(l) == sig then cands[#cands + 1] = { target = n, isName = true } end
+  end
+  for _, s in ipairs(SIDES) do cands[#cands + 1] = { target = s } end
+  local before = countIn()
+  for _, cd in ipairs(cands) do
+    local ok, moved = transfer(bridge, ME_IN, cd.target, { name = marker, count = 1 })
+    if ok and (tonumber(moved) or 0) > 0 then
+      local after = countIn()
+      transfer(bridge, ME_OUT, cd.target, { name = marker, count = 1 })      -- put it back
+      if after < before then
+        local h = fs.open(SETUP_FILE, "w")
+        if h then
+          h.write(textutils.serialize({ managerSide = c.side, bridge = cd.target, bridgeIsName = cd.isName or false }))
+          h.close()
+        end
+        loadMESetup()
+        state.meChests, state.meChestsT = nil, nil
+        say("SETUP DONE: the buffer chest is on the " .. c.side .. " side of the Inventory Manager;")
+        say("the ME Bridge reaches it " .. (cd.isName and ("by its network name " .. cd.target)
+            or ("on its " .. cd.target .. " side")) .. ". Saved - TAKE on the ME tab works now.")
+        return
+      end
+    end
+  end
+  say("The ME Bridge cannot reach that chest. Either put a WIRED MODEM on the chest (connected to")
+  say("this computer's network, right-click it), or move the ME Bridge so it touches the chest.")
+  say("Then type  mesetup  again.")
+end
+
+loadMESetup()
