@@ -454,37 +454,84 @@ end
 --   budget = at most this many refuel calls (one game tick each); nil = no limit
 -- Normal fuel (coal ...) is burnt one item at a time, only as far as needed.
 -- Returns the fuel gained and whether it stopped because of the budget.
+local TOPUP = {}       -- the last top-up: gained, uses, refused, seconds (for the REFUEL answer)
+local REUSE_SLOTS      -- the slots holding reusable fuel last time (saves looking at all 16)
 local function topUp(target, onlyReusable, budget)
   local f0 = turtle.getFuelLevel()
   if f0 == "unlimited" then return 0, false end
   local limit = turtle.getFuelLimit()
   target = math.min(target or limit, limit)
   S.reuse = S.reuse or {}
-  local calls, sel, learnt = 0, turtle.getSelectedSlot(), false
-  for i = 1, 16 do
-    if turtle.getFuelLevel() >= target then break end
-    local d = turtle.getItemDetail(i)
-    if d and (not onlyReusable or S.reuse[d.name]) then
-      turtle.select(i)
+  local t0, calls, refused, sel, learnt = os.clock(), 0, 0, turtle.getSelectedSlot(), false
+  -- the slots to use: the remembered reusable ones, else all 16 looked at once
+  -- (known reusable ones first: saves coal)
+  local slots = {}
+  if onlyReusable and REUSE_SLOTS then
+    for _, sl in ipairs(REUSE_SLOTS) do slots[#slots + 1] = { i = sl.i, name = sl.name, count = sl.count } end
+  else
+    for i = 1, 16 do
+      local d = turtle.getItemDetail(i)
+      if d and (not onlyReusable or S.reuse[d.name]) then
+        slots[#slots + 1] = { i = i, name = d.name, count = d.count }
+      end
+    end
+    table.sort(slots, function(a, b)
+      local ra, rb = S.reuse[a.name] and 1 or 0, S.reuse[b.name] and 1 or 0
+      if ra ~= rb then return ra > rb end
+      return a.i < b.i
+    end)
+  end
+  local stop = false
+  while #slots > 0 and turtle.getFuelLevel() < target and not stop do
+    local keep, any, cooling = {}, false, false
+    for _, sl in ipairs(slots) do
+      turtle.select(sl.i)
+      local dead = false
       while turtle.getFuelLevel() < target do
-        if budget and calls >= budget then break end
-        if job and stopFlag then break end
+        if (budget and calls >= budget) or (job and stopFlag) then stop = true break end
         local before = turtle.getFuelLevel()
-        if not turtle.refuel(1) then break end
+        local ok = turtle.refuel(1)
         calls = calls + 1
-        if turtle.getFuelLevel() <= before then break end
-        local after = turtle.getItemDetail(i)
-        if not after then break end                  -- used up (normal fuel)
-        if after.name == d.name and after.count >= d.count and not S.reuse[d.name] then
-          S.reuse[d.name] = true                     -- still there: reusable
-          learnt = true
+        if not ok or turtle.getFuelLevel() <= before then
+          -- refused: a reusable item still in its slot is only cooling down
+          local d = S.reuse[sl.name] and turtle.getItemDetail(sl.i)
+          if d and d.name == sl.name then
+            cooling, refused = true, refused + 1
+          else
+            dead = true
+          end
+          break
+        end
+        any = true
+        if not S.reuse[sl.name] then
+          -- still there after use? then it is reusable (checked until known)
+          local c = turtle.getItemCount(sl.i)
+          if c >= sl.count then S.reuse[sl.name], learnt = true, true
+          else
+            sl.count = c
+            if c == 0 then dead = true break end            -- normal fuel used up
+          end
         end
       end
+      if not dead then keep[#keep + 1] = sl end
+      if stop then break end
+    end
+    slots = keep
+    if not any then
+      if not cooling or stop then break end
+      sleep(0.05)                                           -- all cooling down: one tick
+      calls = calls + 1
     end
   end
   turtle.select(sel)
+  -- remember where the reusable fuel is (nil = look at all slots next time)
+  local rs = {}
+  for _, sl in ipairs(slots) do if S.reuse[sl.name] then rs[#rs + 1] = sl end end
+  REUSE_SLOTS = (#rs > 0) and rs or nil
   if learnt then save() end
-  return turtle.getFuelLevel() - f0, (budget ~= nil and calls >= budget)
+  local gained = turtle.getFuelLevel() - f0
+  TOPUP = { gained = gained, uses = calls - refused, refused = refused, secs = os.clock() - t0 }
+  return gained, stop and budget ~= nil and calls >= budget
 end
 
 -- the fuel level the turtle fills itself up to with reusable fuel
@@ -2233,7 +2280,10 @@ local function immediate(cmd, a)
     local _, more = topUp(refuelTarget(), false, 200)
     local names = {}
     for n in pairs(S.reuse or {}) do names[#names + 1] = n:gsub("^.*:", "") end
+    local rate = (TOPUP.secs or 0) > 0 and math.floor(TOPUP.gained / TOPUP.secs) or TOPUP.gained
     return true, "fuel " .. tostring(before) .. " -> " .. tostring(turtle.getFuelLevel()) ..
+                 " (" .. TOPUP.uses .. " uses" .. (TOPUP.refused > 0 and (", refused " .. TOPUP.refused .. "x") or "") ..
+                 ", " .. string.format("%.1f", TOPUP.secs) .. " s = " .. rate .. " fuel/s)" ..
                  (#names > 0 and ("; reusable fuel: " .. table.concat(names, ", ") ..
                   (more and " - it keeps filling up by itself while idle" or "")) or "")
   end
@@ -2308,8 +2358,8 @@ local function worker()
       -- idle: fill up with reusable fuel, a little at a time (stays responsive)
       local f = turtle.getFuelLevel()
       if f ~= "unlimited" and S.reuse and next(S.reuse) and f < refuelTarget() then
-        local gained = topUp(refuelTarget(), true, 20)
-        if gained <= 0 then sleep(5) end             -- nothing to use right now
+        local gained = topUp(refuelTarget(), true, 40)  -- about 2 s at a time
+        if gained <= 0 then sleep(1) end             -- refused / nothing to use right now
       else
         sleep(0.2)
       end
