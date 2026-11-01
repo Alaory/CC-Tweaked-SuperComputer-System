@@ -29,6 +29,8 @@ state = {
   storagePage = 1,
   curios = nil,       -- { {name, count, cells = {[pos] = item}} ... }
   curiosMsg = nil,
+  curiosPage = 1,     -- CURIOS tab: page of slot types
+  curiosSel = nil,    -- CURIOS tab: selected slot { type, pos, item }
   me = nil,           -- last ME network read
   meVersion = 0,
   meSel = nil,        -- selected ME item (registry name)

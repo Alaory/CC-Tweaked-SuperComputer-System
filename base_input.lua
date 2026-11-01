@@ -232,6 +232,10 @@ function handleTouch(tx, ty)
         dismissNote(h[6])
       elseif h[5] == "nclear" then
         state.notes = {}
+      elseif h[5] == "csel" then
+        local cur = state.curiosSel
+        if cur and cur.type == h[6][1] and cur.pos == h[6][2] then state.curiosSel = nil
+        else state.curiosSel = { type = h[6][1], pos = h[6][2] } state.curiosFitPage = 1 end
       elseif h[5] == "evfilter" then
         state.eventsFilter = h[6]
         state.eventsPage = 1

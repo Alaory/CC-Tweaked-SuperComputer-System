@@ -82,6 +82,15 @@ function pageWorker()
         state.t.curios = os.clock()
         did = true
       end
+      -- an empty slot is selected: the ME list shows what fits (read once a minute)
+      local sel = state.curiosSel
+      if bridge and sel and not sel.item and (state.meForce or not fresh("me", 60)) then
+        state.meForce = false
+        local ok, me = pcall(fetchME)
+        if ok then state.me = me end
+        state.t.me = os.clock()
+        did = true
+      end
 
     elseif page == "map" then
       if det and (state.force.players or not fresh("players", CONFIG.ttl.players)) then

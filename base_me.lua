@@ -109,6 +109,8 @@ end
 -- ME Bridge: chest <-> ME;  Inventory Manager: chest <-> player
 local ME_IN, ME_OUT = { "importItem" }, { "exportItem" }
 local INV_TO_PLAYER, INV_FROM_PLAYER = { "importItem", "addItemToPlayer" }, { "exportItem", "removeItemFromPlayer" }
+-- Curios slots <-> a chest (Inventory Manager): same style as importItem / exportItem
+local CURIO_IN, CURIO_OUT = { "importCuriosItem" }, { "exportCuriosItem" }
 
 -- a count from a number or a {count / amount} table
 function numOf(r)
@@ -136,7 +138,25 @@ ME_TAGS = {
   "minecraft:dirt", "minecraft:sand", "minecraft:stone_bricks", "minecraft:wool_carpets",
   "minecraft:signs", "minecraft:fishes", "minecraft:music_discs", "minecraft:decorated_pot_sherds",
   "minecraft:trim_templates", "minecraft:bookshelf_books", "minecraft:anvil",
+  -- Curios slot tags: the CURIOS tab lists what fits an empty slot
+  "curios:ring", "curios:charm", "curios:necklace", "curios:belt", "curios:bracelet",
+  "curios:hands", "curios:head", "curios:back", "curios:body", "curios:feet", "curios:curio",
 }
+
+-- the Curios slot types an item fits, from its tags: { ring = true, ... }
+function curioSlotsOf(it)
+  local out
+  if type(it.tags) ~= "table" then return nil end
+  for k, v in pairs(it.tags) do
+    local tg = type(v) == "string" and v or (type(k) == "string" and k or nil)
+    local slot = tg and tg:gsub("^#", ""):match("^curios:(.+)$")
+    if slot then
+      out = out or {}
+      out[slot] = true
+    end
+  end
+  return out
+end
 
 -- what kind of storage a cell holds (AE2 key type ids -> readable)
 function cellTypeLabel(t)
@@ -407,7 +427,8 @@ function fetchME()
       cur.craftable = cur.craftable or craftable
     else
       cur = { name = it.name, count = cnt, craftable = craftable,
-              display = cleanName(it.displayName or prettify(it.name)) }
+              display = cleanName(it.displayName or prettify(it.name)),
+              curios = curioSlotsOf(it) }
       me.byName[it.name] = cur
       me.items[#me.items + 1] = cur
     end
@@ -728,6 +749,76 @@ function sendToME(name, count)
   return sent
 end
 
+-- ===== Curios: worn items <-> ME network / inventory (through the buffer chest) =====
+-- a worn curio -> the "take" chest; returns how many left the slot, error
+local function curioOut(name, count)
+  local ok, r = transfer(inv, CURIO_OUT, chestManagerDir("take"), { name = name, count = count })
+  if not ok then return 0, tostring(r) end
+  return tonumber(numOf(r)) or 0
+end
+-- the "give"/"take" chest -> a Curios slot (the first free slot it fits); returns how many
+local function curioIn(name, count, chest)
+  local done = 0
+  for _ = 1, 4 do
+    if done >= count then break end
+    local ok, r = transfer(inv, CURIO_IN, chestManagerDir(chest), { name = name, count = count - done })
+    local m = ok and tonumber(numOf(r)) or 0
+    if m <= 0 then return done, (not ok) and tostring(r) or nil end
+    done = done + m
+  end
+  return done
+end
+
+-- a worn curio -> ME. Whatever the network refuses goes back on (or into
+-- the inventory). Returns moved, error
+function curioToME(name, count)
+  pcall(settleOwed)
+  local out, err = curioOut(name, count)
+  if out <= 0 then return 0, err or "the item did not come off (not worn?)" end
+  local stored = bufferToME(name, out, "take")
+  local left = out - stored
+  if left > 0 then
+    local back = curioIn(name, left, "take")
+    if back < left then back = back + bufferToPlayer(name, left - back, "take") end
+    if back < left then owe(name, left - back, "player", "take") end
+    return stored, "the network did not accept " .. left .. " - given back to you"
+  end
+  return stored
+end
+
+-- a worn curio -> the inventory. Returns moved, error
+function curioToInventory(name, count)
+  pcall(settleOwed)
+  local out, err = curioOut(name, count)
+  if out <= 0 then return 0, err or "the item did not come off (not worn?)" end
+  local moved = bufferToPlayer(name, out, "take")
+  local left = out - moved
+  if left > 0 then
+    local back = curioIn(name, left, "take")
+    if back < left then owe(name, left - back, "player", "take") end
+    return moved, "your inventory is full - " .. (back >= left and "put back on" or "kept in the buffer, retried")
+  end
+  return moved
+end
+
+-- ME -> a Curios slot (the first free one it fits). What does not go on goes
+-- back to the network. Returns moved, error
+function meToCurio(name, count)
+  pcall(settleOwed)
+  local ok, r, e = transfer(bridge, ME_OUT, chestBridge("give"), { name = name, count = count })
+  if not ok then return 0, tostring(r) end
+  local exported = numOf(r) or 0
+  if exported <= 0 then return 0, tostring(e or "not in the network") end
+  local on, err = curioIn(name, exported, "give")
+  local left = exported - on
+  if left > 0 then
+    local back = bufferToME(name, left, "give")
+    if back < left then owe(name, left - back, "me", "give") end
+    return on, (err or "no free slot it fits") .. " - " .. left .. " back to the network"
+  end
+  return on
+end
+
 -- ===== fluids: between the ME network and a fluid storage on the network =====
 -- CONFIG.me.fluidBuffer (network name), else the item buffer if it also holds
 -- fluids, else the only fluid storage on the network
@@ -1041,6 +1132,21 @@ function runAction(a)
       setToast(prob, C.bad, 12)
       return
     end
+  end
+
+  if a.kind == "cstore" or a.kind == "cunequip" or a.kind == "cequip" then
+    local n, err
+    if a.kind == "cstore" then n, err = curioToME(a.name, a.count)
+    elseif a.kind == "cunequip" then n, err = curioToInventory(a.name, a.count)
+    else n, err = meToCurio(a.name, a.count) end
+    local verb = (a.kind == "cstore" and "Stored in the network: ") or (a.kind == "cunequip" and "Moved to your inventory: ")
+                 or "Put on: "
+    if n > 0 then setToast(verb .. disp .. (err and (" - " .. err) or ""), err and C.warn or C.good, 8)
+    else setToast("Curios: " .. disp .. " not moved - " .. tostring(err or "nothing happened"), C.bad, 12) end
+    state.force.curios = true
+    state.meForce = true
+    os.queueEvent("inv_wake")
+    return
   end
 
   if a.kind == "take" then

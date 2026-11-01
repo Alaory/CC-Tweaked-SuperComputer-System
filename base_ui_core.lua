@@ -358,7 +358,7 @@ function drawFooter()
   local hint = {
     players = "Touch a player to see raw data",
     storage = "Contents of backpacks and other storage items",
-    curios  = "Curios slots (rings, charms, backpacks, ...)",
+    curios  = "Tap a slot: store a worn item in ME / move it to your inventory, or put on what fits from ME (tap twice)",
     me      = "Select an item, then use the buttons (tap twice to confirm)",
     access  = "Who may use the $drone chat commands (REMOVE needs a second tap)",
     map     = "Tap the map to inspect a spot. SURVEY maps the area on screen (needs a Geo Scanner in the turtle)",
