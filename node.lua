@@ -482,10 +482,14 @@ end
 -- Normal fuel (coal ...) is burnt one item at a time, only as far as needed.
 -- Returns the fuel gained and whether it stopped because of the budget.
 local TOPUP = {}       -- the last top-up: gained, uses, refused, seconds (for the REFUEL answer)
+-- equipping (core swap) and refuelling both select slots: they take turns.
+-- SLOT_LOCK = someone is equipping; TOPUP_RUNNING = a top-up is selecting slots
+SLOT_LOCK, TOPUP_RUNNING = false, false
 local REUSE_SLOTS      -- the slots holding reusable fuel last time (saves looking at all 16)
 function topUp(target, onlyReusable, budget)
   local f0 = turtle.getFuelLevel()
-  if f0 == "unlimited" then return 0, false end
+  if f0 == "unlimited" or SLOT_LOCK then return 0, false end
+  TOPUP_RUNNING = true
   local limit = turtle.getFuelLimit()
   target = math.min(target or limit, limit)
   S.reuse = S.reuse or {}
@@ -515,7 +519,7 @@ function topUp(target, onlyReusable, budget)
       turtle.select(sl.i)
       local dead = false
       while turtle.getFuelLevel() < target do
-        if (budget and calls >= budget) or (job and stopFlag) then stop = true break end
+        if (budget and calls >= budget) or (job and stopFlag) or SLOT_LOCK then stop = true break end
         local before = turtle.getFuelLevel()
         local ok = turtle.refuel(1)
         calls = calls + 1
@@ -556,6 +560,7 @@ function topUp(target, onlyReusable, budget)
   for _, sl in ipairs(slots) do if S.reuse[sl.name] then rs[#rs + 1] = sl end end
   REUSE_SLOTS = (#rs > 0) and rs or nil
   if learnt then save() end
+  TOPUP_RUNNING = false
   local gained = turtle.getFuelLevel() - f0
   TOPUP = { gained = gained, uses = calls - refused, refused = refused, secs = os.clock() - t0 }
   return gained, stop and budget ~= nil and calls >= budget
@@ -1515,6 +1520,51 @@ function coreSlot()
   end
 end
 function hasCore() return warpCore() ~= nil or coreSlot() ~= nil end
+-- can this turtle warp? Equipped core: yes. Carried core: only if it keeps its
+-- warp points when taken off (tested once - coreCheck)
+function canWarp()
+  if warpCore() then return true end
+  return coreSlot() ~= nil and S.coreKeepsPoints ~= false
+end
+
+-- once per core: equip it, read ALL its functions (sent to the base), and for
+-- a carried core test whether it keeps a warp point when taken off
+function coreCheck()
+  S.coreChecked = true
+  local carried = (warpCore() == nil)
+  local saved = withCore(function()
+    local side = warpCore()
+    local okM, m = pcall(peripheral.getMethods, side)
+    if okM and type(m) == "table" then table.sort(m) S.coreMethods = m end
+    return wcall("savePoint", "zz_keeptest") and true or false
+  end)
+  local keeps
+  if carried and saved then
+    -- taken off and put on again: is the point still there?
+    keeps = withCore(function()
+      local pts = wcall("getPoints")
+      local found = false
+      if type(pts) == "table" then
+        for k, v in pairs(pts) do if v == "zz_keeptest" or k == "zz_keeptest" then found = true end end
+      end
+      wcall("deletePoint", "zz_keeptest")
+      return found
+    end) and true or false
+    S.coreKeepsPoints = keeps
+  elseif saved then
+    withCore(function() return wcall("deletePoint", "zz_keeptest") end)
+  end
+  save()
+  send("result", { cmd = "core", ok = true, msg = "End Automata Core (" .. (carried and "carried" or "equipped") ..
+                   ") functions: " .. table.concat(S.coreMethods or { "?" }, ", ") })
+  if carried and keeps == false then
+    send("result", { cmd = "core", ok = false, msg = "the carried End Automata Core forgets its warp points when it " ..
+                     "is taken off - EQUIP it (e.g. instead of the Chunky upgrade) to warp" })
+  elseif carried and keeps then
+    send("result", { cmd = "core", ok = true, msg = "the carried End Automata Core keeps its warp points - it is " ..
+                     "swapped in for every warp" })
+  end
+end
 -- run fn with the core equipped: equipped already, or carried - then it goes
 -- where the modem is for a moment (like the Geo Scanner; the Chunky upgrade
 -- stays, so the chunk stays loaded) and the modem is put back afterwards
@@ -1523,9 +1573,13 @@ function withCore(fn)
   local slot = coreSlot()
   if not slot then return false, "no End Automata Core" end
   if modem ~= "left" and modem ~= "right" then return false, "the modem must be equipped to swap the core in" end
+  -- wait until a running top-up has put its slot back
+  SLOT_LOCK = true
+  for _ = 1, 100 do if not TOPUP_RUNNING then break end sleep(0.05) end
+  slot = coreSlot() or slot
   local sel = turtle.getSelectedSlot()
   turtle.select(slot)
-  if not equipOn(modem) then turtle.select(sel) return false, "could not equip the End Automata Core" end
+  if not equipOn(modem) then turtle.select(sel) SLOT_LOCK = false return false, "could not equip the End Automata Core" end
   modemAttached = false
   for _ = 1, 10 do if warpCore() then break end sleep(0.1) end
   local res = { pcall(fn) }
@@ -1539,6 +1593,7 @@ function withCore(fn)
   sleep(0.1)
   pcall(rednet.open, modem)
   modemAttached = back and true or false
+  SLOT_LOCK = false
   if not res[1] then return false, tostring(res[2]) end
   return res[2], res[3]
 end
@@ -1552,6 +1607,7 @@ end
 function warpSave(name)
   if not (S.pos and S.pos.x) then return false, "position unknown" end
   if not hasCore() then return false, "no End Automata Core" end
+  if not canWarp() then return false, "the carried End Automata Core forgets its points - equip it to warp" end
   return withCore(function() return warpSaveNow(name) end)
 end
 function warpSaveNow(name)
@@ -1602,7 +1658,7 @@ function warpToNow(name, w)
 end
 -- the saved point closest to a target, if warping there first saves a lot
 function bestWarpFor(tx, ty, tz)
-  if not (S.warps and next(S.warps) and hasCore()) then return nil end
+  if not (S.warps and next(S.warps) and canWarp()) then return nil end
   local here = math.abs(tx - S.pos.x) + math.abs(tz - S.pos.z) + math.abs(ty - S.pos.y)
   local best, bd
   for n, w in pairs(S.warps) do
@@ -1613,7 +1669,7 @@ function bestWarpFor(tx, ty, tz)
 end
 -- after a long trip: remember the place as an automatic warp point
 function warpRemember()
-  if not hasCore() then return end
+  if not canWarp() then return end
   -- near home: the "home" point is used for that
   if S.home and math.abs(S.home.x - S.pos.x) + math.abs(S.home.z - S.pos.z) + math.abs(S.home.y - S.pos.y) < 32 then
     return
@@ -1730,7 +1786,7 @@ function goHome()
   if ok then
     trailReset()
     -- End Automata Core without a "home" point (e.g. equipped after SET HOME): save it now
-    if hasCore() and not (S.warps and S.warps.home) then
+    if canWarp() and not (S.warps and S.warps.home) then
       local okW = warpSave("home")
       if okW then msg = msg .. " (warp point 'home' saved - GO HOME teleports from now on)" end
     end
@@ -1883,7 +1939,10 @@ gearString = function()
   local np = 0
   for _ in pairs(S.warps or {}) do np = np + 1 end
   if warpCore() then g[#g + 1] = "warp core (equipped, " .. np .. " points)"
-  elseif coreSlot() then g[#g + 1] = "warp core (carried, " .. np .. " points)" end
+  elseif coreSlot() then
+    g[#g + 1] = "warp core (carried, " .. (S.coreKeepsPoints == false and "forgets points - equip it"
+                or (np .. " points")) .. ")"
+  end
   return table.concat(g, ",")
 end
 
@@ -2222,6 +2281,13 @@ function runJob(j)
     if type(j.left) == "table" and #j.left > 0 then pts = j.left end     -- continuing after a restart
     return surveyPoints(orderNearest(pts), r)
   end
+  if j.cmd == "core" then
+    task = "checking the End Automata Core"
+    coreCheck()
+    return true, "End Automata Core: functions " .. table.concat(S.coreMethods or { "?" }, ", ") ..
+                 (warpCore() and "" or (S.coreKeepsPoints and " - keeps its points when carried"
+                  or " - FORGETS its points when carried: equip it to warp"))
+  end
   return false, "unknown command " .. tostring(j.cmd)
 end
 
@@ -2271,6 +2337,13 @@ function immediate(cmd, a)
     local name = tostring(a[1] or "")
     if name == "" then return false, "usage: warpsave <name>" end
     return warpSave(name)
+  elseif cmd == "core" then
+    if not hasCore() then return false, "no End Automata Core (equipped or in the inventory)" end
+    if a[1] == "check" or not S.coreMethods then return nil end   -- runs as a job (worker)
+    return true, "End Automata Core " .. (warpCore() and "equipped" or "carried") .. "; " ..
+                 (warpCore() and "warps" or (S.coreKeepsPoints and "keeps points - warps (swapped in)"
+                  or (S.coreKeepsPoints == false and "FORGETS points when taken off - equip it to warp" or "not tested"))) ..
+                 "; functions: " .. table.concat(S.coreMethods or { "?" }, ", ")
   elseif cmd == "warps" then
     local o = {}
     for n, w in pairs(S.warps or {}) do o[#o + 1] = n .. " (" .. w.x .. " " .. w.y .. " " .. w.z .. ")" end
@@ -2447,6 +2520,8 @@ function worker()
         os.reboot()
       end
     else
+      -- idle: a core not checked yet - read its functions, test it (once)
+      if not S.coreChecked and hasCore() and modemAttached then pcall(coreCheck) end
       -- idle: fill up with reusable fuel, a little at a time (stays responsive)
       local f = turtle.getFuelLevel()
       if f ~= "unlimited" and S.reuse and next(S.reuse) and f < refuelTarget() then
