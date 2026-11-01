@@ -219,7 +219,7 @@ function handleChat(m)
       end
       local dim = playerDimNow(name)
       if dim and dim ~= "minecraft:overworld" then
-        reply("That only works in the overworld - you are in " .. dim .. ".")
+        reply("That only works in the overworld - you are in " .. dimName(dim) .. ".")
         return
       end
       dest = { kind = "coords", name = b.why .. " (" .. b.x .. " " .. b.y .. " " .. b.z .. ")",

@@ -279,8 +279,12 @@ end
 -- drones only fly in the overworld: players / places anywhere else are refused
 DRONE_DIM = "minecraft:overworld"
 
+-- "not in the detector's dimension, name not known yet"
+OTHER_DIM = "?other"
+
 -- short name for messages: "minecraft:the_nether" -> "the nether"
 function dimName(d)
+  if d == OTHER_DIM then return "another dimension" end
   return (tostring(d):gsub("^.*:", ""):gsub("_", " "))
 end
 
@@ -289,8 +293,14 @@ end
 function playerDimNow(name, p)
   local d = (p and dimFromData(p)) or dimCache[name]
   if d then return d end
-  -- detector reports no dimension: a player in its range is in its own dimension
-  if det and playersInRangeSet()[name] then return homeDimension() end
+  -- detector reports no dimension: getPlayersInRange only finds players in the
+  -- detector's own dimension -> in range = that dimension, not in range = another one
+  -- (only when the full range was searched: a smaller fallback range proves nothing)
+  if det then
+    local set, full = playersInRangeSet()
+    if set[name] then return homeDimension() end
+    if full then return OTHER_DIM end
+  end
 end
 
 -- live position of a player (Player Detector), only if they are in the overworld
