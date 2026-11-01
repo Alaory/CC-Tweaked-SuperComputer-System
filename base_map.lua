@@ -843,7 +843,7 @@ function MAP.feedSurvey()
   if not q then return end
   local total = q.cols * q.rows
   local minFuel = tonumber(CONFIG.map.surveyMinFuel) or 500
-  local busy, why = false, {}
+  local busy, why, anyFree = false, {}, false
   local list = q.ids or TT.available()
   for _, id in ipairs(list) do
     local t = state.turtles[id]
@@ -865,6 +865,7 @@ function MAP.feedSurvey()
       elseif t.anchor then w = "anchor" elseif t.rescuerRole then w = "rescuer" end
       if w then why[#why + 1] = (t.label or ("#" .. id)) .. ": " .. w end
     end
+    if free then anyFree = true end
     if free and q.cursor < total then
       local spots = nextBatch(q)
       if #spots > 0 then
@@ -875,11 +876,18 @@ function MAP.feedSurvey()
       end
     end
   end
-  -- nobody works on it: say why (at most once a minute)
-  if not busy and q.cursor < total and (not MAP.queueToldAt or os.clock() - MAP.queueToldAt > 60) then
-    MAP.queueToldAt = os.clock()
-    setPopup("SURVEY WAITING", (#list == 0 and "No turtle can survey (online, idle, position known, not anchor/rescuer)."
-             or ("No turtle takes a batch - " .. table.concat(why, ", "))), C.warn)
+  -- no turtle CAN work on it: say why - once, again only when the reason
+  -- changes or after 10 minutes (a free turtle that is just skipping
+  -- already-mapped spots is not a problem)
+  if not busy and not anyFree and q.cursor < total then
+    local msg = (#list == 0) and "No turtle can survey (online, idle, position known, not anchor/rescuer)."
+                or ("No turtle takes a batch - " .. table.concat(why, ", "))
+    if msg ~= MAP.queueToldMsg or os.clock() - (MAP.queueToldAt or 0) > 600 then
+      MAP.queueToldAt, MAP.queueToldMsg = os.clock(), msg
+      setPopup("SURVEY WAITING", msg, C.warn)
+    end
+  else
+    MAP.queueToldMsg = nil
   end
   if q.cursor >= total and not busy then
     setToast("Survey finished: " .. q.sent .. " scans, " .. q.skipped .. " spots were already mapped", C.good)
