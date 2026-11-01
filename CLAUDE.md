@@ -65,6 +65,10 @@ PneumaticCraft drone rides, turtle mapping/surveys, and an AE2 ME network view.
   afterForcedStop). Base: t.held (saved) after STOP - STOP is sent again if
   the turtle reports a task after a reload; no patrol/survey batches; any
   non-quiet command releases it. A resumed job waits 6 s first.
+- Chunky upgrade never comes off: every equip goes through equipOn (node.lua),
+  which refuses the Chunky side and puts it straight back if the item that
+  came off is a Chunky ("chunk" in the name). chunkyFix re-equips a loose one
+  (only where turtle.getEquippedLeft/Right exist).
 - Permanent rescuer: t.rescuerRole (RESCUER button, saved in turtles.dat;
   base only). TT.patrolTick (comms worker) sends it to: no fuel (<20 for
   60 s), stuck (60 s idle), lost (silent CONFIG.turtles.rescueAfter, default

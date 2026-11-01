@@ -117,26 +117,91 @@ function findItemLike(part)
   end
 end
 
+---------------------------------------------------------------------
+-- the Chunky upgrade is NEVER taken off (it keeps the turtle loaded)
+---------------------------------------------------------------------
+function isChunkyItem(name) return tostring(name or ""):lower():find("chunk", 1, true) ~= nil end
+
+-- the item equipped on a side (nil = empty or this version cannot tell)
+function equippedName(side)
+  local f = (side == "left") and turtle.getEquippedLeft or turtle.getEquippedRight
+  if not f then return nil end
+  local ok, d = pcall(f)
+  return ok and type(d) == "table" and d.name or nil
+end
+
+function isChunkySide(side)
+  if isChunkyItem(equippedName(side)) then return true end
+  local ty = peripheral.getType(side)
+  return ty ~= nil and isChunkyItem(ty)
+end
+
+-- equip the selected slot on `side`. Refuses the Chunky side; and if the item
+-- that came off turns out to be the Chunky upgrade anyway, it goes straight
+-- back on (checked on the item itself, works on every version).
+function equipOn(side)
+  if isChunkySide(side) then return false end
+  local was = STEPPING
+  STEPPING = true
+  local ok
+  if side == "left" then ok = turtle.equipLeft() else ok = turtle.equipRight() end
+  if ok then
+    local d = turtle.getItemDetail(turtle.getSelectedSlot())
+    if d and isChunkyItem(d.name) then
+      if side == "left" then turtle.equipLeft() else turtle.equipRight() end   -- Chunky back on
+      ok = false
+    end
+  end
+  STEPPING = was
+  return ok
+end
+
+-- no Chunky upgrade on either side but one in the inventory (it came off
+-- somehow): put it back on the side without the modem. Only on versions that
+-- can read the equipped items (otherwise it could be a spare one).
+function chunkyFix(modemSide)
+  if not (turtle.getEquippedLeft and turtle.getEquippedRight) then return nil end
+  if isChunkySide("left") or isChunkySide("right") then return nil end
+  for i = 1, 16 do
+    local d = turtle.getItemDetail(i)
+    if d and isChunkyItem(d.name) then
+      local side = (modemSide == "left") and "right" or "left"
+      local sel = turtle.getSelectedSlot()
+      turtle.select(i)
+      local ok
+      if side == "left" then ok = turtle.equipLeft() else ok = turtle.equipRight() end
+      turtle.select(sel)
+      return ok and ("Chunky upgrade was in the inventory - equipped it again (" .. side .. ")") or nil
+    end
+  end
+end
+
 local modem = findModemSide()
 if not modem then
   -- recovery: the modem is in the inventory (e.g. after a failed scan swap).
-  -- Put it back on a free side or on the side holding the Geo Scanner,
-  -- never on the side with the chunk loader.
+  -- Put it back where the Geo Scanner / core is, else on a free side -
+  -- never on the side with the Chunky upgrade (equipOn refuses that).
   local slot = findItemLike("modem")
   if slot then
-    turtle.select(slot)
+    local sides = {}
     for _, side in ipairs({ "left", "right" }) do
-      local ty = peripheral.getType(side)
-      if ty == nil or tostring(ty):lower():find("geo", 1, true) then
-        local ok = (side == "left") and turtle.equipLeft() or turtle.equipRight()
-        if ok then break end
-      end
+      local ty = tostring(peripheral.getType(side) or ""):lower()
+      if ty:find("geo", 1, true) or ty:find("automata", 1, true) then table.insert(sides, 1, side)
+      elseif peripheral.getType(side) == nil then sides[#sides + 1] = side end
+    end
+    for _, side in ipairs(sides) do
+      turtle.select(findItemLike("modem") or slot)
+      if equipOn(side) then break end
     end
     turtle.select(1)
     sleep(0.3)
     modem = findModemSide()
     if modem then print("Modem was in the inventory - equipped it again.") end
   end
+end
+do
+  local fixed = chunkyFix(modem)
+  if fixed then print(fixed) end
 end
 if not modem then error("Equip a Wireless or Ender Modem first.", 0) end
 rednet.open(modem)
@@ -754,15 +819,6 @@ function findItem(name)
     local d = turtle.getItemDetail(i)
     if d and d.name == name then return i end
   end
-end
-
-function equipOn(side)
-  local was = STEPPING
-  STEPPING = true
-  local ok
-  if side == "left" then ok = turtle.equipLeft() else ok = turtle.equipRight() end
-  STEPPING = was
-  return ok
 end
 
 -- run fn(scanner) with the Geo Scanner equipped where the modem was
@@ -1629,7 +1685,7 @@ function coreCheck()
                    ") functions: " .. table.concat(S.coreMethods or { "?" }, ", ") })
   if carried and keeps == false then
     send("result", { cmd = "core", ok = false, msg = "the carried End Automata Core forgets its warp points when it " ..
-                     "is taken off - EQUIP it (e.g. instead of the Chunky upgrade) to warp" })
+                     "is taken off - it cannot warp while carried (the Chunky upgrade always stays on)" })
   elseif carried and keeps then
     send("result", { cmd = "core", ok = true, msg = "the carried End Automata Core keeps its warp points - it is " ..
                      "swapped in for every warp" })
@@ -2583,6 +2639,7 @@ function afterForcedStop()
   modemAttached = findModemSide() ~= nil
   turtle.select(1)
   if not S.recording then recStop() end
+  pcall(chunkyFix, modem)
   pcall(gpsCheck)
 end
 
