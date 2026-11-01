@@ -1494,11 +1494,53 @@ function near(p, x, z, d) return p and math.abs(p[1] - x) + math.abs(p[3] - z) <
 -- ===== End Automata Core: teleport between saved points =====
 -- The points live inside the core (lost if it is taken off); their
 -- positions are kept here too (the core only tells the names).
+-- is this an End Automata Core? ("end_automata", "endAutomata", the overpowered
+-- one ... - spelled differently in different versions)
+function isEndCore(s)
+  s = tostring(s or ""):lower():gsub("[^%a]", "")
+  return s:find("endautomata", 1, true) ~= nil
+end
+-- the side an EQUIPPED core is on
 function warpCore()
   for _, side in ipairs({ "left", "right" }) do
     local t = peripheral.getType(side)
-    if t and tostring(t):find("end_automata", 1, true) then return side end
+    if t and isEndCore(t) then return side end
   end
+end
+-- the inventory slot of a CARRIED core (not equipped)
+function coreSlot()
+  for i = 1, 16 do
+    local d = turtle.getItemDetail(i)
+    if d and isEndCore(d.name) then return i end
+  end
+end
+function hasCore() return warpCore() ~= nil or coreSlot() ~= nil end
+-- run fn with the core equipped: equipped already, or carried - then it goes
+-- where the modem is for a moment (like the Geo Scanner; the Chunky upgrade
+-- stays, so the chunk stays loaded) and the modem is put back afterwards
+function withCore(fn)
+  if warpCore() then return fn() end
+  local slot = coreSlot()
+  if not slot then return false, "no End Automata Core" end
+  if modem ~= "left" and modem ~= "right" then return false, "the modem must be equipped to swap the core in" end
+  local sel = turtle.getSelectedSlot()
+  turtle.select(slot)
+  if not equipOn(modem) then turtle.select(sel) return false, "could not equip the End Automata Core" end
+  modemAttached = false
+  for _ = 1, 10 do if warpCore() then break end sleep(0.1) end
+  local res = { pcall(fn) }
+  local mslot = findItemLike("modem")
+  local back = false
+  if mslot then
+    turtle.select(mslot)
+    back = equipOn(modem)
+  end
+  turtle.select(sel)
+  sleep(0.1)
+  pcall(rednet.open, modem)
+  modemAttached = back and true or false
+  if not res[1] then return false, tostring(res[2]) end
+  return res[2], res[3]
 end
 function wcall(m, ...)
   local side = warpCore()
@@ -1509,7 +1551,10 @@ function wcall(m, ...)
 end
 function warpSave(name)
   if not (S.pos and S.pos.x) then return false, "position unknown" end
-  if not warpCore() then return false, "no End Automata Core equipped" end
+  if not hasCore() then return false, "no End Automata Core" end
+  return withCore(function() return warpSaveNow(name) end)
+end
+function warpSaveNow(name)
   S.warps = S.warps or {}
   wcall("deletePoint", name)
   local ok, err = wcall("savePoint", name)
@@ -1531,6 +1576,20 @@ end
 function warpTo(name)
   local w = S.warps and S.warps[name]
   if not w then return false, "no warp point called '" .. tostring(name) .. "'" end
+  return withCore(function() return warpToNow(name, w) end)
+end
+function warpToNow(name, w)
+  -- the points live in the core: is this one really still there?
+  local pts = wcall("getPoints")
+  if type(pts) == "table" then
+    local found = false
+    for k, v in pairs(pts) do if v == name or k == name then found = true end end
+    if not found then
+      S.warps[name] = nil
+      save()
+      return false, "warp point '" .. name .. "' is no longer in the core - forgotten"
+    end
+  end
   local cost = tonumber((wcall("estimateWarpCost", name)))
   local fuel = turtle.getFuelLevel()
   if fuel ~= "unlimited" and cost and cost > fuel - 50 then return false, "not enough fuel to warp" end
@@ -1543,7 +1602,7 @@ function warpTo(name)
 end
 -- the saved point closest to a target, if warping there first saves a lot
 function bestWarpFor(tx, ty, tz)
-  if not (S.warps and next(S.warps) and warpCore()) then return nil end
+  if not (S.warps and next(S.warps) and hasCore()) then return nil end
   local here = math.abs(tx - S.pos.x) + math.abs(tz - S.pos.z) + math.abs(ty - S.pos.y)
   local best, bd
   for n, w in pairs(S.warps) do
@@ -1554,7 +1613,7 @@ function bestWarpFor(tx, ty, tz)
 end
 -- after a long trip: remember the place as an automatic warp point
 function warpRemember()
-  if not warpCore() then return end
+  if not hasCore() then return end
   -- near home: the "home" point is used for that
   if S.home and math.abs(S.home.x - S.pos.x) + math.abs(S.home.z - S.pos.z) + math.abs(S.home.y - S.pos.y) < 32 then
     return
@@ -1671,7 +1730,7 @@ function goHome()
   if ok then
     trailReset()
     -- End Automata Core without a "home" point (e.g. equipped after SET HOME): save it now
-    if warpCore() and not (S.warps and S.warps.home) then
+    if hasCore() and not (S.warps and S.warps.home) then
       local okW = warpSave("home")
       if okW then msg = msg .. " (warp point 'home' saved - GO HOME teleports from now on)" end
     end
@@ -1821,7 +1880,10 @@ gearString = function()
   if slotOf(isPick) then g[#g + 1] = "pick" end
   if slotOf(isFuel) then g[#g + 1] = "fuel" end
   if findItem(CONFIG.geoItem) then g[#g + 1] = "scanner" end
-  if warpCore() then g[#g + 1] = "warp core" end
+  local np = 0
+  for _ in pairs(S.warps or {}) do np = np + 1 end
+  if warpCore() then g[#g + 1] = "warp core (equipped, " .. np .. " points)"
+  elseif coreSlot() then g[#g + 1] = "warp core (carried, " .. np .. " points)" end
   return table.concat(g, ",")
 end
 
@@ -2213,7 +2275,8 @@ function immediate(cmd, a)
     local o = {}
     for n, w in pairs(S.warps or {}) do o[#o + 1] = n .. " (" .. w.x .. " " .. w.y .. " " .. w.z .. ")" end
     return true, (#o > 0 and table.concat(o, ", ") or "no warp points") ..
-                 (warpCore() and "" or " - no End Automata Core equipped")
+                 (warpCore() and "" or (coreSlot() and " - End Automata Core carried (swapped in to warp)"
+                                                   or " - no End Automata Core"))
   elseif cmd == "setting" then
     -- change one setting on this turtle (kept across updates): setting dig true
     local name, raw = tostring(a[1] or ""), a[2]
@@ -2399,11 +2462,11 @@ end
 function heartbeat()
   send("hello", { resumed = S.resumedNote })
   do
-    local side = warpCore()
+    local side = warpCore() or (coreSlot() and "carried - swapped in for each warp")
     local n = 0
     for _ in pairs(S.warps or {}) do n = n + 1 end
     if side then
-      send("result", { cmd = "warp", ok = true, msg = "End Automata Core found (" .. side .. " side): " .. n ..
+      send("result", { cmd = "warp", ok = true, msg = "End Automata Core found (" .. side .. "): " .. n ..
         " warp point(s)" .. ((S.warps and S.warps.home) and ", incl. 'home'" or " - no 'home' yet: press SET HOME at home, or GO HOME once") })
     end
   end
