@@ -276,13 +276,36 @@ function canonPlayer(name)
   return name
 end
 
--- live position of a player (Player Detector)
+-- drones only fly in the overworld: players / places anywhere else are refused
+DRONE_DIM = "minecraft:overworld"
+
+-- short name for messages: "minecraft:the_nether" -> "the nether"
+function dimName(d)
+  return (tostring(d):gsub("^.*:", ""):gsub("_", " "))
+end
+
+-- the dimension a player is in right now (nil = not known).
+-- p = what the detector just returned for them (optional)
+function playerDimNow(name, p)
+  local d = (p and dimFromData(p)) or dimCache[name]
+  if d then return d end
+  -- detector reports no dimension: a player in its range is in its own dimension
+  if det and playersInRangeSet()[name] then return homeDimension() end
+end
+
+-- live position of a player (Player Detector), only if they are in the overworld
 function playerPos(name)
   if not det then return nil, "no Player Detector (needed to find players)" end
   local fn = det.getPlayer or det.getPlayerPos
   if not fn then return nil, "Detector has no getPlayer()" end
   local ok, p = pcall(fn, name)
-  if ok and type(p) == "table" and p.x then return p.x, p.y, p.z end
+  if ok and type(p) == "table" and p.x then
+    local d = playerDimNow(name, p)
+    if d and d ~= DRONE_DIM then
+      return nil, tostring(name) .. " is in " .. dimName(d) .. " - drones only fly in the overworld"
+    end
+    return p.x, p.y, p.z
+  end
   return nil, "player '" .. tostring(name) .. "' was not found by the detector"
 end
 
@@ -317,7 +340,10 @@ function destPosCached(dr)
   if not d then return nil end
   if d.kind == "player" then
     for _, e in ipairs(state.players or {}) do
-      if e.name == d.name and e.p and e.p.x then return e.p.x, e.p.y, e.p.z end
+      if e.name == d.name and e.p and e.p.x then
+        if e.dim and e.dim ~= DRONE_DIM then return nil end   -- not in the overworld
+        return e.p.x, e.p.y, e.p.z
+      end
     end
     return nil
   end
@@ -998,6 +1024,25 @@ function runMission(dr, cmd)
     dr.mission = { title = cmd.kind, steps = {}, state = "failed", err = "No destination chosen" }
     droneLog(dr, "Cannot start: no destination chosen")
     return
+  end
+
+  -- every player involved must be in the overworld BEFORE the drone moves
+  -- (a teleport costs air even when it goes nowhere useful)
+  local check = {}
+  if cmd.kind == "pickup" or cmd.kind == "ferry" then
+    check[#check + 1] = canonPlayer(cmd.passenger or dr.passenger or state.owner or "")
+  end
+  if (cmd.kind == "fly" or cmd.kind == "drop" or cmd.kind == "ferry")
+     and dr.dest and dr.dest.kind == "player" then
+    check[#check + 1] = dr.dest.name
+  end
+  for _, pn in ipairs(check) do
+    local px, why = playerPos(pn)
+    if not px then
+      dr.mission = { title = cmd.kind, steps = {}, state = "failed", err = cleanErr(why) }
+      droneLog(dr, "Cannot start: " .. cleanErr(why))
+      return
+    end
   end
 
   dr.abort = false

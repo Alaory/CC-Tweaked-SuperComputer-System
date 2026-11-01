@@ -214,6 +214,8 @@ function handleTouch(tx, ty)
           while findWaypoint(n) do i = i + 1; n = "Place " .. i end
           addWaypoint(n, x, y, z)
           setToast("Saved as '" .. n .. "' (rename: save <name> in the console)", C.good, 5)
+        elseif state.drone and state.drone.dest and state.drone.dest.kind == "player" then
+          setToast("Cannot save: " .. state.drone.dest.name .. " is not in the overworld (or not found)", C.warn, 5)
         end
       elseif h[5] == "dstop" then
         if submitDrone(state.drone, { kind = "stop" }) then

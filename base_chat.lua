@@ -25,8 +25,20 @@ function startRide(name, dest, owner)
   refreshDrones()
   local px, py, pz = playerPos(name)
   if not px then
-    chatTell(name, "I cannot find you (out of the Player Detector's range?).")
+    local d = playerDimNow(name)
+    if d and d ~= DRONE_DIM then
+      chatTell(name, "You are in " .. dimName(d) .. " - drones only fly in the overworld.")
+    else
+      chatTell(name, "I cannot find you (out of the Player Detector's range?).")
+    end
     return
+  end
+  if dest.kind == "player" then
+    local tx, why = playerPos(dest.name)
+    if not tx then
+      chatTell(name, "Cannot fly you to " .. dest.name .. ": " .. cleanErr(why) .. ".")
+      return
+    end
   end
   if CONFIG.chat.maxDistance and not owner and CONFIG.drone.home then
     local h = CONFIG.drone.home
@@ -197,7 +209,7 @@ function handleChat(m)
               "of more than " .. CONFIG.back.jump .. " blocks - in the overworld only.")
         return
       end
-      local dim = playerDim(name)
+      local dim = playerDimNow(name)
       if dim and dim ~= "minecraft:overworld" then
         reply("That only works in the overworld - you are in " .. dim .. ".")
         return

@@ -132,6 +132,7 @@ function handleCommand(line)
       if x and y and z then
         addWaypoint(name, x, y, z)
         say("Saved '" .. name .. "' at " .. fmtPos(x, y, z))
+      elseif D and D.dest then say("Cannot save: " .. cleanErr(y))
       else say("No destination chosen yet: give x y z, or choose one first") end
     end
 
