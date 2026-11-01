@@ -25,6 +25,7 @@ HELP = {
   " charger [x y z|off]  show / move the Charging Station",
   " turtles              list connected turtles",
   " turtle <id|name> <cmd> [args]   e.g. goto x y z, home,",
+  " turtle <id> log [n]  the turtle's last n log lines in full",
   "      sethome [x y z], setpos x y z north, locate, move up 3, stop",
   " map clear            delete all map scans",
   " exit [clear]         the turtles' exit route out of the base (or delete it)",
@@ -442,6 +443,11 @@ function handleCommand(line)
       say("No turtle '" .. words[2] .. "'. Type 'turtles' to see them.")
     elseif not t or not tc then
       say("Usage: turtle <id|name> <command> [args]   (see 'turtles')")
+    elseif tc == "log" then
+      -- the turtle's log in full (the monitor cuts long lines), oldest first
+      local n = math.min(tonumber(words[4]) or 10, #t.log)
+      if n == 0 then say(t.label .. ": nothing in the log yet") end
+      for i = n, 1, -1 do say(t.log[i].t .. "  " .. t.log[i].msg) end
     else
       local args = {}
       for i = 4, #words do args[#args + 1] = tonumber(words[i]) or words[i] end
