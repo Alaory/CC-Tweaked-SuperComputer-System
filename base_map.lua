@@ -694,6 +694,102 @@ function MAP.surveySpots(x1, z1, x2, z2, r)
   return spots, skipped
 end
 
+-- ===== SURVEY QUEUE: big areas, handed to the turtles in batches =====
+-- A big area has far too many scan spots to send at once (a turtle takes at
+-- most 400 per order). The base keeps the area and a cursor; every idle turtle
+-- gets the next BATCH spots, until the area is done. Spots whose chunk is
+-- already in the map (overview) are skipped. Kept in a file: continues after
+-- a restart.
+local QUEUE_FILE = "survey_queue.dat"
+local BATCH = 64
+MAP.queue = nil      -- { x1, z1, x2, z2, r, cols, rows, cursor, sent, skipped, ids = {...} }
+
+local function saveQueue()
+  if MAP.queue then saveFileSafe(QUEUE_FILE, textutils.serialize(MAP.queue))
+  elseif fs.exists(QUEUE_FILE) then pcall(fs.delete, QUEUE_FILE) end
+end
+do
+  if fs.exists(QUEUE_FILE) then
+    local h = fs.open(QUEUE_FILE, "r")
+    local t = h and textutils.unserialize(h.readAll() or "")
+    if h then h.close() end
+    if type(t) == "table" and t.cols then MAP.queue = t end
+  end
+end
+
+-- start a queued survey of an area (ids = the turtles to use, nil = all free ones)
+function MAP.queueSurvey(x1, z1, x2, z2, r, ids)
+  local step = 2 * r + 1
+  MAP.queue = { x1 = x1, z1 = z1, x2 = x2, z2 = z2, r = r, step = step,
+                cols = math.max(1, math.floor((x2 - x1) / step) + 1),
+                rows = math.max(1, math.floor((z2 - z1) / step) + 1),
+                cursor = 0, sent = 0, skipped = 0, ids = ids }
+  saveQueue()
+  return MAP.queue.cols * MAP.queue.rows
+end
+
+function MAP.stopSurvey()
+  MAP.queue = nil
+  saveQueue()
+end
+
+-- the next batch of spots not yet in the map (checks a limited number per call)
+local function nextBatch(q)
+  local total = q.cols * q.rows
+  local out, checked = {}, 0
+  while #out < BATCH and q.cursor < total and checked < 3000 do
+    local i = q.cursor
+    q.cursor = q.cursor + 1
+    checked = checked + 1
+    -- snake order: every other row backwards, so a turtle never jumps back
+    local row, col = math.floor(i / q.cols), i % q.cols
+    if row % 2 == 1 then col = q.cols - 1 - col end
+    local x, z = q.x1 + q.r + col * q.step, q.z1 + q.r + row * q.step
+    if MAP.getOverview(x, z) then q.skipped = q.skipped + 1
+    else out[#out + 1] = { x, z } end
+  end
+  return out
+end
+
+-- hand batches to idle turtles (comms worker, every few seconds)
+function MAP.feedSurvey()
+  local q = MAP.queue
+  if not q then return end
+  local total = q.cols * q.rows
+  local minFuel = tonumber(CONFIG.map.surveyMinFuel) or 500
+  local busy = false
+  for _, id in ipairs(q.ids or TT.available()) do
+    local t = state.turtles[id]
+    local free = t and TT.online(t) and t.pos and t.pos.x and (t.task == nil or t.task == "idle") and not t.anchor
+    local fuel = t and tonumber(t.fuel)
+    if free and t.queueAt and os.clock() - t.queueAt < 15 then free = false busy = true end
+    if free and fuel and fuel < minFuel then free = false end
+    if t and not free and t.task and t.task ~= "idle" then busy = true end
+    if free and q.cursor < total then
+      local spots = nextBatch(q)
+      if #spots > 0 then
+        TT.sendSpots(id, spots, q.r)
+        t.queueAt = os.clock()
+        q.sent = q.sent + #spots
+        busy = true
+      end
+    end
+  end
+  if q.cursor >= total and not busy then
+    setToast("Survey finished: " .. q.sent .. " scans, " .. q.skipped .. " spots were already mapped", C.good)
+    MAP.queue = nil
+  end
+  saveQueue()
+end
+
+-- progress for the screen: done fraction, spots total
+function MAP.surveyProgress()
+  local q = MAP.queue
+  if not q then return nil end
+  local total = q.cols * q.rows
+  return q.cursor / total, total, q.sent, q.skipped
+end
+
 -- one screen cell to the right (r) and one down (d), as world x/z steps
 local BASIS = {
   [0] = { rx = 1,  rz = 0,  dx = 0,  dz = 1 },   -- up north: right = east,  down = south

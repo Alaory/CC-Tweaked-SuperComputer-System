@@ -28,7 +28,7 @@ A tab only appears when the block it needs is connected.
 
 **Messages** (a transfer is done, a drone cannot start, an error ...) appear as
 boxes in the top-right corner. Each one closes by itself; the bar at its bottom
-shows the time left (info / done 8 s, warnings 20 s, errors 60 s). Tap a box to
+shows the time left (3 seconds; `CONFIG.notes` can change it). Tap a box to
 close it sooner. The **EVENTS** tab lists every message with its date and time,
 can show one kind only, and its badge counts the new ones.
 

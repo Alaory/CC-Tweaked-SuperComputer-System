@@ -287,6 +287,7 @@ function commsWorker()
       tick = os.startTimer(2)
       if KNOW.dirty and os.clock() - KNOW.saved > 30 then pcall(KNOW.save) end
       pcall(MAP.autoSave)                -- changed map regions, at most once a minute
+      pcall(MAP.feedSurvey)              -- a big survey: next batch to each idle turtle
       if TT.listDirty and codeTick % 15 == 0 then pcall(TT.saveList) end
       codeTick = codeTick + 1
       if codeTick % 15 == 1 then pcall(TT.codeLoad) end     -- every 30 s

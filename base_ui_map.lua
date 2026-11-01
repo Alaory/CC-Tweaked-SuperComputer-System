@@ -211,8 +211,20 @@ function drawMapPage(G)
               { kind = "survey", name = tostring(t.id), count = 0 }, true)
   end
 
-  ------------------------------------------------ what the colours mean
+  ------------------------------------------------ a big survey in progress
   local ly = ty0 + 11
+  local frac, total, sent, skipped = MAP.surveyProgress()
+  if frac then
+    card(rx, ly, rw, 7, "BIG SURVEY")
+    drawButton(rix + riw - 8, ly + 1, 8, 1, "STOP", C.bad, C.ink, "mqstop")
+    barW(rix, ly + 3, riw, math.floor(frac * riw + 0.5), C.good)
+    text(rix, ly + 4, trunc(string.format("%d%% of %s spots", math.floor(frac * 100), compact(total)), riw), C.text, C.panel)
+    text(rix, ly + 5, trunc(string.format("%s sent, %s mapped before", compact(sent), compact(skipped)), riw),
+         C.dim, C.panel)
+    ly = ly + 8
+  end
+
+  ------------------------------------------------ what the colours mean
   local lh = bottom - ly + 1
   if lh >= 5 then
     card(rx, ly, rw, lh, "LEGEND")

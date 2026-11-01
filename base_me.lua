@@ -13,8 +13,9 @@
 -- ===== messages (shown as boxes top-right; see drawNotes in base_ui_core.lua) =====
 -- Every message also goes into the EVENTS tab (the last few, in memory only).
 -- How long a box stays, in seconds, by kind (0 = until it is tapped). Can be
--- changed with CONFIG.notes = { info = 8, done = 8, warning = 20, error = 60, keep = 100 }
-local NOTE_DEFAULTS = { info = 8, done = 8, warning = 20, error = 60, keep = 100 }
+-- changed with CONFIG.notes = { info = 3, done = 3, warning = 3, error = 3, keep = 100 }
+-- (everything stays readable in the EVENTS tab)
+local NOTE_DEFAULTS = { info = 3, done = 3, warning = 3, error = 3, keep = 100 }
 function noteSetting(k)
   local v = CONFIG.notes and tonumber(CONFIG.notes[k])
   if v == nil then v = NOTE_DEFAULTS[k] end
@@ -37,14 +38,13 @@ local function realTime(fmt)
   return textutils.formatTime(os.time(), true)
 end
 
--- show a message. secs = at least this long (the kind's time is the minimum);
--- every box closes by itself (unless that kind's time is 0), or when tapped
+-- show a message. It stays for its kind's time (CONFIG.notes; `secs` from the
+-- caller is ignored - the owner wants short messages), or until tapped
 function pushNote(title, msg, col, secs)
   col = col or C.good
   msg = tostring(msg or "")
   local now = os.clock()
   local life = noteSetting(noteKind(col):lower())
-  if life > 0 then life = math.max(life, secs or 0) end
   local exp = (life > 0) and (now + life) or nil
   -- the same message again while it is shown: refresh it instead of stacking
   for _, n in ipairs(state.notes) do
