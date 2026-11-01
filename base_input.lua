@@ -215,7 +215,7 @@ function handleTouch(tx, ty)
           addWaypoint(n, x, y, z)
           setToast("Saved as '" .. n .. "' (rename: save <name> in the console)", C.good, 5)
         elseif state.drone and state.drone.dest and state.drone.dest.kind == "player" then
-          setToast("Cannot save: " .. state.drone.dest.name .. " is not in the overworld (or not found)", C.warn, 5)
+          setPopup("CANNOT SAVE", state.drone.dest.name .. " is not in the overworld (or not found).", C.warn)
         end
       elseif h[5] == "dstop" then
         if submitDrone(state.drone, { kind = "stop" }) then
@@ -227,6 +227,8 @@ function handleTouch(tx, ty)
         state.rawView[h[6]] = not state.rawView[h[6]] or nil
       elseif h[5] == "item" then
         if h[6] and h[6] ~= selName then selName = h[6] else selName = nil end
+      elseif h[5] == "popclose" then
+        state.popup = nil
       end
       return h[5] == "page" or h[5] == "act" or h[5] == "mecraft"
     end

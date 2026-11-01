@@ -301,6 +301,26 @@ function drawFooter()
   if state.status ~= "ok" then msg, col = "\7 OFFLINE", C.bad
   elseif state.dropped > 0 then msg, col = "\7 SLOT MISMATCH (see slotBase)", C.warn end
   text(W - #msg - 2, H, msg, col, C.panel)
+  drawPopup()
+end
+
+-- the popup box (setPopup) on top of everything; a tap anywhere closes it
+function drawPopup()
+  local p = state.popup
+  if not p then return end
+  if os.clock() >= p.exp then state.popup = nil return end
+  local boxW = math.min(W - 6, 50)
+  local lines = wrap(p.msg, boxW - 4, 4)
+  local boxH = #lines + 5
+  local bx = math.floor((W - boxW) / 2) + 1
+  local by = math.floor((H - boxH) / 2) + 1
+  card(bx, by, boxW, boxH)
+  fill(bx, by, boxW, 1, p.col)
+  round(bx, by, boxW, 1, p.col, C.panel)
+  text(bx + 2, by, trunc(p.title, boxW - 4), C.ink, p.col)
+  for i, l in ipairs(lines) do text(bx + 2, by + 1 + i, l, C.text, C.panel) end
+  text(bx + 2, by + boxH - 2, "Tap to close", C.dim, C.panel)
+  addHit(1, 1, W, H, "popclose")       -- last hit = checked first: catches every tap
 end
 
 function draw()

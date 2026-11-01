@@ -302,7 +302,7 @@ function playerPos(name)
   if ok and type(p) == "table" and p.x then
     local d = playerDimNow(name, p)
     if d and d ~= DRONE_DIM then
-      return nil, tostring(name) .. " is in " .. dimName(d) .. " - drones only fly in the overworld"
+      return nil, tostring(name) .. " is in " .. dimName(d) .. " - drones only fly in the overworld", d
     end
     return p.x, p.y, p.z
   end
@@ -1041,7 +1041,8 @@ function runMission(dr, cmd)
     if not px then
       dr.mission = { title = cmd.kind, steps = {}, state = "failed", err = cleanErr(why) }
       droneLog(dr, "Cannot start: " .. cleanErr(why))
-      setToast(dr.label .. ": " .. cleanErr(why), C.warn, 8)
+      -- a chat ride is answered in chat (to that player only); the monitor gets a popup
+      if not dr.requester then setPopup(dr.label .. " - CANNOT START", cleanErr(why), C.warn) end
       return
     end
   end

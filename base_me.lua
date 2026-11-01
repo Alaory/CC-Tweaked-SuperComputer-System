@@ -8,6 +8,12 @@ function setToast(msg, col, secs)
   state.toast = { msg = msg, col = col or C.good, exp = os.clock() + (secs or 6) }
 end
 
+-- a box in the middle of the monitor; closes after `secs` or when tapped
+function setPopup(title, msg, col, secs)
+  state.popup = { title = title, msg = msg, col = col or C.warn, exp = os.clock() + (secs or 8) }
+  os.queueEvent("inv_update")
+end
+
 -- pcall wrapper: returns ok, r1, r2
 function callx(obj, fn, ...)
   if type(obj[fn]) ~= "function" then return false, "missing function " .. fn end

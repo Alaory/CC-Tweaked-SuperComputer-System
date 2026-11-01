@@ -292,7 +292,10 @@ function chatWorker()
         state.chatOut = {}
       elseif os.clock() - lastSend >= 1.05 then
         local o = table.remove(state.chatOut, 1)
-        pcall(chatBox.sendMessage, o.text, { player = o.name, prefix = CONFIG.chat.replyPrefix })
+        -- private: only that player sees it (never sendMessage, which goes to everyone)
+        if chatBox.sendMessageToPlayer then
+          pcall(chatBox.sendMessageToPlayer, o.text, o.name, CONFIG.chat.replyPrefix)
+        end
         lastSend = os.clock()
       else
         -- never wait less than 0.1 s (no busy loop on rounding)
