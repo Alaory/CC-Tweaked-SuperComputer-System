@@ -62,6 +62,7 @@ buildWindow()
 local okRun, errRun = pcall(parallel.waitForAny, uiLoop, invWorker, pageWorker, actionWorker,
                    droneWorker, terminalWorker, chatWorker, commsWorker)
 
+pcall(MAP.save)                     -- map changes of the last minute
 restorePalette()
 mon.setBackgroundColor(colors.black)
 mon.setTextColor(colors.white)

@@ -277,6 +277,7 @@ function commsWorker()
     elseif ev == "timer" and a == tick then
       tick = os.startTimer(2)
       if KNOW.dirty and os.clock() - KNOW.saved > 30 then pcall(KNOW.save) end
+      pcall(MAP.autoSave)                -- changed map regions, at most once a minute
       if TT.listDirty and codeTick % 15 == 0 then pcall(TT.saveList) end
       codeTick = codeTick + 1
       if codeTick % 15 == 1 then pcall(TT.codeLoad) end     -- every 30 s

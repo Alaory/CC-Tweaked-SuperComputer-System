@@ -1,11 +1,21 @@
 -- usage: lua run.lua <srcdir> <out.txt> <page> [scenario]
 SRC_DIR, OUT, PAGE, SCEN = arg[1], arg[2], arg[3] or "inventory", arg[4]
+local getenv, popen = os.getenv, io.popen
+REALCLOCK, LABEL = os.clock, getenv("LABEL") or ""
 local here = arg[0]:match("^(.*)/") or "."
 dofile(here .. "/world.lua")
 local W0 = PERIPHS
 dofile(here .. "/cc_stub.lua")
 PERIPHS = W0
 PERIPHS.right.obj = MONITOR
+-- the program's own files take room on the computer (what is copied into the game)
+for _, f in ipairs({ "inventory.lua", "node.lua" }) do
+  local h = io.open(SRC_DIR .. "/" .. f) if h then CODE_SIZE = CODE_SIZE + #h:read("a") h:close() end
+end
+local ls = popen('ls "' .. SRC_DIR .. '"/base_*.lua')
+for f in ls:lines() do local h = io.open(f) CODE_SIZE = CODE_SIZE + #h:read("a") h:close() end
+ls:close()
+if getenv("PRE") then dofile(getenv("PRE")) end   -- set-up before the program loads
 local env = _ENV
 local MODULES = {
   "base_config", "base_devices", "base_theme", "base_state", "base_storage",

@@ -137,7 +137,7 @@ Type these on the base computer. `help` shows the full list.
 | `base_players.lua` | Player Detector data, dimensions, `$drone back` tracking |
 | `base_drones.lua` | Drones: travel, pickup / drop, charging, missions |
 | `base_turtles.lua` | Turtle communication, shared knowledge, updates, rescue |
-| `base_map.lua` | Map data from turtle scans |
+| `base_map.lua` | Map data from turtle scans, saved as small region files |
 | `base_console.lua` | Keyboard commands |
 | `base_chat.lua` | `$drone` chat commands |
 | `base_input.lua` | Monitor touches |
@@ -155,11 +155,17 @@ the game.
 
 `waypoints.dat`, `drone_logs.dat`, `drone_charger.dat`, `chat_access.dat`,
 `back_spots.dat`, `player_dims.dat`, `turtles.dat`, `terrain.dat`,
-`exit_route.dat`, `map.dat`, `map_view.dat`, `me_setup.dat`, `me_names.dat`,
+`exit_route.dat`, `map/<x>_<z>.dat` (map region files), `map_view.dat`, `me_setup.dat`, `me_names.dat`,
 `me_owed.dat`, `curios_last.dat`.
 
 A computer has only **1 MB** of disk. The biggest files (map, turtle
 knowledge, logs) can be moved to data floppies with `disks data` / `disks move`.
+
+The **map** is saved as small region files (4 x 4 chunks each) in a `map`
+folder: on the data floppy with the most room, on the computer only when no
+floppy has room. Only changed regions are written, at most once a minute and
+when the program stops. 200 chunks take about 70 KB. `map` on the computer
+shows how much room it takes and where.
 When the disk is full, the footer shows a warning instead of writing half a file.
 
 ## Screen preview

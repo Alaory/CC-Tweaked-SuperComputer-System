@@ -64,10 +64,33 @@ MON_H = tonumber(os.getenv("MONH") or "") or 81
 MONITOR = newBuffer(MON_W, MON_H)
 window = { create = function(parent, x, y, w, h) return newBuffer(w, h) end }
 
--- files: in memory
-FILES = {}
+-- files: in memory, with folders and disk space. The computer has 1 MB (the
+-- program's own files count); floppies (DRIVES, see world.lua) 125 KB each.
+FILES, DIRS = {}, {}
+CAP = { [""] = 1000000 }
+CODE_SIZE = 0
+local function rootOf(p)
+  local first = p:match("^([^/]+)/") or p
+  if CAP[first] and first ~= "" then return first end
+  return ""
+end
 fs = {}
-function fs.exists(p) return FILES[p] ~= nil or (p ~= "" and io.open(SRC .. "/" .. p, "r") ~= nil) end
+function fs.exists(p) return FILES[p] ~= nil or DIRS[p] ~= nil or CAP[p] ~= nil or (p ~= "" and io.open(SRC .. "/" .. p, "r") ~= nil) end
+function fs.isDir(p) return DIRS[p] ~= nil or (CAP[p] ~= nil) or p == "" end
+function fs.makeDir(p) DIRS[p] = true end
+function fs.list(d)
+  local out, seen = {}, {}
+  local pre = (d == "" or d == "/") and "" or (d .. "/")
+  for k in pairs(FILES) do
+    if k:sub(1, #pre) == pre then
+      local rest = k:sub(#pre + 1)
+      local name = rest:match("^([^/]+)")
+      if name and not seen[name] then seen[name] = true out[#out + 1] = name end
+    end
+  end
+  table.sort(out)
+  return out
+end
 function fs.open(p, mode)
   if mode == "r" then
     local text = FILES[p]
@@ -80,20 +103,27 @@ function fs.open(p, mode)
   end
   local buf = {}
   return { write = function(s) buf[#buf + 1] = tostring(s) end, writeLine = function(s) buf[#buf + 1] = tostring(s) .. "\n" end,
-           flush = function() end, close = function() FILES[p] = table.concat(buf) end }
+           flush = function() end,
+           close = function()
+             local t = table.concat(buf)
+             if #t > fs.getFreeSpace(p) + #(FILES[p] or "") then error("Out of space") end
+             FILES[p] = t
+           end }
 end
-function fs.delete(p) FILES[p] = nil end
+function fs.delete(p) FILES[p] = nil DIRS[p] = nil end
 function fs.move(a, b) FILES[b] = FILES[a] FILES[a] = nil end
 function fs.copy(a, b) FILES[b] = FILES[a] end
 function fs.combine(a, b) if a == "" then return b end return a .. "/" .. b end
 function fs.getDir(p) return p:match("^(.*)/[^/]*$") or "" end
 function fs.getName(p) return p:match("([^/]*)$") end
-function fs.getFreeSpace() return 500000 end
+function fs.getFreeSpace(p)
+  local r = rootOf(p)
+  local used = (r == "") and CODE_SIZE or 0
+  for k, v in pairs(FILES) do if rootOf(k) == r then used = used + #v end end
+  return math.max(0, CAP[r] - used)
+end
 function fs.getSize(p) return #(FILES[p] or "") end
-function fs.list() return {} end
-function fs.isDir() return false end
 function fs.attributes(p) return { size = fs.getSize(p), modified = 0 } end
-
 textutils = {}
 local function ser(v, ind)
   local t = type(v)
@@ -122,6 +152,17 @@ os = { clock = function() return CLOCK end, time = function() return 14.5 end,
 sleep = function() end
 parallel = { waitForAll = function(...) for _, f in ipairs({ ... }) do f() end end,
              waitForAny = function(f) f() end }
+DRIVES = DRIVES or {}      -- [peripheral name] = mount ("disk", "disk2" ...)
+disk = {
+  isPresent = function(n) return DRIVES[n] ~= nil end, hasData = function(n) return DRIVES[n] ~= nil end,
+  getMountPath = function(n) return DRIVES[n] end, getLabel = function() return "Base data" end,
+  setLabel = function() end,
+}
+function addDrive(name, mount)
+  DRIVES[name] = mount
+  CAP[mount] = 125000
+  PERIPHS[name] = { types = { "drive" }, obj = {} }
+end
 rednet = { open = function() end, host = function() end, send = function() end }
 http = nil
 shell = nil

@@ -68,11 +68,11 @@ function drawMapPage(G)
         local a2 = (i - g.mw / 2) * zx
         local wx = cxs + floor(a2 * B.rx + b2 * B.dx)
         local wz = czs + floor(a2 * B.rz + b2 * B.dz)
-        local c = get(wx, wz)
-        if c then
+        local hgt, blk = get(wx, wz)
+        if hgt then
           tx[i + 1] = " "
           fg[i + 1] = fgGrid
-          bg[i + 1] = blitc(colorOf(names[c[2]] or ""))
+          bg[i + 1] = blitc(colorOf(names[blk] or ""))
         else
           -- unscanned: dark, with faint dots on chunk borders (zoomed in)
           local edge = V.zoom == 1 and (wx % 16 == 0 or wz % 16 == 0)
@@ -160,11 +160,11 @@ function drawMapPage(G)
   local sy0 = y0 + 16
   card(rx, sy0, rw, 7, "SELECTED")
   if sel then
-    local c = MAP.get(sel.x, sel.z)
+    local hgt, blk = MAP.get(sel.x, sel.z)
     kv(rix, sy0 + 3, riw, "Column", sel.x .. ", " .. sel.z)
-    if c then
-      kv(rix, sy0 + 4, riw, "Top block", trunc(prettify(MAP.names[c[2]] or "?"), riw - 12))
-      kv(rix, sy0 + 5, riw, "Height", "Y " .. c[1])
+    if hgt then
+      kv(rix, sy0 + 4, riw, "Top block", trunc(prettify(MAP.names[blk] or "?"), riw - 12))
+      kv(rix, sy0 + 5, riw, "Height", "Y " .. hgt)
     else
       text(rix, sy0 + 4, "Not scanned yet", C.dim, C.panel)
     end

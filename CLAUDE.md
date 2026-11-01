@@ -30,6 +30,13 @@ PneumaticCraft drone rides, turtle mapping/surveys, and an AE2 ME network view.
   only if they fit, through a temp file, never half-written. Big files go
   through `dataFile(path)` so they can live on data floppies (`disks data`).
 - The computer has only **1 MB of disk** - keep data files small.
+- The MAP is saved as region files `map/<rx>_<rz>.dat` (4x4 chunks, compact
+  text) on data floppies first (base_map.lua: MAP.save / writeRegion), at most
+  once a minute (MAP.autoSave in commsWorker) and on exit. In memory a chunk is
+  256 packed numbers; `MAP.get(x, z)` returns height, block. An old `map.dat` is
+  converted once on start-up.
+- `tools/preview/` draws the monitor outside the game (Lua 5.3 + Pillow); use
+  it to check screen changes. It is not game code.
 
 ## Files
 | File | What |
