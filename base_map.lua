@@ -800,6 +800,11 @@ end
 
 -- start a queued survey of an area (ids = the turtles to use, nil = all free ones)
 function MAP.queueSurvey(x1, z1, x2, z2, r, ids)
+  -- you started it: the turtles it uses are no longer held by an old STOP
+  for _, id in ipairs(ids or TT.available()) do
+    local t = state.turtles[id]
+    if t and t.held then t.held = nil TT.listDirty = true end
+  end
   local step = 2 * r + 1
   MAP.queue = { x1 = x1, z1 = z1, x2 = x2, z2 = z2, r = r, step = step,
                 cols = math.max(1, math.floor((x2 - x1) / step) + 1),

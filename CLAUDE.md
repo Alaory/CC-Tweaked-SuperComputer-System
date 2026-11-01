@@ -64,7 +64,8 @@ PneumaticCraft drone rides, turtle mapping/surveys, and an AE2 ME network view.
   stopWatch kills it when not STEPPING / modem on / no slot lock, then
   afterForcedStop). Base: t.held (saved) after STOP - STOP is sent again if
   the turtle reports a task after a reload; no patrol/survey batches; any
-  non-quiet command releases it. A resumed job waits 6 s first.
+  non-quiet command, or a survey you start
+  (MAP.queueSurvey), releases it; TT.available still lists held turtles. A resumed job waits 6 s first.
 - Chunky upgrade never comes off: every equip goes through equipOn (node.lua),
   which refuses the Chunky side and puts it straight back if the item that
   came off is a Chunky ("chunk" in the name). chunkyFix re-equips a loose one

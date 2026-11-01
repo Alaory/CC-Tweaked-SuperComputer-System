@@ -917,12 +917,12 @@ function TT.anchorInfo()
 end
 
 -- turtles that can take a job right now: online, position known, idle,
--- and not the anchor
+-- and not the anchor (a STOPPED one counts: you choose it yourself)
 function TT.available()
   local list = {}
   for id, t in pairs(state.turtles) do
     if TT.online(t) and t.pos and t.pos.x and (t.task == nil or t.task == "idle") and not t.anchor
-       and not t.rescuerRole and not t.held then
+       and not t.rescuerRole then
       list[#list + 1] = id
     end
   end
