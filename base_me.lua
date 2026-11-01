@@ -312,11 +312,20 @@ function fetchME()
     -- tag (at most every 30 s), plus the items the player carries.
     me.partial = true
     local cache = state.meTagCache
-    if not cache or os.clock() - cache.t > 30 then
+    -- every curios slot type the player has is swept too ("curios:face" ...):
+    -- the CURIOS tab lists what fits from these
+    local curioTags = {}
+    for _, row in ipairs(state.curios or {}) do curioTags[#curioTags + 1] = "curios:" .. row.name end
+    local missing = false
+    for _, t in ipairs(curioTags) do if cache and not (cache.swept or {})[t] then missing = true end end
+    if not cache or os.clock() - cache.t > 30 or missing then
       -- the common tags, plus every tag learnt from items already listed
       -- (mod-specific ones too) - each sweep sees a bit more of the network
       local tags, inList = {}, {}
       for _, t in ipairs(ME_TAGS) do tags[#tags + 1] = t inList[t] = true end
+      for _, t in ipairs(curioTags) do
+        if not inList[t] then tags[#tags + 1] = t inList[t] = true end
+      end
       for t in pairs(state.meLearntTags or {}) do
         if not inList[t] and #tags < 400 then tags[#tags + 1] = t inList[t] = true end
       end
@@ -326,7 +335,7 @@ function fetchME()
         if not okT and isDistError(list) then return "BROKEN" end
         return {}
       end)
-      cache = { t = os.clock(), items = {}, broken = {} }
+      cache = { t = os.clock(), items = {}, broken = {}, swept = inList }
       local seenKey = {}
       for i, list in ipairs(res) do
         if list == "BROKEN" then

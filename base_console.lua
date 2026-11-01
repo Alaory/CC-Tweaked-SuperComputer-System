@@ -32,6 +32,7 @@ HELP = {
   " update               turtle program versions; update outdated turtles now (normally automatic)",
   " mesetup              find the ME buffer chest (put ONE item in it first) - no settings to edit",
   " me add <item id>     make the ME tab look up an item it does not list (partial view)",
+  " me tags <item id>    the tags the ME reports for an item (and its Curios slots)",
   " me check             does the full ME list work right now? (for finding the broken item)",
   " curios check         can your worn Curios items be read? (the broken item is usually worn)",
   " curios probe         what the curios move functions want (nothing is moved)",
@@ -305,6 +306,31 @@ function handleCommand(line)
       for i = 1, math.min(#msg, 600), 48 do say("  " .. msg:sub(i, i + 47)) end
     else
       say("Could not check: " .. tostring(r))
+    end
+
+  elseif cmd == "me" and words[2] == "tags" then
+    -- what the ME Bridge says about one item: its tags and the Curios slots
+    -- they mean (the CURIOS tab lists ME items by these tags)
+    if not bridge then say("No ME Bridge found on this computer.") return out end
+    local id = words[3]
+    if not id or not id:find(":", 1, true) then say("Usage: me tags <item id>   e.g. me tags artifacts:night_vision_goggles") return out end
+    local ok, it = callx(bridge, "getItem", { name = id })
+    if not ok or type(it) ~= "table" or not it.name then
+      say("The ME network does not report " .. id .. (ok and "" or (": " .. tostring(it))))
+      return out
+    end
+    say(id .. ": " .. tostring(it.count or it.amount or "?") .. " in the network")
+    if type(it.tags) ~= "table" then
+      say("No tags reported for it (" .. type(it.tags) .. ") - the CURIOS tab cannot tell where it fits.")
+    else
+      local list = {}
+      for k, v in pairs(it.tags) do list[#list + 1] = (type(v) == "string") and v or tostring(k) end
+      table.sort(list)
+      say("Tags (" .. #list .. "): " .. table.concat(list, ", "))
+      local slots = {}
+      for s in pairs(curioSlotsOf(it) or {}) do slots[#slots + 1] = s end
+      table.sort(slots)
+      say("Curios slots from these tags: " .. (#slots > 0 and table.concat(slots, ", ") or "none"))
     end
 
   elseif cmd == "me" and words[2] == "add" then

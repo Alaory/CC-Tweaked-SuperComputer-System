@@ -68,6 +68,14 @@ state = {
   running = true,
 }
 
+-- the tab that was open last time (saved when a tab is chosen)
+if fs.exists("ui_page.dat") then
+  local h = fs.open("ui_page.dat", "r")
+  local p = h and h.readAll() or ""
+  if h then h.close() end
+  if p:match("^%a+$") then state.page = p end
+end
+
 dimCache = {}   -- from playerJoin / playerChangedDimension events
 
 sortMode = "count"

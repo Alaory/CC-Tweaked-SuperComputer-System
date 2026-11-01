@@ -18,6 +18,7 @@ function handleTouch(tx, ty)
         sortList()
       elseif h[5] == "page" then
         state.page = h[6]
+        saveFileSafe("ui_page.dat", h[6])                 -- opened again after a restart
         if h[6] == "events" then state.noteUnread = 0 end   -- seen
       elseif h[5] == "meitem" then
         state.meSel = (state.meSel ~= h[6]) and h[6] or nil
