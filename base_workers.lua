@@ -283,6 +283,9 @@ function commsWorker()
     local ev, a, b, c = os.pullEventRaw()
     if ev == "rednet_message" and c == CONFIG.turtles.protocol then
       pcall(TT.receive, a, b)
+    elseif ev == "disk" and a == TT.installDrive() then
+      pcall(TT.codeLoad)
+      pcall(TT.prepareInstallFloppy)                -- a floppy in the install drive
     elseif ev == "timer" and a == tick then
       tick = os.startTimer(2)
       if KNOW.dirty and os.clock() - KNOW.saved > 30 then pcall(KNOW.save) end

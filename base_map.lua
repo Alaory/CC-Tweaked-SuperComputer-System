@@ -464,8 +464,10 @@ function MAP.claimEmptyFloppies()
   local hasInstaller = false
   for _, d in ipairs(disks) do if d.installer then hasInstaller = true end end
   local n = 0
+  local installDrive = TT and TT.installDrive and TT.installDrive()
+  if installDrive then hasInstaller = true end          -- the install drive is for that
   for _, d in ipairs(disks) do
-    if d.empty and not d.installer and not d.data then
+    if d.empty and not d.installer and not d.data and d.name ~= installDrive then
       if not hasInstaller then
         hasInstaller = true          -- this one stays free for the installer
       else

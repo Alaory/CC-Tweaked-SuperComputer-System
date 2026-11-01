@@ -49,6 +49,10 @@ PneumaticCraft drone rides, turtle mapping/surveys, and an AE2 ME network view.
   turtle_versions.dat). TT.updateTick (comms worker) updates ONE turtle at a
   time; a busy turtle keeps the update (UPD_READY) and installs it after its
   job; missing pieces are asked for ("updmiss"). Toasts on each update.
+- Install drive: the Disk Drive under the computer ("bottom", not wired;
+  CONFIG.turtles.installDrive). A floppy put in gets the installer + current
+  node.lua at once (TT.prepareInstallFloppy on the "disk" event, comms
+  worker) - only if empty or already an installer. Never used for the map.
 - `tools/preview/` draws the monitor outside the game (Lua 5.3 + Pillow); use
   it to check screen changes. It is not game code.
 

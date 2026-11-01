@@ -473,33 +473,86 @@ sleep(2)
 shell.run("/startup.lua")
 ]]
 -- keep the install floppy up to date with the current node.lua
+-- the INSTALL DRIVE: a Disk Drive only for install floppies (CONFIG.turtles.
+-- installDrive, default "bottom"). A floppy put in there gets the installer
+-- and the current node.lua at once; it is never used for the map.
+function TT.installDrive()
+  local n = CONFIG.turtles.installDrive or "bottom"
+  if peripheral.isPresent(n) and peripheral.getType(n) == "drive" then return n end
+end
+
+-- write the installer + node.lua onto a mounted floppy (only what changed)
+local function writeInstaller(d)
+  local function put(file, text)
+    local p = fs.combine(d.mount, file)
+    if fs.exists(p) then                        -- unchanged: do not write again
+      local h0 = fs.open(p, "r")
+      local old = h0 and h0.readAll()
+      if h0 then h0.close() end
+      if old == text then return true end
+    end
+    local h = fs.open(p, "w")
+    if not h then return false end
+    local ok = pcall(h.write, text)
+    pcall(h.close)
+    return ok
+  end
+  local ok = put("startup.lua", INSTALLER) and put("node.lua", CODE.text) and put("turtle_installer", CODE.ver)
+  pcall(disk.setLabel, d.name, "Turtle installer " .. TT.verName(CODE.ver))
+  state.installDisk = d.name
+  return ok
+end
+
+-- a floppy was put into the install drive: make it an install floppy
+-- (empty or already an installer); never touches a data floppy or other files
+function TT.prepareInstallFloppy(quiet)
+  local drive = TT.installDrive()
+  if not drive or not disk or not disk.hasData(drive) then return end
+  if not CODE then
+    setToast("No node.lua on this computer - cannot make an install floppy", C.warn)
+    return
+  end
+  local d
+  for _, m in ipairs(mountedDisks()) do if m.name == drive then d = m end end
+  if not d then return end
+  if d.data then
+    setPopup("INSTALL DRIVE", "That is a data floppy (map) - it is not changed. Put an EMPTY floppy in.", C.warn)
+    return
+  end
+  if not d.empty and not d.installer then
+    setPopup("INSTALL DRIVE", "That floppy has other files on it - it is not changed. Put an EMPTY floppy in.", C.warn)
+    return
+  end
+  local fresh = d.installer and fs.exists(fs.combine(d.mount, "turtle_installer"))
+  if fresh then
+    local h = fs.open(fs.combine(d.mount, "turtle_installer"), "r")
+    fresh = h and h.readAll() == CODE.ver
+    if h then h.close() end
+  end
+  if writeInstaller(d) then
+    if not (quiet and fresh) then
+      setToast("Install floppy ready (" .. TT.verName(CODE.ver) .. ") - take it out of the drive for a rescue turtle",
+               C.good)
+    end
+  else
+    setToast("Could not write the install floppy (full?)", C.bad)
+  end
+end
+
+-- keep install floppies up to date (called when node.lua changes): the install
+-- drive's floppy and any other installer floppy. Without an install drive the
+-- first empty floppy becomes the installer (as before).
 function TT.writeInstallDisk()
   if not CODE or not disk then return end
-  -- the install floppy, or (only if there is none yet) the first empty one -
-  -- other empty floppies stay free for data ("disks data")
   local disks, target = mountedDisks(), {}
-  for _, d in ipairs(disks) do if d.installer then target[#target + 1] = d end end
-  if #target == 0 then
+  local drive = TT.installDrive()
+  for _, d in ipairs(disks) do
+    if d.installer or (drive and d.name == drive and d.empty) then target[#target + 1] = d end
+  end
+  if #target == 0 and not drive then
     for _, d in ipairs(disks) do if d.empty and not d.data then target[1] = d break end end
   end
-  for _, d in ipairs(target) do
-    local function put(file, text)
-      local p = fs.combine(d.mount, file)
-      if fs.exists(p) then                        -- unchanged: do not write again
-        local h0 = fs.open(p, "r")
-        local old = h0 and h0.readAll()
-        if h0 then h0.close() end
-        if old == text then return end
-      end
-      local h = fs.open(p, "w")
-      if h then h.write(text) h.close() end
-    end
-    put("startup.lua", INSTALLER)
-    put("node.lua", CODE.text)
-    put("turtle_installer", CODE.ver)
-    pcall(disk.setLabel, d.name, "Turtle installer")
-    state.installDisk = d.name
-  end
+  for _, d in ipairs(target) do writeInstaller(d) end
 end
 
 -- ===== the turtle list survives restarts =====
