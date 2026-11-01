@@ -59,6 +59,11 @@ PneumaticCraft drone rides, turtle mapping/surveys, and an AE2 ME network view.
   environment), not `local function`. Check with
   `python3 tools/check_locals.py node.lua` (must stay well under 200). The
   base also compiles node.lua before sending it (TT.codeLoad).
+- Autostart: `startup.lua` (top level of the computer) finds inventory.lua
+  in any folder and restarts it after a crash (inventory.lua raises an error
+  on a crash, returns normally on Ctrl+T). inventory.lua turns off
+  `shell.allow_disk_startup` (the install floppy's startup.lua would run
+  instead); the installer also starts the base program if run on a computer.
 - `tools/preview/` draws the monitor outside the game (Lua 5.3 + Pillow); use
   it to check screen changes. It is not game code.
 

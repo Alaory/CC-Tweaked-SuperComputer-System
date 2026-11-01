@@ -73,6 +73,9 @@ can show one kind only, and its badge counts the new ones.
    inventory
    ```
    If a file is missing, the program lists the missing files.
+   To start it by itself whenever the computer starts, copy `startup.lua` into
+   the **top level** of the computer (not into the folder). It finds
+   `inventory.lua` wherever it is and starts it again after a crash.
 4. For the ME tab, put **one** item in the buffer chest and type `mesetup` on
    the computer. It finds the chest by itself and saves the result.
 

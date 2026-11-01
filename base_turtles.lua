@@ -467,7 +467,19 @@ end
 local INSTALLER = [[
 -- TURTLE INSTALLER (kept up to date by the base computer).
 -- Put a NEW turtle next to the disk drive with this disk and turn it on.
-if not turtle then print("This disk installs the turtle program - use it with a turtle.") return end
+if not turtle then
+  -- on the base computer (it booted from this floppy): start the base program instead
+  for _, pattern in ipairs({ "inventory.lua", "*/inventory.lua", "*/*/inventory.lua" }) do
+    for _, p in ipairs(fs.find(pattern)) do
+      if fs.getDrive(p) == "hdd" then
+        if fs.exists("startup.lua") then shell.run("/startup.lua") else shell.run("/" .. p) end
+        return
+      end
+    end
+  end
+  print("This disk installs the turtle program - use it with a turtle.")
+  return
+end
 local here = fs.getDir(shell.getRunningProgram())
 local src = fs.combine(here, "node.lua")
 if not fs.exists(src) then printError("node.lua is missing on this disk") return end
