@@ -1041,6 +1041,7 @@ function runMission(dr, cmd)
     if not px then
       dr.mission = { title = cmd.kind, steps = {}, state = "failed", err = cleanErr(why) }
       droneLog(dr, "Cannot start: " .. cleanErr(why))
+      setToast(dr.label .. ": " .. cleanErr(why), C.warn, 8)
       return
     end
   end
