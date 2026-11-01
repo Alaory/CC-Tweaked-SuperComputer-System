@@ -69,6 +69,14 @@ monitor on `right`, wired modem `back`, wireless modem `top`.
 - importItem/exportItem want the container's **network name** - plain sides
   ("up") fail with "Target 'up' does not exist" (the docs suggest "@up" style).
 - `listCurios()` reads all curios at once; one unreadable item breaks it.
+- **Curios moves (seen in game):** `exportCuriosItem(slotType, chest)` takes
+  off ALL items of that slot type (as many as the chest takes);
+  `importCuriosItem(slotType, chest)` puts on ANY fitting item from the chest.
+  No way to choose the item. The item buffer is the owner's storage
+  controller (holds their own items) -> never "any"/"all" there. Taking ONE
+  of several / putting on goes through `CONFIG.me.curiosChest` (an EMPTY
+  barrel only for curios). base_me.lua learns the arguments at runtime
+  (curioSignature), logs every call in EVENTS, checks with listCurios.
 - Opened storage items (tanks): fluid functions vary by version; the code
   tries pullFluid/importFluid/insertFluid and pushFluid/exportFluid/extractFluid,
   in Advanced Peripherals filter style AND ComputerCraft style

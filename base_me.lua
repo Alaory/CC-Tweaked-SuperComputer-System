@@ -931,9 +931,94 @@ local function chestHoldsOnly(chestName, name)
   return true
 end
 
-local function curioCall(fn, target, slotType, slotNo, name, count, check)
+-- how many items are worn in a slot type (now = curiosNow())
+local function wornIn(now, slotType)
+  local n = 0
+  for k in pairs(now or {}) do if k:sub(1, #slotType + 1) == slotType .. "|" then n = n + 1 end end
+  return n
+end
+
+-- can the function be told which SLOT (a number) or which ITEM?
+local function canChoose(sig)
+  for _, ty in ipairs(sig.types) do if ty == "number" then return true end end
+  return canChooseItem(sig)
+end
+
+-- Optional arguments read only AFTER the chest is checked: asked with the
+-- real chest, but on a slot type where nothing can move - an EMPTY one for
+-- taking off, a FULL one for putting on. An extra argument of a wrong type
+-- (true) is then refused with the type wanted there.
+local function probeOptional(fn, sig, target)
+  if sig.optChecked then return end
+  sig.optChecked = true
+  local okS, sizes = pcall(inv.getCuriosSizes)
+  local now = curiosNow()
+  if not okS or type(sizes) ~= "table" or not now then return end
+  local pick
+  for t, size in pairs(sizes) do
+    size = tonumber(size) or 0
+    local worn = wornIn(now, t)
+    if size > 0 and ((fn == "exportCuriosItem" and worn == 0) or (fn == "importCuriosItem" and worn >= size)) then
+      pick = t
+      break
+    end
+  end
+  if not pick then return end
+  for _ = 1, 3 do
+    local args = curioArgs(sig, target, pick, 1, "__probe__", 1)
+    local n = #sig.types + 1
+    args[n] = true
+    local ok, err = pcall(inv[fn], unpack(args, 1, n))
+    local m, ty = tostring(err):match("bad argument #(%d+) %((%a+) expected, got boolean")
+    if ok or tonumber(m) ~= n or not PLACEHOLDER[ty] or ty == "boolean" then break end
+    sig.types[n] = ty
+  end
+  local parts = {}
+  local NAMES = { slot = "slot type", target = "chest", item = "item name" }
+  for k, ty in ipairs(sig.types) do parts[k] = (sig.roles[k] and NAMES[sig.roles[k]]) or ty end
+  table.insert(state.noteLog, 1, { title = "Curios", col = C.label, when = realTime("%d.%m %H:%M"),
+    msg = fn .. " (checked with the real chest on '" .. pick .. "'): (" .. table.concat(parts, ", ") .. ")" })
+end
+
+-- items that came off but were not asked for: back on (only if that cannot
+-- take a different item from the buffer), else into the inventory by exact
+-- name, else kept for later (OWED). Returns a short summary
+local function restoreOthers(list, target, slotType)
+  local osig = curioSignature("importCuriosItem", slotType)
+  local on, toInv, kept = {}, {}, {}
+  for _, o in ipairs(list) do
+    local done = false
+    if osig and (canChooseItem(osig) or chestHoldsOnly(target, o.name) == true) then
+      local before = curiosNow()
+      local args = curioArgs(osig, target, slotType, o.slotNo, o.name, 1)
+      pcall(inv.importCuriosItem, unpack(args, 1, #osig.types))
+      local after = curiosNow()
+      if before and after then
+        for k, n in pairs(after) do if before[k] == nil and n == o.name then done = true end end
+      end
+    end
+    if done then on[#on + 1] = prettify(o.name)
+    elseif bufferToPlayer(o.name, 1, "take") > 0 then toInv[#toInv + 1] = prettify(o.name)
+    else
+      owe(o.name, 1, "player", "take")
+      kept[#kept + 1] = prettify(o.name)
+    end
+  end
+  local out = {}
+  if #on > 0 then out[#out + 1] = "put back on: " .. table.concat(on, ", ") end
+  if #toInv > 0 then out[#out + 1] = "moved to your inventory: " .. table.concat(toInv, ", ") end
+  if #kept > 0 then out[#out + 1] = "inventory full, given to you later: " .. table.concat(kept, ", ") end
+  return table.concat(out, "; ")
+end
+
+-- call a curios function with the learnt arguments and check in listCurios
+-- what really happened. Taking off: EVERY item that came off is handled (the
+-- wanted one is returned as moved, all others go back - see restoreOthers).
+-- Returns how many of `name` moved, and an error / a note
+local function curioCall(fn, target, slotType, slotNo, name, count)
   local sig, err = curioSignature(fn, slotType)
   if not sig then return 0, err end
+  probeOptional(fn, sig, target)
   -- putting on without saying which item takes ANY fitting item from the chest:
   -- only allowed when the chest holds nothing else (it may hold your own items)
   if fn == "importCuriosItem" and not canChooseItem(sig) and chestHoldsOnly(target, name) ~= true then
@@ -943,8 +1028,14 @@ local function curioCall(fn, target, slotType, slotNo, name, count, check)
     for _, ty in ipairs(sig.types) do if ty == "number" then return true end end
     return false
   end
-  local lastErr
   local first = curiosNow()
+  -- taking off without saying which: the function takes EVERY item of that slot type
+  if fn == "exportCuriosItem" and (not canChoose(sig) or sig.takesAll) and wornIn(first, slotType) > 1 then
+    return 0, "your Inventory Manager takes off ALL " .. prettify(slotType) .. " items at once (" ..
+              wornIn(first, slotType) .. " are worn). To take one of them, connect an EMPTY barrel for " ..
+              "curios and set CONFIG.me.curiosChest to its network name", "takesall"
+  end
+  local lastErr
   -- slot numbers counted from 0 or 1: also try one lower / higher - but only
   -- when listCurios can show what really moved (no guessing otherwise)
   local shifts = { SLOT_SHIFT or 0 }
@@ -955,6 +1046,7 @@ local function curioCall(fn, target, slotType, slotNo, name, count, check)
   end
   local roleRetry = false
   local idx = 0
+  local wantKey = slotType .. "|" .. tostring(slotNo)
   while idx < #shifts do
     idx = idx + 1
     local sh = shifts[idx]
@@ -979,76 +1071,163 @@ local function curioCall(fn, target, slotType, slotNo, name, count, check)
     else
       local after = curiosNow()
       curioLog(fn, args, #sig.types, target, ok, r, before, after)
-      local good, wrongName, exact = true, nil, false
-      if before and after then good, wrongName, exact = check(before, after, hasNumber(), (tonumber(slotNo) or 1) + sh) end
-      local m = tonumber(numOf(r)) or (good and before and after and 1) or 0
-      if good and m == 0 and before and after then m = 1 end   -- it did move (seen in listCurios)
-      if good and m > 0 then
-        if exact and hasNumber() then SLOT_SHIFT = sh end
-        sig.guessed = nil                             -- it worked: the roles are right
-        return m
+      if not (before and after) then
+        -- cannot see what happened: trust the result
+        local m = tonumber(numOf(r)) or 0
+        if m > 0 then return m end
+      elseif fn == "exportCuriosItem" then
+        local wantOff = before[wantKey] == name and after[wantKey] == nil
+        local others = {}
+        for k, nm in pairs(before) do
+          if after[k] == nil and not (k == wantKey and wantOff) then
+            others[#others + 1] = { name = nm, slotNo = tonumber(k:match("|(.*)$")) }
+          end
+        end
+        local note
+        if #others > 0 then
+          sig.takesAll = true                         -- it does not take only what it is told
+          note = "other items came off too - " .. restoreOthers(others, target, slotType)
+        end
+        if wantOff then
+          if #others == 0 and hasNumber() then SLOT_SHIFT = sh end
+          sig.guessed = nil
+          return 1, note
+        end
+        lastErr = note or "nothing came off"
+        if #others > 0 then return 0, lastErr end     -- no more tries after a wrong take
+      else
+        -- putting on: it is on if it appeared anywhere ("exact" in the chosen slot)
+        local key = slotType .. "|" .. tostring((tonumber(slotNo) or 1) + sh)
+        local exact = after[key] == name and before[key] == nil
+        local on = exact
+        for k, nm in pairs(after) do if before[k] == nil and nm == name then on = true end end
+        if on then
+          if exact and hasNumber() then SLOT_SHIFT = sh end
+          sig.guessed = nil
+          return 1
+        end
+        lastErr = "it did not go on"
       end
       -- nothing happened and a text's meaning was only guessed: the other guess
       -- (slot type <-> item name), once, from the start
-      if not good and not wrongName and m == 0 and sig.guessed and next(sig.guessed) and not roleRetry then
+      if sig.guessed and next(sig.guessed) and not roleRetry then
         roleRetry = true
         for k in pairs(sig.guessed) do
           sig.roles[k] = (sig.roles[k] == "slot") and "item" or (sig.roles[k] == "item" and "slot" or sig.roles[k])
         end
         idx = 0
       end
-      if wrongName then
-        -- a different item came off (the function chose another slot): put it
-        -- back on - checked; if it does not go back on, it goes into the
-        -- inventory (never left in the chest)
-        local osig = curioSignature("importCuriosItem", slotType)
-        if osig and (canChooseItem(osig) or chestHoldsOnly(target, wrongName) == true) then
-          local back = curioArgs(osig, target, slotType, (tonumber(slotNo) or 1) + sh, wrongName, 1)
-          pcall(inv.importCuriosItem, unpack(back, 1, #osig.types))
-        end
-        local now, isBack = curiosNow(), false
-        if now and after then
-          for k, n in pairs(now) do if n == wrongName and after[k] == nil then isBack = true end end
-        end
-        if isBack then
-          lastErr = "the Inventory Manager took " .. prettify(wrongName) .. " instead - put back on"
-        elseif bufferToPlayer(wrongName, 1, "take") > 0 then
-          lastErr = "the Inventory Manager took " .. prettify(wrongName) .. " instead - it is in your inventory now"
-        else
-          owe(wrongName, 1, "player", "take")
-          lastErr = "the Inventory Manager took " .. prettify(wrongName) .. " instead - kept in the buffer, given to you later"
-        end
-      end
     end
   end
   return 0, lastErr
 end
 
--- the worn curio in slot `slotNo` of `slotType` -> the "take" chest; returns how many, error
+-- ===== the CURIOS CHEST (CONFIG.me.curiosChest): an EMPTY barrel used only
+-- for curios moves. Needed when the Inventory Manager can only take off ALL
+-- items of a slot type and put on ANY fitting item: in that barrel there are
+-- only the player's own curios, so "all" and "any" are safe there.
+function curiosChest()
+  local c = CONFIG.me.curiosChest
+  if c and peripheral.isPresent(c) then return c end
+end
+-- what is in a chest: [name] = count (nil = cannot be read)
+local function chestItems(c)
+  local ok, list = pcall(peripheral.call, c, "list")
+  if not ok or type(list) ~= "table" then return nil end
+  local out = {}
+  for _, it in pairs(list) do
+    if type(it) == "table" and it.name then out[it.name] = (out[it.name] or 0) + (tonumber(it.count) or 1) end
+  end
+  return out
+end
+-- everything in the curios chest goes back on (put on takes ANY fitting item:
+-- there are only the player's own curios in it); what does not go on goes to
+-- the inventory by exact name. Returns the names that are still left
+local function putAllBack(c, slotType)
+  local sig = curioSignature("importCuriosItem", slotType)
+  for _ = 1, 64 do
+    local items = chestItems(c)
+    if not items or not next(items) or not sig then break end
+    local before = curiosNow()
+    local args = curioArgs(sig, c, slotType, 1, (next(items)), 1)
+    local ok, r = pcall(inv.importCuriosItem, unpack(args, 1, #sig.types))
+    local after = curiosNow()
+    curioLog("importCuriosItem", args, #sig.types, c, ok, r, before, after)
+    local changed = false
+    if before and after then for k in pairs(after) do if not before[k] then changed = true end end end
+    if not changed then break end
+  end
+  local left = {}
+  for nm, n in pairs(chestItems(c) or {}) do
+    local ok, r = transfer(inv, INV_TO_PLAYER, c, { name = nm, count = n })
+    local m = ok and tonumber(numOf(r)) or 0
+    if m < n then left[#left + 1] = prettify(nm) end
+  end
+  return left
+end
+
+-- take ONE curio off when the Inventory Manager can only take off all of a
+-- slot type: all go into the empty curios chest, the wanted one goes on to
+-- dest ("me" or "player"), all others go back on. Returns moved, error/note
+function curioTakeOne(name, slotType, dest)
+  local c = curiosChest()
+  if not c then return 0, "no curios chest: set CONFIG.me.curiosChest to the network name of an EMPTY barrel" end
+  local items = chestItems(c)
+  if not items then return 0, "the curios chest " .. c .. " cannot be read" end
+  if next(items) then return 0, "the curios chest " .. c .. " is not empty - empty it first" end
+  local sig, err = curioSignature("exportCuriosItem", slotType)
+  if not sig then return 0, err end
+  local before = curiosNow()
+  local args = curioArgs(sig, c, slotType, 64, name, 64)       -- numbers here: as many as possible
+  local ok, r = pcall(inv.exportCuriosItem, unpack(args, 1, #sig.types))
+  curioLog("exportCuriosItem", args, #sig.types, c, ok, r, before, curiosNow())
+  items = chestItems(c) or {}
+  local moved = 0
+  if ok and (items[name] or 0) > 0 then
+    local ok2, r2
+    if dest == "me" then ok2, r2 = transfer(bridge, ME_IN, c, { name = name, count = 1 })
+    else ok2, r2 = transfer(inv, INV_TO_PLAYER, c, { name = name, count = 1 }) end
+    moved = ok2 and (tonumber(numOf(r2)) or 0) or 0
+  end
+  local left = putAllBack(c, slotType)
+  local note = (#left > 0) and ("still in the curios chest: " .. table.concat(left, ", ")) or nil
+  if moved > 0 then return moved, note end
+  local why = (not ok) and cleanErr(r) or (((items[name] or 0) > 0) and
+              ((dest == "me") and "the network did not accept it" or "your inventory is full") or "it did not come off")
+  return 0, why .. (note and (" - " .. note) or " - everything else is back on")
+end
+
+-- put ONE item from ME on when the Inventory Manager puts on ANY fitting item:
+-- it goes alone into the empty curios chest first. Returns moved, error
+local function meToCurioViaChest(name, slotType)
+  local c = curiosChest()
+  local items = c and chestItems(c)
+  if not items then return 0, "no curios chest (CONFIG.me.curiosChest)" end
+  if next(items) then return 0, "the curios chest " .. c .. " is not empty - empty it first" end
+  local ok, r = transfer(bridge, ME_OUT, c, { name = name, count = 1 })
+  if not ok or (tonumber(numOf(r)) or 0) < 1 then return 0, ok and "not in the network" or tostring(r) end
+  local sig = curioSignature("importCuriosItem", slotType)
+  local before = curiosNow()
+  local args = curioArgs(sig, c, slotType, 1, name, 1)
+  local okI, rI = pcall(inv.importCuriosItem, unpack(args, 1, #sig.types))
+  local after = curiosNow()
+  curioLog("importCuriosItem", args, #sig.types, c, okI, rI, before, after)
+  local on = false
+  if before and after then for k, nm in pairs(after) do if before[k] == nil and nm == name then on = true end end end
+  if on then return 1 end
+  -- not on: back to the network
+  transfer(bridge, ME_IN, c, { name = name, count = 1 })
+  return 0, okI and "no free slot it fits" or cleanErr(rI)
+end
+
+-- the worn curio in slot `slotNo` of `slotType` -> the "take" chest; returns how many, error/note
 local function curioOut(name, count, slotType, slotNo)
-  return curioCall("exportCuriosItem", chestManagerDir("take"), slotType, slotNo, name, count,
-    function(before, after)
-      local key = slotType .. "|" .. tostring(slotNo)
-      if before[key] == name and after[key] == nil then return true, nil, true end
-      for k, n in pairs(before) do
-        if after[k] == nil then return false, n end      -- something else came off
-      end
-      return false
-    end)
+  return curioCall("exportCuriosItem", chestManagerDir("take"), slotType, slotNo, name, count)
 end
 -- the chest -> a Curios slot (`slotNo` of `slotType`, if the function lets us
 -- choose); returns how many, error
 local function curioIn(name, count, chest, slotType, slotNo)
-  return curioCall("importCuriosItem", chestManagerDir(chest), slotType, slotNo, name, count,
-    function(before, after, slotChosen, usedNo)
-      -- it is on if it appeared anywhere; "exact" only if in the chosen slot
-      local key = slotType .. "|" .. tostring(usedNo)
-      if slotChosen and after[key] == name and before[key] == nil then return true, nil, true end
-      for k, n in pairs(after) do
-        if before[k] == nil and n == name then return true, nil, false end
-      end
-      return false
-    end)
+  return curioCall("importCuriosItem", chestManagerDir(chest), slotType, slotNo, name, count)
 end
 
 -- 'curios probe' on the computer: what the two functions want (nothing moves)
@@ -1076,8 +1255,10 @@ end
 -- the inventory). Returns moved, error
 function curioToME(name, count, slotType, slotNo)
   pcall(settleOwed)
-  local out, err = curioOut(name, count, slotType, slotNo)
+  local out, err, code = curioOut(name, count, slotType, slotNo)
+  if code == "takesall" and curiosChest() then return curioTakeOne(name, slotType, "me") end
   if out <= 0 then return 0, err or "the item did not come off (not worn?)" end
+  local note = err
   local stored = bufferToME(name, out, "take")
   local left = out - stored
   if left > 0 then
@@ -1086,14 +1267,16 @@ function curioToME(name, count, slotType, slotNo)
     if back < left then owe(name, left - back, "player", "take") end
     return stored, "the network did not accept " .. left .. " - given back to you"
   end
-  return stored
+  return stored, note
 end
 
 -- a worn curio -> the inventory. Returns moved, error
 function curioToInventory(name, count, slotType, slotNo)
   pcall(settleOwed)
-  local out, err = curioOut(name, count, slotType, slotNo)
+  local out, err, code = curioOut(name, count, slotType, slotNo)
+  if code == "takesall" and curiosChest() then return curioTakeOne(name, slotType, "player") end
   if out <= 0 then return 0, err or "the item did not come off (not worn?)" end
+  local note = err
   local moved = bufferToPlayer(name, out, "take")
   local left = out - moved
   if left > 0 then
@@ -1101,13 +1284,16 @@ function curioToInventory(name, count, slotType, slotNo)
     if back < left then owe(name, left - back, "player", "take") end
     return moved, "your inventory is full - " .. (back >= left and "put back on" or "kept in the buffer, retried")
   end
-  return moved
+  return moved, note
 end
 
 -- ME -> a Curios slot (the first free one it fits). What does not go on goes
 -- back to the network. Returns moved, error
 function meToCurio(name, count, slotType, slotNo)
   pcall(settleOwed)
+  -- puts on ANY fitting item from the chest: through the empty curios chest
+  local isig = curioSignature("importCuriosItem", slotType)
+  if isig and not canChooseItem(isig) and curiosChest() then return meToCurioViaChest(name, slotType) end
   local ok, r, e = transfer(bridge, ME_OUT, chestBridge("give"), { name = name, count = count })
   if not ok then return 0, tostring(r) end
   local exported = numOf(r) or 0

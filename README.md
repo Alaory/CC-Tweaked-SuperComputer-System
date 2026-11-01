@@ -16,7 +16,7 @@ Made for **CC:Tweaked 1.120.2 on Minecraft 1.21.1 (NeoForge)** with
 | **INVENTORY** | Your inventory grid, armour and offhand, how full it is, and a sortable item list (by count, name or slot). Tap an item to highlight every slot that holds it. |
 | **PLAYERS** | One box per online player: name, dimension, health, air, position, facing. Tap a box to see the Player Detector's raw data. |
 | **STORAGE** | What is inside the backpacks and tanks you carry. |
-| **CURIOS** | Your worn Curios slots. |
+| **CURIOS** | Your worn Curios slots. Tap a slot to store its item in ME, move it to your inventory, or put on what fits from ME. |
 | **ME** (or **RS**) | Network status, an item / fluid browser, and buttons to take items, store them, fill your fluid containers and craft. Every button needs a second tap to confirm. |
 | **DRONE(S)** | PneumaticCraft drones: air, mission steps and log. Pick a passenger and a destination (player, saved place or coordinates), then fly, pick up, drop or ferry. |
 | **CHAT** | Who may use the `$drone` chat commands (the allow list). |
@@ -88,6 +88,22 @@ can show one kind only, and its badge counts the new ones.
 4. Without GPS, tell it where it is once, on the base computer:
    `turtle <id> setpos <x> <y> <z> <north|south|east|west>`.
 5. For the map, put a **Geo Scanner** (as an item) in its inventory.
+
+### Curios moves
+
+Some Advanced Peripherals versions can only take off **all** items of a slot
+type at once, and put on **any** fitting item from a chest. For slot types
+with several items (rings, charms) the program then needs an **empty barrel
+used only for curios**: connect it with a wired modem and set its network name
+in `base_config.lua`, inside `me = { ... }`:
+
+```lua
+    curiosChest = "minecraft:barrel_2",
+```
+
+Your item buffer is never used for those moves, so items you keep in it are
+never touched. `curios probe` on the computer shows what your version wants;
+every curios move is listed in the EVENTS tab.
 
 ## Chat commands
 
