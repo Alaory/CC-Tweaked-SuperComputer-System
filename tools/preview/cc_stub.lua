@@ -114,7 +114,7 @@ function textutils.serializeJSON(v) return ser(v) end
 local realOs = os
 os = { clock = function() return CLOCK end, time = function() return 14.5 end,
        epoch = function() return 1761990000000 + CLOCK * 1000 end,
-       date = function(f) return "01.11 14:30" end, queueEvent = function() end,
+       date = function(f) return (f == "%H:%M") and "14:30" or "01.11 14:30" end, queueEvent = function() end,
        startTimer = function() return 1 end, cancelTimer = function() end,
        getComputerID = function() return 1 end, getComputerLabel = function() return "base" end,
        setComputerLabel = function() end, pullEvent = function() error("no events") end,

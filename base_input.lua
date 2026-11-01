@@ -18,6 +18,7 @@ function handleTouch(tx, ty)
         sortList()
       elseif h[5] == "page" then
         state.page = h[6]
+        if h[6] == "events" then state.noteUnread = 0 end   -- seen
       elseif h[5] == "meitem" then
         state.meSel = (state.meSel ~= h[6]) and h[6] or nil
       elseif h[5] == "meletter" then
@@ -234,13 +235,12 @@ function handleTouch(tx, ty)
         dismissNote(h[6])
       elseif h[5] == "nclear" then
         state.notes = {}
-      elseif h[5] == "nhist" then
-        state.noteHistory = not state.noteHistory
-        state.noteUnread = 0
-      elseif h[5] == "nhclose" then
-        state.noteHistory = false
-      elseif h[5] == "nhclear" then
+      elseif h[5] == "evfilter" then
+        state.eventsFilter = h[6]
+        state.eventsPage = 1
+      elseif h[5] == "evclear" then
         state.noteLog = {}
+        state.eventsPage = 1
       end
       return h[5] == "page" or h[5] == "act" or h[5] == "mecraft"
     end

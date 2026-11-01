@@ -138,10 +138,18 @@ function headerTabs()
     tabs[#tabs + 1] = { "turtles", "TURTLES", all > 0 and (on .. "/" .. all) or nil }
   end
   if state.tModem or next(state.turtles) or MAP.hasData() then tabs[#tabs + 1] = { "map", "MAP" } end
+  -- EVENTS: the number of new messages (red if one of them is an error)
+  local unread = state.noteUnread or 0
+  local anyErr = false
+  for i = 1, math.min(unread, #state.noteLog) do
+    if state.noteLog[i].col == C.bad then anyErr = true break end
+  end
+  tabs[#tabs + 1] = { "events", "EVENTS", unread > 0 and tostring(unread) or nil,
+                      unread > 0 and (anyErr and C.bad or C.warn) or nil }
   return tabs
 end
 
--- the title, the tabs, the EVENTS button, the owner and the clock
+-- the title, the tabs, the owner and the clock
 function drawHeader()
   fill(1, 1, W, 3, C.panel)
 
@@ -150,17 +158,9 @@ function drawHeader()
   text(5, 2, title, C.text, C.panel)
   text(5, 3, "Advanced Peripherals", C.dim, C.panel)
 
-  -- right side: EVENTS button (with the number of new messages), owner, clock
+  -- right side: owner and clock
   local owner = state.owner or "no player"
-  local unread = state.noteUnread or 0
-  local ev = " EVENTS " .. (unread > 0 and (unread .. " ") or "")
-  local rightW = math.max(#owner + 4, 8) + #ev + 3
-  local ex = W - rightW + 1
-  local evBg = unread > 0 and C.warn or C.head
-  fill(ex, 1, #ev, 3, evBg)
-  round(ex, 1, #ev, 3, evBg, C.panel)
-  text(ex, 2, ev, unread > 0 and C.ink or C.text, evBg)
-  addHit(ex, 1, #ev, 3, "nhist")
+  local ex = W - math.max(#owner + 4, 8) - 1
   local dot = state.status == "ok" and C.good or C.bad
   text(W - #owner - 2, 2, owner, C.text, C.panel)
   text(W - #owner - 4, 2, "\7", dot, C.panel)
@@ -364,6 +364,7 @@ function drawFooter()
     map     = "Tap the map to inspect a spot. SURVEY maps the area on screen (needs a Geo Scanner in the turtle)",
     turtles = "Select a turtle, then use the pad. On the computer:  turtle <id> goto x y z",
     drone   = "Pick a passenger + destination, then FERRY (tap twice). Type 'help' on the computer for coordinates",
+    events  = "Every message, newest first. Tap a filter to show one kind only",
   }
   if state.diskLow then
     text(3, H, trunc("  " .. state.diskLow .. "  ", W - 24), C.ink, C.bad)
@@ -375,18 +376,18 @@ function drawFooter()
   elseif state.dropped > 0 then msg, col = "\7 SLOT MISMATCH (see slotBase)", C.warn end
   text(W - #msg - 2, H, msg, col, C.panel)
   drawNotes()
-  drawNoteHistory()
 end
 
 -- the message boxes (pushNote), stacked top-right under the tabs. A tap on a
--- box closes it; normal ones also close by themselves, errors stay.
+-- box closes it; each also closes by itself (the bar at its bottom shows the
+-- time left).
 function drawNotes()
   local now = os.clock()
   for i = #state.notes, 1, -1 do
     local n = state.notes[i]
     if n.exp and now >= n.exp then table.remove(state.notes, i) end
   end
-  if #state.notes == 0 or state.noteHistory then return end
+  if #state.notes == 0 or state.page == "events" then return end
   local nw = math.min(60, math.max(40, math.floor(W * 0.34)))
   local x = W - nw - 1
   local top, bottom = 6, H - 4
@@ -420,6 +421,11 @@ function drawNotes()
     text(x + nw - #right - 5, by, right, C.dim, C.empty)
     text(x + nw - 3, by, " x ", C.text, C.panel)              -- close mark
     for k, l in ipairs(b.lines) do text(x + 2, by + 1 + k, l, C.text, C.empty) end
+    if n.exp and n.life and n.life > 0 then                    -- time left: a thin bar
+      local left = math.max(0, math.min(1, (n.exp - now) / n.life))
+      local bw = math.floor((nw - 1) * left + 0.5)
+      if bw > 0 then text(x + 1, by + h - 1, string.char(143):rep(bw), C.empty, n.col) end
+    end
     addHit(x, by, nw, h, "ndismiss", n.id)                    -- tap the box = close it
   end
 
@@ -428,39 +434,6 @@ function drawNotes()
     local ca = " CLOSE ALL "
     text(x + nw - #ca, y - 1, ca, C.text, C.head)
     addHit(x + nw - #ca, y - 1, #ca, 1, "nclear")
-  end
-end
-
--- the EVENTS list: every recent message with its time (opened from the header)
-function drawNoteHistory()
-  if not state.noteHistory then return end
-  addHit(1, 1, W, H, "nhclose")                               -- a tap outside closes it
-  local bw = math.min(100, W - 10)
-  local bh = math.min(#state.noteLog + 6, H - 10)
-  bh = math.max(bh, 9)
-  local bx = math.floor((W - bw) / 2) + 1
-  local by = math.floor((H - bh) / 2) + 1
-  card(bx, by, bw, bh)
-  addHit(bx, by, bw, bh, "noop")                              -- taps inside do nothing...
-  text(bx + 2, by + 1, "EVENTS", C.label, C.panel)
-  text(bx + 9, by + 1, "(last " .. NOTE_LOG_MAX .. ")", C.dim, C.panel)
-  local cl = " CLOSE "
-  drawButton(bx + bw - #cl - 2, by + 1, #cl, 1, cl, C.accent, C.ink, "nhclose")   -- ...except the buttons
-  local cr = " CLEAR "
-  drawButton(bx + bw - #cl - #cr - 3, by + 1, #cr, 1, cr, C.empty, C.text, "nhclear")
-  local rows = bh - 4
-  if #state.noteLog == 0 then
-    text(bx + 2, by + 3, "Nothing yet.", C.dim, C.panel)
-    return
-  end
-  for i = 1, math.min(rows, #state.noteLog) do
-    local e = state.noteLog[i]
-    local ry = by + 2 + i
-    local kind = noteKind(e.col)
-    text(bx + 2, ry, e.when, C.dim, C.panel)
-    text(bx + 9, ry, kind, e.col, C.panel)
-    local m = (e.title and (e.title .. ": ") or "") .. e.msg
-    text(bx + 18, ry, trunc(m, bw - 20), C.text, C.panel)
   end
 end
 
@@ -489,6 +462,8 @@ function draw()
     drawTurtlesPage(G)
   elseif state.page == "map" then
     drawMapPage(G)
+  elseif state.page == "events" then
+    drawEventsPage(G)
   elseif state.status == "nocard" then
     drawMessage("NO PLAYER LINKED",
       { "Bind a Memory Card to yourself (right-click with it),",

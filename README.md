@@ -21,15 +21,16 @@ Made for **CC:Tweaked 1.120.2 on Minecraft 1.21.1 (NeoForge)** with
 | **DRONE(S)** | PneumaticCraft drones: air, mission steps and log. Pick a passenger and a destination (player, saved place or coordinates), then fly, pick up, drop or ferry. |
 | **CHAT** | Who may use the `$drone` chat commands (the allow list). |
 | **TURTLES** | Remote-controlled turtles: status, fuel, position, and a control pad. Also rescue and "find lost turtles". |
+| **EVENTS** | Every message the program showed, newest first, with filters (errors, warnings, done, info). |
 | **MAP** | Terrain and ores from the turtles' Geo Scanner scans: zoom, rotate, and send turtles to survey an area. |
 
 A tab only appears when the block it needs is connected.
 
 **Messages** (a transfer is done, a drone cannot start, an error ...) appear as
-boxes in the top-right corner. Tap a box to close it. Normal messages close by
-themselves after a few seconds, errors stay until you close them. The
-**EVENTS** button in the header lists the last 40 messages, with the number of
-new ones on it.
+boxes in the top-right corner. Each one closes by itself; the bar at its bottom
+shows the time left (info / done 8 s, warnings 20 s, errors 60 s). Tap a box to
+close it sooner. The **EVENTS** tab lists every message with its date and time,
+can show one kind only, and its badge counts the new ones.
 
 **Drones** (PneumaticCraft):
 - They teleport (or fly) to players and places, pick a player up with Entity Import, and drop them at the destination. If something fails with a passenger on board, the drone brings them back to Base.
@@ -142,7 +143,7 @@ Type these on the base computer. `help` shows the full list.
 | `base_input.lua` | Monitor touches |
 | `base_workers.lua` | Background workers and the screen loop |
 | `base_ui_core.lua` | Shared drawing: header, tabs, boxes, buttons, footer, popup |
-| `base_ui_*.lua` | One file per tab |
+| `base_ui_*.lua` | One file per tab (`base_ui_events.lua` = EVENTS) |
 | `node.lua` | The turtle program |
 
 All `base_*.lua` files share one global namespace and are loaded in a fixed

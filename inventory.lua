@@ -17,7 +17,7 @@
     base_console.lua        commands typed on this computer
     base_chat.lua           "$drone" chat commands
     base_ui_core.lua        design pieces, header, footer, buttons
-    base_ui_*.lua           one file per page
+    base_ui_*.lua           one file per page (base_ui_events.lua: EVENTS tab)
     base_input.lua          touch handling
     base_workers.lua        background workers + screen loop
 
@@ -29,7 +29,7 @@ local MODULES = {
   "base_me", "base_players", "base_drones", "base_turtles", "base_map", "base_console",
   "base_chat", "base_ui_core", "base_ui_inventory", "base_ui_players",
   "base_ui_storage", "base_ui_me", "base_ui_drone", "base_ui_turtles", "base_ui_map",
-  "base_ui_chat", "base_input", "base_workers",
+  "base_ui_chat", "base_ui_events", "base_input", "base_workers",
 }
 
 local dir = ""

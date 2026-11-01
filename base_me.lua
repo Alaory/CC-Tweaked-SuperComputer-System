@@ -11,8 +11,15 @@
 -- ME / RS BRIDGE
 ---------------------------------------------------------------------
 -- ===== messages (shown as boxes top-right; see drawNotes in base_ui_core.lua) =====
--- Every message also goes into the EVENTS list (the last NOTE_LOG_MAX).
-NOTE_LOG_MAX = 40
+-- Every message also goes into the EVENTS tab (the last few, in memory only).
+-- How long a box stays, in seconds, by kind (0 = until it is tapped). Can be
+-- changed with CONFIG.notes = { info = 8, done = 8, warning = 20, error = 60, keep = 100 }
+local NOTE_DEFAULTS = { info = 8, done = 8, warning = 20, error = 60, keep = 100 }
+function noteSetting(k)
+  local v = CONFIG.notes and tonumber(CONFIG.notes[k])
+  if v == nil then v = NOTE_DEFAULTS[k] end
+  return v
+end
 local noteId = 0
 
 -- the label of a message, from its colour
@@ -23,29 +30,37 @@ function noteKind(col)
   return "INFO"
 end
 
--- show a message. secs = how long it stays (at least 6 s); sticky = until
--- closed by a tap (errors are always sticky)
-function pushNote(title, msg, col, secs, sticky)
+-- real time for the EVENTS tab ("01.11 14:30"); game time if os.date is missing
+local function realTime(fmt)
+  local ok, r = pcall(os.date, fmt)
+  if ok and type(r) == "string" then return r end
+  return textutils.formatTime(os.time(), true)
+end
+
+-- show a message. secs = at least this long (the kind's time is the minimum);
+-- every box closes by itself (unless that kind's time is 0), or when tapped
+function pushNote(title, msg, col, secs)
   col = col or C.good
   msg = tostring(msg or "")
-  sticky = sticky or col == C.bad
   local now = os.clock()
-  local exp = (not sticky) and (now + math.max(secs or 6, 6)) or nil
+  local life = noteSetting(noteKind(col):lower())
+  if life > 0 then life = math.max(life, secs or 0) end
+  local exp = (life > 0) and (now + life) or nil
   -- the same message again while it is shown: refresh it instead of stacking
   for _, n in ipairs(state.notes) do
     if n.msg == msg and n.title == title then
-      n.t, n.exp, n.times = now, exp, (n.times or 1) + 1
+      n.t, n.exp, n.life, n.times = now, exp, life, (n.times or 1) + 1
       os.queueEvent("inv_update")
       return
     end
   end
   noteId = noteId + 1
-  local when = textutils.formatTime(os.time(), true)
+  local when = realTime("%H:%M")
   table.insert(state.notes, 1, { id = noteId, title = title, msg = msg, col = col, t = now,
-                                 exp = exp, when = when })
-  table.insert(state.noteLog, 1, { title = title, msg = msg, col = col, when = when })
-  while #state.noteLog > NOTE_LOG_MAX do table.remove(state.noteLog) end
-  state.noteUnread = (state.noteUnread or 0) + 1
+                                 exp = exp, life = life, when = when })
+  table.insert(state.noteLog, 1, { title = title, msg = msg, col = col, when = realTime("%d.%m %H:%M") })
+  while #state.noteLog > noteSetting("keep") do table.remove(state.noteLog) end
+  if state.page ~= "events" then state.noteUnread = (state.noteUnread or 0) + 1 end
   os.queueEvent("inv_update")
 end
 
@@ -56,11 +71,11 @@ function dismissNote(id)
   end
 end
 
--- a short message (closes by itself; errors stay until closed)
+-- a short message
 function setToast(msg, col, secs) pushNote(nil, msg, col, secs) end
 
--- an important message with a title: stays until closed
-function setPopup(title, msg, col) pushNote(title, msg, col or C.warn, nil, true) end
+-- an important message with a title (a warning unless another colour is given)
+function setPopup(title, msg, col) pushNote(title, msg, col or C.warn) end
 
 -- pcall wrapper: returns ok, r1, r2
 function callx(obj, fn, ...)
