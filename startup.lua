@@ -7,6 +7,7 @@
 
 local function findProgram()
   local found = {}
+  if fs.exists("controller/inventory.lua") then return "controller/inventory.lua" end   -- the usual place
   for _, pattern in ipairs({ "inventory.lua", "*/inventory.lua", "*/*/inventory.lua" }) do
     for _, p in ipairs(fs.find(pattern)) do
       -- only the computer's own files: not a floppy disk, not the ROM

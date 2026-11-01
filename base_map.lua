@@ -714,26 +714,32 @@ function MAP.view()
   if not state.mapView then
     local h = CONFIG.drone and CONFIG.drone.home
     local rot = UPS[tostring(CONFIG.map.up or "north"):lower()] or 0
-    if fs.exists(VIEW_FILE) then                    -- ROTATE choice survives restarts
+    local cx, cz, zoom = h and h.x or 0, h and h.z or 0, 1
+    if fs.exists(VIEW_FILE) then                    -- rotation, zoom and position survive restarts
       local f = fs.open(VIEW_FILE, "r")
       if f then
         local t = textutils.unserialize(f.readAll() or "")
         f.close()
-        if type(t) == "table" and tonumber(t.rot) then rot = tonumber(t.rot) % 4 end
+        if type(t) == "table" then
+          if tonumber(t.rot) then rot = tonumber(t.rot) % 4 end
+          local z = tonumber(t.zoom)
+          if z and z >= 1 and z <= 512 then zoom = z end
+          if tonumber(t.cx) and tonumber(t.cz) and math.abs(t.cx) <= 30000000 and math.abs(t.cz) <= 30000000 then
+            cx, cz = math.floor(tonumber(t.cx)), math.floor(tonumber(t.cz))
+          end
+        end
       end
     end
-    state.mapView = { cx = h and h.x or 0, cz = h and h.z or 0, zoom = 1, rot = rot }
+    state.mapView = { cx = cx, cz = cz, zoom = zoom, rot = rot }
   end
   return state.mapView
 end
 
 -- save the map rotation (ROTATE) for the next start
+-- remember rotation, zoom and position (MAP tab) for the next start
 function MAP.saveView()
-  local f = fs.open(VIEW_FILE, "w")
-  if f then
-    f.write(textutils.serialize({ rot = MAP.view().rot }))
-    f.close()
-  end
+  local V = MAP.view()
+  saveFileSafe(VIEW_FILE, textutils.serialize({ rot = V.rot, zoom = V.zoom, cx = V.cx, cz = V.cz }))
 end
 
 -- the world area the map currently shows (x1, z1, x2, z2)

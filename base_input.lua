@@ -151,6 +151,7 @@ function handleTouch(tx, ty)
           local nx, nz = MAP.toWorld(h[6][1] * math.max(1, math.floor(g.mw / 4)),
                                      h[6][2] * math.max(1, math.floor(g.mh / 4)))
           V.cx, V.cz = nx, nz
+          MAP.saveView()
         end
       elseif h[5] == "mrot" then
         local V = MAP.view()
@@ -163,6 +164,7 @@ function handleTouch(tx, ty)
         local i = 1
         for k, z in ipairs(steps) do if z == V.zoom then i = k end end
         V.zoom = steps[math.max(1, math.min(#steps, i + h[6]))]
+        MAP.saveView()
       elseif h[5] == "mcenter" then
         local V = MAP.view()
         local x, z
@@ -176,7 +178,7 @@ function handleTouch(tx, ty)
             if e.name == state.owner and e.p and e.p.x then x, z = e.p.x, e.p.z end
           end
         end
-        if x then V.cx, V.cz = math.floor(x), math.floor(z)
+        if x then V.cx, V.cz = math.floor(x), math.floor(z) MAP.saveView()
         else setToast("Position unknown", C.warn, 3) end
       elseif h[5] == "tstopall" then
         if MAP.queue then MAP.stopSurvey() end   -- STOP ALL also ends a big survey
@@ -190,6 +192,7 @@ function handleTouch(tx, ty)
         if t and t.pos and t.pos.x then
           local V = MAP.view()
           V.cx, V.cz = t.pos.x, t.pos.z
+          MAP.saveView()
           state.mapSel = { x = t.pos.x, z = t.pos.z }
           state.page = "map"
         else
