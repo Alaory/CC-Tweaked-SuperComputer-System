@@ -1,5 +1,9 @@
--- Part of the base-control program (started by inventory.lua).
+-- base_state.lua  -  part of the base-control program (started by inventory.lua).
 -- All base_*.lua files share one namespace and are loaded in a fixed order.
+--
+--   The shared `state` table: everything the screen shows is read from here
+--   (workers fill it, drawing only reads it). Also reads the owner's inventory
+--   (list() or getItems(), whichever this Advanced Peripherals version has).
 
 ---------------------------------------------------------------------
 -- STATE
@@ -17,7 +21,7 @@ state = {
   playerDim = nil,
   playerMsg = nil,
   players = {},       -- all online players {name, p, dim, isOwner, err}
-  page = "inventory", -- inventory | players
+  page = "inventory", -- visible tab: inventory players storage curios me drone access turtles map
   playersPage = 1,
   rawView = {},       -- [name] = true -> show raw data on that card
   storage = {},       -- backpacks, buckets, ... {display, where, size, used, contents, tanks}
@@ -64,6 +68,7 @@ sortMode = "count"
 selName = nil
 hits = {}
 
+-- sort the item list by the current SORT mode (count / name / slot)
 function sortList()
   table.sort(state.list, function(a, b)
     if sortMode == "count" and a.count ~= b.count then
@@ -77,6 +82,7 @@ end
 
 -- "minecraft:iron_ingot" -> "Iron Ingot"
 cleanCache = {}
+-- a display name without colour codes and [ ] brackets (cached)
 function cleanName(n)
   n = tostring(n)
   local c = cleanCache[n]
@@ -90,6 +96,7 @@ function cleanName(n)
 end
 
 prettyCache = {}
+-- "minecraft:the_nether" -> "The Nether" (cached)
 function prettify(id)
   local c = prettyCache[id]
   if c then return c end

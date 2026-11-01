@@ -1,5 +1,9 @@
--- Part of the base-control program (started by inventory.lua).
+-- base_storage.lua  -  part of the base-control program (started by inventory.lua).
 -- All base_*.lua files share one namespace and are loaded in a fixed order.
+--
+--   STORAGE and CURIOS tab data: looks inside backpacks / tanks with
+--   wrapStorageItem, reads Curios slots, item durability. Keeps the last good
+--   Curios reading when a broken modded item makes listCurios() fail.
 
 ---------------------------------------------------------------------
 -- DURABILITY / CURIOS / STORAGE
@@ -43,6 +47,7 @@ do
     if type(t) == "table" and type(t.rows) == "table" then state.curiosLast = t end
   end
 end
+-- keep this Curios reading as the 'last good' one (only names / counts)
 local function rememberCurios(rows)
   local keep = {}
   for _, r in ipairs(rows) do
@@ -63,6 +68,7 @@ local function rememberCurios(rows)
   if okF then saveFileSafe(CURIOS_FILE, all) end
 end
 
+-- read all Curios slots; returns rows, or nil + message (and the last good reading)
 function fetchCurios()
   if not (inv.listCurios and inv.getCuriosSizes) then
     return nil, "Curios functions not available on this Inventory Manager"
@@ -208,6 +214,7 @@ function inspectWrapped(w, it, where)
   return info
 end
 
+-- look inside every storage item (backpack, tank ...) the owner carries
 function refreshStorage()
   if not inv.wrapStorageItem then
     state.storage = {}

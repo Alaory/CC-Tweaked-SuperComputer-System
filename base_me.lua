@@ -1,5 +1,11 @@
--- Part of the base-control program (started by inventory.lua).
+-- base_me.lua  -  part of the base-control program (started by inventory.lua).
 -- All base_*.lua files share one namespace and are loaded in a fixed order.
+--
+--   The ME (AE2) / RS network: reading it (with a 'partial view' when getItems()
+--   crashes), moving items through the buffer chest, fluids to/from your tanks,
+--   crafting, 'mesetup', and the OWED list (items the program put in a buffer and
+--   still has to deliver - only those exact amounts are ever moved).
+--   Also: setToast() / setPopup(), and runAction() which runs confirmed button presses.
 
 ---------------------------------------------------------------------
 -- ME / RS BRIDGE
@@ -47,6 +53,7 @@ end
 local ME_IN, ME_OUT = { "importItem" }, { "exportItem" }
 local INV_TO_PLAYER, INV_FROM_PLAYER = { "importItem", "addItemToPlayer" }, { "exportItem", "removeItemFromPlayer" }
 
+-- a count from a number or a {count / amount} table
 function numOf(r)
   if type(r) == "number" then return r end
   if type(r) == "table" then return tonumber(r.count or r.amount) end
@@ -119,12 +126,14 @@ do
   end
 end
 local namesDirty, namesSavedAt = false, -100
+-- remember an item name seen in the network (for the partial view)
 function meRememberName(n)
   if type(n) == "string" and n:find(":", 1, true) and not ME_NAMES[n] then
     ME_NAMES[n] = true
     namesDirty = true
   end
 end
+-- save the remembered item names (at most once a minute unless forced)
 local function saveNames(force)
   if not namesDirty or (not force and os.clock() - namesSavedAt < 60) then return end
   local list = {}
@@ -133,8 +142,10 @@ local function saveNames(force)
   local okS, text = pcall(textutils.serialize, list)
   if okS and saveFileSafe(NAMES_FILE, text) then namesDirty, namesSavedAt = false, os.clock() end
 end
+-- 'me add <id>': look this item up in the partial view from now on
 function meAddName(n) meRememberName(n) saveNames(true) state.meNameCache = nil end
 
+-- read the whole ME / RS network (items, fluids, energy, storage, crafting)
 function fetchME()
   local me = { kind = bridgeKind, items = {}, tasks = {}, byName = {},
                energy = {}, storage = {}, fstorage = {}, cstorage = {},
@@ -424,7 +435,9 @@ end
 -- network name; the Inventory Manager can ONLY use a direction (the chest must
 -- touch it).
 local function dirOf(d, default) return (tostring(d or default):gsub("^@", "")) end
+-- how the ME Bridge reaches the buffer chest
 function bufBridge() return CONFIG.me.buffer or dirOf(CONFIG.me.bufferFromBridge, "up") end
+-- how the Inventory Manager reaches the buffer chest
 function bufManager() return dirOf(CONFIG.me.bufferFromManager, "east") end
 
 -- Two chests: "give" (items going TO the player) and "take" (items coming FROM
@@ -433,6 +446,7 @@ function chestManagerDir(which)
   local d = (which == "give") and CONFIG.me.giveFromManager or CONFIG.me.takeFromManager
   return dirOf(d or CONFIG.me.bufferFromManager, "east")
 end
+-- how the ME Bridge reaches the give / take chest
 function chestBridge(which)
   local manual = (which == "give") and CONFIG.me.giveChest or CONFIG.me.takeChest
   if manual then return dirOf(manual) end
@@ -450,6 +464,7 @@ local function chestSig(list)
   table.sort(parts)
   return table.concat(parts, ",")
 end
+-- work out which chest is which for the bridge, by their contents
 function autoFindChests(chests)
   state.meAuto = state.meAuto or {}
   local want = {}
@@ -528,11 +543,14 @@ do
     if type(t) == "table" then OWED = t end
   end
 end
+-- save the OWED list
 local function saveOwed()
   local okS, text = pcall(textutils.serialize, OWED)
   if okS then saveFileSafe(OWED_FILE, text) end
 end
+-- save the OWED list (for other files)
 function saveOwedNow() saveOwed() end
+-- remember n of an item left in a buffer that still has to go `to` ME or the player
 local function owe(name, n, to, chest)
   if n <= 0 then return end
   for _, o in ipairs(OWED) do
@@ -585,12 +603,14 @@ function settleOwed()
   end
   if changed then saveOwed() end
 end
+-- how many items are still owed, and in how many entries
 function owedCount()
   local n = 0
   for _, o in ipairs(OWED) do n = n + o.count end
   return n, #OWED
 end
 
+-- ME -> player: exactly `count` (in chunks); returns moved, error
 function takeFromME(name, count)
   pcall(settleOwed)
   local remaining, total = count, 0
@@ -621,6 +641,7 @@ function takeFromME(name, count)
   end
   return total
 end
+-- player -> ME: exactly `count` (in chunks); returns sent, error
 function sendToME(name, count)
   pcall(settleOwed)
   local remaining, sent = count, 0
@@ -697,6 +718,7 @@ end
 local function sameRef(a, b)
   return a and b and a.kind == b.kind and a.raw == b.raw and a.slot == b.slot and a.idx == b.idx
 end
+-- the owner's fluid containers (from the STORAGE scan)
 function playerTanks(onlyRef)
   -- the list is built by the STORAGE tab; fresh if it is old or missing
   if not state.storage or os.clock() - ((state.t and state.t.storage) or -100) > 5 then
@@ -708,12 +730,14 @@ function playerTanks(onlyRef)
   end
   return out
 end
+-- open a storage item again from its saved reference
 local function openRef(ref)
   local ok, w
   if ref.kind == "slot" then ok, w = pcall(inv.wrapStorageItem, ref.raw)
   else ok, w = pcall(inv.wrapCuriosStorageItem, ref.slot, ref.idx) end
   if ok and type(w) == "table" then return w end
 end
+-- remember fluid left in the buffer that still has to go back to ME
 local function oweFluid(name, mb)
   if mb <= 0 then return end
   for _, o in ipairs(OWED) do
@@ -726,12 +750,14 @@ end
 -- what an opened container may call filling / emptying (versions differ)
 local TANK_IN  = { "pullFluid", "importFluid", "insertFluid" }
 local TANK_OUT = { "pushFluid", "exportFluid", "extractFluid" }
+-- the function names of a wrapped object, as one text
 local function fnList(w)
   local fns = {}
   for k, v in pairs(w) do if type(v) == "function" then fns[#fns + 1] = k end end
   table.sort(fns)
   return table.concat(fns, ", ")
 end
+-- does the object have any of these functions?
 local function hasAny(w, names)
   for _, n in ipairs(names) do if type(w[n]) == "function" then return true end end
 end
@@ -919,6 +945,7 @@ function tankReport(say)
   end
 end
 
+-- ask the ME network to craft a fluid
 function craftFluidME(name, mb)
   local ok, r, e = callx(bridge, "craftFluid", { name = name, amount = mb })
   if not ok then return false, tostring(r) end
@@ -926,6 +953,7 @@ function craftFluidME(name, mb)
   return true
 end
 
+-- ask the ME network to craft an item
 function craftME(name, count)
   local ok, r, e = callx(bridge, "craftItem", { name = name, count = count })
   if not ok then return false, tostring(r) end
@@ -1048,6 +1076,7 @@ end
 local SETUP_FILE = "me_setup.dat"
 local SIDES = { "north", "south", "east", "west", "up", "down" }
 
+-- use the buffer chest found by 'mesetup' (me_setup.dat)
 function loadMESetup()
   if not fs.exists(SETUP_FILE) then return end
   local h = fs.open(SETUP_FILE, "r")
@@ -1067,6 +1096,7 @@ function loadMESetup()
   end
 end
 
+-- save what 'mesetup' found and report it
 local function saveSetup(side, cd, say)
   local h = fs.open(SETUP_FILE, "w")
   if h then
@@ -1081,6 +1111,7 @@ local function saveSetup(side, cd, say)
       or ("on its " .. cd.target .. " side")) .. ". Saved - TAKE on the ME tab works now.")
 end
 
+-- 'mesetup' help: the bridge cannot reach the buffer
 local function cannotReach(say)
   say("The ME Bridge cannot reach the buffer. Either put a WIRED MODEM on it (connected to")
   say("this computer's network, right-click it), or move the ME Bridge so it touches it.")
@@ -1178,6 +1209,7 @@ local function meSetupByMoving(say)
   cannotReach(say)
 end
 
+-- 'mesetup': find the buffer chest (needs ONE item in it)
 function meSetup(say)
   if not inv then say("No Inventory Manager found on this computer.") return end
   if not bridge then say("No ME Bridge found on this computer.") return end

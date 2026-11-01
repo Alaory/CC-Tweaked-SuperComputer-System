@@ -1,9 +1,12 @@
--- Part of the base-control program (started by inventory.lua).
+-- base_ui_storage.lua  -  part of the base-control program (started by inventory.lua).
 -- All base_*.lua files share one namespace and are loaded in a fixed order.
+--
+--   STORAGE tab (inside backpacks / tanks) and CURIOS tab (worn curios slots).
 
 -- page drawing
 function me_available() return bridge ~= nil and inv ~= nil end
 
+-- one storage item (backpack, tank ...) and what is inside
 function drawStorageCard(x, y, w, h, sInfo)
   card(x, y, w, h)
   local ix, iw = x + 2, w - 4
@@ -83,6 +86,7 @@ function drawStorageCard(x, y, w, h, sInfo)
   end
 end
 
+-- the STORAGE tab
 function drawStoragePage(G)
   local y0 = G.y0
   if not state.t.storage then
@@ -121,6 +125,7 @@ function drawStoragePage(G)
   end
 end
 
+-- the CURIOS tab
 function drawCuriosPage(G)
   local rows = state.curios
   if not rows then

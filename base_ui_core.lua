@@ -1,5 +1,9 @@
--- Part of the base-control program (started by inventory.lua).
+-- base_ui_core.lua  -  part of the base-control program (started by inventory.lua).
 -- All base_*.lua files share one namespace and are loaded in a fixed order.
+--
+--   Shared drawing pieces: header with the tabs, boxes, buttons, bars, pager,
+--   footer (hints + toasts), the popup, and draw() which draws the visible tab.
+--   A tab is only shown when its block is connected.
 
 ---------------------------------------------------------------------
 -- DRAWING
@@ -14,6 +18,7 @@ function px(x, y, code, fg, bg)
   win.write(string.char(code))
 end
 
+-- is the "rounded" style on?
 function rounded() return CONFIG.style == "rounded" end
 
 -- round the corners of a box filled with `inner` that sits on `outer`
@@ -47,6 +52,7 @@ function mark(x, y, col)
   else text(x, y, " ", C.text, col) end
 end
 
+-- a box (panel) with an optional title
 function card(x, y, w, h, label)
   fill(x, y, w, h, C.panel)
   round(x, y, w, h, C.panel, C.bg)
@@ -56,6 +62,7 @@ function card(x, y, w, h, label)
   end
 end
 
+-- make an area touchable (handled in base_input.lua)
 function addHit(x, y, w, h, kind, value)
   hits[#hits + 1] = { x, y, x + w - 1, y + h - 1, kind, value }
 end
@@ -105,6 +112,7 @@ function drawCell(x, y, w, h, item, emptyLabel)
   end
 end
 
+-- the title, the tabs and the clock
 function drawHeader()
   fill(1, 1, W, 3, C.panel)
   -- slim separator line under the header (rounded style only)
@@ -146,6 +154,7 @@ function drawHeader()
   text(W - #t - 2, 3, t, C.dim, C.panel)
 end
 
+-- a box in the middle with a title and text (loading, errors)
 function drawMessage(title, lines, col)
   local boxW = math.min(W - 6, 58)
   local n = 0
@@ -164,6 +173,7 @@ function drawMessage(title, lines, col)
   end
 end
 
+-- "Key ........ value" row
 function kv(x, y, w, k, v, vcol)
   text(x, y, k, C.dim, C.panel)
   local gap = w - #k - #v - 2
@@ -185,6 +195,7 @@ function pill(x, y, label, fg, bg, outer)
   return #l
 end
 
+-- label + value at a fixed column
 function field(x, y, label, value, col)
   text(x, y, label, C.dim, C.panel)
   text(x + 11, y, value, col or C.text, C.panel)
@@ -207,6 +218,7 @@ function geometry()
   return G
 end
 
+-- a touchable button
 function drawButton(x, y, w, h, label, bg, fg, kind, value)
   fill(x, y, w, h, bg)
   round(x, y, w, h, bg, C.panel)
@@ -228,6 +240,7 @@ function actButton(x, y, w, h, label, act, primary)
   end
 end
 
+-- PREV / NEXT buttons for a list with several pages
 function drawPager(y0, key, pages, xr)
   if pages <= 1 then return end
   local pl = string.format("PAGE %d/%d", state[key], pages)
@@ -274,6 +287,7 @@ function scrollBar(x, y, w, key, total, rows)
   return off
 end
 
+-- the bottom line: hint, toast or disk warning, LIVE status (+ the popup)
 function drawFooter()
   -- slim separator line above the footer (rounded style only)
   if rounded() then text(1, H - 1, string.char(143):rep(W), C.bg, C.head) end
@@ -323,6 +337,7 @@ function drawPopup()
   addHit(1, 1, W, H, "popclose")       -- last hit = checked first: catches every tap
 end
 
+-- draw the whole screen for the visible tab
 function draw()
   win.setVisible(false)
   hits = {}

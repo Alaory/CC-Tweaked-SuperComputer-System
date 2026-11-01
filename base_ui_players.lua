@@ -1,11 +1,15 @@
--- Part of the base-control program (started by inventory.lua).
+-- base_ui_players.lua  -  part of the base-control program (started by inventory.lua).
 -- All base_*.lua files share one namespace and are loaded in a fixed order.
+--
+--   PLAYERS tab: one box per online player (name, dimension, health, air,
+--   position, facing). Tap a box to see the detector's raw data for that player.
 
 -- page drawing
 function num(v)
   return (string.format("%.1f", v):gsub("%.0$", ""))
 end
 
+-- label colour for a dimension (overworld green, nether red, end purple)
 function dimColor(dim)
   local d = tostring(dim or ""):lower()
   if d == "" then return C.dim end
@@ -22,6 +26,7 @@ function dimLabel(dim, other)
   return other and "Other dimension" or "Unknown"
 end
 
+-- health / air / position / dimension / facing rows
 function drawStatus(x, y, w, p, dim, showDim, other)
   local ix, iw = x + 2, w - 4
 
@@ -103,6 +108,7 @@ function drawPlayerCard(x, y, w, h, e)
   end
 end
 
+-- the PLAYERS tab: one box per online player
 function drawPlayersPage(G)
   local y0 = G.y0
   if not det then

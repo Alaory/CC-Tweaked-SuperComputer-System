@@ -1,5 +1,9 @@
--- Part of the base-control program (started by inventory.lua).
+-- base_map.lua  -  part of the base-control program (started by inventory.lua).
 -- All base_*.lua files share one namespace and are loaded in a fixed order.
+--
+--   MAP tab data: top block of every scanned column and ores, from the turtles'
+--   Geo Scanner scans. Stored per chunk in map.dat (oldest chunks dropped),
+--   plus block colours, map rotation and the spots for a survey.
 
 ---------------------------------------------------------------------
 -- MAP DATA  (top block of every scanned column + ores, from turtle scans)
@@ -16,6 +20,7 @@ MAP = {
 }
 
 local B64 = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/"
+-- 0..4095 -> 2 characters (compact map file)
 local function enc2(v)
   v = math.max(0, math.min(4095, math.floor(v)))
   local hi, lo = math.floor(v / 64), v % 64
@@ -23,12 +28,14 @@ local function enc2(v)
 end
 local DEC = {}
 for i = 1, #B64 do DEC[B64:sub(i, i)] = i - 1 end
+-- 2 characters at position p -> 0..4095 (nil if broken)
 local function dec2(s, p)
   local a, b = DEC[s:sub(p, p)], DEC[s:sub(p + 1, p + 1)]
   if not a or not b then return nil end
   return a * 64 + b
 end
 
+-- number of a block name in the map's name list (added if new)
 function MAP.pal(name)
   local i = MAP.nameIdx[name]
   if not i then
@@ -38,13 +45,16 @@ function MAP.pal(name)
   return i
 end
 
+-- key of a chunk
 local function ckey(cx, cz) return cx .. "," .. cz end
 
+-- { height, block } of a map column, or nil
 function MAP.get(x, z)
   local col = MAP.cols[x]
   return col and col[z]
 end
 
+-- set a map column (and note its chunk)
 function MAP.set(x, z, h, b)
   MAP.version = MAP.version + 1
   local col = MAP.cols[x]
@@ -69,6 +79,7 @@ local function refreshOrder(touched)
   MAP.order = keep
 end
 
+-- is there anything to show on the MAP tab?
 function MAP.hasData() return MAP.scans > 0 or #MAP.order > 0 end
 
 -- forget everything (e.g. scans made with wrong coordinates)
@@ -145,6 +156,7 @@ function MAP.save()
   return ok
 end
 
+-- read map.dat (wherever it is: computer or data floppy)
 function MAP.load()
   local f = dataFile(CONFIG.map.file)
   if not fs.exists(f) then return end
@@ -237,6 +249,7 @@ end
 
 -- map colour of a block (cached: the same names come up thousands of times)
 local colorCache = {}
+-- screen colour of a block (cached)
 function MAP.colorOf(name)
   local c = colorCache[name]
   if c then return c end
@@ -244,6 +257,7 @@ function MAP.colorOf(name)
   colorCache[name] = c
   return c
 end
+-- screen colour of a block, guessed from its name
 function MAP.colorOfRaw(name)
   local n = tostring(name):lower()
   if n:find("lava") or n:find("magma") then return colors.red end
@@ -264,6 +278,7 @@ function MAP.colorOfRaw(name)
   return colors.brown       -- stone, deepslate, buildings: neutral grey-blue
 end
 
+-- colour of an ore marker
 function MAP.oreColor(name)
   local n = tostring(name):lower()
   if n:find("diamond") then return colors.lightBlue end
@@ -281,6 +296,7 @@ end
 local UPS = { north = 0, east = 1, south = 2, west = 3 }
 local VIEW_FILE = "map_view.dat"
 
+-- the map view (centre, zoom, rotation); starts at Base
 function MAP.view()
   if not state.mapView then
     local h = CONFIG.drone and CONFIG.drone.home
@@ -298,6 +314,7 @@ function MAP.view()
   return state.mapView
 end
 
+-- save the map rotation (ROTATE) for the next start
 function MAP.saveView()
   local f = fs.open(VIEW_FILE, "w")
   if f then
@@ -346,6 +363,7 @@ local BASIS = {
   [2] = { rx = -1, rz = 0,  dx = 0,  dz = -1 },  -- up south: right = west,  down = north
   [3] = { rx = 0,  rz = -1, dx = 1,  dz = 0 },   -- up west:  right = north, down = east
 }
+-- direction vectors for the current rotation
 function MAP.basis() return BASIS[(MAP.view().rot or 0) % 4] end
 
 -- screen offset (cells from the centre) -> world x, z

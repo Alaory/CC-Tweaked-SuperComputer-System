@@ -1,8 +1,11 @@
--- Part of the base-control program (started by inventory.lua).
+-- base_ui_map.lua  -  part of the base-control program (started by inventory.lua).
 -- All base_*.lua files share one namespace and are loaded in a fixed order.
+--
+--   MAP tab: the terrain and ores from turtle scans, zoom / rotate, survey.
 
 -- page drawing: MAP
 local BLIT = {}
+-- colour -> blit character (cached)
 local function blitc(c)
   local v = BLIT[c]
   if not v then
@@ -20,12 +23,14 @@ local function toScreen(g, V, x, z)
   if i >= 0 and i < g.mw and j >= 0 and j < g.mh then return g.mx0 + i, g.my0 + j end
 end
 
+-- world x, z under a touch on the map
 function mapWorldAt(tx, ty)
   local g = state.mapGeom
   if not g then return nil end
   return MAP.toWorld(tx - g.mx0 - g.mw / 2, ty - g.my0 - g.mh / 2)
 end
 
+-- the MAP tab
 function drawMapPage(G)
   local y0, bottom = G.y0, G.y1
   local V = MAP.view()

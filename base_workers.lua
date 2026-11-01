@@ -1,5 +1,9 @@
--- Part of the base-control program (started by inventory.lua).
+-- base_workers.lua  -  part of the base-control program (started by inventory.lua).
 -- All base_*.lua files share one namespace and are loaded in a fixed order.
+--
+--   The background workers (all slow game calls happen here) and the screen
+--   loop. inventory.lua runs these together: uiLoop, invWorker, pageWorker,
+--   actionWorker, droneWorker, terminalWorker, chatWorker, commsWorker.
 
 ---------------------------------------------------------------------
 -- MAIN
@@ -12,6 +16,7 @@ function fresh(key, ttl)
   return t ~= nil and (os.clock() - t) < ttl
 end
 
+-- ask the screen to redraw
 function notify() os.queueEvent("inv_update") end
 
 -- run fn; if it crashes, remember that the data was "read" so we do not spin
@@ -280,6 +285,7 @@ function commsWorker()
   end
 end
 
+-- worker 4: handles chat commands and sends the private replies (1 per second)
 function chatWorker()
   local lastSend = -10
   while state.running do

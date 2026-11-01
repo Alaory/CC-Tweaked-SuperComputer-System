@@ -1,5 +1,8 @@
--- Part of the base-control program (started by inventory.lua).
+-- base_input.lua  -  part of the base-control program (started by inventory.lua).
 -- All base_*.lua files share one namespace and are loaded in a fixed order.
+--
+--   Monitor touches: tabs, buttons (two-tap confirm), selecting items /
+--   players / drones / turtles / map spots, closing the popup.
 
 ---------------------------------------------------------------------
 -- INPUT

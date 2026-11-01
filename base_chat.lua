@@ -1,5 +1,10 @@
--- Part of the base-control program (started by inventory.lua).
+-- base_chat.lua  -  part of the base-control program (started by inventory.lua).
 -- All base_*.lua files share one namespace and are loaded in a fixed order.
+--
+--   '$drone' chat commands (home, to, back, places, status, stop; the owner
+--   also allow / deny / yes / no). Checks who asks and that they are in the
+--   overworld, asks the owner to approve strangers, then picks the free drone with
+--   the most air. Replies are private (chatTell -> chat worker).
 
 -- chat requests ------------------------------------------------------------
 -- Ride for `name` to saved place `w`: the nearest free drone with enough air
@@ -34,6 +39,7 @@ function rideProblem(name, dest)
   end
 end
 
+-- send the best free drone to give `name` a ride to `dest` (tells them in chat)
 function startRide(name, dest, owner)
   local label = dest.name
   refreshDrones()
@@ -106,6 +112,7 @@ function startRide(name, dest, owner)
   end
 end
 
+-- exact online player name for `n` (any case, leading @ allowed), or nil
 function findOnlinePlayer(n)
   n = tostring(n or ""):gsub("^@", "")
   if n == "" or not det or not det.getOnlinePlayers then return nil end
@@ -116,6 +123,7 @@ function findOnlinePlayer(n)
   end
 end
 
+-- one chat message: runs the '$drone ...' command it contains
 function handleChat(m)
   local text = tostring(m.msg or ""):gsub("^%$", "")
   local words = {}

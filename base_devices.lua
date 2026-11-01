@@ -1,5 +1,11 @@
--- Part of the base-control program (started by inventory.lua).
+-- base_devices.lua  -  part of the base-control program (started by inventory.lua).
 -- All base_*.lua files share one namespace and are loaded in a fixed order.
+--
+--   Finds the blocks the program uses, on the computer's sides or the wired
+--   network: Inventory Manager + monitor (required), Player Detector, Environment
+--   Detector, Chat Box, ME/RS Bridge (optional). Re-finds them when they come back,
+--   and builds the 'what can the computer see' help shown when one is missing.
+--   Defines: inv, mon, det, envDet, chatBox, bridge, bridgeKind, picked, invCaps.
 
 ---------------------------------------------------------------------
 -- PERIPHERALS
@@ -7,6 +13,7 @@
 -- Find a peripheral on the computer's sides OR anywhere on the wired network.
 SIDES = { top = true, bottom = true, left = true, right = true, front = true, back = true }
 
+-- lower case, letters only (for loose name matching)
 function norm(x) return (tostring(x):lower():gsub("[^%a]", "")) end
 
 -- names of attached peripherals of the given types, split into
@@ -105,6 +112,7 @@ chatBox = nil
 chatBox, picked.chat = locate("Chat Box", nil, CB_TYPES)
 
 invCaps = {}
+-- which optional Inventory Manager functions exist (decides the STORAGE / CURIOS tabs)
 function updateCaps()
   if inv then
     invCaps.storage = inv.wrapStorageItem ~= nil
@@ -113,6 +121,7 @@ function updateCaps()
 end
 updateCaps()
 
+-- "RS" for a Refined Storage bridge, else "ME"
 function kindOf(name)
   local ty = tostring(peripheral.getType(name) or name):lower()
   return ty:find("rs", 1, true) == 1 and "RS" or "ME"
@@ -175,6 +184,7 @@ end
 
 -- Help text for a missing optional device (cached, it is shown on screen)
 netInfo = { t = -100, lines = {} }
+-- lines explaining why `label` is missing (what each modem sees)
 function deviceHelpLines(label)
   if os.clock() - netInfo.t > 3 then
     local lines = diagLines()
@@ -195,6 +205,7 @@ function tryLocate(...)
   if ok then return p, n end
 end
 
+-- look again for every block that is missing right now
 function rescanPeripherals()
   if not inv then
     inv, picked.inv = tryLocate("Inventory Manager", CONFIG.names.inventoryManager, IM_TYPES)

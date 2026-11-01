@@ -1,5 +1,7 @@
--- Part of the base-control program (started by inventory.lua).
+-- base_ui_turtles.lua  -  part of the base-control program (started by inventory.lua).
 -- All base_*.lua files share one namespace and are loaded in a fixed order.
+--
+--   TURTLES tab: the turtle list, the selected turtle's status and control pad.
 
 -- page drawing
 function drawTurtlesPage(G)

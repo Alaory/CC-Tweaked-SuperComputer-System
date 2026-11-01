@@ -1,11 +1,17 @@
--- Part of the base-control program (started by inventory.lua).
+-- base_players.lua  -  part of the base-control program (started by inventory.lua).
 -- All base_*.lua files share one namespace and are loaded in a fixed order.
+--
+--   Player Detector data: online players, positions, health, and which
+--   dimension each one is in (saved in player_dims.dat). The owner's armour and
+--   hands via the Inventory Manager. '$drone back' tracking: remembers where a
+--   player was before a big jump or where they died (overworld only).
 
 ---------------------------------------------------------------------
 -- PLAYER DATA (Player Detector)
 ---------------------------------------------------------------------
 DIM_KEYS = { "dimension", "dim", "dimensionName", "dimensionId", "world", "level" }
 
+-- a dimension name from a text or a {location/name/id} table
 local function dimValue(v)
   if type(v) == "string" and v ~= "" then return v end
   if type(v) == "table" then
@@ -14,6 +20,7 @@ local function dimValue(v)
   end
 end
 
+-- the dimension in the detector's data for a player (nil if it has none)
 function dimFromData(p)
   if type(p) ~= "table" then return nil end
   for _, k in ipairs(DIM_KEYS) do
@@ -47,10 +54,12 @@ do
   end
 end
 
+-- write the known dimensions to player_dims.dat
 local function saveDims()
   saveFileSafe(DIM_FILE, textutils.serialize(dimCache))
 end
 
+-- remember (and save) which dimension a player is in
 function rememberDim(name, dim)
   if type(name) ~= "string" or type(dim) ~= "string" or dim == "" then return end
   if dimCache[name] == dim then return end
@@ -58,12 +67,14 @@ function rememberDim(name, dim)
   saveDims()
 end
 
+-- forget a player's dimension (they left the server)
 function forgetDim(name)
   if type(name) ~= "string" or dimCache[name] == nil then return end
   dimCache[name] = nil
   saveDims()
 end
 
+-- the dimension the base is in (Environment Detector, else CONFIG.homeDimension)
 function homeDimension()
   if envDet then
     local fn = envDet.getDimensionPaN or envDet.getDimension
@@ -360,6 +371,7 @@ backSpots = {}                 -- [lower name] = { x, y, z, t = epoch ms, why, n
 local trackLast = {}           -- [lower name] = last position + health
 local OVERWORLD = "minecraft:overworld"
 
+-- write the '$drone back' spots to their file
 local function backSave()
   local h = fs.open(CONFIG.back.file, "w")
   if h then h.write(textutils.serialize(backSpots)) h.close() end
@@ -376,6 +388,7 @@ function playerDim(name, pl)
   return (pl and dimFromData(pl)) or dimCache[name]
 end
 
+-- check every player's position: remember the spot before a big jump or a death
 function trackPlayers()
   if not det or not CONFIG.back then return end
   local now = os.epoch("utc")

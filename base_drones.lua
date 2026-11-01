@@ -1,16 +1,24 @@
--- Part of the base-control program (started by inventory.lua).
+-- base_drones.lua  -  part of the base-control program (started by inventory.lua).
 -- All base_*.lua files share one namespace and are loaded in a fixed order.
+--
+--   PneumaticCraft drones: one drone per Drone Interface. Logs, saved places,
+--   the chat allow list, player positions (overworld only), air / teleport cost,
+--   travel (teleport or fly, hops when far and unloaded), pickup and drop with
+--   Entity Import / Export, charging stations + parking, missions (with
+--   rescue-to-Base when something fails) and submitDrone() used by every button.
 
 ---------------------------------------------------------------------
 -- DRONE  (PneumaticCraft Drone Interface)  - several drones supported
 ---------------------------------------------------------------------
 function fl(n) return math.floor(tonumber(n) or 0) end
 
+-- "x, y, z" as whole numbers ("?" when unknown)
 function fmtPos(x, y, z)
   if not x then return "?" end
   return string.format("%d, %d, %d", fl(x), fl(y), fl(z))
 end
 
+-- straight-line distance between two points
 function dist3(ax, ay, az, bx, by, bz)
   return math.sqrt((ax - bx) ^ 2 + (ay - by) ^ 2 + (az - bz) ^ 2)
 end
@@ -35,6 +43,7 @@ do
   end
 end
 
+-- save every drone's log (also of drones that are not connected now)
 function saveLogs()
   local all = {}
   for k, l in pairs(savedLogs) do all[k] = l end     -- drones not connected right now
@@ -49,6 +58,7 @@ function saveLogs()
   end
 end
 
+-- add a line to a drone's log (newest first) and save it
 function droneLog(dr, msg)
   if not dr then return end
   local okR, real = pcall(os.date, "%d.%m %H:%M")   -- real date/time: logs span days
@@ -59,6 +69,7 @@ function droneLog(dr, msg)
   os.queueEvent("inv_update")
 end
 
+-- a new drone record for the Drone Interface called `key`
 function newDrone(key)
   return { key = key, periph = peripheral.wrap(key),
            nick = CONFIG.drone.names and CONFIG.drone.names[key] or nil,
@@ -75,6 +86,7 @@ function naturalLess(a, b)
   return (tonumber(na) or -1) < (tonumber(nb) or -1)
 end
 
+-- sort the drones and name them "Drone 1", "Drone 2" ... (or their nickname)
 function relabel()
   table.sort(droneOrder, naturalLess)
   for i, k in ipairs(droneOrder) do
@@ -117,6 +129,7 @@ scanDrones = function()
   if added then relabel() end
 end
 
+-- a Drone Interface was removed: stop its drone and forget it (the log is kept)
 forgetDrone = function(name)
   local dr = drones[name]
   if not dr then return end
@@ -153,6 +166,7 @@ function loadAccess()
   end
 end
 
+-- save the chat allow list
 function saveAccess()
   local h = fs.open(CONFIG.chat.accessFile, "w")
   if h then
@@ -181,11 +195,13 @@ function isAllowed(uuid, name)
   return true
 end
 
+-- let a player use '$drone' (the UUID is tied on their first use)
 function allowPlayer(name)
   state.access.allowed[name:lower()] = { name = name }
   saveAccess()
 end
 
+-- take a player off the allow list; true if they were on it
 function denyPlayer(name)
   local k = name:lower()
   local had = state.access.allowed[k] ~= nil
@@ -194,6 +210,7 @@ function denyPlayer(name)
   return had
 end
 
+-- the allowed players' names, sorted
 function allowedNames()
   local out = {}
   for _, e in pairs(state.access.allowed) do out[#out + 1] = e.name end
@@ -215,6 +232,7 @@ function loadWaypoints()
   end
 end
 
+-- save the saved places
 function saveWaypoints()
   local h = fs.open(CONFIG.drone.waypointFile, "w")
   if h then
@@ -223,12 +241,14 @@ function saveWaypoints()
   end
 end
 
+-- a saved place by name (any case), or nil
 function findWaypoint(name)
   for _, w in ipairs(state.waypoints) do
     if w.name:lower() == tostring(name):lower() then return w end
   end
 end
 
+-- save a place (or move it if the name exists)
 function addWaypoint(name, x, y, z)
   local w = findWaypoint(name)
   if w then w.x, w.y, w.z = x, y, z
@@ -237,6 +257,7 @@ function addWaypoint(name, x, y, z)
   saveWaypoints()
 end
 
+-- delete a saved place; true if it existed
 function removeWaypoint(name)
   for i, w in ipairs(state.waypoints) do
     if w.name:lower() == tostring(name):lower() then
@@ -327,6 +348,7 @@ function resolveDest(dr)
   return d.x, d.y, d.z
 end
 
+-- what kind of destination a drone has, for the screen
 function destLabel(dr)
   local d = dr and dr.dest
   if not d then return "not set" end
@@ -367,6 +389,7 @@ function parsePos(t)
   if x and y and z then return tonumber(x), tonumber(y), tonumber(z) end
 end
 
+-- read one drone's status (connected, air, position, action) all at once
 function refreshDrone(dr)
   local d = dr.periph
   local r = {}
@@ -464,6 +487,8 @@ function canTeleport(dr, extra)
   return p >= teleportCost(dr) * (1 + (extra or 0)) + (CONFIG.drone.airReserve or 1.5)
 end
 
+-- teleport or fly one drone to x y z and wait; returns ok, error
+-- (measures the real air cost of a teleport)
 function droneMoveTo(dr, action, x, y, z, limit)
   local d = dr.periph
   if not d or dr.gone then return false, "Drone Interface disconnected" end
@@ -534,6 +559,7 @@ local function droneXYZ(dr)
   if not okP then return nil end
   return parsePos((type(a) == "number") and { a, b, c } or a)
 end
+-- far + not loaded: teleport in hops high above the terrain until close
 local function hopTowards(dr, x, z)
   local L, hy = CONFIG.drone.hopLength or 160, CONFIG.drone.hopY or 200
   local logged = false
@@ -633,6 +659,7 @@ function travelTo(dr, x, y, z, spots, noFly, loaded)
   return false, "could not reach " .. x .. ", " .. y .. ", " .. z .. " (" .. tostring(lastErr) .. ")"
 end
 
+-- a mission step: travel to the position getPos() gives when the step runs
 function stepGoto(dr, text, getPos, yOff, loaded)
   return { text = text, fn = function()
     local x, y, z = getPos()
@@ -761,6 +788,7 @@ function passengerHere(dr)
   return math.abs(px - s.x) <= 4 and math.abs(pz - s.z) <= 4 and math.abs(py - s.y) <= 5
 end
 
+-- the mission steps to fly to the destination and let the passenger go
 function dropSteps(dr, who)
   local fly = stepGoto(dr, "Fly to destination", function() return dropTarget(dr) end, 0,
                        function() return dr.dest and dr.dest.kind == "player" end)
@@ -825,6 +853,7 @@ do
   end
 end
 
+-- save the charging stations
 function saveChargers()
   local h = fs.open(CONFIG.drone.chargerFile, "w")
   if h then
@@ -851,6 +880,7 @@ end
 -- Drones without their own station share CONFIG.drone.charger: one parks ON
 -- it (and charges), the others park side by side next to it. They take turns.
 sharedTop = nil
+-- the drones that use the shared station (no own one)
 local function sharedKeys()
   local keys = {}
   for _, k in ipairs(droneOrder) do if not ownChargers[k] then keys[#keys + 1] = k end end
@@ -910,6 +940,7 @@ function homePos(dr)
   return h.x + 2 * slot, h.y + 2, h.z
 end
 
+-- a mission step: back to the charger, or to Base when there is none
 function homeStep(dr)
   local px, _, _, on = parkSpot(dr)
   if not px and dr and not dr.chargerHint then
@@ -969,6 +1000,7 @@ function parkCheck()
   end
 end
 
+-- title + steps for a command (home, fly, pickup, drop, ferry)
 function buildMission(dr, cmd)
   local who = canonPlayer(cmd.passenger or dr.passenger or state.owner or "")
   if cmd.kind == "home" then
@@ -987,6 +1019,9 @@ function buildMission(dr, cmd)
   end
 end
 
+-- run one command on one drone (in the drone worker): checks air,
+-- destination and the overworld first, then the steps; on failure with someone
+-- on board, brings them back to Base
 function runMission(dr, cmd)
   local d = dr.periph
   if not d or dr.gone then return end

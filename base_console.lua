@@ -1,5 +1,8 @@
--- Part of the base-control program (started by inventory.lua).
+-- base_console.lua  -  part of the base-control program (started by inventory.lua).
 -- All base_*.lua files share one namespace and are loaded in a fixed order.
+--
+--   Commands typed on the base computer's keyboard (type 'help' there):
+--   drone control, saved places, turtles, map, ME setup and checks, report, disks.
 
 -- console on the computer's keyboard ---------------------------------------
 HELP = {
@@ -40,6 +43,7 @@ HELP = {
   " turtle <id> setting <name> <value>   e.g. turtle 7 setting dig true",
 }
 
+-- one command typed on the computer; returns the lines to print
 function handleCommand(line)
   local words = {}
   for w in line:gmatch("%S+") do words[#words + 1] = w end
