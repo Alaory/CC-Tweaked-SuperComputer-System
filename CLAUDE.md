@@ -59,6 +59,13 @@ PneumaticCraft drone rides, turtle mapping/surveys, and an AE2 ME network view.
   environment), not `local function`. Check with
   `python3 tools/check_locals.py node.lua` (must stay well under 200). The
   base also compiles node.lua before sending it (TT.codeLoad).
+- Permanent rescuer: t.rescuerRole (RESCUER button, saved in turtles.dat;
+  base only). TT.patrolTick (comms worker) sends it to: no fuel (<20 for
+  60 s), stuck (60 s idle), lost (silent CONFIG.turtles.rescueAfter, default
+  600 s). Never in the first 5 min after the base starts, never when half
+  or more turtles are offline (server trouble); called off when the turtle
+  is fine again; max 3 tries, 30 min apart. Rescuer goes home after each
+  rescue, gets no big-survey batches.
 - Autostart: `startup.lua` (top level of the computer) finds inventory.lua
   in any folder and restarts it after a crash (inventory.lua raises an error
   on a crash, returns normally on Ctrl+T). inventory.lua turns off

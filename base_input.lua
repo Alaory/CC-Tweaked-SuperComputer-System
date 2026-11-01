@@ -201,6 +201,20 @@ function handleTouch(tx, ty)
         end
       elseif h[5] == "tsel" then
         state.tSel = h[6]
+      elseif h[5] == "trescuer" then
+        local t = state.turtles[h[6]]
+        if t then
+          t.rescuerRole = not t.rescuerRole or nil
+          TT.listDirty = true
+          pcall(TT.saveList)
+          if t.rescuerRole then
+            local ready, msg = TT.rescueReady(t)
+            setToast(t.label .. " is the rescue turtle now - " .. msg, ready and C.good or C.warn)
+            TT.send(t.id, "home", {})
+          else
+            setToast(t.label .. " is no longer the rescue turtle", C.label)
+          end
+        end
       elseif h[5] == "tcmd" then
         TT.send(h[6][1], h[6][2], h[6][3])
       elseif h[5] == "acc_allow" then

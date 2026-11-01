@@ -293,6 +293,7 @@ function commsWorker()
       pcall(MAP.feedSurvey)              -- a big survey: next batch to each idle turtle
       pcall(TT.updateTick)               -- turtle program updates, one turtle at a time
       pcall(TT.stopTick)                 -- STOP again until the turtle answers
+      pcall(TT.patrolTick)               -- the rescue turtle: send it where it is needed
       if TT.listDirty and codeTick % 15 == 0 then pcall(TT.saveList) end
       codeTick = codeTick + 1
       if codeTick % 15 == 1 then pcall(TT.codeLoad) end     -- every 30 s

@@ -126,7 +126,8 @@ function TT.receive(id, m)
         target.pos = { x = tonumber(m.at.x), y = tonumber(m.at.y), z = tonumber(m.at.z), f = target.pos and target.pos.f }
       end
       TT.log(target, (m.ok and "Rescued by " or "Rescue by ") .. t.label .. (m.ok and "" or " failed") .. where)
-      target.rescuer = nil
+      target.rescuer, target.rescueKind = nil, nil
+      if m.ok then target.rescueTries = nil end
       -- supplies delivered: refuel, allow digging with the new pickaxe, come home
       if m.ok and m.mode == "supply" then
         TT.send(target.id, "refuel", {})
@@ -135,6 +136,7 @@ function TT.receive(id, m)
       end
     end
     setToast((m.ok and "Rescue done: " or "Rescue failed: ") .. tostring(m.msg), m.ok and C.good or C.warn, 8)
+    if t.rescuerRole then TT.send(id, "home", {}) end           -- the rescuer goes back home
   elseif m.t == "learn" then
     pcall(KNOW.learn, m)
   elseif m.t == "need" then
@@ -587,7 +589,7 @@ function TT.saveList()
   local out = {}
   for id, t in pairs(state.turtles) do
     out[#out + 1] = { id = id, label = t.label, pos = t.pos, home = t.home, seen = t.seenEpoch,
-                      task = t.task, ver = t.ver, gear = t.gear, anchor = t.anchor }
+                      task = t.task, ver = t.ver, gear = t.gear, anchor = t.anchor, rescuerRole = t.rescuerRole }
   end
   local h = fs.open(CONFIG.turtles.listFile, "w")
   if h then h.write(textutils.serialize(out)) h.close() end
@@ -606,6 +608,7 @@ function TT.loadList()
       if e.label then t.label = e.label end
       t.pos, t.home, t.seenEpoch, t.task = e.pos, e.home, e.seen, e.task
       t.ver, t.gear, t.anchor = e.ver, e.gear, e.anchor
+      t.rescuerRole = e.rescuerRole
     end
   end
 end
@@ -690,7 +693,7 @@ function TT.findLost(radius, cx, cy, cz)
 end
 
 -- send a rescue; x y z = where to look (default: where it was last seen)
-function TT.rescue(targetId, x, y, z, radius)
+function TT.rescue(targetId, x, y, z, radius, forced)
   local target = state.turtles[targetId]
   if not target then
     target = TT.get(targetId)
@@ -701,7 +704,15 @@ function TT.rescue(targetId, x, y, z, radius)
     x, y, z = target.pos.x, target.pos.y, target.pos.z
   end
   local mode = TT.rescueMode(target)
-  local r = TT.pickRescuer(target, mode, x, z)
+  local r = forced or TT.pickRescuer(target, mode, x, z)
+  if forced then
+    -- the permanent rescuer must carry what this rescue needs
+    if mode == "install" and not (hasGear(forced, "drive") and hasGear(forced, "floppy")) then
+      return false, forced.label .. " needs a Disk Drive and the install floppy to reinstall a turtle"
+    elseif mode == "supply" and not (hasGear(forced, "fuel") or hasGear(forced, "pick")) then
+      return false, forced.label .. " needs fuel (coal ...) or a spare pickaxe to bring"
+    end
+  end
   if not r then
     return false, mode == "install"
       and "no free turtle with a Disk Drive + the install floppy (and a Geo Scanner to search)"
@@ -711,6 +722,117 @@ function TT.rescue(targetId, x, y, z, radius)
   TT.log(target, "Rescue on its way: " .. r.label .. " (" .. mode .. ")")
   target.rescuer = r.id
   return true, r.label .. " is on its way (" .. (mode == "install" and "reinstall" or "supplies") .. ")"
+end
+
+-- ===== the permanent RESCUE turtle =====
+-- A turtle with the rescuer job (t.rescuerRole, RESCUER button) stays at home
+-- and is sent out by the base when a turtle has a real problem:
+--   no fuel  - online, fuel < 20 for over a minute (it would have refuelled itself)
+--   stuck    - online, reports "stuck", idle for over a minute
+--   lost     - silent for CONFIG.turtles.rescueAfter seconds (default 600)
+-- A short disconnect is never mistaken for a lost turtle: 10 minutes of
+-- silence, nothing in the first 5 minutes after the base starts, nothing when
+-- half or more of the turtles are offline at once (server / base trouble),
+-- and the rescue is called off when the turtle comes back.
+TT.startedAt = os.clock()
+local RETRY_AFTER, MAX_TRIES = 1800, 3
+
+-- the rescuer(s): online ones first
+function TT.rescuers()
+  local list = {}
+  for _, t in pairs(state.turtles) do if t.rescuerRole then list[#list + 1] = t end end
+  table.sort(list, function(a, b) return a.id < b.id end)
+  return list
+end
+
+-- what is wrong with a turtle (nil = nothing to do): "fuel", "stuck", "lost"
+local function problemOf(t)
+  local now = os.clock()
+  if TT.online(t) then
+    t.offlineNoted = nil
+    local idle = (t.task == nil or t.task == "idle")
+    local fuel = tonumber(t.fuel)
+    if fuel and fuel < 20 then t.lowFuelSince = t.lowFuelSince or now else t.lowFuelSince = nil end
+    if t.stuck and idle then t.stuckSince = t.stuckSince or now else t.stuckSince = nil end
+    if t.lowFuelSince and now - t.lowFuelSince > 60 then return "fuel" end
+    if t.stuckSince and now - t.stuckSince > 60 then return "stuck" end
+    return nil
+  end
+  -- offline: how long, by the real clock (also from before the base started)
+  if not (t.pos and t.pos.x and t.seenEpoch) then return nil end
+  local after = tonumber(CONFIG.turtles.rescueAfter) or 600
+  if (os.epoch("utc") - t.seenEpoch) / 1000 < after then return nil end
+  return "lost"
+end
+
+-- comms worker, every 2 s: send the rescuer where it is needed
+function TT.patrolTick()
+  local rescuers = TT.rescuers()
+  if #rescuers == 0 then return end
+  local now = os.clock()
+  local total, offline = 0, 0
+  for _, t in pairs(state.turtles) do
+    if not t.rescuerRole then
+      total = total + 1
+      if not TT.online(t) then offline = offline + 1 end
+    end
+  end
+  local massOffline = total >= 2 and offline * 2 >= total
+  local warmingUp = now - TT.startedAt < 300
+  -- every turtle's problem, every tick (so the "for over a minute" timers run
+  -- also while the rescuer is busy)
+  local problems = {}
+  for id, t in pairs(state.turtles) do
+    if not t.rescuerRole then problems[id] = problemOf(t) end
+  end
+  for _, t in pairs(state.turtles) do
+    -- a rescue on its way: called off if the turtle is fine again
+    if t.rescuer and t.rescueKind then
+      local r = state.turtles[t.rescuer]
+      local fine = (t.rescueKind == "lost" and TT.online(t))
+                   or (t.rescueKind ~= "lost" and TT.online(t) and not problems[t.id])
+      if fine then
+        if r then
+          TT.send(r.id, "stop", {})
+          TT.send(r.id, "home", {})
+          TT.log(r, "Rescue of " .. t.label .. " called off - it is fine again")
+        end
+        TT.log(t, "Fine again - rescue called off")
+        t.rescuer, t.rescueKind = nil, nil
+      end
+    end
+  end
+  for _, r in ipairs(rescuers) do
+    local free = TT.online(r) and (r.task == nil or r.task == "idle") and not r.stopAsk
+    if free then
+      -- the turtle with the oldest problem first
+      local pick, pickKind
+      for _, t in pairs(state.turtles) do
+        if not t.rescuerRole and not t.rescuer and (t.rescueTries or 0) < MAX_TRIES
+           and (not t.rescueAt or now - t.rescueAt > RETRY_AFTER) then
+          local kind = problems[t.id]
+          if kind == "lost" and (warmingUp or massOffline) then kind = nil end
+          if kind and not pick then pick, pickKind = t, kind end
+        end
+      end
+      if pick then
+        local ok, msg = TT.rescue(pick.id, nil, nil, nil, nil, r)
+        pick.rescueAt, pick.rescueTries = now, (pick.rescueTries or 0) + 1
+        if ok then
+          pick.rescueKind = pickKind
+          setToast("Rescuer " .. r.label .. " sent to " .. pick.label .. " (" ..
+                   (pickKind == "lost" and "offline - reinstall" or pickKind == "fuel" and "no fuel" or "stuck") .. ")",
+                   C.label)
+        else
+          TT.log(r, "Cannot rescue " .. pick.label .. ": " .. tostring(msg))
+        end
+        if pick.rescueTries >= MAX_TRIES and not ok then
+          setPopup("TURTLE NEEDS YOU", pick.label .. " could not be rescued " .. MAX_TRIES .. " times - please look at it (" ..
+                   (pick.pos and fmtPos(pick.pos.x, pick.pos.y, pick.pos.z) or "position unknown") .. ")", C.warn)
+        end
+      end
+    end
+  end
 end
 
 -- the anchor turtle, and whether it is in the base's chunk
@@ -733,7 +855,8 @@ end
 function TT.available()
   local list = {}
   for id, t in pairs(state.turtles) do
-    if TT.online(t) and t.pos and t.pos.x and (t.task == nil or t.task == "idle") and not t.anchor then
+    if TT.online(t) and t.pos and t.pos.x and (t.task == nil or t.task == "idle") and not t.anchor
+       and not t.rescuerRole then
       list[#list + 1] = id
     end
   end

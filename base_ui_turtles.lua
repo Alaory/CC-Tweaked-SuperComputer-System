@@ -64,9 +64,10 @@ function drawTurtlesPage(G)
     local old = on and TT.outdated(t)
     local ready = old and CODE and t.updReady == CODE.ver
     local st = (on and t.stuck) and "STUCK" or ready and "UPDATE READY" or old and "UPDATING"
-               or (on and t.anchor) and "ANCHOR" or (on and "ONLINE" or "OFFLINE")
+               or (on and t.anchor) and "ANCHOR" or (on and t.rescuerRole) and "RESCUER"
+               or (on and "ONLINE" or "OFFLINE")
     local stc = (on and t.stuck) and C.warn or old and C.label or (on and t.anchor) and C.purple
-                or (on and C.good or C.bad)
+                or (on and t.rescuerRole) and C.warn or (on and C.good or C.bad)
     pill(lx + leftW - #st - 4, ry, st, C.ink, stc)
     if type(t.fuel) == "number" and type(t.fuelMax) == "number" and t.fuelMax > 0 then
       local f = math.max(0, math.min(1, t.fuel / t.fuelMax))
@@ -126,12 +127,15 @@ function drawTurtlesPage(G)
   cmdBtn(rix + 3 * (bw + 1), r3, bw, 1, "GPS LOCATE", "locate")
   -- finding a lost turtle
   local r4 = y0 + 17
-  local q3 = math.floor((riw - 2) / 3)
+  local q3 = math.floor((riw - 3) / 4)
   drawButton(rix, r4, q3, 2, "SHOW ON MAP", C.empty, C.text, "tmap", t.id)
   drawButton(rix + q3 + 1, r4, q3, 2, t.anchor and "ANCHOR: ON" or "ANCHOR: OFF",
              t.anchor and C.purple or C.empty, t.anchor and C.ink or C.text, "tcmd",
              { t.id, "anchor", { t.anchor and "off" or "on" } })
-  actButton(rix + 2 * (q3 + 1), r4, riw - 2 * (q3 + 1), 2,
+  -- the permanent rescue job (kept on the base)
+  drawButton(rix + 2 * (q3 + 1), r4, q3, 2, t.rescuerRole and "RESCUER: ON" or "RESCUER: OFF",
+             t.rescuerRole and C.warn or C.empty, t.rescuerRole and C.ink or C.text, "trescuer", t.id)
+  actButton(rix + 3 * (q3 + 1), r4, riw - 3 * (q3 + 1), 2,
             state.drone and ("FLY ME THERE (" .. state.drone.label .. ")") or "DRONE: FLY ME THERE",
             { kind = "tflyme", name = tostring(t.id), count = 0 }, true)
 
