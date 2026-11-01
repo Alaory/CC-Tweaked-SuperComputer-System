@@ -62,7 +62,7 @@ local CONFIG = {
 -- the base replace this program, never node_settings. (key, protocol and
 -- baseName always come from the program: the base fills them in.)
 local SETTINGS_FILE = "node_settings"
-local function loadSettings()
+function loadSettings()
   if not fs.exists(SETTINGS_FILE) then return {} end
   local h = fs.open(SETTINGS_FILE, "r")
   local t = textutils.unserialize(h.readAll() or "")
@@ -74,7 +74,7 @@ for k, v in pairs(loadSettings()) do
 end
 
 -- version of this program = a checksum of its text (the base compares it)
-local function codeHash(str)
+function codeHash(str)
   local h1, h2 = 5381, 52711
   for i = 1, #str do
     local c = str:byte(i)
@@ -103,14 +103,14 @@ end
 ---------------------------------------------------------------------
 -- modem
 ---------------------------------------------------------------------
-local function findModemSide()
+function findModemSide()
   for _, s in ipairs(rs.getSides()) do
     if peripheral.getType(s) == "modem" and peripheral.call(s, "isWireless") then return s end
   end
 end
 
 -- slot holding an item whose name contains `part` (e.g. "modem")
-local function findItemLike(part)
+function findItemLike(part)
   for i = 1, 16 do
     local d = turtle.getItemDetail(i)
     if d and d.name:find(part, 1, true) then return i end
@@ -159,7 +159,7 @@ if fs.exists(STATE_FILE) then
 end
 -- save a table to a file; a failure is reported, never stops the program
 local writeErr = nil
-local function writeFile(path, value)
+function writeFile(path, value)
   local ok, text = pcall(textutils.serialize, value)
   if not ok then
     writeErr = "cannot save " .. path .. ": " .. tostring(text)
@@ -173,7 +173,7 @@ local function writeFile(path, value)
   return true
 end
 
-local function save()
+function save()
   writeFile(STATE_FILE, S)
 end
 S.recording = nil  -- a recording does not survive a restart
@@ -184,11 +184,11 @@ local FNAME = { [0] = "south", "west", "north", "east" }
 local DX = { [0] = 0, -1, 0, 1 }
 local DZ = { [0] = 1, 0, -1, 0 }
 
-local function fmt()
+function fmt()
   if not (S.pos and S.pos.x) then return "?" end
   return S.pos.x .. " " .. S.pos.y .. " " .. S.pos.z
 end
-local function known() return S.pos ~= nil and S.pos.x ~= nil and S.pos.f ~= nil end
+function known() return S.pos ~= nil and S.pos.x ~= nil and S.pos.f ~= nil end
 
 -- Breadcrumbs: every block the turtle moved through (loops cut out), in the
 -- turtle's OWN frame: (0,0,0) is where the trail started (home), and every
@@ -198,7 +198,7 @@ local function known() return S.pos ~= nil and S.pos.x ~= nil and S.pos.f ~= nil
 local TRAIL_FILE = "node_trail"
 local trail, trailIdx, trailDirty = {}, {}, 0
 local T = { x = 0, y = 0, z = 0, f = 0 }          -- position/facing in the trail frame
-local function trailRebuild()
+function trailRebuild()
   trailIdx = {}
   for i, k in ipairs(trail) do trailIdx[k] = i end
 end
@@ -211,19 +211,19 @@ if fs.exists(TRAIL_FILE) then
   end
   trailRebuild()
 end
-local function trailSave()
+function trailSave()
   writeFile(TRAIL_FILE, { v = 2, T = T, trail = trail })
   trailDirty = 0
 end
-local function frameKey() return T.x .. "," .. T.y .. "," .. T.z end
-local function trailReset()
+function frameKey() return T.x .. "," .. T.y .. "," .. T.z end
+function trailReset()
   T = { x = 0, y = 0, z = 0, f = 0 }
   trail = { frameKey() }
   trailRebuild()
   trailSave()
 end
 if #trail == 0 then trailReset() end
-local function trailAdd()
+function trailAdd()
   local k = frameKey()
   local i = trailIdx[k]
   if i then
@@ -242,7 +242,7 @@ local function trailAdd()
 end
 -- the turtle really moved: "f" forward, "b" back, "u" up, "d" down
 -- (dir = which frame direction "forward" was, default the current one)
-local function frameMove(kind, dir)
+function frameMove(kind, dir)
   moveCount = moveCount + 1
   local f = dir or T.f
   if kind == "u" then T.y = T.y + 1
@@ -255,7 +255,7 @@ end
 ---------------------------------------------------------------------
 -- messages (same checksum as the base)
 ---------------------------------------------------------------------
-local function sign(key, t, n, cmd, args)
+function sign(key, t, n, cmd, args)
   local parts = {}
   for i, v in ipairs(args or {}) do parts[i] = tostring(v) end
   local str = key .. "|" .. tostring(t) .. "|" .. tostring(n) .. "|" .. tostring(cmd or "") ..
@@ -272,7 +272,7 @@ end
 local baseId, task, job, stopFlag = nil, "idle", nil, false
 local lastSent = 0
 
-local function itemCount()
+function itemCount()
   local n = 0
   for i = 1, 16 do n = n + turtle.getItemCount(i) end
   return n
@@ -281,7 +281,7 @@ end
 local modemAttached = true
 local pendingInfo = nil        -- extra lines to report once the modem is back
 
-local function send(t, extra)
+function send(t, extra)
   if not modemAttached then return end
   if not baseId then
     local ok, id = pcall(rednet.lookup, CONFIG.protocol, CONFIG.baseName)
@@ -318,7 +318,7 @@ local function send(t, extra)
   pcall(rednet.send, baseId, m, CONFIG.protocol)
 end
 
-local function reply(cmd, ok, msg)
+function reply(cmd, ok, msg)
   send("result", { cmd = cmd, ok = ok, msg = msg })
   if pendingInfo then
     for i, l in ipairs(pendingInfo) do
@@ -332,7 +332,7 @@ end
 -- movement (keeps track of position and facing)
 ---------------------------------------------------------------------
 local memFree     -- defined further down (terrain memory)
-local function moved(dx, dy, dz)
+function moved(dx, dy, dz)
   if S.pos and S.pos.x then
     S.pos.x, S.pos.y, S.pos.z = S.pos.x + dx, S.pos.y + dy, S.pos.z + dz
     save()
@@ -344,7 +344,7 @@ end
 -- A move failed. A BLOCK is remembered (with its kind and time). If there is
 -- no block, something that moves is in the way (mob, player, other turtle):
 -- wait a little and try again - and never remember it as a wall.
-local function blockedOrWait(move, detect, dir)
+function blockedOrWait(move, detect, dir)
   if detect() then
     if learnBlocked then learnBlocked(dir) end
     return false
@@ -360,7 +360,7 @@ local function blockedOrWait(move, detect, dir)
   return false
 end
 
-local function fwd()
+function fwd()
   if not turtle.forward() and not blockedOrWait(turtle.forward, turtle.detect, "forward") then
     return false
   end
@@ -368,41 +368,41 @@ local function fwd()
   frameMove("f")
   return true
 end
-local function bck()
+function bck()
   if not turtle.back() then return false end
   if S.pos and S.pos.f then moved(-DX[S.pos.f], 0, -DZ[S.pos.f]) end
   frameMove("b")
   return true
 end
-local function up()
+function up()
   if not turtle.up() and not blockedOrWait(turtle.up, turtle.detectUp, "up") then return false end
   moved(0, 1, 0)
   frameMove("u")
   return true
 end
-local function down()
+function down()
   if not turtle.down() and not blockedOrWait(turtle.down, turtle.detectDown, "down") then return false end
   moved(0, -1, 0)
   frameMove("d")
   return true
 end
-local function right()
+function right()
   turtle.turnRight()
   if S.pos and S.pos.f then S.pos.f = (S.pos.f + 1) % 4 save() end
   T.f = (T.f + 1) % 4
 end
-local function left()
+function left()
   turtle.turnLeft()
   if S.pos and S.pos.f then S.pos.f = (S.pos.f + 3) % 4 save() end
   T.f = (T.f + 3) % 4
 end
 -- turn to a direction of the trail frame
-local function faceFrame(tf)
+function faceFrame(tf)
   while T.f ~= tf do
     if (T.f + 1) % 4 == tf then right() else left() end
   end
 end
-local function face(f)
+function face(f)
   while S.pos.f ~= f do
     if (S.pos.f + 1) % 4 == f then right() else left() end
   end
@@ -414,7 +414,7 @@ local findWay    -- defined further down (scan + plan a way around)
 
 -- forward; if something is in the way: dig it (only if allowed and natural),
 -- otherwise climb over it
-local function stepForward()
+function stepForward()
   if fwd() then return true end
   if tryDig("forward") and fwd() then return true end
   for _ = 1, CONFIG.climb do
@@ -429,7 +429,7 @@ local function stepForward()
 end
 
 -- blocked straight ahead: step one block to the right or the left
-local function sidestep(f)
+function sidestep(f)
   for _, d in ipairs({ 1, 3 }) do
     face((f + d) % 4)
     if fwd() or (tryDig("forward") and fwd()) then
@@ -441,7 +441,7 @@ local function sidestep(f)
   return false
 end
 
-local function noFuel()
+function noFuel()
   local f = turtle.getFuelLevel()
   return f ~= "unlimited" and f < 1
 end
@@ -456,7 +456,7 @@ end
 -- Returns the fuel gained and whether it stopped because of the budget.
 local TOPUP = {}       -- the last top-up: gained, uses, refused, seconds (for the REFUEL answer)
 local REUSE_SLOTS      -- the slots holding reusable fuel last time (saves looking at all 16)
-local function topUp(target, onlyReusable, budget)
+function topUp(target, onlyReusable, budget)
   local f0 = turtle.getFuelLevel()
   if f0 == "unlimited" then return 0, false end
   local limit = turtle.getFuelLimit()
@@ -535,13 +535,13 @@ local function topUp(target, onlyReusable, budget)
 end
 
 -- the fuel level the turtle fills itself up to with reusable fuel
-local function refuelTarget()
+function refuelTarget()
   local limit = turtle.getFuelLimit()
   return math.min(limit, tonumber(CONFIG.refuelTo) or limit)
 end
 
 -- one block to an ADJACENT position (used to retrace the trail)
-local function stepTo(x, y, z)
+function stepTo(x, y, z)
   local dx, dy, dz = x - S.pos.x, y - S.pos.y, z - S.pos.z
   if math.abs(dx) + math.abs(dy) + math.abs(dz) ~= 1 then return false end
   if dy == 1 then return up() or (tryDig("up") and up()) end
@@ -551,7 +551,7 @@ local function stepTo(x, y, z)
 end
 
 -- one block to an adjacent position of the TRAIL FRAME
-local function stepToFrame(x, y, z)
+function stepToFrame(x, y, z)
   local dx, dy, dz = x - T.x, y - T.y, z - T.z
   if math.abs(dx) + math.abs(dy) + math.abs(dz) ~= 1 then return false end
   if dy == 1 then return up() or (tryDig("up") and up()) end
@@ -562,7 +562,7 @@ local function stepToFrame(x, y, z)
 end
 
 -- walk the remembered path backwards to where it started (home)
-local function backtrack()
+function backtrack()
   local total = #trail
   while #trail > 1 do
     if stopFlag then return false, "stopped while retracing at " .. fmt() end
@@ -578,7 +578,7 @@ local function backtrack()
 end
 
 -- go back up to n steps along the trail (the way it came)
-local function backtrackSteps(n)
+function backtrackSteps(n)
   local done = 0
   while done < n and #trail > 1 do
     if stopFlag then return false end
@@ -590,12 +590,12 @@ local function backtrackSteps(n)
   return done > 0
 end
 
-local function round(v) return math.floor(v + 0.5) end
+function round(v) return math.floor(v + 0.5) end
 local gpsWarned = false
 
 -- raw GPS position; warns once if the numbers are not whole (a GPS host has
 -- wrong coordinates in its "gps host x y z" line)
-local function gpsRaw(timeout)
+function gpsRaw(timeout)
   local ok, x, y, z = pcall(gps.locate, timeout or 1)
   if not ok or not x then return nil end
   if not gpsWarned and (math.abs(x - round(x)) > 0.15 or math.abs(y - round(y)) > 0.15
@@ -610,7 +610,7 @@ end
 -- which way am I facing? Try a test move forward; if blocked, try the other
 -- directions (turning back afterwards). Returns facing or nil, plus the real
 -- position (in case the turtle could not move back).
-local function detectFacing(x, y, z)
+function detectFacing(x, y, z)
   for turns = 0, 3 do
     if turtle.forward() then
       local x2, _, z2 = gpsRaw(2)
@@ -636,7 +636,7 @@ local function detectFacing(x, y, z)
 end
 
 -- full fix: position AND facing from GPS
-local function gpsFix()
+function gpsFix()
   local x, y, z = gpsRaw(2)
   if not x then return false, "no GPS signal - use setpos instead" end
   local f, rx, ry, rz = detectFacing(x, y, z)
@@ -665,7 +665,7 @@ gpsCheck = function()
 end
 
 -- before a trip: full fix if GPS is there (also fixes a wrong facing)
-local function verifyPose()
+function verifyPose()
   if gpsRaw(1) then
     local ok, msg = gpsFix()
     if ok and (msg:find("was wrong", 1, true) or msg:find("NOT checked", 1, true)) then
@@ -677,20 +677,20 @@ end
 ---------------------------------------------------------------------
 -- scanning (the Geo Scanner is swapped in for the modem, then back)
 ---------------------------------------------------------------------
-local function findItem(name)
+function findItem(name)
   for i = 1, 16 do
     local d = turtle.getItemDetail(i)
     if d and d.name == name then return i end
   end
 end
 
-local function equipOn(side)
+function equipOn(side)
   if side == "left" then return turtle.equipLeft() end
   return turtle.equipRight()
 end
 
 -- run fn(scanner) with the Geo Scanner equipped where the modem was
-local function withScanner(fn)
+function withScanner(fn)
   if modem ~= "left" and modem ~= "right" then
     return false, "the modem must be EQUIPPED (left or right) for scanning"
   end
@@ -764,7 +764,7 @@ end
 
 -- run fn() with an item whose name contains `part` equipped where the modem
 -- was; the modem is always put back (found by name, like after a scan)
-local function withEquipped(part, fn)
+function withEquipped(part, fn)
   if modem ~= "left" and modem ~= "right" then return false end
   local slot = findItemLike(part)
   if not slot then return false end
@@ -786,7 +786,7 @@ local function withEquipped(part, fn)
   return ok and res
 end
 
-local function natural(name)
+function natural(name)
   name = tostring(name)
   for _, n in ipairs(CONFIG.digOk) do
     if name:find(n, 1, true) then return true end
@@ -803,7 +803,7 @@ tryDig = function(dir)
   return withEquipped("_pickaxe", dig) == true
 end
 
-local function isOre(b)
+function isOre(b)
   local n = tostring(b.name)
   if n:find("_ore", 1, true) or n:find("ancient_debris", 1, true) then return true end
   if type(b.tags) == "table" then
@@ -820,12 +820,12 @@ end
 -- fully trusted only while fresh, and then fades back to "unknown". What the
 -- turtle sees now always wins. Walls found by bumping into them, dead ends
 -- and the exit route are shared with all turtles through the base.
-local function now() return os.epoch("utc") end
+function now() return os.epoch("utc") end
 local MEM, memCount = {}, 0       -- [key] = { t = time, k = kind, s = "scan"|"bump"|"base" }
 local DEAD = {}                    -- [key] = { x, y, z, t }   places where a turtle got stuck
 local EXIT = nil                   -- { points = { {x,y,z}, ... }, t = time }   the way out of the base
 local pend = { walls = {}, clears = {}, dead = {} }           -- still to tell the base
-local function memKey(x, y, z) return x .. "," .. y .. "," .. z end
+function memKey(x, y, z) return x .. "," .. y .. "," .. z end
 
 -- how long a remembered wall is trusted (ms): fully while fresh, then it fades
 local LIFE = {
@@ -833,7 +833,7 @@ local LIFE = {
   short = { fresh = 2 * 60000,  fade = 30 * 60000 },   -- sand, gravel, leaves, snow: change by themselves
   door  = { fresh = 60000,      fade = 10 * 60000 },   -- doors, trapdoors, gates: opened and closed
 }
-local function kindOf(name)
+function kindOf(name)
   local n = tostring(name)
   if n:find("door", 1, true) or n:find("gate", 1, true) then return "door" end
   if n:find("sand", 1, true) or n:find("gravel", 1, true) or n:find("leaves", 1, true)
@@ -843,19 +843,19 @@ local function kindOf(name)
   return "hard"
 end
 -- extra cost of planning through a remembered wall: nil = blocked, 0 = forgotten
-local function wallCost(e, t)
+function wallCost(e, t)
   local L = LIFE[e.k] or LIFE.hard
   local age = t - e.t
   if age < L.fresh then return nil end
   if age > L.fresh + L.fade then return 0 end
   return 40 * (1 - (age - L.fresh) / L.fade)
 end
-local function isLiquid(name)
+function isLiquid(name)
   name = tostring(name)
   return name:find("water", 1, true) or name:find("lava", 1, true)
 end
 
-local function memWall(x, y, z, kind, src, t)
+function memWall(x, y, z, kind, src, t)
   local k = memKey(x, y, z)
   local old = MEM[k]
   t = t or now()
@@ -863,7 +863,7 @@ local function memWall(x, y, z, kind, src, t)
   if not old then memCount = memCount + 1 end
   MEM[k] = { t = t, k = kind or "hard", s = src or "scan" }
 end
-local function memClear(x, y, z)
+function memClear(x, y, z)
   local k = memKey(x, y, z)
   local old = MEM[k]
   if old then
@@ -875,7 +875,7 @@ end
 memFree = function(x, y, z) memClear(x, y, z) end
 
 -- a scan: listed blocks are walls (with their kind), every other cell is free
-local function learnScan(data, r)
+function learnScan(data, r)
   if not (S.pos and S.pos.x) then return end
   if memCount > 250000 then MEM, memCount = {}, 0 end
   local cx, cy, cz = S.pos.x, S.pos.y, S.pos.z
@@ -919,7 +919,7 @@ learnBlocked = function(dir)
 end
 
 -- a place where the turtle could not get on: avoided for a while (shared)
-local function addDead(x, y, z)
+function addDead(x, y, z)
   local k = memKey(x, y, z)
   DEAD[k] = { x = x, y = y, z = z, t = now() }
   pend.dead[#pend.dead + 1] = k
@@ -927,7 +927,7 @@ end
 
 -- route recording (the exit route): every block moved through, loops cut out
 local REC, recIdx = nil, nil
-local function recStart()
+function recStart()
   REC, recIdx = {}, {}
   if S.pos and S.pos.x then
     REC[1] = { S.pos.x, S.pos.y, S.pos.z }
@@ -949,13 +949,13 @@ recAdd = function()
   end
   S.recCount = #REC
 end
-local function recStop()
+function recStop()
   local r = REC
   REC, recIdx = nil, nil
   return r or {}
 end
 -- keep only the corners of a path of neighbouring blocks
-local function compressRoute(cells)
+function compressRoute(cells)
   if #cells <= 2 then return cells end
   local out = { cells[1] }
   for i = 2, #cells - 1 do
@@ -967,12 +967,12 @@ local function compressRoute(cells)
   out[#out + 1] = cells[#cells]
   return out
 end
-local function routeToString(points)
+function routeToString(points)
   local o = {}
   for _, p in ipairs(points) do o[#o + 1] = p[1] .. "," .. p[2] .. "," .. p[3] end
   return table.concat(o, ";")
 end
-local function routeFromString(str)
+function routeFromString(str)
   local pts = {}
   for x, y, z in tostring(str or ""):gmatch("(-?%d+),(-?%d+),(-?%d+)") do
     pts[#pts + 1] = { tonumber(x), tonumber(y), tonumber(z) }
@@ -981,7 +981,7 @@ local function routeFromString(str)
 end
 
 -- scan around the turtle (GPS-checked first); returns the raw block list
-local function scanRaw(r)
+function scanRaw(r)
   local fix = gpsCheck()
   if fix then send("result", { cmd = "gps", ok = true, msg = fix }) end
   if not (S.pos and S.pos.x) then return nil, "position unknown - use GPS LOCATE" end
@@ -1016,10 +1016,10 @@ if fs.exists(OUTBOX_FILE) then
     end
   end
 end
-local function outboxSave()
+function outboxSave()
   writeFile(OUTBOX_FILE, outbox)
 end
-local function sendScan(payload)
+function sendScan(payload)
   S.scanSeq = (S.scanSeq or 0) + 1
   save()
   payload.sid = S.scanSeq
@@ -1040,7 +1040,7 @@ outboxResend = function()
 end
 
 -- send the map summary of a scan (top block per column + ores); returns #ores
-local function sendSummary(data, r)
+function sendSummary(data, r)
   local n = 2 * r + 1
   local cols, names, nidx, ores = {}, {}, {}, {}
   local function pal(nm)
@@ -1068,7 +1068,7 @@ local function sendSummary(data, r)
 end
 
 -- scan here and send the map summary
-local function scanHere(r)
+function scanHere(r)
   task = "scanning"
   local data, rr = scanRaw(r)
   if not data then return false, rr end
@@ -1079,14 +1079,14 @@ end
 ---------------------------------------------------------------------
 -- navigation
 ---------------------------------------------------------------------
-local function isStop(err) return tostring(err):find("^stopped") ~= nil end
-local function note(cmd, msg) send("result", { cmd = cmd, ok = false, msg = msg }) end
+function isStop(err) return tostring(err):find("^stopped") ~= nil end
+function note(cmd, msg) send("result", { cmd = cmd, ok = false, msg = msg }) end
 
 -- ---- sharing with the base (all turtles learn from each other) ----
 local knowReady = false
 -- ask the base what is known around here and around the target (walls with
 -- their age, dead ends, the exit route); waits up to 3 s for the answer
-local function requestKnowledge(tx, tz)
+function requestKnowledge(tx, tz)
   if not (S.pos and S.pos.x) then return end
   knowReady = false
   send("need", { x1 = math.min(S.pos.x, tx), z1 = math.min(S.pos.z, tz),
@@ -1097,7 +1097,7 @@ local function requestKnowledge(tx, tz)
   end
 end
 -- what this turtle learnt: walls it bumped into, walls that are gone, dead ends
-local function learnFlush()
+function learnFlush()
   if #pend.walls + #pend.clears + #pend.dead == 0 then return end
   send("learn", { walls = table.concat(pend.walls, ";"), clears = table.concat(pend.clears, ";"),
                   dead = table.concat(pend.dead, ";") })
@@ -1106,10 +1106,10 @@ end
 
 -- ---- progress watchdog: no real progress for a while = change strategy ----
 local WD = {}
-local function watchStart(tx, ty, tz, goalY)
+function watchStart(tx, ty, tz, goalY)
   WD = { tx = tx, ty = ty, tz = tz, goalY = goalY, best = math.huge, at = moveCount }
 end
-local function watchStalled()
+function watchStalled()
   if not (S.pos and S.pos.x and WD.tx) then return false end
   local d
   if WD.goalY then d = math.max(0, WD.goalY - S.pos.y)
@@ -1125,7 +1125,7 @@ end
 -- Unknown space counts as passable. A fresh wall blocks; an older wall can be
 -- planned through at extra cost (it may be gone). Dead ends cost extra.
 -- ty = nil: any height at tx/tz is fine. goalY: just get up to that height.
-local function astar(sx, sy, sz, tx, ty, tz, goalY, near)
+function astar(sx, sy, sz, tx, ty, tz, goalY, near)
   local m = CONFIG.navMargin
   local minX, maxX = math.min(sx, tx) - m, math.max(sx, tx) + m
   local minZ, maxZ = math.min(sz, tz) - m, math.max(sz, tz) + m
@@ -1325,7 +1325,7 @@ end
 -- reach tx/tz at about the current height: forward, climb, step around, and
 -- when really stuck: a planned route. The watchdog ends useless wandering.
 local sinceCheck = 0
-local function moveToXZ(tx, tz)
+function moveToXZ(tx, tz)
   local planned = 0
   watchStart(tx, nil, tz)
   for _ = 1, 6 do
@@ -1372,7 +1372,7 @@ local function moveToXZ(tx, tz)
 end
 
 -- the last part of a trip: sideways at about this height, then up/down
-local function gotoLocal(tx, ty, tz)
+function gotoLocal(tx, ty, tz)
   for attempt = 1, CONFIG.pathfind + 1 do
     local ok, err = moveToXZ(tx, tz)
     if not ok then return false, err end
@@ -1394,7 +1394,7 @@ local function gotoLocal(tx, ty, tz)
 end
 
 -- up to the sky highway (straight up, or a planned way up past a roof)
-local function climbToSky()
+function climbToSky()
   local sky = CONFIG.skyY
   task = "climbing to the sky highway"
   while S.pos.y < sky do
@@ -1409,7 +1409,7 @@ local function climbToSky()
 end
 
 -- the cells of one straight piece of a route (a exclusive, b inclusive)
-local function segmentCells(a, b)
+function segmentCells(a, b)
   local cells = {}
   local dx, dy, dz = b[1] - a[1], b[2] - a[2], b[3] - a[3]
   local n = math.abs(dx) + math.abs(dy) + math.abs(dz)
@@ -1422,7 +1422,7 @@ end
 
 -- follow a recorded route (the exit route), checking every step. A blocked
 -- piece is walked around; the repaired route is saved for everybody.
-local function followRoute(points, label, reversed)
+function followRoute(points, label, reversed)
   local ok, err = gotoLocal(points[1][1], points[1][2], points[1][3])
   if not ok then return false, label .. ": cannot reach its start (" .. tostring(err) .. ")" end
   recStart()
@@ -1462,25 +1462,25 @@ local function followRoute(points, label, reversed)
   return true
 end
 
-local function near(p, x, z, d) return p and math.abs(p[1] - x) + math.abs(p[3] - z) <= d end
+function near(p, x, z, d) return p and math.abs(p[1] - x) + math.abs(p[3] - z) <= d end
 
 -- ===== End Automata Core: teleport between saved points =====
 -- The points live inside the core (lost if it is taken off); their
 -- positions are kept here too (the core only tells the names).
-local function warpCore()
+function warpCore()
   for _, side in ipairs({ "left", "right" }) do
     local t = peripheral.getType(side)
     if t and tostring(t):find("end_automata", 1, true) then return side end
   end
 end
-local function wcall(m, ...)
+function wcall(m, ...)
   local side = warpCore()
   if not side then return nil, "no End Automata Core equipped" end
   local ok, a, b = pcall(peripheral.call, side, m, ...)
   if not ok then return nil, tostring(a) end
   return a, b
 end
-local function warpSave(name)
+function warpSave(name)
   if not (S.pos and S.pos.x) then return false, "position unknown" end
   if not warpCore() then return false, "no End Automata Core equipped" end
   S.warps = S.warps or {}
@@ -1501,7 +1501,7 @@ local function warpSave(name)
   return true, "warp point '" .. name .. "' saved at " .. fmt()
 end
 -- teleport to a saved point (checks the fuel first)
-local function warpTo(name)
+function warpTo(name)
   local w = S.warps and S.warps[name]
   if not w then return false, "no warp point called '" .. tostring(name) .. "'" end
   local cost = tonumber((wcall("estimateWarpCost", name)))
@@ -1515,7 +1515,7 @@ local function warpTo(name)
   return true, "warped to '" .. name .. "' (" .. w.x .. " " .. w.y .. " " .. w.z .. ")"
 end
 -- the saved point closest to a target, if warping there first saves a lot
-local function bestWarpFor(tx, ty, tz)
+function bestWarpFor(tx, ty, tz)
   if not (S.warps and next(S.warps) and warpCore()) then return nil end
   local here = math.abs(tx - S.pos.x) + math.abs(tz - S.pos.z) + math.abs(ty - S.pos.y)
   local best, bd
@@ -1526,7 +1526,7 @@ local function bestWarpFor(tx, ty, tz)
   if best and bd + CONFIG.warpGain <= here then return best end
 end
 -- after a long trip: remember the place as an automatic warp point
-local function warpRemember()
+function warpRemember()
   if not warpCore() then return end
   -- near home: the "home" point is used for that
   if S.home and math.abs(S.home.x - S.pos.x) + math.abs(S.home.z - S.pos.z) + math.abs(S.home.y - S.pos.y) < 32 then
@@ -1554,7 +1554,7 @@ end
 -- A whole trip, the best way: out through the exit route if inside the base,
 -- along the sky highway if far, and back in through the exit route if the
 -- target is inside the base. Short trips go directly.
-local function travelOnce(tx, ty, tz)
+function travelOnce(tx, ty, tz)
   -- End Automata Core: teleport to the saved point nearest the target first
   local wp = bestWarpFor(tx, ty, tz)
   if wp then
@@ -1597,7 +1597,7 @@ end
 
 -- the ladder of strategies: try; back up along the trail and try again;
 -- try from the sky highway; then remember a dead end (shared) and give up
-local function withLadder(what, fn)
+function withLadder(what, fn)
   local ok, err = fn()
   if ok or isStop(err) then return ok, err end
   for _, n in ipairs(CONFIG.backoff) do
@@ -1637,7 +1637,7 @@ end
 
 -- GO HOME: the best way (exit route / sky highway / direct); the whole
 -- trail backwards only if that fails
-local function goHome()
+function goHome()
   if not S.home then return false, "no home set (SET HOME)" end
   local h = S.home
   local ok, msg = gotoPos(h.x, h.y, h.z)
@@ -1664,7 +1664,7 @@ end
 
 -- go down until standing on something - but never far (over a cave or a
 -- ravine the turtle would otherwise drop into it)
-local function settle()
+function settle()
   for _ = 1, CONFIG.settleMax do
     if stopFlag then return end
     if turtle.detectDown() then return end
@@ -1677,7 +1677,7 @@ local surveyPoints    -- below
 
 -- a list of spots (from the base): visit the nearest first, then the next
 -- nearest, and so on (short trips, no criss-crossing)
-local function orderNearest(pts)
+function orderNearest(pts)
   local out, left = {}, {}
   for i, p in ipairs(pts) do left[i] = p end
   local cx, cz = S.pos.x, S.pos.z
@@ -1694,7 +1694,7 @@ local function orderNearest(pts)
   return out
 end
 
-local function survey(x1, z1, x2, z2, r)
+function survey(x1, z1, x2, z2, r)
   if not known() then return false, "position/facing unknown - use GPS LOCATE" end
   r = math.max(1, math.min(16, math.floor(tonumber(r) or CONFIG.scanRadius)))
   if x1 > x2 then x1, x2 = x2, x1 end
@@ -1773,16 +1773,16 @@ end
 -- search & rescue: find a lost turtle and reinstall it from the install
 -- floppy, or bring fuel / a pickaxe to a stuck one
 ---------------------------------------------------------------------
-local function slotOf(test)
+function slotOf(test)
   for i = 1, 16 do
     local d = turtle.getItemDetail(i)
     if d and test(d.name) then return i, d end
   end
 end
-local function isDrive(n) return n == "computercraft:disk_drive" end
-local function isFloppy(n) return n == "computercraft:disk" end
-local function isPick(n) return n:find("_pickaxe", 1, true) ~= nil end
-local function isFuel(n)
+function isDrive(n) return n == "computercraft:disk_drive" end
+function isFloppy(n) return n == "computercraft:disk" end
+function isPick(n) return n:find("_pickaxe", 1, true) ~= nil end
+function isFuel(n)
   return n:find("coal", 1, true) or n:find("charcoal", 1, true) or n:find("lava_bucket", 1, true)
          or n:find("blaze_rod", 1, true)
 end
@@ -1799,11 +1799,11 @@ gearString = function()
 end
 
 local N6 = { { 0, 1, 0 }, { 1, 0, 0 }, { -1, 0, 0 }, { 0, 0, 1 }, { 0, 0, -1 }, { 0, -1, 0 } }
-local function adjacent(x, y, z)
+function adjacent(x, y, z)
   return math.abs(x - S.pos.x) + math.abs(y - S.pos.y) + math.abs(z - S.pos.z) == 1
 end
 -- turn towards a neighbouring block: its side name and the matching actions
-local function faceCell(x, y, z)
+function faceCell(x, y, z)
   local dx, dy, dz = x - S.pos.x, y - S.pos.y, z - S.pos.z
   if dy == 1 then return "top", turtle.placeUp, turtle.dropUp, turtle.suckUp, turtle.digUp end
   if dy == -1 then return "bottom", turtle.placeDown, turtle.dropDown, turtle.suckDown, turtle.digDown end
@@ -1811,7 +1811,7 @@ local function faceCell(x, y, z)
   return "front", turtle.place, turtle.drop, turtle.suck, turtle.dig
 end
 -- get next to x y z (on any free side, except `avoid`)
-local function approach(x, y, z, avoid)
+function approach(x, y, z, avoid)
   if adjacent(x, y, z) and not (avoid and S.pos.x == avoid[1] and S.pos.y == avoid[2] and S.pos.z == avoid[3]) then
     return true
   end
@@ -1830,7 +1830,7 @@ local function approach(x, y, z, avoid)
   return false
 end
 -- is the turtle next to me (at x y z) the one with this ID?
-local function isTurtle(tid, x, y, z)
+function isTurtle(tid, x, y, z)
   if not adjacent(x, y, z) then return false end
   local side = faceCell(x, y, z)
   if peripheral.getType(side) ~= "turtle" then return false end
@@ -1840,7 +1840,7 @@ end
 
 -- find it: at its last known position, else search with the Geo Scanner in
 -- a grid of scans (every 16 blocks, nearest first) up to `radius` around it
-local function locate(tid, x, y, z, radius)
+function locate(tid, x, y, z, radius)
   if approach(x, y, z) and isTurtle(tid, x, y, z) then return x, y, z end
   if not findItem(CONFIG.geoItem) then
     return nil, "turtle " .. tid .. " is not at its last position - I need a Geo Scanner to search"
@@ -1879,7 +1879,7 @@ end
 
 -- an OFFLINE turtle: a Disk Drive with the install floppy next to it, then
 -- switch it on - it boots from the floppy and installs the turtle program
-local function reinstall(tid, lx, ly, lz)
+function reinstall(tid, lx, ly, lz)
   local dslot, fslot = slotOf(isDrive), slotOf(isFloppy)
   if not (dslot and fslot) then return false, "I need a Disk Drive and the install floppy" end
   local R = { S.pos.x, S.pos.y, S.pos.z }             -- next to the lost turtle: the drive goes here
@@ -1918,7 +1918,7 @@ local function reinstall(tid, lx, ly, lz)
 end
 
 -- a STUCK or empty turtle: put fuel (and a spare pickaxe) into its inventory
-local function supply(tid, lx, ly, lz)
+function supply(tid, lx, ly, lz)
   local _, _, drop = faceCell(lx, ly, lz)
   local gave = {}
   local fuelSlot = slotOf(isFuel)
@@ -1944,7 +1944,7 @@ end
 -- centre in a grid of big scans, at three heights; every turtle found that is
 -- not online (not in `skip`) is reinstalled on the spot. Natural blocks may be
 -- dug during the sweep (with a pickaxe) - lost turtles are often in caves.
-local function sweep(cx, cy, cz, radius, skip)
+function sweep(cx, cy, cz, radius, skip)
   if S.anchor then return false, "I am the ANCHOR - send another turtle" end
   if not findItem(CONFIG.geoItem) then return false, "I need a Geo Scanner to search" end
   if not (slotOf(isDrive) and slotOf(isFloppy)) then
@@ -2049,7 +2049,7 @@ local function sweep(cx, cy, cz, radius, skip)
                       (#rescued > 0 and (" (" .. table.concat(rescued, ", ") .. ")") or ""))
 end
 
-local function rescue(tid, x, y, z, mode, radius)
+function rescue(tid, x, y, z, mode, radius)
   if S.anchor then return false, "I am the ANCHOR - send another turtle" end
   task = "rescue: looking for turtle " .. tid
   local lx, ly, lz = locate(tid, x, y, z, radius)
@@ -2066,7 +2066,7 @@ end
 ---------------------------------------------------------------------
 -- commands
 ---------------------------------------------------------------------
-local function runJob(j)
+function runJob(j)
   local a = j.args
   if S.anchor and (j.cmd == "survey" or j.cmd == "surveypts") then
     return false, "I am the ANCHOR (I keep the base loaded) - turn ANCHOR off first"
@@ -2137,7 +2137,7 @@ local function runJob(j)
 end
 
 -- write a new program over this one (the old one is kept as startup.old)
-local function installUpdate(code)
+function installUpdate(code)
   if fs.exists("startup.old") then fs.delete("startup.old") end
   if fs.exists(MYPATH) then fs.copy(MYPATH, "startup.old") end
   local targets = { MYPATH }
@@ -2150,7 +2150,7 @@ local function installUpdate(code)
 end
 
 -- commands that answer at once (also while a job is running)
-local function immediate(cmd, a)
+function immediate(cmd, a)
   if cmd == "upd" then
     -- a new program from the base, in pieces: { version, piece, pieces, text }.
     -- Pieces are collected also during a job; a complete update is installed
@@ -2280,17 +2280,19 @@ local function immediate(cmd, a)
     local _, more = topUp(refuelTarget(), false, 200)
     local names = {}
     for n in pairs(S.reuse or {}) do names[#names + 1] = n:gsub("^.*:", "") end
-    local rate = (TOPUP.secs or 0) > 0 and math.floor(TOPUP.gained / TOPUP.secs) or TOPUP.gained
+    if before == "unlimited" then return true, "fuel is unlimited on this server - nothing to do" end
+    local gained, uses, refused, secs = TOPUP.gained or 0, TOPUP.uses or 0, TOPUP.refused or 0, TOPUP.secs or 0
+    local rate = secs > 0 and math.floor(gained / secs) or gained
     return true, "fuel " .. tostring(before) .. " -> " .. tostring(turtle.getFuelLevel()) ..
-                 " (" .. TOPUP.uses .. " uses" .. (TOPUP.refused > 0 and (", refused " .. TOPUP.refused .. "x") or "") ..
-                 ", " .. string.format("%.1f", TOPUP.secs) .. " s = " .. rate .. " fuel/s)" ..
+                 " (" .. uses .. " uses" .. (refused > 0 and (", refused " .. refused .. "x") or "") ..
+                 ", " .. string.format("%.1f", secs) .. " s = " .. rate .. " fuel/s)" ..
                  (#names > 0 and ("; reusable fuel: " .. table.concat(names, ", ") ..
                   (more and " - it keeps filling up by itself while idle" or "")) or "")
   end
   return nil
 end
 
-local function listener()
+function listener()
   while true do
     local id, m = rednet.receive(CONFIG.protocol)
     if type(m) == "table" and m.t == "cmd" and type(m.n) == "number"
@@ -2320,7 +2322,7 @@ end
 -- jobs worth continuing after a restart (long trips and searches)
 local RESUMABLE = { ["goto"] = true, home = true, survey = true, surveypts = true, rescue = true, sweep = true }
 
-local function worker()
+function worker()
   while true do
     if job then
       local j = job
@@ -2367,7 +2369,7 @@ local function worker()
   end
 end
 
-local function heartbeat()
+function heartbeat()
   send("hello", { resumed = S.resumedNote })
   do
     local side = warpCore()

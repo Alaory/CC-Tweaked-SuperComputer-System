@@ -53,6 +53,12 @@ PneumaticCraft drone rides, turtle mapping/surveys, and an AE2 ME network view.
   CONFIG.turtles.installDrive). A floppy put in gets the installer + current
   node.lua at once (TT.prepareInstallFloppy on the "disk" event, comms
   worker) - only if empty or already an installer. Never used for the map.
+- node.lua: the game's Lua (Cobalt) counts FILE-LEVEL locals into every
+  function's 200-local limit (standard luac does not). Keep file-level
+  helpers as plain `function f()` (the turtle program has its own
+  environment), not `local function`. Check with
+  `python3 tools/check_locals.py node.lua` (must stay well under 200). The
+  base also compiles node.lua before sending it (TT.codeLoad).
 - `tools/preview/` draws the monitor outside the game (Lua 5.3 + Pillow); use
   it to check screen changes. It is not game code.
 

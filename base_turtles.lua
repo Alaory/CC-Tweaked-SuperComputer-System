@@ -373,6 +373,17 @@ function TT.codeLoad()
   text = setStr(text, "protocol", CONFIG.turtles.protocol)
   text = setStr(text, "baseName", CONFIG.turtles.hostname)
   text = setStr(text, "key", CONFIG.turtles.key)
+  -- the base runs the same Lua as the turtles: if it does not compile here,
+  -- it would not compile there either - keep the version the turtles have
+  local okC, errC = load(text, "node", "t", {})
+  if not okC then
+    if not (CODE and CODE.badMod == mod) then
+      setPopup("TURTLE PROGRAM", "The new node.lua does not compile - not sent to the turtles: " ..
+               tostring(errC), C.bad)
+    end
+    if CODE then CODE.badMod = mod end
+    return
+  end
   local pieces = {}
   for i = 1, #text, CHUNK do pieces[#pieces + 1] = text:sub(i, i + CHUNK - 1) end
   CODE = { text = text, ver = codeHash(text), mod = mod, pieces = pieces }
