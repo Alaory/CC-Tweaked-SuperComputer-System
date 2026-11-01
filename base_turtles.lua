@@ -90,15 +90,23 @@ function TT.receive(id, m)
   t.stuck, t.trail = m.stuck, m.trail
   t.anchor, t.waiting = m.anchor, m.waiting
   t.rec = m.rec
+  local oldVer = t.ver
   if m.ver then t.ver = m.ver end
+  t.updReady = m.updReady
+  if oldVer and oldVer ~= "?" and m.ver and m.ver ~= oldVer and CODE and m.ver == CODE.ver then
+    pcall(TT.updated, t, oldVer)
+  end
   if m.gear then t.gear = m.gear end
   t.seenEpoch = os.epoch("utc")
   TT.listDirty = true
-  if CONFIG.turtles.autoUpdate and TT.outdated(t) and (t.task == nil or t.task == "idle")
-     and (not t.updSent or os.clock() - t.updSent > 90) then
-    TT.pushCode(id)
-  end
-  if m.t == "hello" then
+  if m.t == "updmiss" and CODE and m.want == CODE.ver and type(m.missing) == "table" then
+    -- some pieces of the update did not arrive: send just those again
+    for _, k in ipairs(m.missing) do
+      local p = CODE.pieces[tonumber(k) or 0]
+      if p then TT.send(id, "upd", { CODE.ver, tonumber(k), #CODE.pieces, p }, true) end
+    end
+    if TT.updating and TT.updating.id == id then TT.updating.t0 = os.clock() end
+  elseif m.t == "hello" then
     TT.log(t, "Connected")
   elseif m.t == "scan" then
     local ok = pcall(MAP.addScan, m)
@@ -144,6 +152,15 @@ function TT.receive(id, m)
     EXITROUTE = { route = m.route, t = os.epoch("utc"), n = n + 1, by = t.label }
     KNOW.dirty = true
     TT.log(t, "Exit route saved (" .. (n + 1) .. " corners) - shared with all turtles")
+  elseif m.t == "result" and m.cmd == "upd" then
+    TT.log(t, "Update: " .. tostring(m.msg))
+    if not m.ok then
+      setToast(t.label .. ": update failed - " .. tostring(m.msg), C.warn)
+      if TT.updating and TT.updating.id == id then TT.updating = nil t.updRetry = os.clock() + 120 end
+    elseif tostring(m.msg):find("ready", 1, true) then
+      setToast(t.label .. " got " .. (CODE and TT.verName(CODE.ver) or "the update") ..
+               " - installs when its job is done", C.label)
+    end
   elseif m.t == "result" then
     TT.log(t, (m.ok and "Done: " or "Failed: ") .. tostring(m.msg))
     if not m.ok then setToast(t.label .. ": " .. tostring(m.msg), C.warn, 6) end
@@ -293,6 +310,25 @@ end
 CODE = nil               -- { text, ver, mod, pieces = {...} }
 local CHUNK = 8000
 
+-- readable version numbers: every new node.lua (new checksum) gets the next
+-- number - v1, v2, v3 ... (kept in a small file)
+local VER_FILE = "turtle_versions.dat"
+TT.versions = { next = 1, byHash = {} }
+do
+  if fs.exists(VER_FILE) then
+    local h = fs.open(VER_FILE, "r")
+    local t = h and textutils.unserialize(h.readAll() or "")
+    if h then h.close() end
+    if type(t) == "table" and type(t.byHash) == "table" then TT.versions = t end
+  end
+end
+-- "v7" for a checksum (number given when the base first loads that node.lua)
+function TT.verName(hash)
+  if not hash or hash == "?" then return "?" end
+  local n = TT.versions.byHash[hash]
+  return n and ("v" .. n) or "old"
+end
+
 -- checksum of node.lua (the turtles' version number)
 local function codeHash(str)
   local h1, h2 = 5381, 52711
@@ -338,7 +374,16 @@ function TT.codeLoad()
   local pieces = {}
   for i = 1, #text, CHUNK do pieces[#pieces + 1] = text:sub(i, i + CHUNK - 1) end
   CODE = { text = text, ver = codeHash(text), mod = mod, pieces = pieces }
-  for _, t in pairs(state.turtles) do t.updSent = nil end
+  if not TT.versions.byHash[CODE.ver] then
+    TT.versions.byHash[CODE.ver] = TT.versions.next
+    TT.versions.next = TT.versions.next + 1
+    saveFileSafe(VER_FILE, textutils.serialize(TT.versions))
+    if next(state.turtles) then
+      setToast("New turtle program " .. TT.verName(CODE.ver) .. " - updating the turtles one by one", C.label)
+    end
+  end
+  for _, t in pairs(state.turtles) do t.updSent, t.updRetry = nil, nil end
+  TT.updating = nil
   TT.writeInstallDisk()
 end
 
@@ -351,9 +396,52 @@ function TT.pushCode(id)
   end
   if t then
     t.updSent = os.clock()
-    TT.log(t, "Sending the turtle program update (" .. CODE.ver:sub(1, 8) .. ")")
+    TT.log(t, "Sending the turtle program update " .. TT.verName(CODE.ver))
   end
   return true
+end
+
+-- updates, ONE turtle at a time (comms worker, every 2 s): send it, wait until
+-- it runs the new version or has it ready (busy turtles install it after their
+-- job), then the next one. No answer in 45 s: try that one again in 2 minutes.
+function TT.updateTick()
+  if not CODE or not CONFIG.turtles.autoUpdate then return end
+  local u = TT.updating
+  if u then
+    local t = state.turtles[u.id]
+    if not t or t.ver == CODE.ver or t.updReady == CODE.ver then
+      TT.updating = nil
+    elseif os.clock() - u.t0 > 45 then
+      t.updRetry = os.clock() + 120
+      TT.log(t, "No answer to the update - trying again later")
+      TT.updating = nil
+    else
+      return
+    end
+  end
+  for _, t in ipairs(TT.list()) do
+    if TT.online(t) and TT.outdated(t) and t.updReady ~= CODE.ver
+       and (not t.updRetry or os.clock() > t.updRetry) then
+      TT.pushCode(t.id)
+      TT.updating = { id = t.id, t0 = os.clock() }
+      return
+    end
+  end
+end
+
+-- a turtle runs a new version now: tell the owner (and when all are done)
+function TT.updated(t, oldVer)
+  TT.log(t, "Updated: " .. TT.verName(oldVer) .. " -> " .. TT.verName(t.ver))
+  setToast(t.label .. " updated to " .. TT.verName(t.ver), C.good)
+  if not CODE then return end
+  local n, all = 0, true
+  for _, o in pairs(state.turtles) do
+    if TT.online(o) then
+      n = n + 1
+      if o.ver ~= CODE.ver then all = false end
+    end
+  end
+  if all and n > 1 then setToast("All " .. n .. " turtles run " .. TT.verName(CODE.ver), C.good) end
 end
 
 -- is this turtle's program older than the base's node.lua?

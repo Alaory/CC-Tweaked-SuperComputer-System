@@ -22,7 +22,8 @@ function drawTurtlesPage(G)
   local rix, riw = rx + 2, rw - 4
 
   ------------------------------------------------ list of turtles
-  card(lx, y0, leftW, bottom - y0 + 1, "TURTLES (" .. #list .. ")")
+  card(lx, y0, leftW, bottom - y0 + 1, "TURTLES (" .. #list .. ")" ..
+       (CODE and ("   program " .. TT.verName(CODE.ver)) or ""))
   -- does a turtle keep the base running while you are offline?
   do
     local at, inChunk = TT.anchorInfo()
@@ -55,10 +56,15 @@ function drawTurtlesPage(G)
     if sel then
       for k = 0, 3 do mark(lx + 1, ry + k, C.accent) end
     end
-    text(ix, ry, trunc(t.label .. "  #" .. t.id, iw - 12), sel and C.label or C.text, C.panel)
+    local name = trunc(t.label .. "  #" .. t.id, iw - 30)
+    text(ix, ry, name, sel and C.label or C.text, C.panel)
+    -- its program version: green = the newest, yellow = older
+    local vn = TT.verName(t.ver)
+    text(ix + #name + 2, ry, vn, (CODE and t.ver == CODE.ver) and C.good or C.warn, C.panel)
     local old = on and TT.outdated(t)
-    local st = (on and t.stuck) and "STUCK" or old and "UPDATING" or (on and t.anchor) and "ANCHOR"
-               or (on and "ONLINE" or "OFFLINE")
+    local ready = old and CODE and t.updReady == CODE.ver
+    local st = (on and t.stuck) and "STUCK" or ready and "UPDATE READY" or old and "UPDATING"
+               or (on and t.anchor) and "ANCHOR" or (on and "ONLINE" or "OFFLINE")
     local stc = (on and t.stuck) and C.warn or old and C.label or (on and t.anchor) and C.purple
                 or (on and C.good or C.bad)
     pill(lx + leftW - #st - 4, ry, st, C.ink, stc)

@@ -91,6 +91,7 @@ if fs.exists(MYPATH) then
   h.close()
 end
 local UPD, rebootSoon = nil, false
+local UPD_READY = nil      -- { ver, code }: a complete update, installed when the current job is done
 -- started by hand (e.g. "node")? Then also make it the startup program, so it
 -- starts by itself after every restart and never gets "lost" again
 if MYPATH ~= "startup.lua" and MYPATH ~= "/startup.lua" and fs.exists(MYPATH)
@@ -310,6 +311,7 @@ local function send(t, extra)
   m.trail = #trail
   m.anchor = S.anchor
   m.ver = MYVER
+  m.updReady = UPD_READY and UPD_READY.ver or nil
   m.gear = S.gear
   m.rec = S.recording and (S.recCount or 1) or nil
   m.waiting = outboxCount and outboxCount() or 0
@@ -2087,14 +2089,30 @@ local function runJob(j)
   return false, "unknown command " .. tostring(j.cmd)
 end
 
+-- write a new program over this one (the old one is kept as startup.old)
+local function installUpdate(code)
+  if fs.exists("startup.old") then fs.delete("startup.old") end
+  if fs.exists(MYPATH) then fs.copy(MYPATH, "startup.old") end
+  local targets = { MYPATH }
+  if MYPATH ~= "startup.lua" and fs.exists("startup.lua") then targets[2] = "startup.lua" end
+  for _, path in ipairs(targets) do
+    local h = fs.open(path, "w")
+    h.write(code)
+    h.close()
+  end
+end
+
 -- commands that answer at once (also while a job is running)
 local function immediate(cmd, a)
   if cmd == "upd" then
-    -- a new program from the base, in pieces: { version, piece, pieces, text }
-    if job then return nil, "quiet" end                 -- not in the middle of a job
+    -- a new program from the base, in pieces: { version, piece, pieces, text }.
+    -- Pieces are collected also during a job; a complete update is installed
+    -- at once when idle, otherwise as soon as the job is done.
     local ver, i, n = tostring(a[1]), tonumber(a[2]), tonumber(a[3])
     if not (i and n) then return nil, "quiet" end
+    if UPD_READY and UPD_READY.ver == ver then return nil, "quiet" end   -- already have it
     if not UPD or UPD.ver ~= ver or UPD.n ~= n then UPD = { ver = ver, n = n, parts = {}, got = 0 } end
+    UPD.last = os.clock()
     if not UPD.parts[i] then
       UPD.parts[i] = tostring(a[4] or "")
       UPD.got = UPD.got + 1
@@ -2105,17 +2123,13 @@ local function immediate(cmd, a)
     if codeHash(code) ~= ver then return false, "update arrived damaged - the base will send it again" end
     local fn, err = load(code, "node", "t", {})          -- compile check only, nothing runs
     if not fn then return false, "update does not compile, not installed: " .. tostring(err) end
-    if fs.exists("startup.old") then fs.delete("startup.old") end
-    if fs.exists(MYPATH) then fs.copy(MYPATH, "startup.old") end
-    local targets = { MYPATH }
-    if MYPATH ~= "startup.lua" and fs.exists("startup.lua") then targets[2] = "startup.lua" end
-    for _, path in ipairs(targets) do
-      local h = fs.open(path, "w")
-      h.write(code)
-      h.close()
+    if job then
+      UPD_READY = { ver = ver, code = code }
+      return true, "update ready - installs when the current job is done"
     end
+    installUpdate(code)
     rebootSoon = true
-    return true, "updated to version " .. ver:sub(1, 8) .. " - restarting"
+    return true, "updated - restarting"
   elseif cmd == "warpsave" then
     if job then return false, "busy: " .. tostring(task) .. " (press STOP first)" end
     local name = tostring(a[1] or "")
@@ -2282,6 +2296,14 @@ local function worker()
       end
       save()
       reply(j.cmd, ok and true or false, msg)
+      if UPD_READY then
+        -- an update arrived during the job: install it now
+        installUpdate(UPD_READY.code)
+        UPD_READY = nil
+        send("result", { cmd = "upd", ok = true, msg = "job done - update installed, restarting" })
+        sleep(1)
+        os.reboot()
+      end
     else
       -- idle: fill up with reusable fuel, a little at a time (stays responsive)
       local f = turtle.getFuelLevel()
@@ -2324,6 +2346,13 @@ local function heartbeat()
     if sinceResend >= CONFIG.resendEvery and outboxCount() > 0 and modemAttached then
       sinceResend = 0
       outboxResend()
+    end
+    -- an update stopped arriving: ask the base for the missing pieces
+    if UPD and UPD.last and os.clock() - UPD.last > 6 and modemAttached then
+      local miss = {}
+      for k = 1, UPD.n do if not UPD.parts[k] then miss[#miss + 1] = k end end
+      send("updmiss", { want = UPD.ver, missing = miss })
+      UPD.last = os.clock()
     end
     if job then
       idleFor = 0

@@ -28,7 +28,7 @@ HELP = {
   "      sethome [x y z], setpos x y z north, locate, move up 3, stop",
   " map clear            delete all map scans",
   " exit [clear]         the turtles' exit route out of the base (or delete it)",
-  " update               send node.lua to outdated turtles now (normally automatic)",
+  " update               turtle program versions; update outdated turtles now (normally automatic)",
   " mesetup              find the ME buffer chest (put ONE item in it first) - no settings to edit",
   " me add <item id>     make the ME tab look up an item it does not list (partial view)",
   " me check             does the full ME list work right now? (for finding the broken item)",
@@ -381,12 +381,16 @@ function handleCommand(line)
     if not CODE then
       say("No " .. TT.codePath() .. " on this computer - copy node.lua next to inventory.lua.")
     else
+      -- the update queue takes them one by one; "update" just retries at once
       local n = 0
-      for id, t in pairs(state.turtles) do
-        if TT.online(t) and TT.outdated(t) then TT.pushCode(id) n = n + 1 end
+      for _, t in ipairs(TT.list()) do
+        local mark = (t.ver == CODE.ver) and "up to date" or (t.updReady == CODE.ver and "ready, installs after its job")
+                     or (TT.online(t) and "will be updated" or "offline")
+        say("  " .. t.label .. " #" .. t.id .. ": " .. TT.verName(t.ver) .. " - " .. mark)
+        if TT.online(t) and TT.outdated(t) then t.updRetry = nil n = n + 1 end
       end
-      say("Turtle program " .. CODE.ver:sub(1, 8) .. ": sent to " .. n .. " outdated turtle(s)." ..
-          (n == 0 and " All online turtles are up to date." or ""))
+      say("Turtle program on the base: " .. TT.verName(CODE.ver) .. ". " ..
+          (n == 0 and "All online turtles are up to date." or (n .. " turtle(s) get it, one by one.")))
       say(state.installDisk and ("Install disk is up to date (" .. state.installDisk .. ").")
           or "No install disk: put an empty floppy in a Disk Drive on this computer.")
     end

@@ -45,6 +45,10 @@ PneumaticCraft drone rides, turtle mapping/surveys, and an AE2 ME network view.
   floppies run low, empty floppies are made data disks automatically (one is
   kept for the turtle installer) and the owner is warned (popup, chat,
   footer) - MAP.checkSpace.
+- Turtle updates: every new node.lua gets a number (v1, v2 ... in
+  turtle_versions.dat). TT.updateTick (comms worker) updates ONE turtle at a
+  time; a busy turtle keeps the update (UPD_READY) and installs it after its
+  job; missing pieces are asked for ("updmiss"). Toasts on each update.
 - `tools/preview/` draws the monitor outside the game (Lua 5.3 + Pillow); use
   it to check screen changes. It is not game code.
 
