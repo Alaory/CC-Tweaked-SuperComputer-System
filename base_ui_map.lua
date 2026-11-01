@@ -1,7 +1,8 @@
 -- base_ui_map.lua  -  part of the base-control program (started by inventory.lua).
 -- All base_*.lua files share one namespace and are loaded in a fixed order.
 --
---   MAP tab: the terrain from turtle scans, zoom / rotate, survey. Zoomed in it
+--   MAP tab: the terrain from turtle scans, zoom (1 - 512 blocks per cell: the
+--   whole 40k x 40k world fits) / rotate, survey. Zoomed in it
 --   shows every column (detail); from 16 blocks per cell up, and wherever the
 --   detail was dropped, one colour per chunk (overview).
 
@@ -65,6 +66,10 @@ function drawMapPage(G)
     local floor, names, colorOf = math.floor, MAP.names, MAP.colorOf
     local detail, overview = MAP.get, MAP.getOverview
     local zoomedOut = V.zoom >= 16
+    -- the world border (CONFIG.map.border, e.g. 20000 for -20000..20000): outside
+    -- it the empty map is drawn a little lighter
+    local border = tonumber(CONFIG.map.border)
+    local bgOutside = blitc(C.head)
     for j = 0, g.mh - 1 do
       local tx, fg, bg = {}, {}, {}
       local b2 = (j - g.mh / 2) * zy
@@ -75,6 +80,14 @@ function drawMapPage(G)
         local hgt, blk
         if not zoomedOut then hgt, blk = detail(wx, wz) end
         if not hgt then hgt, blk = overview(wx, wz) end
+        -- far out a cell covers many chunks: look at a few more of them, so
+        -- a partly scanned area does not show as scattered dots
+        if not hgt and V.zoom >= 64 then
+          local hz = floor(V.zoom / 2)
+          hgt, blk = overview(wx + hz, wz)
+          if not hgt then hgt, blk = overview(wx, wz + hz) end
+          if not hgt then hgt, blk = overview(wx + hz, wz + hz) end
+        end
         if hgt then
           tx[i + 1] = " "
           fg[i + 1] = fgGrid
@@ -84,7 +97,7 @@ function drawMapPage(G)
           local edge = V.zoom == 1 and (wx % 16 == 0 or wz % 16 == 0)
           tx[i + 1] = edge and "." or " "
           fg[i + 1] = fgGrid
-          bg[i + 1] = bgEmpty
+          bg[i + 1] = (border and (wx > border or wx < -border or wz > border or wz < -border)) and bgOutside or bgEmpty
         end
       end
       cache.rows[j] = { table.concat(tx), table.concat(fg), table.concat(bg) }
@@ -211,8 +224,20 @@ function drawMapPage(G)
               { kind = "survey", name = tostring(t.id), count = 0 }, true)
   end
 
-  ------------------------------------------------ what the colours mean
+  ------------------------------------------------ a big survey in progress
   local ly = ty0 + 11
+  local frac, total, sent, skipped = MAP.surveyProgress()
+  if frac then
+    card(rx, ly, rw, 7, "BIG SURVEY")
+    drawButton(rix + riw - 8, ly + 1, 8, 1, "STOP", C.bad, C.ink, "mqstop")
+    barW(rix, ly + 3, riw, math.floor(frac * riw + 0.5), C.good)
+    text(rix, ly + 4, trunc(string.format("%d%% of %s spots", math.floor(frac * 100), compact(total)), riw), C.text, C.panel)
+    text(rix, ly + 5, trunc(string.format("%s sent, %s mapped before", compact(sent), compact(skipped)), riw),
+         C.dim, C.panel)
+    ly = ly + 8
+  end
+
+  ------------------------------------------------ what the colours mean
   local lh = bottom - ly + 1
   if lh >= 5 then
     card(rx, ly, rw, lh, "LEGEND")

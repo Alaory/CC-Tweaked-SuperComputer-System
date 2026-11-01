@@ -424,13 +424,18 @@ function MAP.save(toDisks, noTrim)
     end
     if not failed then break end
     if noTrim then return false end
-    if ovFailed or tries == 4 or #MAP.order <= 20 then
-      state.diskLow = "Map not fully saved: no room on the data floppies" ..
-                      (next(mountedDisks()) and "" or " (none connected)")
+    -- full: first use any new empty floppy (then simply try again), only then
+    -- drop the oldest detail (the overview keeps those chunks)
+    if MAP.claimEmptyFloppies() > 0 then
+      setToast("A new floppy disk is now used for the map", C.good)
+    elseif ovFailed or tries == 4 or #MAP.order <= 20 then
+      state.diskLow = "Map not fully saved - the data floppies are full. Add a Disk Drive with an EMPTY floppy."
       break
+    else
+      dropped = dropped + MAP.trim(floor(#MAP.order * 0.75))
     end
-    dropped = dropped + MAP.trim(floor(#MAP.order * 0.75))
   end
+  MAP.lastDrop = dropped
   if dropped > 0 then
     setToast("Map: the disks are full - dropped the detail of the " .. dropped ..
              " oldest chunks (the overview keeps them)", C.label, 10)
@@ -441,7 +446,77 @@ end
 
 -- save if something changed and the last save is a minute ago (comms worker)
 function MAP.autoSave()
-  if next(MAP.dirty) and os.clock() - MAP.savedAt >= SAVE_EVERY then pcall(MAP.save) end
+  if next(MAP.dirty) and os.clock() - MAP.savedAt >= SAVE_EVERY then
+    pcall(MAP.save)
+    pcall(MAP.checkSpace)
+  end
+end
+
+-- ===== floppy space: new empty floppies become map disks, and the owner is
+-- told (popup + chat + footer) when the data floppies run low =====
+local LOW_KB = 40                 -- warn below this much free on all data floppies together
+local lastWarn = -100000
+
+-- make empty floppies data disks (keeps one empty floppy for the turtle
+-- installer when there is no installer disk yet). Returns how many
+function MAP.claimEmptyFloppies()
+  local disks = mountedDisks()
+  local hasInstaller = false
+  for _, d in ipairs(disks) do if d.installer then hasInstaller = true end end
+  local n = 0
+  local installDrive = TT and TT.installDrive and TT.installDrive()
+  if installDrive then hasInstaller = true end          -- the install drive is for that
+  for _, d in ipairs(disks) do
+    if d.empty and not d.installer and not d.data and d.name ~= installDrive then
+      if not hasInstaller then
+        hasInstaller = true          -- this one stays free for the installer
+      else
+        local h = fs.open(fs.combine(d.mount, "base_data"), "w")
+        if h then h.write("data floppy of the base") h.close() end
+        pcall(disk.setLabel, d.name, "Base data")
+        n = n + 1
+      end
+    end
+  end
+  return n
+end
+
+-- free room on the data floppies (bytes) and how many there are
+function MAP.floppySpace()
+  local free, count = 0, 0
+  for _, d in ipairs(mountedDisks()) do
+    if d.data then free, count = free + (d.free or 0), count + 1 end
+  end
+  return free, count
+end
+
+-- after a save: room left? (empty floppies are claimed first)
+function MAP.checkSpace()
+  local free, count = MAP.floppySpace()
+  if free < LOW_KB * 1024 then
+    local got = MAP.claimEmptyFloppies()
+    if got > 0 then
+      setToast(got .. " new floppy disk(s) are now used for the map", C.good)
+      free, count = MAP.floppySpace()
+    end
+  end
+  local failed = next(MAP.dirty) ~= nil
+  local dropping = (MAP.lastDrop or 0) > 0             -- room was made by dropping detail
+  if free >= LOW_KB * 1024 and not failed and not dropping then
+    if state.diskLow and state.diskLow:find("floppies", 1, true) then state.diskLow = nil end
+    return
+  end
+  local msg = failed and "Map not fully saved - the data floppies are full. Add a Disk Drive with an EMPTY floppy."
+              or dropping and ("Map floppies full - the oldest map detail is being dropped (the overview stays). " ..
+                               "Add a Disk Drive with an EMPTY floppy.")
+              or string.format("Map floppies almost full (%d KB free on %d). Add a Disk Drive with an EMPTY floppy.",
+                               math.floor(free / 1024), count)
+  state.diskLow = msg                                  -- stays in the footer until there is room
+  if os.clock() - lastWarn >= 1800 or failed and os.clock() - lastWarn >= 300 then
+    lastWarn = os.clock()
+    setPopup("MAP FLOPPIES", msg, failed and C.bad or C.warn)
+    if state.owner then chatTell(state.owner, msg) end
+  end
 end
 
 -- how much room the map files take: total bytes, on the computer, files
@@ -639,26 +714,32 @@ function MAP.view()
   if not state.mapView then
     local h = CONFIG.drone and CONFIG.drone.home
     local rot = UPS[tostring(CONFIG.map.up or "north"):lower()] or 0
-    if fs.exists(VIEW_FILE) then                    -- ROTATE choice survives restarts
+    local cx, cz, zoom = h and h.x or 0, h and h.z or 0, 1
+    if fs.exists(VIEW_FILE) then                    -- rotation, zoom and position survive restarts
       local f = fs.open(VIEW_FILE, "r")
       if f then
         local t = textutils.unserialize(f.readAll() or "")
         f.close()
-        if type(t) == "table" and tonumber(t.rot) then rot = tonumber(t.rot) % 4 end
+        if type(t) == "table" then
+          if tonumber(t.rot) then rot = tonumber(t.rot) % 4 end
+          local z = tonumber(t.zoom)
+          if z and z >= 1 and z <= 512 then zoom = z end
+          if tonumber(t.cx) and tonumber(t.cz) and math.abs(t.cx) <= 30000000 and math.abs(t.cz) <= 30000000 then
+            cx, cz = math.floor(tonumber(t.cx)), math.floor(tonumber(t.cz))
+          end
+        end
       end
     end
-    state.mapView = { cx = h and h.x or 0, cz = h and h.z or 0, zoom = 1, rot = rot }
+    state.mapView = { cx = cx, cz = cz, zoom = zoom, rot = rot }
   end
   return state.mapView
 end
 
 -- save the map rotation (ROTATE) for the next start
+-- remember rotation, zoom and position (MAP tab) for the next start
 function MAP.saveView()
-  local f = fs.open(VIEW_FILE, "w")
-  if f then
-    f.write(textutils.serialize({ rot = MAP.view().rot }))
-    f.close()
-  end
+  local V = MAP.view()
+  saveFileSafe(VIEW_FILE, textutils.serialize({ rot = V.rot, zoom = V.zoom, cx = V.cx, cz = V.cz }))
 end
 
 -- the world area the map currently shows (x1, z1, x2, z2)
@@ -692,6 +773,135 @@ function MAP.surveySpots(x1, z1, x2, z2, r)
     end
   end
   return spots, skipped
+end
+
+-- ===== SURVEY QUEUE: big areas, handed to the turtles in batches =====
+-- A big area has far too many scan spots to send at once (a turtle takes at
+-- most 400 per order). The base keeps the area and a cursor; every idle turtle
+-- gets the next BATCH spots, until the area is done. Spots whose chunk is
+-- already in the map (overview) are skipped. Kept in a file: continues after
+-- a restart.
+local QUEUE_FILE = "survey_queue.dat"
+local BATCH = 64
+MAP.queue = nil      -- { x1, z1, x2, z2, r, cols, rows, cursor, sent, skipped, ids = {...} }
+
+local function saveQueue()
+  if MAP.queue then saveFileSafe(QUEUE_FILE, textutils.serialize(MAP.queue))
+  elseif fs.exists(QUEUE_FILE) then pcall(fs.delete, QUEUE_FILE) end
+end
+do
+  if fs.exists(QUEUE_FILE) then
+    local h = fs.open(QUEUE_FILE, "r")
+    local t = h and textutils.unserialize(h.readAll() or "")
+    if h then h.close() end
+    if type(t) == "table" and t.cols then MAP.queue = t end
+  end
+end
+
+-- start a queued survey of an area (ids = the turtles to use, nil = all free ones)
+function MAP.queueSurvey(x1, z1, x2, z2, r, ids)
+  -- you started it: the turtles it uses are no longer held by an old STOP
+  for _, id in ipairs(ids or TT.available()) do
+    local t = state.turtles[id]
+    if t and t.held then t.held = nil TT.listDirty = true end
+  end
+  local step = 2 * r + 1
+  MAP.queue = { x1 = x1, z1 = z1, x2 = x2, z2 = z2, r = r, step = step,
+                cols = math.max(1, math.floor((x2 - x1) / step) + 1),
+                rows = math.max(1, math.floor((z2 - z1) / step) + 1),
+                cursor = 0, sent = 0, skipped = 0, ids = ids }
+  saveQueue()
+  return MAP.queue.cols * MAP.queue.rows
+end
+
+function MAP.stopSurvey()
+  MAP.queue = nil
+  saveQueue()
+end
+
+-- the next batch of spots not yet in the map (checks a limited number per call)
+local function nextBatch(q)
+  local total = q.cols * q.rows
+  local out, checked = {}, 0
+  while #out < BATCH and q.cursor < total and checked < 3000 do
+    local i = q.cursor
+    q.cursor = q.cursor + 1
+    checked = checked + 1
+    -- snake order: every other row backwards, so a turtle never jumps back
+    local row, col = math.floor(i / q.cols), i % q.cols
+    if row % 2 == 1 then col = q.cols - 1 - col end
+    local x, z = q.x1 + q.r + col * q.step, q.z1 + q.r + row * q.step
+    if MAP.getOverview(x, z) then q.skipped = q.skipped + 1
+    else out[#out + 1] = { x, z } end
+  end
+  return out
+end
+
+-- hand batches to idle turtles (comms worker, every few seconds)
+function MAP.feedSurvey()
+  local q = MAP.queue
+  if not q then return end
+  local total = q.cols * q.rows
+  local minFuel = tonumber(CONFIG.map.surveyMinFuel) or 500
+  local busy, why, anyFree = false, {}, false
+  local list = q.ids or TT.available()
+  for _, id in ipairs(list) do
+    local t = state.turtles[id]
+    local free = t and TT.online(t) and t.pos and t.pos.x and (t.task == nil or t.task == "idle") and not t.anchor
+                 and not (q.excluded and q.excluded[id])      -- stopped by the owner
+                 and not t.rescuerRole and not t.held         -- the rescuer stays free; STOPPED stays stopped
+    local fuel = t and tonumber(t.fuel)
+    if free and t.queueAt and os.clock() - t.queueAt < 15 then free = false busy = true end
+    if free and fuel and fuel < minFuel then free = false end
+    if t and not free and t.task and t.task ~= "idle" then busy = true end
+    -- why this turtle gets nothing (told to you when nobody works)
+    if t and not free then
+      local w
+      if not TT.online(t) then w = "offline"
+      elseif not (t.pos and t.pos.x) then w = "position unknown"
+      elseif t.task and t.task ~= "idle" then w = "busy"
+      elseif t.held or (q.excluded and q.excluded[id]) then w = "STOPPED - give it a command first"
+      elseif fuel and fuel < minFuel then w = "fuel " .. fuel .. " (needs " .. minFuel .. ")"
+      elseif t.anchor then w = "anchor" elseif t.rescuerRole then w = "rescuer" end
+      if w then why[#why + 1] = (t.label or ("#" .. id)) .. ": " .. w end
+    end
+    if free then anyFree = true end
+    if free and q.cursor < total then
+      local spots = nextBatch(q)
+      if #spots > 0 then
+        TT.sendSpots(id, spots, q.r)
+        t.queueAt = os.clock()
+        q.sent = q.sent + #spots
+        busy = true
+      end
+    end
+  end
+  -- no turtle CAN work on it: say why - once, again only when the reason
+  -- changes or after 10 minutes (a free turtle that is just skipping
+  -- already-mapped spots is not a problem)
+  if not busy and not anyFree and q.cursor < total then
+    local msg = (#list == 0) and "No turtle can survey (online, idle, position known, not anchor/rescuer)."
+                or ("No turtle takes a batch - " .. table.concat(why, ", "))
+    if msg ~= MAP.queueToldMsg or os.clock() - (MAP.queueToldAt or 0) > 600 then
+      MAP.queueToldAt, MAP.queueToldMsg = os.clock(), msg
+      setPopup("SURVEY WAITING", msg, C.warn)
+    end
+  else
+    MAP.queueToldMsg = nil
+  end
+  if q.cursor >= total and not busy then
+    setToast("Survey finished: " .. q.sent .. " scans, " .. q.skipped .. " spots were already mapped", C.good)
+    MAP.queue = nil
+  end
+  saveQueue()
+end
+
+-- progress for the screen: done fraction, spots total
+function MAP.surveyProgress()
+  local q = MAP.queue
+  if not q then return nil end
+  local total = q.cols * q.rows
+  return q.cursor / total, total, q.sent, q.skipped
 end
 
 -- one screen cell to the right (r) and one down (d), as world x/z steps

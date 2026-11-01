@@ -233,16 +233,20 @@ function drawCuriosPage(G)
   end
   local it = row.cells[sel.pos]
   sel.item = it and it.name or nil
+  -- the slot number as listCurios counts it (from 0 or from 1)
+  local slotNo = (row.raw and row.raw[sel.pos]) or (sel.pos - 1 + (row.base or 1))
   kv(ix, top + 3, iw, "Slot", prettify(row.name) .. " " .. sel.pos .. " of " .. row.count)
   local by = top + 6
   if it then
     kv(ix, top + 4, iw, "Worn", trunc(it.displayName or prettify(it.name), iw - 8))
     local n = tonumber(it.count) or 1
     if bridge then
-      actButton(ix, by, iw, 3, "STORE IN ME", { kind = "cstore", name = it.name, count = n }, true)
+      actButton(ix, by, iw, 3, "STORE IN ME", { kind = "cstore", name = it.name, count = n,
+                                                 slotType = row.name, slotNo = slotNo }, true)
       by = by + 4
     end
-    actButton(ix, by, iw, 3, "TO INVENTORY", { kind = "cunequip", name = it.name, count = n })
+    actButton(ix, by, iw, 3, "TO INVENTORY", { kind = "cunequip", name = it.name, count = n,
+                                               slotType = row.name, slotNo = slotNo })
     text(ix, by + 4, "Tap twice to confirm.", C.dim, C.panel)
     return
   end
@@ -283,6 +287,7 @@ function drawCuriosPage(G)
     local ry = by + 2 + (k - 1) * 2
     text(ix, ry, trunc(e.display, iw - 12), C.text, C.panel)
     text(ix, ry + 1, compact(e.count) .. " in the network", C.dim, C.panel)
-    actButton(ix + iw - 10, ry, 10, 2, "PUT ON", { kind = "cequip", name = e.name, count = 1 })
+    actButton(ix + iw - 10, ry, 10, 2, "PUT ON", { kind = "cequip", name = e.name, count = 1,
+                                                   slotType = row.name, slotNo = slotNo })
   end
 end

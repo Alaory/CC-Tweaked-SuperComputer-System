@@ -16,19 +16,19 @@ Made for **CC:Tweaked 1.120.2 on Minecraft 1.21.1 (NeoForge)** with
 | **INVENTORY** | Your inventory grid, armour and offhand, how full it is, and a sortable item list (by count, name or slot). Tap an item to highlight every slot that holds it. |
 | **PLAYERS** | One box per online player: name, dimension, health, air, position, facing. Tap a box to see the Player Detector's raw data. |
 | **STORAGE** | What is inside the backpacks and tanks you carry. |
-| **CURIOS** | Your worn Curios slots. |
+| **CURIOS** | Your worn Curios slots. Tap a slot to store its item in ME, move it to your inventory, or put on what fits from ME. |
 | **ME** (or **RS**) | Network status, an item / fluid browser, and buttons to take items, store them, fill your fluid containers and craft. Every button needs a second tap to confirm. |
 | **DRONE(S)** | PneumaticCraft drones: air, mission steps and log. Pick a passenger and a destination (player, saved place or coordinates), then fly, pick up, drop or ferry. |
 | **CHAT** | Who may use the `$drone` chat commands (the allow list). |
 | **TURTLES** | Remote-controlled turtles: status, fuel, position, and a control pad. Also rescue and "find lost turtles". |
 | **EVENTS** | Every message the program showed, newest first, with filters (errors, warnings, done, info). |
-| **MAP** | Terrain from the turtles' Geo Scanner scans: zoom (1 to 128 blocks per cell), rotate, and send turtles to survey an area. |
+| **MAP** | Terrain from the turtles' Geo Scanner scans: zoom (1 to 512 blocks per cell - a 40,000 x 40,000 world fits), rotate, and send turtles to survey an area (big areas are handed out in batches). |
 
 A tab only appears when the block it needs is connected.
 
 **Messages** (a transfer is done, a drone cannot start, an error ...) appear as
 boxes in the top-right corner. Each one closes by itself; the bar at its bottom
-shows the time left (info / done 8 s, warnings 20 s, errors 60 s). Tap a box to
+shows the time left (3 seconds; `CONFIG.notes` can change it). Tap a box to
 close it sooner. The **EVENTS** tab lists every message with its date and time,
 can show one kind only, and its badge counts the new ones.
 
@@ -73,6 +73,9 @@ can show one kind only, and its badge counts the new ones.
    inventory
    ```
    If a file is missing, the program lists the missing files.
+   To start it by itself whenever the computer starts, copy `startup.lua` into
+   the **top level** of the computer (not into the folder). It finds
+   `inventory.lua` wherever it is and starts it again after a crash.
 4. For the ME tab, put **one** item in the buffer chest and type `mesetup` on
    the computer. It finds the chest by itself and saves the result.
 
@@ -88,6 +91,22 @@ can show one kind only, and its badge counts the new ones.
 4. Without GPS, tell it where it is once, on the base computer:
    `turtle <id> setpos <x> <y> <z> <north|south|east|west>`.
 5. For the map, put a **Geo Scanner** (as an item) in its inventory.
+
+### Curios moves
+
+Some Advanced Peripherals versions can only take off **all** items of a slot
+type at once, and put on **any** fitting item from a chest. For slot types
+with several items (rings, charms) the program then needs an **empty barrel
+used only for curios**: connect it with a wired modem and set its network name
+in `base_config.lua`, inside `me = { ... }`:
+
+```lua
+    curiosChest = "minecraft:barrel_2",
+```
+
+Your item buffer is never used for those moves, so items you keep in it are
+never touched. `curios probe` on the computer shows what your version wants;
+every curios move is listed in the EVENTS tab.
 
 ## Chat commands
 
@@ -107,6 +126,7 @@ The replies are private.
 | `$drone allow / deny <name>` | owner: who may ride |
 | `$drone allowed` | owner: show the allow list |
 | `$drone yes / no <name>` | owner: approve or decline a ride request |
+| `$drone notify on / all / off` | owner: the base's messages in chat - `on` = warnings and errors, `all` = everything (at most 6 a minute) |
 
 Players who are not on the allow list need the owner's OK for each ride.
 
@@ -172,6 +192,12 @@ for at most `computerKB` (default 200 KB). Only changed files are written, at
 most once a minute and when the program stops. When the floppies are full, the
 oldest detail is dropped (the overview keeps those chunks). `map` on the
 computer shows how much room it takes.
+
+When the data floppies run low, an **empty floppy** in any Disk Drive is taken
+as a map disk automatically (one empty floppy is kept for the turtle installer
+if there is none yet), and you are told on the monitor, in chat and in the
+footer to add another one. If you run the server, CC:Tweaked's
+`floppy_space_limit` / `computer_space_limit` settings give every disk more room.
 When the disk is full, the footer shows a warning instead of writing half a file.
 
 ## Screen preview

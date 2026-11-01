@@ -18,6 +18,7 @@ function handleTouch(tx, ty)
         sortList()
       elseif h[5] == "page" then
         state.page = h[6]
+        saveFileSafe("ui_page.dat", h[6])                 -- opened again after a restart
         if h[6] == "events" then state.noteUnread = 0 end   -- seen
       elseif h[5] == "meitem" then
         state.meSel = (state.meSel ~= h[6]) and h[6] or nil
@@ -76,7 +77,22 @@ function handleTouch(tx, ty)
             if not x1 then
               setToast("Open the map first", C.warn, 4)
             elseif (x2 - x1) * (z2 - z1) > 400 * 400 then
-              setToast("Area too big - zoom in first", C.warn, 5)
+              -- a big area: the base hands it out in batches (survey queue)
+              local ids
+              if a.kind == "survey" then
+                local t = state.turtles[tonumber(a.name)]
+                ids = (t and TT.online(t)) and { t.id } or nil
+              end
+              if a.kind == "survey" and not ids then
+                setToast("That turtle is not online", C.warn, 4)
+              elseif a.kind == "surveyall" and #TT.available() == 0 then
+                setToast("No free turtle (online, idle, position known)", C.warn, 5)
+              else
+                local n = MAP.queueSurvey(x1, z1, x2, z2, r, ids)
+                setToast("Big survey started: " .. n .. " spots (" .. math.floor((x2 - x1) / 16) .. " x " ..
+                         math.floor((z2 - z1) / 16) .. " chunks), handed out in batches - progress on the MAP tab",
+                         C.good)
+              end
             else
               local ids
               if a.kind == "survey" then
@@ -136,6 +152,7 @@ function handleTouch(tx, ty)
           local nx, nz = MAP.toWorld(h[6][1] * math.max(1, math.floor(g.mw / 4)),
                                      h[6][2] * math.max(1, math.floor(g.mh / 4)))
           V.cx, V.cz = nx, nz
+          MAP.saveView()
         end
       elseif h[5] == "mrot" then
         local V = MAP.view()
@@ -144,10 +161,11 @@ function handleTouch(tx, ty)
         local _, _, _, _, upName = MAP.compass()
         setToast("Map: " .. upName .. " is up", C.label, 3)
       elseif h[5] == "mzoom" then
-        local V, steps = MAP.view(), { 1, 2, 4, 8, 16, 32, 64, 128 }
+        local V, steps = MAP.view(), { 1, 2, 4, 8, 16, 32, 64, 128, 256, 512 }
         local i = 1
         for k, z in ipairs(steps) do if z == V.zoom then i = k end end
         V.zoom = steps[math.max(1, math.min(#steps, i + h[6]))]
+        MAP.saveView()
       elseif h[5] == "mcenter" then
         local V = MAP.view()
         local x, z
@@ -161,9 +179,10 @@ function handleTouch(tx, ty)
             if e.name == state.owner and e.p and e.p.x then x, z = e.p.x, e.p.z end
           end
         end
-        if x then V.cx, V.cz = math.floor(x), math.floor(z)
+        if x then V.cx, V.cz = math.floor(x), math.floor(z) MAP.saveView()
         else setToast("Position unknown", C.warn, 3) end
       elseif h[5] == "tstopall" then
+        if MAP.queue then MAP.stopSurvey() end   -- STOP ALL also ends a big survey
         local n = 0
         for id, t in pairs(state.turtles) do
           if TT.online(t) then TT.send(id, "stop", {}) n = n + 1 end
@@ -174,6 +193,7 @@ function handleTouch(tx, ty)
         if t and t.pos and t.pos.x then
           local V = MAP.view()
           V.cx, V.cz = t.pos.x, t.pos.z
+          MAP.saveView()
           state.mapSel = { x = t.pos.x, z = t.pos.z }
           state.page = "map"
         else
@@ -181,6 +201,20 @@ function handleTouch(tx, ty)
         end
       elseif h[5] == "tsel" then
         state.tSel = h[6]
+      elseif h[5] == "trescuer" then
+        local t = state.turtles[h[6]]
+        if t then
+          t.rescuerRole = not t.rescuerRole or nil
+          TT.listDirty = true
+          pcall(TT.saveList)
+          if t.rescuerRole then
+            local ready, msg = TT.rescueReady(t)
+            setToast(t.label .. " is the rescue turtle now - " .. msg, ready and C.good or C.warn)
+            TT.send(t.id, "home", {})
+          else
+            setToast(t.label .. " is no longer the rescue turtle", C.label)
+          end
+        end
       elseif h[5] == "tcmd" then
         TT.send(h[6][1], h[6][2], h[6][3])
       elseif h[5] == "acc_allow" then
@@ -232,6 +266,9 @@ function handleTouch(tx, ty)
         dismissNote(h[6])
       elseif h[5] == "nclear" then
         state.notes = {}
+      elseif h[5] == "mqstop" then
+        MAP.stopSurvey()
+        setToast("Big survey stopped (turtles finish their current batch - STOP ALL stops them now)", C.label)
       elseif h[5] == "csel" then
         local cur = state.curiosSel
         if cur and cur.type == h[6][1] and cur.pos == h[6][2] then state.curiosSel = nil

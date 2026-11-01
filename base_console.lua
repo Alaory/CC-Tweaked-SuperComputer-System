@@ -25,14 +25,18 @@ HELP = {
   " charger [x y z|off]  show / move the Charging Station",
   " turtles              list connected turtles",
   " turtle <id|name> <cmd> [args]   e.g. goto x y z, home,",
+  " turtle <id> log [n]  the turtle's last n log lines in full",
+  " survey               the big survey: progress, what each turtle is waiting for",
   "      sethome [x y z], setpos x y z north, locate, move up 3, stop",
   " map clear            delete all map scans",
   " exit [clear]         the turtles' exit route out of the base (or delete it)",
-  " update               send node.lua to outdated turtles now (normally automatic)",
+  " update               turtle program versions; update outdated turtles now (normally automatic)",
   " mesetup              find the ME buffer chest (put ONE item in it first) - no settings to edit",
   " me add <item id>     make the ME tab look up an item it does not list (partial view)",
+  " me tags <item id>    the tags the ME reports for an item (and its Curios slots)",
   " me check             does the full ME list work right now? (for finding the broken item)",
   " curios check         can your worn Curios items be read? (the broken item is usually worn)",
+  " curios probe         what the curios move functions want (nothing is moved)",
   " tanks                your fluid containers: contents and what they offer (for filling from ME)",
   " report [local]       all peripherals + functions -> report.txt, uploaded to pastebin",
   " disks [data|move]    floppy disks; 'disks data' makes empty floppies data disks,",
@@ -262,6 +266,10 @@ function handleCommand(line)
   elseif cmd == "tanks" then
     tankReport(say)
 
+  elseif cmd == "curios" and words[2] == "probe" then
+    say("How this Inventory Manager wants the curios functions called (nothing is moved):")
+    curiosProbe(say)
+
   elseif cmd == "curios" and words[2] == "check" then
     -- can the worn Curios items be read right now? (take them off one by one
     -- into a chest and check after each: the broken item is usually worn)
@@ -299,6 +307,31 @@ function handleCommand(line)
       for i = 1, math.min(#msg, 600), 48 do say("  " .. msg:sub(i, i + 47)) end
     else
       say("Could not check: " .. tostring(r))
+    end
+
+  elseif cmd == "me" and words[2] == "tags" then
+    -- what the ME Bridge says about one item: its tags and the Curios slots
+    -- they mean (the CURIOS tab lists ME items by these tags)
+    if not bridge then say("No ME Bridge found on this computer.") return out end
+    local id = words[3]
+    if not id or not id:find(":", 1, true) then say("Usage: me tags <item id>   e.g. me tags artifacts:night_vision_goggles") return out end
+    local ok, it = callx(bridge, "getItem", { name = id })
+    if not ok or type(it) ~= "table" or not it.name then
+      say("The ME network does not report " .. id .. (ok and "" or (": " .. tostring(it))))
+      return out
+    end
+    say(id .. ": " .. tostring(it.count or it.amount or "?") .. " in the network")
+    if type(it.tags) ~= "table" then
+      say("No tags reported for it (" .. type(it.tags) .. ") - the CURIOS tab cannot tell where it fits.")
+    else
+      local list = {}
+      for k, v in pairs(it.tags) do list[#list + 1] = (type(v) == "string") and v or tostring(k) end
+      table.sort(list)
+      say("Tags (" .. #list .. "): " .. table.concat(list, ", "))
+      local slots = {}
+      for s in pairs(curioSlotsOf(it) or {}) do slots[#slots + 1] = s end
+      table.sort(slots)
+      say("Curios slots from these tags: " .. (#slots > 0 and table.concat(slots, ", ") or "none"))
     end
 
   elseif cmd == "me" and words[2] == "add" then
@@ -372,16 +405,26 @@ function handleCommand(line)
     end
 
   elseif cmd == "update" then
-    pcall(TT.codeLoad)
+    local okL, errL = pcall(TT.codeLoad, true)       -- always read node.lua again
+    if not okL then say("Reading node.lua failed: " .. tostring(errL)) end
+    if TT.codeError then say("The new node.lua does NOT compile (not sent): " .. TT.codeError) end
+    if CODE then
+      say("Program file: " .. tostring(CODE.path or TT.codePath()) .. " (" .. #CODE.text .. " bytes) = " ..
+          TT.verName(CODE.ver))
+    end
     if not CODE then
       say("No " .. TT.codePath() .. " on this computer - copy node.lua next to inventory.lua.")
     else
+      -- the update queue takes them one by one; "update" just retries at once
       local n = 0
-      for id, t in pairs(state.turtles) do
-        if TT.online(t) and TT.outdated(t) then TT.pushCode(id) n = n + 1 end
+      for _, t in ipairs(TT.list()) do
+        local mark = (t.ver == CODE.ver) and "up to date" or (t.updReady == CODE.ver and "ready, installs after its job")
+                     or (TT.online(t) and "will be updated" or "offline")
+        say("  " .. t.label .. " #" .. t.id .. ": " .. TT.verName(t.ver) .. " - " .. mark)
+        if TT.online(t) and TT.outdated(t) then t.updRetry = nil n = n + 1 end
       end
-      say("Turtle program " .. CODE.ver:sub(1, 8) .. ": sent to " .. n .. " outdated turtle(s)." ..
-          (n == 0 and " All online turtles are up to date." or ""))
+      say("Turtle program on the base: " .. TT.verName(CODE.ver) .. ". " ..
+          (n == 0 and "All online turtles are up to date." or (n .. " turtle(s) get it, one by one.")))
       say(state.installDisk and ("Install disk is up to date (" .. state.installDisk .. ").")
           or "No install disk: put an empty floppy in a Disk Drive on this computer.")
     end
@@ -403,6 +446,31 @@ function handleCommand(line)
     local nd = 0
     for _ in pairs(KNOW.dead) do nd = nd + 1 end
     say("Shared knowledge: " .. KNOW.n .. " walls, " .. nd .. " dead ends.")
+
+  elseif cmd == "survey" then
+    -- the big survey: progress and what the base sees for every turtle
+    local q = MAP.queue
+    if not q then
+      say("No big survey running.")
+    else
+      local frac, total = MAP.surveyProgress()
+      say(string.format("Big survey %d %d -> %d %d: %d of %d spots checked, %d sent, %d already mapped",
+          q.x1, q.z1, q.x2, q.z2, q.cursor, total, q.sent, q.skipped))
+      say("Turtles: " .. (q.ids and "chosen ones" or "all free ones") .. " - free now: " .. #TT.available())
+      for _, t in ipairs(TT.list()) do
+        local fuel = tonumber(t.fuel)
+        say(string.format("  %s #%d: %s, task %s, pos %s, fuel %s%s%s%s%s%s",
+            t.label, t.id, TT.online(t) and "online" or "OFFLINE", tostring(t.task),
+            (t.pos and t.pos.x) and "ok" or "UNKNOWN", tostring(t.fuel),
+            t.held and ", HELD (stopped)" or "", (q.excluded and q.excluded[t.id]) and ", EXCLUDED" or "",
+            t.anchor and ", anchor" or "", t.rescuerRole and ", rescuer" or "",
+            (t.queueAt and os.clock() - t.queueAt < 15) and ", just got a batch" or ""))
+      end
+      local n0 = #state.tOut
+      local okF, errF = pcall(MAP.feedSurvey)
+      if not okF then say("Handing out FAILED: " .. tostring(errF))
+      else say("Handing out now: " .. (#state.tOut - n0) .. " batch(es) sent.") end
+    end
 
   elseif cmd == "map" then
     if words[2] == "clear" then
@@ -433,6 +501,11 @@ function handleCommand(line)
       say("No turtle '" .. words[2] .. "'. Type 'turtles' to see them.")
     elseif not t or not tc then
       say("Usage: turtle <id|name> <command> [args]   (see 'turtles')")
+    elseif tc == "log" then
+      -- the turtle's log in full (the monitor cuts long lines), oldest first
+      local n = math.min(tonumber(words[4]) or 10, #t.log)
+      if n == 0 then say(t.label .. ": nothing in the log yet") end
+      for i = n, 1, -1 do say(t.log[i].t .. "  " .. t.log[i].msg) end
     else
       local args = {}
       for i = 4, #words do args[#args + 1] = tonumber(words[i]) or words[i] end

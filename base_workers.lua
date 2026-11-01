@@ -283,10 +283,21 @@ function commsWorker()
     local ev, a, b, c = os.pullEventRaw()
     if ev == "rednet_message" and c == CONFIG.turtles.protocol then
       pcall(TT.receive, a, b)
+    elseif ev == "disk" and a == TT.installDrive() then
+      pcall(TT.codeLoad)
+      pcall(TT.prepareInstallFloppy)                -- a floppy in the install drive
     elseif ev == "timer" and a == tick then
       tick = os.startTimer(2)
       if KNOW.dirty and os.clock() - KNOW.saved > 30 then pcall(KNOW.save) end
       pcall(MAP.autoSave)                -- changed map regions, at most once a minute
+      local okF, errF = pcall(MAP.feedSurvey)  -- a big survey: next batch to each idle turtle
+      if not okF and (not state.feedErrAt or os.clock() - state.feedErrAt > 60) then
+        state.feedErrAt = os.clock()
+        setToast("Big survey error: " .. tostring(errF), C.bad)
+      end
+      pcall(TT.updateTick)               -- turtle program updates, one turtle at a time
+      pcall(TT.stopTick)                 -- STOP again until the turtle answers
+      pcall(TT.patrolTick)               -- the rescue turtle: send it where it is needed
       if TT.listDirty and codeTick % 15 == 0 then pcall(TT.saveList) end
       codeTick = codeTick + 1
       if codeTick % 15 == 1 then pcall(TT.codeLoad) end     -- every 30 s
@@ -308,9 +319,16 @@ function chatWorker()
         state.chatOut = {}
       elseif os.clock() - lastSend >= 1.05 then
         local o = table.remove(state.chatOut, 1)
-        -- private: only that player sees it (never sendMessage, which goes to everyone)
-        if chatBox.sendMessageToPlayer then
-          pcall(chatBox.sendMessageToPlayer, o.text, o.name, CONFIG.chat.replyPrefix)
+        -- private reply. sendMessage(text, { player = ... }) is what this Chat
+        -- Box understands (it worked from the start); sendMessageToPlayer only
+        -- if that fails. A failure is shown once in EVENTS.
+        local okS, errS = pcall(chatBox.sendMessage, o.text, { player = o.name, prefix = CONFIG.chat.replyPrefix })
+        if not okS and chatBox.sendMessageToPlayer then
+          okS = pcall(chatBox.sendMessageToPlayer, o.text, o.name, CONFIG.chat.replyPrefix)
+        end
+        if not okS and not state.chatSendWarned then
+          state.chatSendWarned = true
+          setToast("Chat Box could not send a message to " .. o.name .. ": " .. cleanErr(errS), C.bad)
         end
         lastSend = os.clock()
       else

@@ -37,6 +37,14 @@ if shell and shell.getRunningProgram then dir = fs.getDir(shell.getRunningProgra
 BASE_DIR = dir
 local env = _ENV
 
+-- a floppy with its own startup.lua (e.g. the turtle install floppy) would be
+-- started INSTEAD of this computer's startup.lua: switch that off here
+if settings and settings.get("shell.allow_disk_startup") ~= false then
+  settings.set("shell.allow_disk_startup", false)
+  pcall(settings.save)
+  print("Note: this computer no longer starts programs from floppy disks (the base program starts by itself).")
+end
+
 -- check that every file is there before starting (and name ALL missing ones)
 local missing = {}
 for _, name in ipairs(MODULES) do
@@ -69,7 +77,8 @@ mon.setTextColor(colors.white)
 mon.clear()
 mon.setCursorPos(1, 1)
 if not okRun and tostring(errRun) ~= "Terminated" then
-  printError("Inventory display crashed: " .. tostring(errRun))
+  -- an error (not printed here): startup.lua sees it and starts the program again
+  error("Inventory display crashed: " .. tostring(errRun), 0)
 else
   print("Inventory display stopped.")
 end

@@ -39,6 +39,52 @@ PneumaticCraft drone rides, turtle mapping/surveys, and an AE2 ME network view.
   layers are TEXT, 4 bytes per cell (numbers in tables are costly in Cobalt).
   `MAP.get` / `MAP.getOverview(x, z)` return height, block. No ores (owner
   does not want them). An old `map.dat` is converted once on start-up.
+  World border is -20000..20000 (CONFIG.map.border); zoom goes to 512 so the
+  whole world fits. Big surveys (> 400x400 blocks) go through a queue
+  (MAP.queueSurvey / feedSurvey, 64 spots per idle turtle). When the data
+  floppies run low, empty floppies are made data disks automatically (one is
+  kept for the turtle installer) and the owner is warned (popup, chat,
+  footer) - MAP.checkSpace.
+- Turtle updates: every new node.lua gets a number (v1, v2 ... in
+  turtle_versions.dat). TT.updateTick (comms worker) updates ONE turtle at a
+  time; a busy turtle keeps the update (UPD_READY) and installs it after its
+  job; missing pieces are asked for ("updmiss"). Toasts on each update.
+- Install drive: the Disk Drive under the computer ("bottom", not wired;
+  CONFIG.turtles.installDrive). A floppy put in gets the installer + current
+  node.lua at once (TT.prepareInstallFloppy on the "disk" event, comms
+  worker) - only if empty or already an installer. Never used for the map.
+- node.lua: the game's Lua (Cobalt) counts FILE-LEVEL locals into every
+  function's 200-local limit (standard luac does not). Keep file-level
+  helpers as plain `function f()` (the turtle program has its own
+  environment), not `local function`. Check with
+  `python3 tools/check_locals.py node.lua` (must stay well under 200). The
+  base also compiles node.lua before sending it (TT.codeLoad).
+- STOP (node.lua): clears the saved job at once (no resume after a reload);
+  a job that ignores it for 2 s is cut off (FORCE_STOP: no new move/turn;
+  stopWatch kills it when not STEPPING / modem on / no slot lock, then
+  afterForcedStop). Base: t.held (saved) after STOP - STOP is sent again if
+  the turtle reports a task after a reload; no patrol/survey batches; any
+  non-quiet command, or a survey you start
+  (MAP.queueSurvey), releases it; TT.available still lists held turtles. A resumed job waits 6 s first.
+- Chunky upgrade never comes off: every equip goes through equipOn (node.lua),
+  which refuses the Chunky side and puts it straight back if the item that
+  came off is a Chunky ("chunk" in the name). chunkyFix re-equips a loose one
+  (only where turtle.getEquippedLeft/Right exist).
+- Permanent rescuer: t.rescuerRole (RESCUER button, saved in turtles.dat;
+  base only). TT.patrolTick (comms worker) sends it to: no fuel (<20 for
+  60 s), stuck (60 s idle), lost (silent CONFIG.turtles.rescueAfter, default
+  600 s). Never in the first 5 min after the base starts, never when half
+  or more turtles are offline (server trouble); called off when the turtle
+  is fine again; max 3 tries, 30 min apart. Rescuer goes home after each
+  rescue, gets no big-survey batches.
+- `$drone notify on|all|off` (owner): pushNote -> notifyChat (base_chat.lua)
+  sends the monitor's messages privately in chat; max 6/min, rest summed up;
+  saved in chat_notify.dat.
+- Autostart: `startup.lua` (top level of the computer) finds inventory.lua
+  in any folder and restarts it after a crash (inventory.lua raises an error
+  on a crash, returns normally on Ctrl+T). inventory.lua turns off
+  `shell.allow_disk_startup` (the install floppy's startup.lua would run
+  instead); the installer also starts the base program if run on a computer.
 - `tools/preview/` draws the monitor outside the game (Lua 5.3 + Pillow); use
   it to check screen changes. It is not game code.
 
@@ -69,6 +115,14 @@ monitor on `right`, wired modem `back`, wireless modem `top`.
 - importItem/exportItem want the container's **network name** - plain sides
   ("up") fail with "Target 'up' does not exist" (the docs suggest "@up" style).
 - `listCurios()` reads all curios at once; one unreadable item breaks it.
+- **Curios moves (seen in game):** `exportCuriosItem(slotType, chest)` takes
+  off ALL items of that slot type (as many as the chest takes);
+  `importCuriosItem(slotType, chest)` puts on ANY fitting item from the chest.
+  No way to choose the item. The item buffer is the owner's storage
+  controller (holds their own items) -> never "any"/"all" there. Taking ONE
+  of several / putting on goes through `CONFIG.me.curiosChest` (an EMPTY
+  barrel only for curios). base_me.lua learns the arguments at runtime
+  (curioSignature), logs every call in EVENTS, checks with listCurios.
 - Opened storage items (tanks): fluid functions vary by version; the code
   tries pullFluid/importFluid/insertFluid and pushFluid/exportFluid/extractFluid,
   in Advanced Peripherals filter style AND ComputerCraft style

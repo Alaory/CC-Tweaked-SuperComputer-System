@@ -90,15 +90,32 @@ function TT.receive(id, m)
   t.stuck, t.trail = m.stuck, m.trail
   t.anchor, t.waiting = m.anchor, m.waiting
   t.rec = m.rec
+  -- STOP arrived (it answers) or it is idle anyway
+  if t.stopAsk and ((m.t == "result" and m.cmd == "stop") or m.task == "idle") then t.stopAsk = nil end
+  -- STOPPED by you (t.held) but busy again - e.g. it was unloaded and
+  -- continued its job after a reload: send STOP again
+  if t.held and (m.t == "status" or m.t == "hello") and m.task and m.task ~= "idle" and not t.stopAsk then
+    TT.log(t, "Busy again after STOP (" .. tostring(m.task) .. ") - sending STOP again")
+    t.stopAsk = { tries = 1, last = os.clock() }
+    TT.send(id, "stop", {}, true, true)
+  end
+  local oldVer = t.ver
   if m.ver then t.ver = m.ver end
+  t.updReady = m.updReady
+  if oldVer and oldVer ~= "?" and m.ver and m.ver ~= oldVer and CODE and m.ver == CODE.ver then
+    pcall(TT.updated, t, oldVer)
+  end
   if m.gear then t.gear = m.gear end
   t.seenEpoch = os.epoch("utc")
   TT.listDirty = true
-  if CONFIG.turtles.autoUpdate and TT.outdated(t) and (t.task == nil or t.task == "idle")
-     and (not t.updSent or os.clock() - t.updSent > 90) then
-    TT.pushCode(id)
-  end
-  if m.t == "hello" then
+  if m.t == "updmiss" and CODE and m.want == CODE.ver and type(m.missing) == "table" then
+    -- some pieces of the update did not arrive: send just those again
+    for _, k in ipairs(m.missing) do
+      local p = CODE.pieces[tonumber(k) or 0]
+      if p then TT.send(id, "upd", { CODE.ver, tonumber(k), #CODE.pieces, p }, true) end
+    end
+    if TT.updating and TT.updating.id == id then TT.updating.t0 = os.clock() end
+  elseif m.t == "hello" then
     TT.log(t, "Connected")
   elseif m.t == "scan" then
     local ok = pcall(MAP.addScan, m)
@@ -116,7 +133,8 @@ function TT.receive(id, m)
         target.pos = { x = tonumber(m.at.x), y = tonumber(m.at.y), z = tonumber(m.at.z), f = target.pos and target.pos.f }
       end
       TT.log(target, (m.ok and "Rescued by " or "Rescue by ") .. t.label .. (m.ok and "" or " failed") .. where)
-      target.rescuer = nil
+      target.rescuer, target.rescueKind = nil, nil
+      if m.ok then target.rescueTries = nil end
       -- supplies delivered: refuel, allow digging with the new pickaxe, come home
       if m.ok and m.mode == "supply" then
         TT.send(target.id, "refuel", {})
@@ -125,6 +143,7 @@ function TT.receive(id, m)
       end
     end
     setToast((m.ok and "Rescue done: " or "Rescue failed: ") .. tostring(m.msg), m.ok and C.good or C.warn, 8)
+    if t.rescuerRole and not t.held then TT.send(id, "home", {}) end   -- the rescuer goes back home
   elseif m.t == "learn" then
     pcall(KNOW.learn, m)
   elseif m.t == "need" then
@@ -134,8 +153,10 @@ function TT.receive(id, m)
     if x1 and z1 and x2 and z2 then
       local okA, walls, dead = pcall(KNOW.around, x1, z1, x2, z2)
       if okA then
+        -- the cruise altitude for this trip, from the map (nil = not known)
+        local okC, cruise = pcall(TT.cruiseHeight, tonumber(m.fx), tonumber(m.fz), tonumber(m.tx), tonumber(m.tz))
         TT.send(id, "know", { walls, dead, EXITROUTE and EXITROUTE.route or "none",
-                              EXITROUTE and EXITROUTE.t or 0 }, true)
+                              EXITROUTE and EXITROUTE.t or 0, (okC and cruise) or "none" }, true)
       end
     end
   elseif m.t == "exitroute" and type(m.route) == "string" then
@@ -144,6 +165,15 @@ function TT.receive(id, m)
     EXITROUTE = { route = m.route, t = os.epoch("utc"), n = n + 1, by = t.label }
     KNOW.dirty = true
     TT.log(t, "Exit route saved (" .. (n + 1) .. " corners) - shared with all turtles")
+  elseif m.t == "result" and m.cmd == "upd" then
+    TT.log(t, "Update: " .. tostring(m.msg))
+    if not m.ok then
+      setToast(t.label .. ": update failed - " .. tostring(m.msg), C.warn)
+      if TT.updating and TT.updating.id == id then TT.updating = nil t.updRetry = os.clock() + 120 end
+    elseif tostring(m.msg):find("ready", 1, true) then
+      setToast(t.label .. " got " .. (CODE and TT.verName(CODE.ver) or "the update") ..
+               " - installs when its job is done", C.label)
+    end
   elseif m.t == "result" then
     TT.log(t, (m.ok and "Done: " or "Failed: ") .. tostring(m.msg))
     if not m.ok then setToast(t.label .. ": " .. tostring(m.msg), C.warn, 6) end
@@ -293,6 +323,25 @@ end
 CODE = nil               -- { text, ver, mod, pieces = {...} }
 local CHUNK = 8000
 
+-- readable version numbers: every new node.lua (new checksum) gets the next
+-- number - v1, v2, v3 ... (kept in a small file)
+local VER_FILE = "turtle_versions.dat"
+TT.versions = { next = 1, byHash = {} }
+do
+  if fs.exists(VER_FILE) then
+    local h = fs.open(VER_FILE, "r")
+    local t = h and textutils.unserialize(h.readAll() or "")
+    if h then h.close() end
+    if type(t) == "table" and type(t.byHash) == "table" then TT.versions = t end
+  end
+end
+-- "v7" for a checksum (number given when the base first loads that node.lua)
+function TT.verName(hash)
+  if not hash or hash == "?" then return "?" end
+  local n = TT.versions.byHash[hash]
+  return n and ("v" .. n) or "old"
+end
+
 -- checksum of node.lua (the turtles' version number)
 local function codeHash(str)
   local h1, h2 = 5381, 52711
@@ -312,9 +361,20 @@ end
 
 -- node.lua: in the program folder, or (if it is not there) on a floppy -
 -- the install floppy always has a copy
+local function modTime(p)
+  local ok, a = pcall(function() return fs.attributes and fs.attributes(p) end)
+  return (ok and type(a) == "table" and tonumber(a.modified)) or 0
+end
+
 function TT.codePath()
   local name = CONFIG.turtles.codeFile or "node.lua"
   local here = fs.combine(BASE_DIR or "", name)
+  -- a file dropped onto the computer can land in the top level instead of
+  -- the program folder: use whichever of the two is newer
+  local top = name
+  if top ~= here and fs.exists(top) and (not fs.exists(here) or modTime(top) > modTime(here)) then
+    return top
+  end
   if fs.exists(here) then return here end
   for _, d in ipairs(mountedDisks()) do
     local p = fs.combine(d.mount, name)
@@ -324,21 +384,45 @@ function TT.codePath()
 end
 
 -- (re)read node.lua if it is new or changed
-function TT.codeLoad()
+function TT.codeLoad(force)
   local path = TT.codePath()
   if not fs.exists(path) then CODE = nil return end
-  local mod = fs.attributes and (fs.attributes(path).modified) or fs.getSize(path)
-  if CODE and CODE.mod == mod then return end
+  -- changed? path, time AND size (a dropped-in file may keep its old time)
+  local mod = path .. ":" .. modTime(path) .. ":" .. fs.getSize(path)
+  if CODE and CODE.mod == mod and not force then return end
   local h = fs.open(path, "r")
   local text = h.readAll() or ""
   h.close()
   text = setStr(text, "protocol", CONFIG.turtles.protocol)
   text = setStr(text, "baseName", CONFIG.turtles.hostname)
   text = setStr(text, "key", CONFIG.turtles.key)
+  -- the base runs the same Lua as the turtles: if it does not compile here,
+  -- it would not compile there either - keep the version the turtles have
+  local okC, errC = load(text, "node", "t", {})
+  TT.codeError = (not okC) and (path .. ": " .. tostring(errC)) or nil
+  if not okC then
+    if not (CODE and CODE.badMod == mod) then
+      setPopup("TURTLE PROGRAM", "The new node.lua does not compile - not sent to the turtles: " ..
+               tostring(errC), C.bad)
+    end
+    if CODE then CODE.badMod = mod end
+    return
+  end
   local pieces = {}
   for i = 1, #text, CHUNK do pieces[#pieces + 1] = text:sub(i, i + CHUNK - 1) end
-  CODE = { text = text, ver = codeHash(text), mod = mod, pieces = pieces }
-  for _, t in pairs(state.turtles) do t.updSent = nil end
+  local ver = codeHash(text)
+  if CODE and CODE.ver == ver then CODE.mod, CODE.path = mod, path return end   -- the same program
+  CODE = { text = text, ver = ver, mod = mod, pieces = pieces, path = path }
+  if not TT.versions.byHash[CODE.ver] then
+    TT.versions.byHash[CODE.ver] = TT.versions.next
+    TT.versions.next = TT.versions.next + 1
+    saveFileSafe(VER_FILE, textutils.serialize(TT.versions))
+    if next(state.turtles) then
+      setToast("New turtle program " .. TT.verName(CODE.ver) .. " - updating the turtles one by one", C.label)
+    end
+  end
+  for _, t in pairs(state.turtles) do t.updSent, t.updRetry = nil, nil end
+  TT.updating = nil
   TT.writeInstallDisk()
 end
 
@@ -351,9 +435,52 @@ function TT.pushCode(id)
   end
   if t then
     t.updSent = os.clock()
-    TT.log(t, "Sending the turtle program update (" .. CODE.ver:sub(1, 8) .. ")")
+    TT.log(t, "Sending the turtle program update " .. TT.verName(CODE.ver))
   end
   return true
+end
+
+-- updates, ONE turtle at a time (comms worker, every 2 s): send it, wait until
+-- it runs the new version or has it ready (busy turtles install it after their
+-- job), then the next one. No answer in 45 s: try that one again in 2 minutes.
+function TT.updateTick()
+  if not CODE or not CONFIG.turtles.autoUpdate then return end
+  local u = TT.updating
+  if u then
+    local t = state.turtles[u.id]
+    if not t or t.ver == CODE.ver or t.updReady == CODE.ver then
+      TT.updating = nil
+    elseif os.clock() - u.t0 > 45 then
+      t.updRetry = os.clock() + 120
+      TT.log(t, "No answer to the update - trying again later")
+      TT.updating = nil
+    else
+      return
+    end
+  end
+  for _, t in ipairs(TT.list()) do
+    if TT.online(t) and TT.outdated(t) and t.updReady ~= CODE.ver
+       and (not t.updRetry or os.clock() > t.updRetry) then
+      TT.pushCode(t.id)
+      TT.updating = { id = t.id, t0 = os.clock() }
+      return
+    end
+  end
+end
+
+-- a turtle runs a new version now: tell the owner (and when all are done)
+function TT.updated(t, oldVer)
+  TT.log(t, "Updated: " .. TT.verName(oldVer) .. " -> " .. TT.verName(t.ver))
+  setToast(t.label .. " updated to " .. TT.verName(t.ver), C.good)
+  if not CODE then return end
+  local n, all = 0, true
+  for _, o in pairs(state.turtles) do
+    if TT.online(o) then
+      n = n + 1
+      if o.ver ~= CODE.ver then all = false end
+    end
+  end
+  if all and n > 1 then setToast("All " .. n .. " turtles run " .. TT.verName(CODE.ver), C.good) end
 end
 
 -- is this turtle's program older than the base's node.lua?
@@ -366,7 +493,19 @@ end
 local INSTALLER = [[
 -- TURTLE INSTALLER (kept up to date by the base computer).
 -- Put a NEW turtle next to the disk drive with this disk and turn it on.
-if not turtle then print("This disk installs the turtle program - use it with a turtle.") return end
+if not turtle then
+  -- on the base computer (it booted from this floppy): start the base program instead
+  for _, pattern in ipairs({ "inventory.lua", "*/inventory.lua", "*/*/inventory.lua" }) do
+    for _, p in ipairs(fs.find(pattern)) do
+      if fs.getDrive(p) == "hdd" then
+        if fs.exists("startup.lua") then shell.run("/startup.lua") else shell.run("/" .. p) end
+        return
+      end
+    end
+  end
+  print("This disk installs the turtle program - use it with a turtle.")
+  return
+end
 local here = fs.getDir(shell.getRunningProgram())
 local src = fs.combine(here, "node.lua")
 if not fs.exists(src) then printError("node.lua is missing on this disk") return end
@@ -383,33 +522,86 @@ sleep(2)
 shell.run("/startup.lua")
 ]]
 -- keep the install floppy up to date with the current node.lua
+-- the INSTALL DRIVE: a Disk Drive only for install floppies (CONFIG.turtles.
+-- installDrive, default "bottom"). A floppy put in there gets the installer
+-- and the current node.lua at once; it is never used for the map.
+function TT.installDrive()
+  local n = CONFIG.turtles.installDrive or "bottom"
+  if peripheral.isPresent(n) and peripheral.getType(n) == "drive" then return n end
+end
+
+-- write the installer + node.lua onto a mounted floppy (only what changed)
+local function writeInstaller(d)
+  local function put(file, text)
+    local p = fs.combine(d.mount, file)
+    if fs.exists(p) then                        -- unchanged: do not write again
+      local h0 = fs.open(p, "r")
+      local old = h0 and h0.readAll()
+      if h0 then h0.close() end
+      if old == text then return true end
+    end
+    local h = fs.open(p, "w")
+    if not h then return false end
+    local ok = pcall(h.write, text)
+    pcall(h.close)
+    return ok
+  end
+  local ok = put("startup.lua", INSTALLER) and put("node.lua", CODE.text) and put("turtle_installer", CODE.ver)
+  pcall(disk.setLabel, d.name, "Turtle installer " .. TT.verName(CODE.ver))
+  state.installDisk = d.name
+  return ok
+end
+
+-- a floppy was put into the install drive: make it an install floppy
+-- (empty or already an installer); never touches a data floppy or other files
+function TT.prepareInstallFloppy(quiet)
+  local drive = TT.installDrive()
+  if not drive or not disk or not disk.hasData(drive) then return end
+  if not CODE then
+    setToast("No node.lua on this computer - cannot make an install floppy", C.warn)
+    return
+  end
+  local d
+  for _, m in ipairs(mountedDisks()) do if m.name == drive then d = m end end
+  if not d then return end
+  if d.data then
+    setPopup("INSTALL DRIVE", "That is a data floppy (map) - it is not changed. Put an EMPTY floppy in.", C.warn)
+    return
+  end
+  if not d.empty and not d.installer then
+    setPopup("INSTALL DRIVE", "That floppy has other files on it - it is not changed. Put an EMPTY floppy in.", C.warn)
+    return
+  end
+  local fresh = d.installer and fs.exists(fs.combine(d.mount, "turtle_installer"))
+  if fresh then
+    local h = fs.open(fs.combine(d.mount, "turtle_installer"), "r")
+    fresh = h and h.readAll() == CODE.ver
+    if h then h.close() end
+  end
+  if writeInstaller(d) then
+    if not (quiet and fresh) then
+      setToast("Install floppy ready (" .. TT.verName(CODE.ver) .. ") - take it out of the drive for a rescue turtle",
+               C.good)
+    end
+  else
+    setToast("Could not write the install floppy (full?)", C.bad)
+  end
+end
+
+-- keep install floppies up to date (called when node.lua changes): the install
+-- drive's floppy and any other installer floppy. Without an install drive the
+-- first empty floppy becomes the installer (as before).
 function TT.writeInstallDisk()
   if not CODE or not disk then return end
-  -- the install floppy, or (only if there is none yet) the first empty one -
-  -- other empty floppies stay free for data ("disks data")
   local disks, target = mountedDisks(), {}
-  for _, d in ipairs(disks) do if d.installer then target[#target + 1] = d end end
-  if #target == 0 then
+  local drive = TT.installDrive()
+  for _, d in ipairs(disks) do
+    if d.installer or (drive and d.name == drive and d.empty) then target[#target + 1] = d end
+  end
+  if #target == 0 and not drive then
     for _, d in ipairs(disks) do if d.empty and not d.data then target[1] = d break end end
   end
-  for _, d in ipairs(target) do
-    local function put(file, text)
-      local p = fs.combine(d.mount, file)
-      if fs.exists(p) then                        -- unchanged: do not write again
-        local h0 = fs.open(p, "r")
-        local old = h0 and h0.readAll()
-        if h0 then h0.close() end
-        if old == text then return end
-      end
-      local h = fs.open(p, "w")
-      if h then h.write(text) h.close() end
-    end
-    put("startup.lua", INSTALLER)
-    put("node.lua", CODE.text)
-    put("turtle_installer", CODE.ver)
-    pcall(disk.setLabel, d.name, "Turtle installer")
-    state.installDisk = d.name
-  end
+  for _, d in ipairs(target) do writeInstaller(d) end
 end
 
 -- ===== the turtle list survives restarts =====
@@ -421,7 +613,8 @@ function TT.saveList()
   local out = {}
   for id, t in pairs(state.turtles) do
     out[#out + 1] = { id = id, label = t.label, pos = t.pos, home = t.home, seen = t.seenEpoch,
-                      task = t.task, ver = t.ver, gear = t.gear, anchor = t.anchor }
+                      task = t.task, ver = t.ver, gear = t.gear, anchor = t.anchor, rescuerRole = t.rescuerRole,
+                      held = t.held }
   end
   local h = fs.open(CONFIG.turtles.listFile, "w")
   if h then h.write(textutils.serialize(out)) h.close() end
@@ -440,6 +633,8 @@ function TT.loadList()
       if e.label then t.label = e.label end
       t.pos, t.home, t.seenEpoch, t.task = e.pos, e.home, e.seen, e.task
       t.ver, t.gear, t.anchor = e.ver, e.gear, e.anchor
+      t.rescuerRole = e.rescuerRole
+      t.held = e.held
     end
   end
 end
@@ -524,7 +719,7 @@ function TT.findLost(radius, cx, cy, cz)
 end
 
 -- send a rescue; x y z = where to look (default: where it was last seen)
-function TT.rescue(targetId, x, y, z, radius)
+function TT.rescue(targetId, x, y, z, radius, forced)
   local target = state.turtles[targetId]
   if not target then
     target = TT.get(targetId)
@@ -535,7 +730,15 @@ function TT.rescue(targetId, x, y, z, radius)
     x, y, z = target.pos.x, target.pos.y, target.pos.z
   end
   local mode = TT.rescueMode(target)
-  local r = TT.pickRescuer(target, mode, x, z)
+  local r = forced or TT.pickRescuer(target, mode, x, z)
+  if forced then
+    -- the permanent rescuer must carry what this rescue needs
+    if mode == "install" and not (hasGear(forced, "drive") and hasGear(forced, "floppy")) then
+      return false, forced.label .. " needs a Disk Drive and the install floppy to reinstall a turtle"
+    elseif mode == "supply" and not (hasGear(forced, "fuel") or hasGear(forced, "pick")) then
+      return false, forced.label .. " needs fuel (coal ...) or a spare pickaxe to bring"
+    end
+  end
   if not r then
     return false, mode == "install"
       and "no free turtle with a Disk Drive + the install floppy (and a Geo Scanner to search)"
@@ -545,6 +748,157 @@ function TT.rescue(targetId, x, y, z, radius)
   TT.log(target, "Rescue on its way: " .. r.label .. " (" .. mode .. ")")
   target.rescuer = r.id
   return true, r.label .. " is on its way (" .. (mode == "install" and "reinstall" or "supplies") .. ")"
+end
+
+-- ===== cruise altitude =====
+-- How high a turtle has to fly for a trip, from the map: the highest known
+-- ground along its way (turtles go along X first, then Z - an L shape) plus a
+-- few blocks. Detail columns are exact (+3); where only the overview (one
+-- AVERAGE height per chunk) is known, +10 for hills inside the chunk. nil when
+-- too much of the way is not mapped (the turtle then uses the sky highway).
+function TT.cruiseHeight(fx, fz, tx, tz)
+  if not (fx and fz and tx and tz) then return nil end
+  local top, known, total = -64, 0, 0
+  local function look(x, z)
+    total = total + 1
+    local h = MAP.get(x, z)
+    if h then
+      known = known + 1
+      if h + 3 > top then top = h + 3 end
+      return
+    end
+    h = MAP.getOverview(x, z)
+    if h then
+      known = known + 1
+      if h + 10 > top then top = h + 10 end
+    end
+  end
+  local function line(ax, az, bx, bz)
+    local n = math.max(math.abs(bx - ax), math.abs(bz - az))
+    local steps = math.max(1, math.floor(n / 4))
+    for i = 0, steps do
+      local x = ax + math.floor((bx - ax) * i / steps + 0.5)
+      local z = az + math.floor((bz - az) * i / steps + 0.5)
+      for d = -2, 2, 2 do                          -- a little to each side too
+        if ax == bx then look(x + d, z) else look(x, z + d) end
+      end
+    end
+  end
+  line(fx, fz, tx, fz)                             -- first along X ...
+  line(tx, fz, tx, tz)                             -- ... then along Z
+  if total == 0 or known / total < 0.7 then return nil end
+  return math.floor(top)
+end
+
+-- ===== the permanent RESCUE turtle =====
+-- A turtle with the rescuer job (t.rescuerRole, RESCUER button) stays at home
+-- and is sent out by the base when a turtle has a real problem:
+--   no fuel  - online, fuel < 20 for over a minute (it would have refuelled itself)
+--   stuck    - online, reports "stuck", idle for over a minute
+--   lost     - silent for CONFIG.turtles.rescueAfter seconds (default 600)
+-- A short disconnect is never mistaken for a lost turtle: 10 minutes of
+-- silence, nothing in the first 5 minutes after the base starts, nothing when
+-- half or more of the turtles are offline at once (server / base trouble),
+-- and the rescue is called off when the turtle comes back.
+TT.startedAt = os.clock()
+local RETRY_AFTER, MAX_TRIES = 1800, 3
+
+-- the rescuer(s): online ones first
+function TT.rescuers()
+  local list = {}
+  for _, t in pairs(state.turtles) do if t.rescuerRole then list[#list + 1] = t end end
+  table.sort(list, function(a, b) return a.id < b.id end)
+  return list
+end
+
+-- what is wrong with a turtle (nil = nothing to do): "fuel", "stuck", "lost"
+local function problemOf(t)
+  local now = os.clock()
+  if TT.online(t) then
+    t.offlineNoted = nil
+    local idle = (t.task == nil or t.task == "idle")
+    local fuel = tonumber(t.fuel)
+    if fuel and fuel < 20 then t.lowFuelSince = t.lowFuelSince or now else t.lowFuelSince = nil end
+    if t.stuck and idle then t.stuckSince = t.stuckSince or now else t.stuckSince = nil end
+    if t.lowFuelSince and now - t.lowFuelSince > 60 then return "fuel" end
+    if t.stuckSince and now - t.stuckSince > 60 then return "stuck" end
+    return nil
+  end
+  -- offline: how long, by the real clock (also from before the base started)
+  if not (t.pos and t.pos.x and t.seenEpoch) then return nil end
+  local after = tonumber(CONFIG.turtles.rescueAfter) or 600
+  if (os.epoch("utc") - t.seenEpoch) / 1000 < after then return nil end
+  return "lost"
+end
+
+-- comms worker, every 2 s: send the rescuer where it is needed
+function TT.patrolTick()
+  local rescuers = TT.rescuers()
+  if #rescuers == 0 then return end
+  local now = os.clock()
+  local total, offline = 0, 0
+  for _, t in pairs(state.turtles) do
+    if not t.rescuerRole then
+      total = total + 1
+      if not TT.online(t) then offline = offline + 1 end
+    end
+  end
+  local massOffline = total >= 2 and offline * 2 >= total
+  local warmingUp = now - TT.startedAt < 300
+  -- every turtle's problem, every tick (so the "for over a minute" timers run
+  -- also while the rescuer is busy)
+  local problems = {}
+  for id, t in pairs(state.turtles) do
+    if not t.rescuerRole then problems[id] = problemOf(t) end
+  end
+  for _, t in pairs(state.turtles) do
+    -- a rescue on its way: called off if the turtle is fine again
+    if t.rescuer and t.rescueKind then
+      local r = state.turtles[t.rescuer]
+      local fine = (t.rescueKind == "lost" and TT.online(t))
+                   or (t.rescueKind ~= "lost" and TT.online(t) and not problems[t.id])
+      if fine then
+        if r then
+          TT.send(r.id, "stop", {})
+          TT.send(r.id, "home", {})
+          TT.log(r, "Rescue of " .. t.label .. " called off - it is fine again")
+        end
+        TT.log(t, "Fine again - rescue called off")
+        t.rescuer, t.rescueKind = nil, nil
+      end
+    end
+  end
+  for _, r in ipairs(rescuers) do
+    local free = TT.online(r) and (r.task == nil or r.task == "idle") and not r.stopAsk and not r.held
+    if free then
+      -- the turtle with the oldest problem first
+      local pick, pickKind
+      for _, t in pairs(state.turtles) do
+        if not t.rescuerRole and not t.rescuer and (t.rescueTries or 0) < MAX_TRIES
+           and (not t.rescueAt or now - t.rescueAt > RETRY_AFTER) then
+          local kind = problems[t.id]
+          if kind == "lost" and (warmingUp or massOffline) then kind = nil end
+          if kind and not pick then pick, pickKind = t, kind end
+        end
+      end
+      if pick then
+        local ok, msg = TT.rescue(pick.id, nil, nil, nil, nil, r)
+        pick.rescueAt, pick.rescueTries = now, (pick.rescueTries or 0) + 1
+        if ok then
+          pick.rescueKind = pickKind
+          setToast("Rescuer " .. r.label .. " sent to " .. pick.label .. " (" ..
+                   (pickKind == "lost" and "offline - reinstall" or pickKind == "fuel" and "no fuel" or "stuck") .. ")",
+                   C.label)
+        else
+          TT.log(r, "Cannot rescue " .. pick.label .. ": " .. tostring(msg))
+        end
+        if pick.rescueTries >= MAX_TRIES and not ok then
+          setPopup("TURTLE NEEDS YOU", pick.label .. " could not be rescued " .. MAX_TRIES .. " times - please look at it (" ..
+                   (pick.pos and fmtPos(pick.pos.x, pick.pos.y, pick.pos.z) or "position unknown") .. ")", C.warn)
+        end
+      end
+    end
+  end
 end
 
 -- the anchor turtle, and whether it is in the base's chunk
@@ -563,11 +917,12 @@ function TT.anchorInfo()
 end
 
 -- turtles that can take a job right now: online, position known, idle,
--- and not the anchor
+-- and not the anchor (a STOPPED one counts: you choose it yourself)
 function TT.available()
   local list = {}
   for id, t in pairs(state.turtles) do
-    if TT.online(t) and t.pos and t.pos.x and (t.task == nil or t.task == "idle") and not t.anchor then
+    if TT.online(t) and t.pos and t.pos.x and (t.task == nil or t.task == "idle") and not t.anchor
+       and not t.rescuerRole then
       list[#list + 1] = id
     end
   end
@@ -644,7 +999,27 @@ function TT.sendSpots(id, spots, r)
 end
 
 -- queue a signed command for a turtle (sent by the comms worker)
-function TT.send(id, cmd, args, quiet)
+-- STOP must arrive: a surveying turtle takes its modem off for every scan
+-- (the Geo Scanner goes in its place) and hears nothing then. So STOP is sent
+-- again every 3 s until the turtle answers or is idle (up to a minute), and
+-- the turtle gets no more batches from a big survey.
+function TT.stopTick()
+  for _, t in pairs(state.turtles) do
+    local s = t.stopAsk
+    if s and os.clock() - s.last >= 3 then
+      if s.tries >= 20 then
+        t.stopAsk = nil
+        TT.log(t, "STOP: no answer for a minute - sent again when it is back")
+        setToast(t.label .. " does not answer STOP - it gets STOP again as soon as it is back", C.warn)
+      else
+        s.tries, s.last = s.tries + 1, os.clock()
+        TT.send(t.id, "stop", {}, true, true)
+      end
+    end
+  end
+end
+
+function TT.send(id, cmd, args, quiet, again)
   local n = os.epoch("utc")
   if n <= state.tLastN then n = state.tLastN + 1 end
   state.tLastN = n
@@ -653,6 +1028,17 @@ function TT.send(id, cmd, args, quiet)
   state.tOut[#state.tOut + 1] = { id = id, msg = { t = "cmd", n = n, cmd = cmd, args = a,
                                     sig = TT.sign(CONFIG.turtles.key, "cmd", n, cmd, a) } }
   local t = state.turtles[id]
+  -- any command you give (not the quiet automatic ones) ends a STOP hold
+  if t and t.held and cmd ~= "stop" and not quiet then t.held = nil TT.listDirty = true end
+  if cmd == "stop" and t and not again then
+    t.stopAsk = { tries = 1, last = os.clock() }
+    t.held = true                                -- stays stopped (also after a reload)
+    TT.listDirty = true
+    if MAP.queue then
+      MAP.queue.excluded = MAP.queue.excluded or {}
+      MAP.queue.excluded[id] = true                -- no more big-survey batches for it
+    end
+  end
   if t and not quiet then
     local shown = {}
     for i, v in ipairs(a) do shown[i] = tostring(v) end
