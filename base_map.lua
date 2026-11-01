@@ -843,8 +843,9 @@ function MAP.feedSurvey()
   if not q then return end
   local total = q.cols * q.rows
   local minFuel = tonumber(CONFIG.map.surveyMinFuel) or 500
-  local busy = false
-  for _, id in ipairs(q.ids or TT.available()) do
+  local busy, why = false, {}
+  local list = q.ids or TT.available()
+  for _, id in ipairs(list) do
     local t = state.turtles[id]
     local free = t and TT.online(t) and t.pos and t.pos.x and (t.task == nil or t.task == "idle") and not t.anchor
                  and not (q.excluded and q.excluded[id])      -- stopped by the owner
@@ -853,6 +854,17 @@ function MAP.feedSurvey()
     if free and t.queueAt and os.clock() - t.queueAt < 15 then free = false busy = true end
     if free and fuel and fuel < minFuel then free = false end
     if t and not free and t.task and t.task ~= "idle" then busy = true end
+    -- why this turtle gets nothing (told to you when nobody works)
+    if t and not free then
+      local w
+      if not TT.online(t) then w = "offline"
+      elseif not (t.pos and t.pos.x) then w = "position unknown"
+      elseif t.task and t.task ~= "idle" then w = "busy"
+      elseif t.held or (q.excluded and q.excluded[id]) then w = "STOPPED - give it a command first"
+      elseif fuel and fuel < minFuel then w = "fuel " .. fuel .. " (needs " .. minFuel .. ")"
+      elseif t.anchor then w = "anchor" elseif t.rescuerRole then w = "rescuer" end
+      if w then why[#why + 1] = (t.label or ("#" .. id)) .. ": " .. w end
+    end
     if free and q.cursor < total then
       local spots = nextBatch(q)
       if #spots > 0 then
@@ -862,6 +874,12 @@ function MAP.feedSurvey()
         busy = true
       end
     end
+  end
+  -- nobody works on it: say why (at most once a minute)
+  if not busy and q.cursor < total and (not q.toldAt or os.clock() - q.toldAt > 60) then
+    q.toldAt = os.clock()
+    setPopup("SURVEY WAITING", (#list == 0 and "No turtle can survey (online, idle, position known, not anchor/rescuer)."
+             or ("No turtle takes a batch - " .. table.concat(why, ", "))), C.warn)
   end
   if q.cursor >= total and not busy then
     setToast("Survey finished: " .. q.sent .. " scans, " .. q.skipped .. " spots were already mapped", C.good)
