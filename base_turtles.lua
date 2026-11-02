@@ -105,7 +105,17 @@ function TT.receive(id, m)
   if oldVer and oldVer ~= "?" and m.ver and m.ver ~= oldVer and CODE and m.ver == CODE.ver then
     pcall(TT.updated, t, oldVer)
   end
-  if m.gear then t.gear = m.gear end
+  if m.gear then
+    t.gear = m.gear
+    -- equipment problems: told once per turtle (and again when it changes)
+    local bad = (m.gear:find("NO CHUNKY", 1, true) and "has NO Chunky upgrade equipped (its chunk unloads when you leave)")
+             or (m.gear:find("WIRELESS modem", 1, true) and "has a normal Wireless Modem (~64 blocks) - it loses contact further away; use an Ender Modem")
+    if bad and t.gearWarned ~= bad then
+      t.gearWarned = bad
+      TT.log(t, "Equipment: " .. m.gear)
+      setPopup("TURTLE EQUIPMENT", (t.label or ("Turtle " .. id)) .. " " .. bad, C.warn)
+    elseif not bad then t.gearWarned = nil end
+  end
   t.seenEpoch = os.epoch("utc")
   TT.listDirty = true
   if m.t == "updmiss" and CODE and m.want == CODE.ver and type(m.missing) == "table" then

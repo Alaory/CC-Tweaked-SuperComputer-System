@@ -2062,8 +2062,26 @@ function isFuel(n)
          or n:find("blaze_rod", 1, true)
 end
 -- what rescue gear this turtle carries (reported to the base)
+-- what is equipped on a side: item name (short) if this version can tell,
+-- else the peripheral type
+function sideInfo(side)
+  local n = equippedName(side)
+  if n then return (n:gsub("^[^:]*:", "")) end
+  local ty = peripheral.getType(side)
+  return ty and ("[" .. tostring(ty) .. "]") or "?"
+end
+
 gearString = function()
   local g = {}
+  -- equipment first: a missing Chunky or a short-range modem explains a lot
+  local l, r = sideInfo("left"), sideInfo("right")
+  g[#g + 1] = "L=" .. l .. " R=" .. r
+  local canTell = turtle.getEquippedLeft ~= nil
+  if canTell and not (isChunkySide("left") or isChunkySide("right")) then g[#g + 1] = "NO CHUNKY" end
+  local mname = canTell and equippedName(modem) or nil
+  if mname and not mname:find("advanced", 1, true) and not mname:find("ender", 1, true) then
+    g[#g + 1] = "WIRELESS modem (~64 blocks)"
+  end
   if slotOf(isDrive) then g[#g + 1] = "drive" end
   if slotOf(isFloppy) then g[#g + 1] = "floppy" end
   if slotOf(isPick) then g[#g + 1] = "pick" end

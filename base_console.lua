@@ -492,6 +492,7 @@ function handleCommand(line)
       say(string.format(" #%d %s - %s, fuel %s, %s", t.id, t.label,
           TT.online(t) and "online" or "offline", tostring(t.fuel or "?"),
           t.pos and fmtPos(t.pos.x, t.pos.y, t.pos.z) or "position unknown"))
+      if t.gear and t.gear ~= "" then say("     gear: " .. t.gear) end
     end
 
   elseif cmd == "turtle" then

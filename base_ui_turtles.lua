@@ -174,7 +174,7 @@ function drawTurtlesPage(G)
   else
     local okR, msgR = TT.rescueReady(t)
     text(rix, r6, trunc("Rescue: " .. msgR, riw), okR and C.good or C.dim, C.panel)
-    text(rix, r6 + 1, trunc("Carries: " .. ((t.gear and t.gear ~= "") and t.gear or "nothing for rescues"), riw),
+    text(rix, r6 + 1, trunc("Gear: " .. ((t.gear and t.gear ~= "") and t.gear or "?"), riw),
          C.dim, C.panel)
   end
 
