@@ -2601,7 +2601,8 @@ function listener()
       save()
       baseId = id
       local a = type(m.args) == "table" and m.args or {}
-      local ok, msg = immediate(m.cmd, a)
+      local okI, ok, msg = pcall(immediate, m.cmd, a)
+      if not okI then ok, msg = false, "error in '" .. tostring(m.cmd) .. "': " .. tostring(ok) end
       if ok == nil and msg == "quiet" then
         -- handled, nothing to say
       elseif ok ~= nil then
@@ -2743,9 +2744,20 @@ function heartbeat()
     end
   end
   if S.resumedNote then
-    send("result", { cmd = "restart", ok = true, msg = S.resumedNote })
+    send("result", { cmd = "restart", ok = not CRASHED, msg = S.resumedNote })
     S.resumedNote = nil
     save()
+  end
+  -- the base was told: keep only the time and count (for the restart wait)
+  if CRASHED then
+    CRASHED = nil
+    pcall(function() if fs.exists(CRASH_FILE) then
+      local h = fs.open(CRASH_FILE, "r")
+      local t = textutils.unserialize(h.readAll() or "") or {}
+      h.close()
+      t.err = nil
+      writeFile(CRASH_FILE, t)
+    end end)
   end
   local idleFor, sinceResend, sinceLearn = 0, 0, 0
   while true do
@@ -2808,4 +2820,33 @@ if type(S.job) == "table" and RESUMABLE[S.job.cmd] then
   end
   save()
 end
-parallel.waitForAny(listener, worker, heartbeat)
+
+-- the program must never just end: an error used to leave the turtle at its
+-- command prompt (offline, deaf to commands until rebooted by hand). Now the
+-- error is written down, the turtle restarts itself, and the base is told.
+CRASH_FILE = "node_crash"
+if fs.exists(CRASH_FILE) then
+  local h = fs.open(CRASH_FILE, "r")
+  local t = textutils.unserialize(h.readAll() or "") or {}
+  h.close()
+  CRASHED = t
+  S.resumedNote = (S.resumedNote and (S.resumedNote .. "; ") or "") ..
+                  "restarted after an ERROR: " .. tostring(t.err)
+end
+local okMain, errMain = pcall(parallel.waitForAny, listener, worker, heartbeat)
+if not okMain and tostring(errMain) ~= "Terminated" then
+  local c = {}
+  if fs.exists(CRASH_FILE) then
+    local h = fs.open(CRASH_FILE, "r")
+    c = textutils.unserialize(h.readAll() or "") or {}
+    h.close()
+  end
+  local n = ((c.at and now() - c.at < 600000) and (c.n or 0) or 0) + 1   -- crashes in the last 10 min
+  writeFile(CRASH_FILE, { err = tostring(errMain), at = now(), n = n })
+  printError("node.lua stopped with an error:")
+  printError(tostring(errMain))
+  local wait = math.min(60, 5 * n)                 -- crashing again and again: wait longer
+  print("Restarting in " .. wait .. " s (hold Ctrl+T to stay stopped)...")
+  sleep(wait)
+  os.reboot()
+end

@@ -66,6 +66,10 @@ PneumaticCraft drone rides, turtle mapping/surveys, and an AE2 ME network view.
   the turtle reports a task after a reload; no patrol/survey batches; any
   non-quiet command, or a survey you start
   (MAP.queueSurvey), releases it; TT.available still lists held turtles. A resumed job waits 6 s first.
+- node.lua never just ends: the main parallel.waitForAny is in a pcall; an
+  error is written to `node_crash`, the turtle reboots (5 s, longer when it
+  keeps crashing) and tells the base ("restarted after an ERROR: ..." in the
+  turtle's log). Each command (immediate) is pcall'd too.
 - Chunky upgrade never comes off: every equip goes through equipOn (node.lua),
   which refuses the Chunky side and puts it straight back if the item that
   came off is a Chunky ("chunk" in the name). chunkyFix re-equips a loose one
