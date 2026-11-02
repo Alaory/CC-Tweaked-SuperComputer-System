@@ -102,7 +102,10 @@ function handleTouch(tx, ty)
                 ids = TT.available()
               end
               local spots, skipped = MAP.surveySpots(x1, z1, x2, z2, r)
-              if #ids == 0 then
+              local t1 = a.kind == "survey" and state.turtles[tonumber(a.name)]
+              if t1 and TT.online(t1) and not (t1.pos and t1.pos.x) then
+                setToast(t1.label .. ": position unknown - press GPS LOCATE first", C.warn, 5)
+              elseif #ids == 0 then
                 setToast("No free turtle (online, idle, position known)", C.warn, 5)
               elseif #spots == 0 then
                 setToast("This area is already mapped (" .. skipped .. " spots)", C.label, 5)
@@ -203,7 +206,9 @@ function handleTouch(tx, ty)
         state.tSel = h[6]
       elseif h[5] == "trescuer" then
         local t = state.turtles[h[6]]
-        if t then
+        if t and t.anchor and not t.rescuerRole then
+          setToast(t.label .. " is the ANCHOR - it must stay put. Choose another turtle as rescuer.", C.warn, 6)
+        elseif t then
           t.rescuerRole = not t.rescuerRole or nil
           TT.listDirty = true
           pcall(TT.saveList)

@@ -1201,7 +1201,8 @@ function sendSummary(data, r)
         local idx = (dz + r) * n + (dx + r) + 1
         local t = cols[idx]
         if not t or dy > t[1] then cols[idx] = { dy, pal(b.name) } end
-        if #ores < 300 and isOre(b) then ores[#ores + 1] = { dx, dy, dz, pal(b.name) } end
+        -- ores: not collected any more (the base does not keep them; they only
+        -- made every scan and the turtle's outbox file bigger)
       end
     end
   end
@@ -1216,7 +1217,7 @@ function scanHere(r)
   local data, rr = scanRaw(r)
   if not data then return false, rr end
   local nores = sendSummary(data, rr)
-  return true, "scanned " .. #data .. " blocks at " .. fmt() .. " (" .. nores .. " ores)"
+  return true, "scanned " .. #data .. " blocks at " .. fmt()
 end
 
 ---------------------------------------------------------------------

@@ -50,7 +50,9 @@ end
 
 -- add a line to a turtle's log (40 kept)
 function TT.log(t, msg)
-  table.insert(t.log, 1, { t = textutils.formatTime(os.time(), true), msg = msg })
+  -- real time (the game clock was confusing: it runs 72x faster)
+  local okD, now = pcall(os.date, "%H:%M")
+  table.insert(t.log, 1, { t = (okD and now) or textutils.formatTime(os.time(), true), msg = msg })
   while #t.log > 40 do table.remove(t.log) end
 end
 
@@ -672,7 +674,7 @@ end
 function TT.pickRescuer(target, mode, x, z)
   local best, bestD
   for id, t in pairs(state.turtles) do
-    if id ~= target.id and TT.online(t) and not t.anchor and (t.task == nil or t.task == "idle")
+    if id ~= target.id and TT.online(t) and not t.anchor and not t.held and (t.task == nil or t.task == "idle")
        and t.pos and t.pos.x then
       local ok
       if mode == "install" then ok = hasGear(t, "drive") and hasGear(t, "floppy")
@@ -695,7 +697,11 @@ function TT.rescueReady(t)
     return true, hasGear(t, "pick") and "can rescue lost turtles"
                  or "can rescue (no pickaxe: Disk Drives are left behind)", 0
   end
-  return false, "cannot rescue yet - needs " .. table.concat(miss, " + "), #miss
+  if hasGear(t, "scanner") then
+    -- enough to wake up a turtle in an unloaded area (going there loads it)
+    return false, "wakes up lost turtles; reinstalling also needs " .. table.concat(miss, " + "), #miss
+  end
+  return false, "needs " .. table.concat(miss, " + "), #miss
 end
 
 -- nobody knows where they are: the best rescuer searches around the base and
@@ -709,7 +715,7 @@ function TT.findLost(radius, cx, cy, cz)
   local best, bestD
   local why, whyMiss = "no turtle is online and idle", math.huge
   for id, t in pairs(state.turtles) do
-    if TT.online(t) and not t.anchor and (t.task == nil or t.task == "idle") and t.pos and t.pos.x then
+    if TT.online(t) and not t.anchor and not t.held and (t.task == nil or t.task == "idle") and t.pos and t.pos.x then
       local ok, msg, nmiss = TT.rescueReady(t)
       if ok then
         local d = math.abs(t.pos.x - cx) + math.abs(t.pos.z - cz)
@@ -954,6 +960,13 @@ end
 -- side of the area), each strip going to the turtle closest to it
 function TT.splitSurvey(spots, ids)
   local out = {}
+  -- only turtles with a known position can take a share
+  local known = {}
+  for _, id in ipairs(ids) do
+    local t = state.turtles[id]
+    if t and t.pos and t.pos.x then known[#known + 1] = id end
+  end
+  ids = known
   if #ids == 0 or #spots == 0 then return out end
   local minX, maxX, minZ, maxZ = math.huge, -math.huge, math.huge, -math.huge
   for _, p in ipairs(spots) do

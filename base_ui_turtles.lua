@@ -56,19 +56,21 @@ function drawTurtlesPage(G)
     if sel then
       for k = 0, 3 do mark(lx + 1, ry + k, C.accent) end
     end
-    local name = trunc(t.label .. "  #" .. t.id, iw - 30)
-    text(ix, ry, name, sel and C.label or C.text, C.panel)
-    -- its program version: green = the newest, yellow = older
     local vn = TT.verName(t.ver)
-    text(ix + #name + 2, ry, vn, (CODE and t.ver == CODE.ver) and C.good or C.warn, C.panel)
     local old = on and TT.outdated(t)
     local ready = old and CODE and t.updReady == CODE.ver
     local st = (on and t.stuck) and "STUCK" or ready and "UPDATE READY" or old and "UPDATING"
+               or (on and t.held) and "STOPPED"
                or (on and t.anchor) and "ANCHOR" or (on and t.rescuerRole) and "RESCUER"
                or (on and "ONLINE" or "OFFLINE")
-    local stc = (on and t.stuck) and C.warn or old and C.label or (on and t.anchor) and C.purple
+    local stc = (on and t.stuck) and C.warn or old and C.label or (on and t.held) and C.warn
+                or (on and t.anchor) and C.purple
                 or (on and t.rescuerRole) and C.warn or (on and C.good or C.bad)
     pill(lx + leftW - #st - 4, ry, st, C.ink, stc)
+    -- name + program version (green = the newest, yellow = older), in the room left of the pill
+    local name = trunc(t.label .. "  #" .. t.id, math.max(6, iw - #st - #vn - 6))
+    text(ix, ry, name, sel and C.label or C.text, C.panel)
+    text(ix + #name + 2, ry, vn, (CODE and t.ver == CODE.ver) and C.good or C.warn, C.panel)
     if type(t.fuel) == "number" and type(t.fuelMax) == "number" and t.fuelMax > 0 then
       local f = math.max(0, math.min(1, t.fuel / t.fuelMax))
       kv(ix, ry + 1, iw, "Fuel", commas(t.fuel) .. " / " .. commas(t.fuelMax),
@@ -79,7 +81,8 @@ function drawTurtlesPage(G)
     end
     local where = t.pos and fmtPos(t.pos.x, t.pos.y, t.pos.z) or "position unknown"
     local doing = on and tostring(t.task or "idle")
-                  or ("offline - last seen " .. TT.ago(t.seenEpoch) .. (t.rescuer and " - rescue on its way" or ""))
+                  or ((t.seenEpoch and ("offline - last seen " .. TT.ago(t.seenEpoch)) or "offline")
+                      .. (t.rescuer and " - rescue on its way" or ""))
     text(ix, ry + 3, trunc(where .. "   " .. doing, iw), on and C.dim or C.warn, C.panel)
     addHit(lx + 1, ry, leftW - 2, 4, "tsel", t.id)
   end
@@ -103,6 +106,9 @@ function drawTurtlesPage(G)
   stat(rix + 4 * (q + 2), y0 + 3, q, "ITEMS", tostring(t.items or "?"))
   if t.stuck then
     text(rix, y0 + 5, trunc("STUCK: " .. tostring(t.stuck), riw), C.warn, C.panel)
+  elseif t.held then
+    text(rix, y0 + 5, trunc("STOPPED by you - automatic jobs skip it. Any button (e.g. PING) releases it.", riw),
+         C.warn, C.panel)
   elseif not t.pos or not t.pos.f then
     text(rix, y0 + 5, trunc("Position unknown: press GPS LOCATE, or type  turtle " .. t.id ..
          " setpos <x> <y> <z> <north|south|east|west>", riw), C.warn, C.panel)
@@ -169,21 +175,24 @@ function drawTurtlesPage(G)
     actButton(rix, r6, hw2, 2, t.rescuer and "RESCUE ON ITS WAY" or "SEND RESCUE TURTLE",
               { kind = "trescue", name = tostring(t.id), count = 0 }, true)
     local why = TT.online(t) and "stuck - a turtle brings fuel / a pickaxe"
-                or ("offline, last seen " .. TT.ago(t.seenEpoch) .. " - a turtle reinstalls it")
+                or ("offline" .. (t.seenEpoch and (", last seen " .. TT.ago(t.seenEpoch)) or "") ..
+                    " - a turtle goes there (that wakes it up) or reinstalls it")
     text(rix + hw2 + 2, r6, trunc(why, riw - hw2 - 2), C.dim, C.panel)
   else
+    -- what this turtle could do as the RESCUER (only matters for that one)
     local okR, msgR = TT.rescueReady(t)
-    text(rix, r6, trunc("Rescue: " .. msgR, riw), okR and C.good or C.dim, C.panel)
-    text(rix, r6 + 1, trunc("Gear: " .. ((t.gear and t.gear ~= "") and t.gear or "?"), riw),
-         C.dim, C.panel)
+    text(rix, r6, trunc("As rescuer: " .. msgR, riw),
+         (okR and C.good) or (t.rescuerRole and C.warn) or C.dim, C.panel)
   end
+  text(rix, r6 + 1, trunc("Gear: " .. ((t.gear and t.gear ~= "") and t.gear or "?"), riw), C.dim, C.panel)
 
   ------------------------------------------------ go to a saved place
   local gy = y0 + ch + 1
   local rest = bottom - gy + 1
-  local gh = math.max(6, math.floor(rest * 0.45))
-  card(rx, gy, rw, gh, "GO TO")
   local wl = state.waypoints
+  -- only as tall as the saved places need (the rest goes to the log)
+  local gh = math.max(6, math.min(math.floor(rest * 0.45), 4 + 2 * #wl))
+  card(rx, gy, rw, gh, "GO TO")
   if #wl == 0 then
     text(rix, gy + 3, trunc("No saved places. On the computer:  turtle " .. t.id ..
          " goto <x> <y> <z>", riw), C.dim, C.panel)
@@ -205,13 +214,32 @@ function drawTurtlesPage(G)
   local lh = bottom - ly + 1
   if lh >= 5 then
     card(rx, ly, rw, lh, "LOG")
-    for i = 1, math.min(#t.log, lh - 4) do
+    -- newest first; a long line wraps onto up to 3 rows
+    local ry, last = ly + 3, ly + lh - 2
+    local mw = riw - 8
+    for i = 1, #t.log do
+      if ry > last then break end
       local e = t.log[i]
-      local ry = ly + 2 + i
+      local msg = tostring(e.msg)
       local bg = (i % 2 == 0) and C.head or C.panel
-      fill(rx + 1, ry, rw - 2, 1, bg)
-      text(rix, ry, e.t, C.dim, bg)
-      text(rix + 7, ry, trunc(tostring(e.msg), riw - 8), C.text, bg)
+      local parts = {}
+      while #msg > 0 and #parts < 3 do
+        if #msg <= mw then parts[#parts + 1] = msg msg = ""
+        else
+          local cut = msg:sub(1, mw):match("^.*() ") or (mw + 1)      -- break at the last space
+          if cut < mw / 2 then cut = mw + 1 end
+          parts[#parts + 1] = msg:sub(1, cut - 1)
+          msg = msg:sub(cut):gsub("^ +", "")
+        end
+      end
+      if #msg > 0 then parts[#parts] = trunc(parts[#parts] .. " " .. msg, mw) end
+      for k, line in ipairs(parts) do
+        if ry > last then break end
+        fill(rx + 1, ry, rw - 2, 1, bg)
+        if k == 1 then text(rix, ry, e.t, C.dim, bg) end
+        text(rix + 7, ry, line, C.text, bg)
+        ry = ry + 1
+      end
     end
   end
 end
