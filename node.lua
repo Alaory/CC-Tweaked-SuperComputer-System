@@ -2700,9 +2700,15 @@ function fuelStation()
   if f0 == "unlimited" or SLOT_LOCK or TOPUP_RUNNING then return nil end
   local goal = math.min(turtle.getFuelLimit(), tonumber(CONFIG.stationFuel) or 20000)
   if f0 >= goal then return nil end
+  -- already carrying reusable fuel: that does it (no second one from the chest)
+  for i = 1, 16 do
+    local d = turtle.getItemDetail(i)
+    if d and S.reuse and S.reuse[d.name] then return nil end
+  end
   local sides = fuelChestSides()
   if #sides == 0 then return false, "no chest next to my home" end
   SLOT_LOCK = true
+  local gotReuse = false
   local sel = turtle.getSelectedSlot()
   local function emptySlot() for i = 1, 16 do if turtle.getItemCount(i) == 0 then return i end end end
   for _, d in ipairs(sides) do
@@ -2714,19 +2720,37 @@ function fuelStation()
       turtle.select(e)
       if not d[2](64) then break end     -- the chest is empty
       local it = turtle.getItemDetail(e)
-      if it and isFuel(it.name) then
+      S.reuse = S.reuse or {}
+      -- a fuel item? (refuel(0) only checks, uses nothing)
+      local burnable = it and (isFuel(it.name) or S.reuse[it.name] or turtle.refuel(0))
+      if burnable and it and not S.reuse[it.name] and not isFuel(it.name) then
+        -- unknown fuel (e.g. a modded one): is it used up? one try tells
+        local c0 = turtle.getItemCount(e)
+        if turtle.refuel(1) and turtle.getItemCount(e) >= c0 then S.reuse[it.name] = true save() end
+      end
+      if it and S.reuse[it.name] then
+        gotReuse = true                  -- reusable fuel: keep it, it is never used up
+        REUSE_SLOTS = nil
+      elseif burnable then
         while turtle.getFuelLevel() < goal and turtle.refuel(1) do end
         local after = turtle.getItemDetail(e)
         if after and after.name == "minecraft:bucket" then d[3]() end     -- empty bucket back
       else
         held[#held + 1] = e
       end
+      if gotReuse then break end
     end
     for _, e in ipairs(held) do turtle.select(e) d[3]() end
   end
   turtle.select(sel)
   SLOT_LOCK = false
+  -- got reusable fuel: fill up with it now for a while (the rest while idle)
+  if gotReuse and turtle.getFuelLevel() < goal then topUp(goal, true, 200) end
   local f1 = turtle.getFuelLevel()
+  if gotReuse then
+    return true, "took reusable fuel from the chest at home (kept it): " .. f0 .. " -> " .. f1 ..
+                 " - it keeps filling up by itself while idle"
+  end
   if f1 > f0 then return true, "refuelled from the chest at home: " .. f0 .. " -> " .. f1 end
   return false, "the chest next to my home has no fuel"
 end
