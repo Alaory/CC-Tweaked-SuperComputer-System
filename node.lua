@@ -55,6 +55,8 @@ local CONFIG = {
   scanRadius = 8,            -- 8 = free scan (17x17x17); the base can ask for another
   minFuel   = 200,           -- a survey stops below this fuel level
   refuelTo  = nil,           -- reusable fuel: fill up to this (nil = the turtle's full tank)
+  lowFuel   = 2000,          -- at home below this: take fuel from a chest next to home
+  stationFuel = 20000,       -- ... and fill up to this
   maxSurveyPoints = 400,
 }
 
@@ -2674,6 +2676,61 @@ function immediate(cmd, a)
   return nil
 end
 
+-- ===== fuel chest at home =====
+-- A chest (any inventory) under, above or in front of the turtle's home with
+-- coal, charcoal, coal blocks, blaze rods or lava buckets: a turtle at home
+-- with low fuel takes from it - ONLY fuel; anything else it had to take out
+-- to get to the fuel goes straight back, empty buckets too. It burns only what
+-- it needs (up to stationFuel); leftover fuel stays in the turtle.
+function atHome()
+  return S.home and S.pos and S.pos.x == S.home.x and S.pos.y == S.home.y and S.pos.z == S.home.z
+end
+function fuelChestSides()
+  local list = {}
+  for _, d in ipairs({ { "bottom", turtle.suckDown, turtle.dropDown }, { "top", turtle.suckUp, turtle.dropUp },
+                       { "front", turtle.suck, turtle.drop } }) do
+    local okI, inv = pcall(peripheral.hasType, d[1], "inventory")
+    local okT, isT = pcall(peripheral.hasType, d[1], "turtle")
+    if okI and inv and not (okT and isT) then list[#list + 1] = d end
+  end
+  return list
+end
+function fuelStation()
+  local f0 = turtle.getFuelLevel()
+  if f0 == "unlimited" or SLOT_LOCK or TOPUP_RUNNING then return nil end
+  local goal = math.min(turtle.getFuelLimit(), tonumber(CONFIG.stationFuel) or 20000)
+  if f0 >= goal then return nil end
+  local sides = fuelChestSides()
+  if #sides == 0 then return false, "no chest next to my home" end
+  SLOT_LOCK = true
+  local sel = turtle.getSelectedSlot()
+  local function emptySlot() for i = 1, 16 do if turtle.getItemCount(i) == 0 then return i end end end
+  for _, d in ipairs(sides) do
+    local held = {}                      -- non-fuel items taken out on the way: go back
+    for _ = 1, 27 do
+      if turtle.getFuelLevel() >= goal then break end
+      local e = emptySlot()
+      if not e then break end
+      turtle.select(e)
+      if not d[2](64) then break end     -- the chest is empty
+      local it = turtle.getItemDetail(e)
+      if it and isFuel(it.name) then
+        while turtle.getFuelLevel() < goal and turtle.refuel(1) do end
+        local after = turtle.getItemDetail(e)
+        if after and after.name == "minecraft:bucket" then d[3]() end     -- empty bucket back
+      else
+        held[#held + 1] = e
+      end
+    end
+    for _, e in ipairs(held) do turtle.select(e) d[3]() end
+  end
+  turtle.select(sel)
+  SLOT_LOCK = false
+  local f1 = turtle.getFuelLevel()
+  if f1 > f0 then return true, "refuelled from the chest at home: " .. f0 .. " -> " .. f1 end
+  return false, "the chest next to my home has no fuel"
+end
+
 -- REFUEL: every slot, like before; a reusable item is used again and again (up
 -- to 10 s here - the rest it does by itself while idle). A new turtle does
 -- this once by itself (worker), so nobody has to press REFUEL.
@@ -2827,6 +2884,19 @@ function worker()
     else
       -- idle: a core not checked yet - read its functions, test it (once)
       if not S.coreChecked and hasCore() and modemAttached then pcall(coreCheck) end
+      -- at home with low fuel: the fuel chest (once a minute at most)
+      local fs0 = turtle.getFuelLevel()
+      if fs0 ~= "unlimited" and fs0 < (tonumber(CONFIG.lowFuel) or 2000) and atHome() and not job
+         and (not STATION_AT or os.clock() - STATION_AT > 60) then
+        STATION_AT = os.clock()
+        local okS, got, msgS = pcall(fuelStation)
+        if okS and got ~= nil and (got or msgS ~= STATION_SAID) then
+          STATION_SAID = msgS
+          send("result", { cmd = "fuel", ok = got, msg = msgS ..
+               (got and "" or " - put coal (or other fuel) in a chest under, above or in front of my home") })
+        end
+        if not okS then SLOT_LOCK = false end
+      end
       -- a new turtle: REFUEL once by itself (finds reusable fuel too)
       -- (only a turtle that never refuelled and is low: never burns the coal a
       -- rescuer carries for others)

@@ -86,6 +86,10 @@ PneumaticCraft drone rides, turtle mapping/surveys, and an AE2 ME network view.
   away from home -> sent home (not held / anchor / stuck / needed by a big
   survey; at most every 10 min). A turtle that never refuelled and has < 1000
   fuel runs REFUEL once by itself (doRefuel; S.refuelDone).
+- Fuel chest at home (node.lua fuelStation): idle AT home with fuel < lowFuel
+  (2000) -> sucks from an inventory below/above/in front (never a turtle),
+  burns ONLY fuel items up to stationFuel (20000), non-fuel and empty buckets
+  go back; once a minute. Base sends low-fuel idle turtles home after 10 s.
 - Permanent rescuer: t.rescuerRole (RESCUER button, saved in turtles.dat;
   base only). TT.patrolTick (comms worker) sends it to: no fuel (<20 for
   60 s), stuck (60 s idle), lost (silent CONFIG.turtles.rescueAfter, default

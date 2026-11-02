@@ -987,12 +987,16 @@ function TT.homeTick()
     --    a running big survey still needs.
     local idle = on and (t.task == nil or t.task == "idle")
     if idle then t.idleSince = t.idleSince or now else t.idleSince = nil end
+    -- low on fuel: home after 10 s (the fuel chest is there), not after idleHome
+    local fuel = tonumber(t.fuel)
+    local low = fuel and fuel < (tonumber(CONFIG.turtles.lowFuel) or 2000)
+    local wait = low and 10 or idleHome
     if idleHome > 0 and idle and t.home and t.pos and t.pos.x and not t.held and not t.anchor
-       and not t.stuck and not t.rescuer and now - t.idleSince > idleHome
+       and not t.stuck and not t.rescuer and now - t.idleSince > wait
        and (not t.idleHomeAt or now - t.idleHomeAt > 600) then
       local away = math.abs(t.pos.x - t.home.x) + math.abs(t.pos.y - t.home.y) + math.abs(t.pos.z - t.home.z)
       local needed = false
-      if MAP.queue and not t.rescuerRole then
+      if MAP.queue and not t.rescuerRole and not low then     -- low on fuel: it gets no batches anyway
         queueIds = queueIds or MAP.queue.ids or TT.available()
         for _, qid in ipairs(queueIds) do
           if qid == id and not (MAP.queue.excluded and MAP.queue.excluded[id]) then needed = true end
@@ -1001,7 +1005,8 @@ function TT.homeTick()
       if away > 2 and not needed then
         t.idleHomeAt = now
         TT.send(id, "home", {}, true)
-        TT.log(t, "Idle for " .. math.floor(now - t.idleSince) .. " s away from home - going home")
+        TT.log(t, low and ("Low on fuel (" .. fuel .. ") - going home to the fuel chest")
+                   or ("Idle for " .. math.floor(now - t.idleSince) .. " s away from home - going home"))
       end
     end
   end
