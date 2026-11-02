@@ -149,6 +149,11 @@ CONFIG = {
     codeFile     = "node.lua",
     listFile     = "turtles.dat",  -- every turtle ever seen, with its last position
     autoUpdate   = true,
+    -- a chest with fuel (coal, or reusable fuel) that every turtle may use: a
+    -- turtle low on fuel (below lowFuel) goes there, one at a time, refuels
+    -- and goes home. nil = only fuel chests next to each turtle's home.
+    fuelChest    = nil,           -- e.g. { x = -5280, y = 123, z = 10845 }
+    lowFuel      = 2000,
   },
 
   -- MAP: built from turtle scans (node.lua with a Geo Scanner in its inventory)

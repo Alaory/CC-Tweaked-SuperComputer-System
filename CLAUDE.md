@@ -93,7 +93,10 @@ PneumaticCraft drone rides, turtle mapping/surveys, and an AE2 ME network view.
   Reusable fuel (S.reuse, e.g. a modded item that is never used up) in the
   chest is recognised (refuel(0) = is fuel; one refuel(1) that leaves the count
   = reusable), KEPT in the turtle and topped up from; skipped if it already
-  carries one.
+  carries one. Shared fuel chest: CONFIG.turtles.fuelChest {x,y,z} -> the base
+  sends ONE low-fuel idle turtle at a time ("fuelup", TT.fuelTrip; others wait
+  instead of going home); the turtle parks on top (else beside, facing it),
+  takes fuel from THAT chest only (fuelStation(side)), then goes home.
 - Permanent rescuer: t.rescuerRole (RESCUER button, saved in turtles.dat;
   base only). TT.patrolTick (comms worker) sends it to: no fuel (<20 for
   60 s), stuck (60 s idle), lost (silent CONFIG.turtles.rescueAfter, default

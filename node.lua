@@ -2470,6 +2470,11 @@ function runJob(j)
     local cx, cy, cz = tonumber(a[1]), tonumber(a[2]), tonumber(a[3])
     if not (cx and cy and cz) then return false, "usage: sweep <x> <y> <z> [radius] [skip ids]" end
     return sweep(math.floor(cx), math.floor(cy), math.floor(cz), tonumber(a[4]), a[5])
+  elseif j.cmd == "fuelup" then
+    local x, y, z = tonumber(a[1]), tonumber(a[2]), tonumber(a[3])
+    if not (x and y and z) then return false, "usage: fuelup x y z (the fuel chest)" end
+    task = "going to the fuel chest"
+    return fuelTrip(math.floor(x), math.floor(y), math.floor(z))
   elseif j.cmd == "surveypts" then
     -- args: radius, x1, z1, x2, z2, ...  (this turtle's share of a survey)
     local r = math.max(1, math.min(16, math.floor(tonumber(a[1]) or CONFIG.scanRadius)))
@@ -2685,17 +2690,17 @@ end
 function atHome()
   return S.home and S.pos and S.pos.x == S.home.x and S.pos.y == S.home.y and S.pos.z == S.home.z
 end
-function fuelChestSides()
+function fuelChestSides(only)
   local list = {}
   for _, d in ipairs({ { "bottom", turtle.suckDown, turtle.dropDown }, { "top", turtle.suckUp, turtle.dropUp },
                        { "front", turtle.suck, turtle.drop } }) do
     local okI, inv = pcall(peripheral.hasType, d[1], "inventory")
     local okT, isT = pcall(peripheral.hasType, d[1], "turtle")
-    if okI and inv and not (okT and isT) then list[#list + 1] = d end
+    if okI and inv and not (okT and isT) and (not only or only == d[1]) then list[#list + 1] = d end
   end
   return list
 end
-function fuelStation()
+function fuelStation(only)
   local f0 = turtle.getFuelLevel()
   if f0 == "unlimited" or SLOT_LOCK or TOPUP_RUNNING then return nil end
   local goal = math.min(turtle.getFuelLimit(), tonumber(CONFIG.stationFuel) or 20000)
@@ -2705,8 +2710,8 @@ function fuelStation()
     local d = turtle.getItemDetail(i)
     if d and S.reuse and S.reuse[d.name] then return nil end
   end
-  local sides = fuelChestSides()
-  if #sides == 0 then return false, "no chest next to my home" end
+  local sides = fuelChestSides(only)
+  if #sides == 0 then return false, only and "no chest there" or "no chest next to my home" end
   SLOT_LOCK = true
   local gotReuse = false
   local sel = turtle.getSelectedSlot()
@@ -2753,6 +2758,43 @@ function fuelStation()
   end
   if f1 > f0 then return true, "refuelled from the chest at home: " .. f0 .. " -> " .. f1 end
   return false, "the chest next to my home has no fuel"
+end
+
+-- the shared FUEL CHEST (CONFIG.turtles.fuelChest on the base): go next to it
+-- (on top first, else beside it), take fuel from THAT chest only, then go home.
+-- A spot that is not free is given up at once (HOMEPROBE, no digging).
+function fuelTrip(cx, cy, cz)
+  local spots = { { 0, 1, 0, "bottom" }, { 1, 0, 0 }, { -1, 0, 0 }, { 0, 0, 1 }, { 0, 0, -1 }, { 0, -1, 0, "top" } }
+  local reached, lastErr
+  for _, o in ipairs(spots) do
+    if stopFlag then return false, "stopped" end
+    local tx, ty, tz = cx + o[1], cy + o[2], cz + o[3]
+    HOMEPROBE = { x = tx, y = ty, z = tz }
+    local okG, ok, err = pcall(gotoPos, tx, ty, tz)
+    HOMEPROBE = nil
+    if not okG then error(ok, 0) end
+    if isStop(err) then return false, err end
+    if ok then reached = o break end
+    lastErr = err
+  end
+  if not reached then return false, "could not get next to the fuel chest (" .. tostring(lastErr) .. ")" end
+  local side = reached[4]
+  if not side then
+    -- beside it: turn to face the chest
+    local dx, dz = -reached[1], -reached[3]
+    face((dz == 1 and 0) or (dx == -1 and 1) or (dz == -1 and 2) or 3)
+    side = "front"
+  end
+  task = "refuelling at the fuel chest"
+  send("status")
+  local okS, got, msg = pcall(fuelStation, side)
+  if not okS then SLOT_LOCK = false end
+  local note = (not okS) and ("error: " .. tostring(got)) or (got == nil and "fuel was fine already" or tostring(msg))
+  if S.home then
+    local okH, msgH = goHome()
+    return (okS and got ~= false) and okH, "fuel chest: " .. note .. "; " .. tostring(msgH)
+  end
+  return okS and got ~= false, "fuel chest: " .. note
 end
 
 -- REFUEL: every slot, like before; a reusable item is used again and again (up

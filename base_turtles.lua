@@ -193,6 +193,7 @@ function TT.receive(id, m)
                " - installs when its job is done", C.label)
     end
   elseif m.t == "result" then
+    if m.cmd == "fuelup" and TT.fuelTrip and TT.fuelTrip.id == id then TT.fuelTrip = nil end   -- the next one may go
     TT.log(t, (m.ok and "Done: " or "Failed: ") .. tostring(m.msg))
     if not m.ok then setToast(t.label .. ": " .. tostring(m.msg), C.warn, 6) end
   end
@@ -990,8 +991,24 @@ function TT.homeTick()
     -- low on fuel: home after 10 s (the fuel chest is there), not after idleHome
     local fuel = tonumber(t.fuel)
     local low = fuel and fuel < (tonumber(CONFIG.turtles.lowFuel) or 2000)
+    -- the shared fuel chest (CONFIG.turtles.fuelChest): one turtle at a time
+    -- goes there, refuels and goes home
+    local fc = CONFIG.turtles.fuelChest
+    if TT.fuelTrip and (not state.turtles[TT.fuelTrip.id] or now - TT.fuelTrip.t0 > 600) then TT.fuelTrip = nil end
+    if low and fc and fc.x and idle and on and t.pos and t.pos.x and not t.held and not t.anchor and not t.stuck
+       and not t.rescuer and not TT.fuelTrip and now - t.idleSince > 10
+       and (not t.fuelTripAt or now - t.fuelTripAt > 600) then
+      t.fuelTripAt = now
+      TT.fuelTrip = { id = id, t0 = now }
+      TT.send(id, "fuelup", { fc.x, fc.y, fc.z }, true)
+      TT.log(t, "Low on fuel (" .. fuel .. ") - going to the fuel chest at " .. fc.x .. " " .. fc.y .. " " .. fc.z)
+      low = false                        -- not also sent home below
+      t.idleHomeAt = now
+    elseif low and fc and fc.x and (not t.fuelTripAt or now - t.fuelTripAt > 600) then
+      low = "wait"                       -- the fuel chest is busy: wait for it, do not go home first
+    end
     local wait = low and 10 or idleHome
-    if idleHome > 0 and idle and t.home and t.pos and t.pos.x and not t.held and not t.anchor
+    if low ~= "wait" and idleHome > 0 and idle and t.home and t.pos and t.pos.x and not t.held and not t.anchor
        and not t.stuck and not t.rescuer and now - t.idleSince > wait
        and (not t.idleHomeAt or now - t.idleHomeAt > 600) then
       local away = math.abs(t.pos.x - t.home.x) + math.abs(t.pos.y - t.home.y) + math.abs(t.pos.z - t.home.z)
