@@ -145,7 +145,10 @@ names exist on this version (getMaxItemStorage etc.); code tries new and old.
   except the explicit BUFFER -> ME button).
 
 **Drones (PneumaticCraft):** teleport costs ~10,000 mL (~0.85 bar) even when it
-fails; flying costs no air. Teleports only into loaded chunks (players and the
+fails; flying costs no air. Passenger watch: dr.rider (set after pickup) is checked every
+2 s while moving (riderLeft); off = > 12 blocks apart twice -> "passenger got
+off" -> the drone goes straight home. Long trips hop 160 -> 80 -> 48 blocks
+before flying into an area that is not loaded. Teleports only into loaded chunks (players and the
 anchor turtle keep chunks loaded). Charging station + parking in base_drones.lua.
 
 ## Rules for changes

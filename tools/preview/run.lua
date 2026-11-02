@@ -1,7 +1,7 @@
 -- usage: lua run.lua <srcdir> <out.txt> <page> [scenario]
 SRC_DIR, OUT, PAGE, SCEN = arg[1], arg[2], arg[3] or "inventory", arg[4]
 local getenv, popen = os.getenv, io.popen
-REALCLOCK, LABEL = os.clock, getenv("LABEL") or ""
+REALCLOCK, LABEL, GETENV = os.clock, getenv("LABEL") or "", getenv
 local here = arg[0]:match("^(.*)/") or "."
 dofile(here .. "/world.lua")
 local W0 = PERIPHS

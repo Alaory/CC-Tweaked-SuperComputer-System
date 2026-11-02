@@ -487,6 +487,22 @@ function canTeleport(dr, extra)
   return p >= teleportCost(dr) * (1 + (extra or 0)) + (CONFIG.drone.airReserve or 1.5)
 end
 
+-- the passenger (dr.rider) is still with the drone? Checked every 2 s while
+-- moving; twice in a row more than 12 blocks apart = they got off. Unknown
+-- positions never count as "got off".
+function riderLeft(dr)
+  local name = dr.rider
+  if not name then return false end
+  if dr.riderCheck and os.clock() - dr.riderCheck < 2 then return false end
+  dr.riderCheck = os.clock()
+  local px, py, pz = playerPos(name)
+  local dx, dy, dz = droneXYZ(dr)
+  if type(px) ~= "number" or not dx then dr.riderFar = 0 return false end
+  local far = math.abs(px - dx) > 12 or math.abs(pz - dz) > 12 or math.abs(py - dy) > 12
+  dr.riderFar = far and (dr.riderFar or 0) + 1 or 0
+  return dr.riderFar >= 2
+end
+
 -- teleport or fly one drone to x y z and wait; returns ok, error
 -- (measures the real air cost of a teleport)
 function droneMoveTo(dr, action, x, y, z, limit)
@@ -505,6 +521,7 @@ function droneMoveTo(dr, action, x, y, z, limit)
     if dr.abort then pcall(d.abortAction); return false, "stopped" end
     local okC, conn = pcall(d.isConnectedToDrone)
     if not okC or not conn then return false, "the drone disconnected" end
+    if riderLeft(dr) then pcall(d.abortAction); return false, "passenger got off" end
     local okP, a, b, c = pcall(d.getDronePosition)
     local px, py, pz
     if okP then px, py, pz = parsePos((type(a) == "number") and { a, b, c } or a) end
@@ -554,7 +571,7 @@ end
 -- Far away and not loaded (nobody there): a drone can only teleport into
 -- loaded chunks. With a passenger it hops in steps the passenger's own view
 -- distance has loaded, high above the terrain.
-local function droneXYZ(dr)
+function droneXYZ(dr)
   local okP, a, b, c = pcall(dr.periph.getDronePosition)
   if not okP then return nil end
   return parsePos((type(a) == "number") and { a, b, c } or a)
@@ -562,6 +579,7 @@ end
 -- far + not loaded: teleport in hops high above the terrain until close
 local function hopTowards(dr, x, z)
   local L, hy = CONFIG.drone.hopLength or 160, CONFIG.drone.hopY or 200
+  local minL = 48
   local logged = false
   dr.flyNote = nil
   for _ = 1, 400 do
@@ -580,16 +598,25 @@ local function hopTowards(dr, x, z)
     local ok
     -- teleport while there is air to spare (keep enough for the rest of the
     -- ride: release + way home), otherwise FLY this stretch (costs no air)
+    local err, retry
     if canTeleport(dr, 2) then
-      ok = droneMoveTo(dr, "pneumaticcraft:teleport", hx, hy, hz, CONFIG.drone.travelTimeout)
+      ok, err = droneMoveTo(dr, "pneumaticcraft:teleport", hx, hy, hz, CONFIG.drone.travelTimeout)
+      if not ok and err ~= "did not get there" then return false, err end   -- stopped / got off / gone
+      -- that far ahead is not loaded: try shorter hops before flying
+      if not ok and L > minL then
+        L = math.max(minL, math.floor(L / 2))
+        droneLog(dr, "Hop not possible (not loaded that far ahead) - trying hops of " .. L .. " blocks")
+        retry = true
+      end
     end
-    if not ok then
+    if not ok and not retry then
       if not dr.flyNote then
         dr.flyNote = true
         droneLog(dr, string.format("Flying the next stretches (air %.1f bar - teleports cost about %.1f each)",
                                    dronePressure(dr) or 0, teleportCost(dr)))
       end
-      ok = droneMoveTo(dr, "pneumaticcraft:goto", hx, hy, hz, math.max(90, (CONFIG.drone.hopLength or 160) / 2))
+      ok, err = droneMoveTo(dr, "pneumaticcraft:goto", hx, hy, hz, math.max(60, L))
+      if not ok and err ~= "did not get there" then return false, err end
       if not ok then return false, "cannot get further - the area ahead is not loaded" end
     end
   end
@@ -722,6 +749,7 @@ function pickupSteps(dr, name)
         -- no lift: whether the passenger really came along is checked at the
         -- destination, before anything is released
         dr.checkAboard = name
+        dr.rider = name
         droneLog(dr, name .. " picked up (checked on arrival)")
         return true
       else
@@ -732,6 +760,7 @@ function pickupSteps(dr, name)
         local _, py = playerPos(name)
         if type(py) == "number" and py - y >= CONFIG.drone.liftHeight * 0.5 then
           droneLog(dr, name .. " is on board")
+          dr.rider = name
           return true
         end
         lastErr = name .. " did not come along"
@@ -763,7 +792,10 @@ function releaseAt(dr, x, y, z)
     dr.periph.clearBlacklistText()
     pcall(dr.periph.setUseCount, false)
   end, 1, 40)
-  if ok then droneLog(dr, "Released at " .. fmtPos(x, y, z)) end
+  if ok then
+    droneLog(dr, "Released at " .. fmtPos(x, y, z))
+    dr.rider = nil
+  end
   return ok, err
 end
 
@@ -772,6 +804,12 @@ function rescueToBase(dr)
   local h = CONFIG.drone.home
   if not h then return false, "no base set" end
   local ok, err = travelTo(dr, h.x, h.y, h.z)
+  if not ok and err == "passenger got off" then
+    -- they got off on the way: nobody to release, just bring the drone home
+    droneLog(dr, tostring(dr.rider) .. " got off during the ride back")
+    dr.rider = nil
+    return travelTo(dr, h.x, h.y, h.z)
+  end
   if not ok then return false, err end
   local s = dr.lastSpot or { x = h.x, y = h.y, z = h.z }
   return releaseAt(dr, s.x, s.y, s.z)
@@ -1094,6 +1132,7 @@ function runMission(dr, cmd)
 
   dr.abort = false
   dr.checkAboard, dr.notAboard = nil, nil
+  dr.rider, dr.riderFar, dr.riderCheck = nil, 0, nil
   local title, steps = buildMission(dr, cmd)
   dr.mission = { title = title, state = "running", steps = {} }
   for i, st in ipairs(steps) do dr.mission.steps[i] = { text = st.text, status = "pending" } end
@@ -1123,6 +1162,12 @@ function runMission(dr, cmd)
       -- Never leave them hanging in the air - bring them back to Base.
       local aboard = (cmd.kind == "drop")
       for j = 1, i - 1 do if steps[j].text:find("^Pick up") then aboard = true end end
+      if tostring(err) == "passenger got off" then
+        droneLog(dr, tostring(dr.rider) .. " got off during the ride - going straight home (while the area is still loaded)")
+        dr.rider = nil
+        dr.notAboard = true
+        dr.mission.err = "you got off during the ride - the drone went home"
+      end
       if dr.notAboard then
         aboard = false
         droneLog(dr, "Nobody on board - nothing released")
