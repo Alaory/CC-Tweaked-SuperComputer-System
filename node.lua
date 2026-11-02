@@ -2626,6 +2626,8 @@ function listener()
       elseif ok ~= nil then
         reply(m.cmd, ok, msg)
         if rebootSoon then
+          S.rebootWhy = "after an update"
+          save()
           sleep(1)
           os.reboot()
         end
@@ -2732,6 +2734,8 @@ function worker()
         installUpdate(UPD_READY.code)
         UPD_READY = nil
         send("result", { cmd = "upd", ok = true, msg = "job done - update installed, restarting" })
+        S.rebootWhy = "after an update"
+        save()
         sleep(1)
         os.reboot()
       end
@@ -2752,6 +2756,7 @@ end
 
 function heartbeat()
   send("hello", { resumed = S.resumedNote })
+  if BOOTNOTE then send("result", { cmd = "boot", ok = true, msg = BOOTNOTE }) BOOTNOTE = nil end
   do
     local side = warpCore() or (coreSlot() and "carried - swapped in for each warp")
     local n = 0
@@ -2780,6 +2785,8 @@ function heartbeat()
   local idleFor, sinceResend, sinceLearn = 0, 0, 0
   while true do
     sleep(CONFIG.heartbeat)
+    S.alive = now()                    -- real time: how long it was off after a restart
+    if not S.aliveSaved or S.alive - S.aliveSaved > 30000 then S.aliveSaved = S.alive save() end
     sinceResend = sinceResend + CONFIG.heartbeat
     sinceLearn = sinceLearn + CONFIG.heartbeat
     if not job and gearString then S.gear = gearString() end
@@ -2839,6 +2846,18 @@ if type(S.job) == "table" and RESUMABLE[S.job.cmd] then
   save()
 end
 
+-- why this start, and how long the turtle was off (real seconds since the
+-- last heartbeat): tells a chunk unload apart from our own restarts
+do
+  local off = S.alive and math.floor((now() - S.alive) / 1000) or nil
+  local why = S.rebootWhy or "by the game (chunk loaded again, server start or Ctrl+R)"
+  BOOTNOTE = "started " .. why .. (off and (" - was off for about " .. off .. " s") or "") ..
+             " - start #" .. ((S.boots or 0) + 1)
+  S.boots = (S.boots or 0) + 1
+  S.rebootWhy = nil
+  save()
+end
+
 -- the program must never just end: an error used to leave the turtle at its
 -- command prompt (offline, deaf to commands until rebooted by hand). Now the
 -- error is written down, the turtle restarts itself, and the base is told.
@@ -2865,6 +2884,8 @@ if not okMain and tostring(errMain) ~= "Terminated" then
   printError(tostring(errMain))
   local wait = math.min(60, 5 * n)                 -- crashing again and again: wait longer
   print("Restarting in " .. wait .. " s (hold Ctrl+T to stay stopped)...")
+  S.rebootWhy = "after an ERROR"
+  save()
   sleep(wait)
   os.reboot()
 end
