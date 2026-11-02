@@ -233,8 +233,12 @@ function writeFile(path, value)
   end
   local h = fs.open(path, "w")
   if not h then return false end
-  h.write(text)
-  h.close()
+  local okW, errW = pcall(function() h.write(text) h.close() end)
+  if not okW then
+    pcall(h.close)
+    writeErr = "cannot save " .. path .. ": " .. tostring(errW)     -- e.g. disk full
+    return false
+  end
   return true
 end
 
@@ -1157,6 +1161,25 @@ if fs.exists(OUTBOX_FILE) then
     for _, p in ipairs(outbox) do       -- fields an old version wrongly added to stored scans
       if type(p) == "table" then p.home, p.pos, p.sig, p.n, p.t = nil, nil, nil, nil, nil end
     end
+  end
+end
+-- old versions kept ores in every stored scan: drop them (the base never
+-- used them); a nearly full disk: keep only the newest scans
+do
+  local stripped = 0
+  for _, p in ipairs(outbox) do
+    if type(p) == "table" and type(p.ores) == "table" and #p.ores > 0 then p.ores = {} stripped = stripped + 1 end
+  end
+  local okF, free = pcall(fs.getFreeSpace, "/")
+  local trimmed = 0
+  if okF and type(free) == "number" and free < 100000 then
+    while #outbox > 10 do table.remove(outbox, 1) trimmed = trimmed + 1 end
+    if fs.exists("startup.old") then pcall(fs.delete, "startup.old") end
+  end
+  if stripped > 0 or trimmed > 0 then
+    writeFile(OUTBOX_FILE, outbox)
+    CLEANNOTE = "cleaned up old data: " .. stripped .. " stored scans without ores" ..
+                (trimmed > 0 and (", " .. trimmed .. " old scans dropped (disk was nearly full)") or "")
   end
 end
 function outboxSave()
@@ -2561,6 +2584,25 @@ function immediate(cmd, a)
     return true, S.anchor and "I am the ANCHOR now: I stay here and keep this chunk loaded"
                            or "not the anchor any more"
   elseif cmd == "ping" then return true, "pong"
+  elseif cmd == "diag" then
+    -- what is on this turtle: disk, files, saved job, equipment
+    local function kb(f) return fs.exists(f) and (math.floor(fs.getSize(f) / 102.4) / 10) or 0 end
+    local okF, free = pcall(fs.getFreeSpace, "/")
+    local okC, cap = pcall(fs.getCapacity, "/")
+    local parts = {
+      "disk free " .. (okF and math.floor(free / 1024) or "?") .. " KB" ..
+        ((okC and cap) and (" of " .. math.floor(cap / 1024) .. " KB") or ""),
+      "files KB: program " .. kb(MYPATH) .. (MYPATH ~= "startup.lua" and (" + startup " .. kb("startup.lua")) or "") ..
+        ", backup " .. kb("startup.old") .. ", state " .. kb(STATE_FILE) .. ", outbox " .. kb(OUTBOX_FILE) ..
+        " (" .. outboxCount() .. " scans), trail " .. kb(TRAIL_FILE),
+      "saved job: " .. ((type(S.job) == "table") and (tostring(S.job.cmd) .. ", resumed " .. tostring(S.job.resumes or 0) ..
+        "x, " .. ((type(S.job.left) == "table") and (#S.job.left .. " spots left") or "")) or "none"),
+      "starts: " .. tostring(S.boots or "?") .. (S.anchor and ", ANCHOR" or ""),
+      "gear: " .. tostring(gearString and gearString() or "?"),
+    }
+    if writeErr then parts[#parts + 1] = "last save error: " .. writeErr end
+    if fs.exists(CRASH_FILE) then parts[#parts + 1] = "crash file present" end
+    return true, table.concat(parts, " | ")
   elseif cmd == "status" then return true, "status sent"
   elseif cmd == "stop" then
     stopFlag = true
@@ -2758,6 +2800,7 @@ end
 function heartbeat()
   send("hello", { resumed = S.resumedNote })
   if BOOTNOTE then send("result", { cmd = "boot", ok = true, msg = BOOTNOTE }) BOOTNOTE = nil end
+  if CLEANNOTE then send("result", { cmd = "clean", ok = true, msg = CLEANNOTE }) CLEANNOTE = nil end
   do
     local side = warpCore() or (coreSlot() and "carried - swapped in for each warp")
     local n = 0

@@ -70,6 +70,10 @@ PneumaticCraft drone rides, turtle mapping/surveys, and an AE2 ME network view.
   error is written to `node_crash`, the turtle reboots (5 s, longer when it
   keeps crashing) and tells the base ("restarted after an ERROR: ..." in the
   turtle's log). Each command (immediate) is pcall'd too.
+- `turtle <id> diag`: disk free, file sizes (program, backup, state, outbox,
+  trail), saved job, starts, gear, last save error. writeFile never crashes on a
+  full disk. On start, old outbox scans lose their ores (old versions); disk
+  < 100 KB free -> outbox trimmed to 10, startup.old deleted ("clean" result).
 - Chunky upgrade never comes off: every equip goes through equipOn (node.lua),
   which refuses the Chunky side and puts it straight back if the item that
   came off is a Chunky ("chunk" in the name). chunkyFix re-equips a loose one

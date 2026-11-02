@@ -26,6 +26,7 @@ HELP = {
   " turtles              list connected turtles",
   " turtle <id|name> <cmd> [args]   e.g. goto x y z, home,",
   " turtle <id> log [n]  the turtle's last n log lines in full",
+  " turtle <id> diag     its disk, files, saved job and gear (answer in its log)",
   " survey               the big survey: progress, what each turtle is waiting for",
   " theme [name|random]  the monitor's colours (random = a different one each start)",
   " events [n] [errors]  the last n saved messages (also after a restart)",
