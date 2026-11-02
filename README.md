@@ -1,215 +1,357 @@
-# CC:Tweaked Base Control
+# 🖥️ CC:Tweaked Base Control
 
-A ComputerCraft program for a Minecraft base. One computer with a large
-Advanced Monitor shows your inventory, the online players, your backpacks and
-curios, an AE2 / Refined Storage network, PneumaticCraft drones, remote
-turtles and a terrain map. It also has a keyboard console and `$drone` chat
-commands, so players can call a drone ride from anywhere.
+**One computer and one big monitor that run your whole Minecraft base:** your
+inventory, players, backpacks, curios, an AE2 network, drone rides, a team of
+mapping turtles and a map of the world.
 
-Made for **CC:Tweaked 1.120.2 on Minecraft 1.21.1 (NeoForge)** with
-**Advanced Peripherals**.
+> Made for **CC:Tweaked 1.120.2** on **Minecraft 1.21.1 (NeoForge)** with
+> **Advanced Peripherals** · optional: **PneumaticCraft**, **AE2 / Refined Storage**, **Curios**
 
-## Features
+---
 
-| Tab | What it shows / does |
+## 📑 Contents
+
+- [✨ What it does](#-what-it-does)
+- [🧰 What you need](#-what-you-need)
+- [🚀 Installation](#-installation)
+- [⚙️ Configuration](#️-configuration)
+- [🐢 Turtles](#-turtles)
+- [🚁 Drones](#-drones)
+- [📦 ME / Curios](#-me--curios)
+- [🗺️ The map](#️-the-map)
+- [💬 Chat commands](#-chat-commands)
+- [⌨️ Console commands](#️-console-commands)
+- [🎨 Themes & the message log](#-themes--the-message-log)
+- [💡 Tips & troubleshooting](#-tips--troubleshooting)
+- [📁 Files](#-files)
+
+---
+
+## ✨ What it does
+
+| Tab | What you get |
 |---|---|
-| **INVENTORY** | Your inventory grid, armour and offhand, how full it is, and a sortable item list (by count, name or slot). Tap an item to highlight every slot that holds it. |
-| **PLAYERS** | One box per online player: name, dimension, health, air, position, facing. Tap a box to see the Player Detector's raw data. |
-| **STORAGE** | What is inside the backpacks and tanks you carry. |
-| **CURIOS** | Your worn Curios slots. Tap a slot to store its item in ME, move it to your inventory, or put on what fits from ME. |
-| **ME** (or **RS**) | Network status, an item / fluid browser, and buttons to take items, store them, fill your fluid containers and craft. Every button needs a second tap to confirm. |
-| **DRONE(S)** | PneumaticCraft drones: air, mission steps and log. Pick a passenger and a destination (player, saved place or coordinates), then fly, pick up, drop or ferry. |
-| **CHAT** | Who may use the `$drone` chat commands (the allow list). |
-| **TURTLES** | Remote-controlled turtles: status, fuel, position, and a control pad. Also rescue and "find lost turtles". |
-| **EVENTS** | Every message the program showed, newest first, with filters (errors, warnings, done, info). |
-| **MAP** | Terrain from the turtles' Geo Scanner scans: zoom (1 to 512 blocks per cell - a 40,000 x 40,000 world fits), rotate, and send turtles to survey an area (big areas are handed out in batches). |
+| 🎒 **INVENTORY** | Your inventory grid, armour and offhand, how full it is, and an item list (sort by count, name or slot). Tap an item to highlight every slot that holds it. |
+| 👥 **PLAYERS** | A card per online player: dimension, health, air, position, facing. |
+| 🧳 **STORAGE** | What is inside the backpacks and tanks you carry. |
+| 💍 **CURIOS** | Your worn curios. Store an item in ME, move it to your inventory, or put on something from ME. |
+| 📦 **ME** (or **RS**) | Network status, an item / fluid browser, taking and storing items, filling fluid containers, crafting. |
+| 🚁 **DRONES** | PneumaticCraft drones: air, mission steps, log. Pick a passenger and a destination, then fly, pick up, drop or ferry. |
+| 💬 **CHAT** | Who may use the `$drone` chat commands, ride requests to approve, and the switch for the base's messages in your chat. |
+| 🐢 **TURTLES** | Every turtle: status, fuel, position, gear and log, plus a control pad (move, STOP, GO HOME, REFUEL …), anchor and rescuer. |
+| 🗺️ **MAP** | The terrain your turtles scanned: zoom from 1 to 512 blocks per cell (a 40,000 × 40,000 world fits), rotate, and send turtles to survey. |
+| 🔔 **EVENTS** | Every message the program showed, with date and time and a filter (errors, warnings, done, info). Kept after restarts. |
 
-A tab only appears when the block it needs is connected.
+A tab only shows up when the block it needs is connected.
 
-**Messages** (a transfer is done, a drone cannot start, an error ...) appear as
-boxes in the top-right corner. Each one closes by itself; the bar at its bottom
-shows the time left (3 seconds; `CONFIG.notes` can change it). Tap a box to
-close it sooner. The **EVENTS** tab lists every message with its date and time,
-can show one kind only, and its badge counts the new ones.
+**Messages** pop up as small boxes in the top-right corner and close by themselves
+after 3 seconds; tap one to close it sooner. They are also listed on the EVENTS
+tab and saved in `events.log`. If you want, they can be sent to you privately in
+chat as well.
 
-**Drones** (PneumaticCraft):
-- They teleport (or fly) to players and places, pick a player up with Entity Import, and drop them at the destination. If something fails with a passenger on board, the drone brings them back to Base.
-- They only go to players and places **in the overworld**.
-- After each mission a drone parks on its Charging Station. Every teleport costs air, so missions check the air first.
+---
 
-**Turtles** (`node.lua`): they find their way around obstacles, use a "sky highway" for long trips and share what they learn (walls, dead ends, the exit route) through the base. They also scan terrain for the map. The base sends them program updates by itself.
+## 🧰 What you need
 
-## What you need
+### Required
 
-**Required**
-- A computer (CC:Tweaked)
-- An **Advanced (gold) Monitor**. It needs to be big: the screen asks for a bigger one if it is too small.
-- An **Inventory Manager** (Advanced Peripherals) with a Memory Card bound to you
+- 💻 A **Computer** (CC:Tweaked)
+- 🖥️ A big **Advanced (gold) Monitor**. If it is too small, the screen tells you.
+- 🎒 An **Inventory Manager** (Advanced Peripherals) with a **Memory Card** bound to you
 
-**Optional**: each one adds features.
+### Optional: each one adds features
 
 | Block | Adds |
 |---|---|
-| Player Detector | PLAYERS tab, your status, drones finding players |
-| Environment Detector | tells the program which dimension the base is in |
-| ME Bridge / RS Bridge + a buffer chest | ME / RS tab |
-| Drone Interface (one per drone) + Charging Station | DRONE tab |
-| Chat Box | `$drone` chat commands, CHAT tab |
-| Wireless or Ender Modem on the computer | TURTLES and MAP tabs |
-| Disk Drive + floppy | turtle install disk, and extra space for data files |
+| 👁️ Player Detector | PLAYERS tab, finding players for drone rides |
+| 🌍 Environment Detector | which dimension the base is in |
+| 📦 ME Bridge / RS Bridge + a buffer chest | ME / RS tab |
+| 🚁 Drone Interface (one per drone) + Charging Station | DRONES tab |
+| 💬 Chat Box | `$drone` chat commands, CHAT tab, messages in chat |
+| 📡 Ender Modem (or Wireless Modem) on the computer | TURTLES and MAP tabs |
+| 💾 Disk Drive + floppy | turtle install floppy, extra room for the map |
 
-**Connecting the blocks:** they can touch the computer or sit anywhere on a **wired network**: a Wired Modem on each block and on the computer, connected with Networking Cable. Right-click every modem so it turns on.
+> 🔌 **Connecting the blocks:** blocks can touch the computer, or sit anywhere on a
+> **wired network**. For that, put a Wired Modem on each block and on the computer,
+> connect them with Networking Cable, and right-click every modem so it turns on.
 
-## Installation
+---
 
-1. Copy **all** files into the same folder on the computer: `inventory.lua`,
-   every `base_*.lua` and `node.lua`.
+## 🚀 Installation
+
+### 1️⃣ The base computer
+
+1. Make a folder on the computer, for example `controller`, and copy **all**
+   program files into it: `inventory.lua`, every `base_*.lua` and `node.lua`.
 2. Open `base_config.lua` and set at least:
-   - `drone.home`: the "Base" position where riders are dropped off
+   - `turtles.key`: a secret word of your own (not `"change-me"`). Turtles
+     installed from the install floppy or updated by the base get it
+     automatically; if you copy `node.lua` onto a turtle by hand, put the same
+     key in it.
+   - `drone.home`: your "Base", where drone riders are dropped off
    - `drone.charger`: the drone Charging Station
-   - `turtles.key`: a shared secret. Change it from `"change-me"`. The same key goes in `node.lua`.
-3. Run it:
+3. Start it:
    ```
-   inventory
+   controller/inventory
    ```
-   If a file is missing, the program lists the missing files.
-   To start it by itself whenever the computer starts, copy `startup.lua` into
-   the **top level** of the computer (not into the folder). It finds
-   `inventory.lua` wherever it is and starts it again after a crash.
-4. For the ME tab, put **one** item in the buffer chest and type `mesetup` on
-   the computer. It finds the chest by itself and saves the result.
+   If a file is missing, it lists the missing files.
+4. **Autostart (recommended):** copy `startup.lua` to the **top level** of the
+   computer, not into the folder. The program then starts by itself and comes
+   back after a crash. Ctrl+T stops it.
 
-### Turtles
+### 2️⃣ Turtles
 
-1. Give the turtle a **Chunky upgrade** and an **Ender Modem** (a Wireless Modem
-   reaches only about 64 blocks), plus fuel.
-2. Copy `node.lua` onto it as `startup.lua`. `protocol`, `baseName` and `key`
-   must match `CONFIG.turtles` in `base_config.lua`. Instead of copying it by
-   hand, you can put a NEW turtle next to the Disk Drive with the install
-   floppy and turn it on. The base keeps that floppy up to date.
-3. Give it a name: `label set Scout1`.
-4. Without GPS, tell it where it is once, on the base computer:
-   `turtle <id> setpos <x> <y> <z> <north|south|east|west>`.
-5. For the map, put a **Geo Scanner** (as an item) in its inventory.
+1. Equip each turtle with a **Chunky upgrade** and an **Ender Modem**. A Wireless
+   Modem only reaches about 64 blocks.
+2. Put the **install floppy** in the Disk Drive *under* the computer: the base
+   writes the installer onto it at once. Put a new turtle next to a Disk Drive
+   with that floppy and turn it on. That's it.
+   *Or* copy `node.lua` onto the turtle as `startup.lua`.
+3. Name it: `label set Scout1`.
+4. Without GPS, tell it once where it is (on the base computer):
+   `turtle <id> setpos <x> <y> <z> <north|south|east|west>`
+5. For mapping, put a **Geo Scanner** (as an item) in its inventory.
 
-### Curios moves
+A new turtle refuels by itself and gets a home by itself (see [🐢 Turtles](#-turtles)).
 
-Some Advanced Peripherals versions can only take off **all** items of a slot
-type at once, and put on **any** fitting item from a chest. For slot types
-with several items (rings, charms) the program then needs an **empty barrel
-used only for curios**: connect it with a wired modem and set its network name
-in `base_config.lua`, inside `me = { ... }`:
+### 3️⃣ ME network
 
-```lua
-    curiosChest = "minecraft:barrel_2",
-```
+Put **one** item in the buffer chest and type `mesetup` on the computer. It finds
+the chest by itself and remembers it.
 
-Your item buffer is never used for those moves, so items you keep in it are
-never touched. `curios probe` on the computer shows what your version wants;
-every curios move is listed in the EVENTS tab.
+### 4️⃣ Drones
 
-## Chat commands
+Program a PneumaticCraft drone with a ComputerCraft puzzle piece whose area
+contains the Drone Interface, and launch it. The DRONES tab shows it as
+connected. After each mission it parks on its Charging Station.
 
-These start with `$` (`$drone ...`), which hides the message from other players.
-The replies are private.
+---
+
+## ⚙️ Configuration
+
+All settings are in **`base_config.lua`**. Keep your own copy of it: when you
+update the program, copy the new files **except** `base_config.lua`, and add new
+lines by hand when an update needs them.
+
+The settings you will most likely touch:
+
+| Setting | What it does |
+|---|---|
+| `turtles.key` | The shared secret between the base and the turtles. **Change it.** |
+| `turtles.fuelChest = { x=…, y=…, z=… }` | A chest with fuel that every turtle may use (see below) |
+| `turtles.lowFuel` | Below this much fuel a turtle goes refuelling (default 2000) |
+| `turtles.idleHome` | Seconds idle before a turtle goes home (default 120, `0` = off) |
+| `turtles.rescueAfter` | Seconds silent before the rescuer goes to wake a turtle up (default 180) |
+| `drone.home` / `drone.charger` | Base drop-off point / Charging Station |
+| `drone.travel` | `"teleport"` (best for underground bases) or `"fly"` |
+| `me.curiosChest` | An **empty** barrel used only for curios moves (see below) |
+| `map.up` | Which way is up on the map (`"north"`, `"east"`, `"south"`, `"west"`) |
+| `map.computerKB` | How much of the computer's disk the map may use (default 200) |
+| `chat.command` | The chat command word (`$drone …`) |
+| `theme` | Fix the monitor's colours, e.g. `theme = "nord"` (default: a random one on every start) |
+| `names.*` | Pick one block by its network name when you have several of a kind |
+
+> 💡 Many settings can also be changed while the program runs: `charger`, `theme`,
+> `turtle <id> setting <name> <value>` (a turtle's own settings).
+
+---
+
+## 🐢 Turtles
+
+Turtles fly to places, scan the terrain for the map, find their way around
+obstacles, and share what they learn (walls, dead ends, the exit route out of the
+base) through the base.
+
+### 🏠 Homes
+
+- **SET HOME** on one turtle. Every turtle without a home is then offered one
+  **next to it** (one block over on X or Z). The turtle checks the spot the first
+  time it goes there. If the block is not free, it gives it back without digging
+  and gets the next one.
+- A turtle **with nothing to do for 2 minutes goes home**, so it does not keep a
+  far-away chunk loaded for nothing. A turtle you stopped, the anchor and stuck
+  turtles stay where they are.
+
+### ⛽ Fuel
+
+| How | What happens |
+|---|---|
+| 🆕 New turtle | It runs REFUEL by itself on its first start. |
+| ♻️ Reusable fuel | A fuel item that is never used up (some mods have one) is recognised and kept. The turtle tops up from it whenever it is idle. |
+| 🧰 **Shared fuel chest** | Set `turtles.fuelChest`. A turtle low on fuel parks **on top of the chest**, takes only fuel (coal, charcoal, coal blocks, blaze rods, lava, or reusable fuel), and flies home. **One turtle at a time**; the others wait. |
+| 🏠 Chest at home | A chest under, above or in front of a turtle's home works the same way. |
+
+> 💡 Keep the block **on top of** the fuel chest free. Put one reusable fuel item
+> per turtle in it: each turtle keeps one, and never runs dry while it can idle.
+
+### 🛟 Rescue, anchor and stop
+
+- **⚓ ANCHOR:** one turtle parked in the base computer's chunk keeps the base
+  running while you are offline.
+- **🛟 RESCUER:** a permanent rescue turtle. It flies to a turtle that has gone
+  silent (for example an unloaded chunk: arriving wakes it up), that is stuck, or
+  that has no fuel. It goes home afterwards.
+- **🛑 STOP** really stops a turtle, also after its chunk was unloaded and loaded
+  again. A stopped turtle shows **STOPPED** and is left alone by automatic jobs.
+  Any button (for example PING) makes it normal again.
+- 🔄 **Updates:** copy a new `node.lua` into the program folder. The base updates
+  the turtles one at a time; a busy turtle installs it after its job. Type
+  `update` to see the versions.
+
+### 🩺 When a turtle misbehaves
+
+| Command | Shows |
+|---|---|
+| `turtle <id> log 15` | its last 15 log lines in full |
+| `turtle <id> diag` | disk space, file sizes, saved job, how often it restarted, gear |
+| `turtles` | all turtles with fuel, position and gear |
+
+A turtle's answers appear in **its log**, on the TURTLES tab or with `turtle <id> log`.
+If a turtle restarts, its log says why: "started by the game (chunk loaded
+again …)", "after an update" or "after an ERROR: …".
+
+---
+
+## 🚁 Drones
+
+- They **teleport** (or fly) to players and places. They pick a player up, carry
+  them, and drop them at the destination.
+- **Overworld only**, for players and places alike.
+- Every teleport costs air, so missions check the air first. Long trips go in hops
+  (shorter hops where the area ahead is not loaded).
+- If **you get off during a ride**, the drone notices and goes straight home.
+- If something fails with a passenger on board, the drone brings them back to Base.
+
+---
+
+## 📦 ME / Curios
+
+- **Exact amounts only:** the program only moves exactly what you asked for, plus
+  what it put into a buffer itself. The one exception is the BUFFER → ME button.
+- **Curios:** some Advanced Peripherals versions can only take off **all** items
+  of a slot type at once, and put on **any** fitting item. For rings, charms and
+  other slot types with several items, set an **empty barrel used only for curios**:
+  ```lua
+  me = {
+    curiosChest = "minecraft:barrel_2",   -- its network name
+  },
+  ```
+  `curios probe` shows what your version wants. Every curios move is listed on the
+  EVENTS tab.
+
+---
+
+## 🗺️ The map
+
+- **Two layers:** *detail* (every block column, newest chunks) and *overview* (one
+  colour and height per chunk, never dropped). You see the overview when zoomed
+  out to 16 blocks per cell or more.
+- Saved in small files on **data floppies** first. Empty floppies become data
+  disks by themselves, and you are told when to add another one.
+- **SURVEY: ALL TURTLES** maps the area on screen. Big areas are handed out in
+  batches of 64 spots per turtle. `survey` on the computer shows the progress, and
+  what each turtle is waiting for.
+- The letters on the map: **B** base · **@** you · **D** drone · **T** turtle.
+
+---
+
+## 💬 Chat commands
+
+These start with `$`, which hides the message from other players. The replies are
+private.
 
 | Command | What it does |
 |---|---|
 | `$drone help` | list the commands |
 | `$drone home` | ride to Base |
-| `$drone to <place>` | ride to a saved place |
-| `$drone to @<player>` | ride to a player (if allowed) |
-| `$drone back` | back to where you were before a big jump, or where you died (overworld only) |
-| `$drone places` | the saved places |
-| `$drone status` | what the drones are doing |
-| `$drone stop` | stop your ride |
-| `$drone allow / deny <name>` | owner: who may ride |
-| `$drone allowed` | owner: show the allow list |
-| `$drone yes / no <name>` | owner: approve or decline a ride request |
-| `$drone notify on / all / off` | owner: the base's messages in chat - `on` = warnings and errors, `all` = everything (at most 6 a minute) |
+| `$drone to <place>` / `$drone to @<player>` | ride to a saved place / to a player |
+| `$drone back` | back to where you were before a big jump, or where you died |
+| `$drone places` · `$drone status` · `$drone stop` | saved places · what the drones do · stop your ride |
+| 👑 `$drone allow / deny <name>` · `$drone allowed` | who may ride |
+| 👑 `$drone yes / no <name>` | approve or decline a ride request |
+| 👑 `$drone notify on / all / off` | the base's messages in your chat (`on` = warnings and errors) |
 
-Players who are not on the allow list need the owner's OK for each ride.
+👑 = owner only. Players not on the allow list need the owner's OK for each ride.
 
-## Console commands
+---
 
-Type these on the base computer. `help` shows the full list.
+## ⌨️ Console commands
+
+Type these on the base computer. `help` lists them all.
 
 | Area | Commands |
 |---|---|
-| Drones | `drones`, `drone <n>`, `dest <x y z \| place \| @player>`, `save <name> [x y z]`, `del <name>`, `list`, `players`, `fly`, `home`, `pickup [player]`, `drop`, `ferry [player]`, `stop`, `release`, `status`, `charger [x y z\|off]` |
-| Chat access | `allow <name>`, `deny <name>`, `allowed` |
-| Turtles | `turtles`, `turtle <id\|name> <cmd>`, `update`, `rescue <id> [x y z [radius]]`, `findlost [radius]`, `exit [clear]` |
-| Map | `map clear` |
-| ME | `mesetup`, `me add <item id>`, `me check`, `tanks` |
-| Checks | `curios check`, `report` (every peripheral and its functions, uploaded to pastebin), `disks [data\|move]` |
-| Screen / messages | `theme [name\|random]` (colours; random = a different one each start), `events [n] [errors]` (saved messages) |
+| 🐢 Turtles | `turtles` · `turtle <id> <cmd>` (`log`, `diag`, `goto x y z`, `home`, `stop`, `setting …`) · `update` · `rescue <id>` · `findlost` · `exit [clear]` |
+| 🗺️ Map | `map [clear]` · `survey` · `disks [data\|move]` |
+| 🚁 Drones | `drones` · `drone <n>` · `dest …` · `save <name>` · `list` · `fly` · `pickup` · `drop` · `ferry` · `home` · `stop` · `charger [x y z]` |
+| 💬 Chat | `allow <name>` · `deny <name>` · `allowed` |
+| 📦 ME | `mesetup` · `me check` · `me add <id>` · `tanks` · `curios check` · `curios probe` |
+| 🎨 Screen | `theme [name\|random]` · `events [n] [errors]` |
+| 🩺 Checks | `report` (every block and its functions, uploaded to pastebin) |
 
-## Files
+---
+
+## 🎨 Themes & the message log
+
+- **6 dark themes:** midnight, nord, dracula, forest, ember, ocean. By default a
+  **different one is picked on every start**. `theme nord` keeps one, and
+  `theme random` goes back to random. The map colours mean the same in every theme.
+- **Message log:** every message is also saved in `events.log` (about 32 KB at
+  most). The EVENTS tab keeps its list after a restart; CLEAR LIST only empties
+  the list on screen. `events 30 errors` shows the last 30 errors.
+
+---
+
+## 💡 Tips & troubleshooting
+
+| Problem | Try |
+|---|---|
+| A tab is missing | The block is not found. Check the modems (right-click to turn them on) and the cable. The ME tab lists what the computer sees. |
+| ME shows a "partial view" | An item in the network breaks Advanced Peripherals' full list. `me check` helps find it; known culprit: `hazennstuff:pendant_of_harmony`. |
+| A turtle ignores commands | `turtle <id> log 10`. Is it online? Is it STOPPED (press PING)? |
+| A turtle keeps restarting | `turtle <id> diag` and its log ("started by the game" = its chunk was unloaded). |
+| Turtles run out of fuel | Set `turtles.fuelChest` and keep fuel in it. |
+| A survey does nothing | Type `survey`: it lists every turtle and why it gets no batch. |
+| You want the messages in chat | `$drone notify on`, or the buttons on the CHAT tab. |
+| The computer's disk is full | `disks data` puts the map on floppies; the footer warns before anything is lost. |
+
+> ⚠️ **Server tips:** the base and the turtles only work while their chunks are
+> loaded. Use the ANCHOR turtle for the base and the Chunky upgrade on every
+> turtle. Server owners can give disks more room with CC:Tweaked's
+> `computer_space_limit` / `floppy_space_limit`.
+
+---
+
+## 📁 Files
 
 | File | Purpose |
 |---|---|
-| `inventory.lua` | Launcher: checks that every file is there, loads them in order, starts the workers |
-| `base_config.lua` | **All settings** |
-| `base_devices.lua` | Finds the blocks (sides or wired network) |
-| `base_theme.lua` | Colours, the off-screen window, safe file saving, floppies, helpers |
-| `base_state.lua` | The shared `state` table, reading the inventory |
-| `base_storage.lua` | Backpacks / tanks and Curios data |
-| `base_me.lua` | ME / RS network: reading it, transfers, fluids, crafting, `mesetup` |
-| `base_players.lua` | Player Detector data, dimensions, `$drone back` tracking |
-| `base_drones.lua` | Drones: travel, pickup / drop, charging, missions |
-| `base_turtles.lua` | Turtle communication, shared knowledge, updates, rescue |
-| `base_map.lua` | Map data from turtle scans (detail + overview), saved as small files on the data floppies |
-| `base_console.lua` | Keyboard commands |
-| `base_chat.lua` | `$drone` chat commands |
-| `base_input.lua` | Monitor touches |
-| `base_workers.lua` | Background workers and the screen loop |
-| `base_ui_core.lua` | Shared drawing: header, tabs, boxes, buttons, footer, popup |
-| `base_ui_*.lua` | One file per tab (`base_ui_events.lua` = EVENTS) |
-| `node.lua` | The turtle program |
+| `inventory.lua` | Starts the program: checks the files, loads them in order, runs the workers |
+| `startup.lua` | Autostart (goes in the computer's top level) |
+| `base_config.lua` | ⚙️ **All settings** |
+| `base_devices.lua` · `base_state.lua` · `base_theme.lua` | finding blocks · shared state · colours, themes, safe saving, floppies |
+| `base_storage.lua` · `base_players.lua` | backpacks, curios · players, dimensions, `$drone back` |
+| `base_me.lua` | ME / RS network, transfers, fluids, crafting, messages and their log |
+| `base_drones.lua` | drone missions, charging, parking |
+| `base_turtles.lua` · `base_map.lua` | turtle communication, homes, fuel, rescue, updates · map data and surveys |
+| `base_console.lua` · `base_chat.lua` · `base_input.lua` · `base_workers.lua` | keyboard commands · chat commands · monitor touches · background workers |
+| `base_ui_*.lua` | one file per tab (`base_ui_core.lua` = shared drawing) |
+| `node.lua` | 🐢 the turtle program |
 
-All `base_*.lua` files share one global namespace and are loaded in a fixed
-order by `inventory.lua`. All game calls happen in background workers. The
-screen only draws data those workers have already read, so it never waits on
-the game.
-
-### Data files the program creates
-
+**Data files the program creates** (keep them; delete one only to reset that part):
 `waypoints.dat`, `drone_logs.dat`, `drone_charger.dat`, `chat_access.dat`,
-`back_spots.dat`, `player_dims.dat`, `turtles.dat`, `terrain.dat`,
-`exit_route.dat`, `map/` (map files), `map_view.dat`, `me_setup.dat`, `me_names.dat`,
-`me_owed.dat`, `curios_last.dat`, `theme.dat`, `chat_notify.dat`, `events.log` + `events.old.log`
-(every message, about 32 KB at most).
+`chat_notify.dat`, `back_spots.dat`, `player_dims.dat`, `turtles.dat`,
+`turtle_versions.dat`, `terrain.dat`, `exit_route.dat`, `map/`, `map_view.dat`,
+`me_setup.dat`, `me_names.dat`, `me_owed.dat`, `curios_last.dat`, `ui_page.dat`,
+`theme.dat`, `events.log` + `events.old.log`.
 
-A computer has only **1 MB** of disk. The biggest files (map, turtle
-knowledge, logs) can be moved to data floppies with `disks data` / `disks move`.
+A computer has only **1 MB** of disk. The big files (map, turtle knowledge) can
+live on data floppies (`disks data` / `disks move`).
 
-The **map** has two layers. The *detail* (every block column) is kept for the
-newest chunks (`maxChunks`). The *overview* (one colour and height per chunk)
-keeps every chunk ever scanned and is used when zoomed out (16 to 128 blocks
-per cell) and wherever the detail was dropped. 512 x 512 chunks of overview
-take roughly 0.5 - 0.8 MB; detail takes about 350 bytes per chunk.
-Both are saved as small files in a `map` folder on the data floppies (the one
-with the most room); the computer is used only when no floppy has room, and
-for at most `computerKB` (default 200 KB). Only changed files are written, at
-most once a minute and when the program stops. When the floppies are full, the
-oldest detail is dropped (the overview keeps those chunks). `map` on the
-computer shows how much room it takes.
+### 🔧 For developers
 
-When the data floppies run low, an **empty floppy** in any Disk Drive is taken
-as a map disk automatically (one empty floppy is kept for the turtle installer
-if there is none yet), and you are told on the monitor, in chat and in the
-footer to add another one. If you run the server, CC:Tweaked's
-`floppy_space_limit` / `computer_space_limit` settings give every disk more room.
-When the disk is full, the footer shows a warning instead of writing half a file.
+`tools/` is **not** game code; don't copy it into the game.
 
-## Screen preview
-
-`tools/preview/` draws the monitor outside the game (for checking screen changes).
-See `tools/preview/README.md`. It is not part of the program; do not copy it into the game.
-
-## Known limits
-
-- **Drones** only fly to players and places in the overworld. A player the Player Detector cannot find in its own dimension counts as being in another dimension.
-- **Broken ME list:** Advanced Peripherals' `getItems()` crashes on a server if any item in the network uses client-only tooltip code. The ME tab then shows a "partial view", and `me check` helps find the item. Known culprit: `hazennstuff:pendant_of_harmony`.
-- **Broken Curios list:** one unreadable worn item breaks the whole Curios listing. The CURIOS tab then shows the last reading that worked.
-- **Exact amounts only:** the program only moves exact amounts of your items and fluids, plus whatever it put into a buffer itself. The one exception is the explicit BUFFER -> ME button.
+- `tools/preview/`: draws the monitor outside the game (Lua 5.3 + Pillow)
+- `tools/navsim/`: runs the turtle program in a test world (navigation, STOP, restarts)
+- `tools/check_locals.py node.lua`: checks the game's 200-local limit
