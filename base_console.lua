@@ -562,7 +562,8 @@ function handleCommand(line)
       local args = {}
       for i = 4, #words do args[#args + 1] = tonumber(words[i]) or words[i] end
       TT.send(t.id, tc, args)
-      say("Sent '" .. tc .. "' to " .. t.label)
+      say("Sent '" .. tc .. "' to " .. t.label .. (TT.online(t) and "" or " - but it is OFFLINE (it gets it when it is back)"))
+      say("Its answer goes to its log: turtle " .. t.id .. " log 5   (or the LOG on the TURTLES tab)")
     end
 
   elseif cmd == "charger" then
