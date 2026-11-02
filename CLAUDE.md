@@ -66,18 +66,52 @@ PneumaticCraft drone rides, turtle mapping/surveys, and an AE2 ME network view.
   the turtle reports a task after a reload; no patrol/survey batches; any
   non-quiet command, or a survey you start
   (MAP.queueSurvey), releases it; TT.available still lists held turtles. A resumed job waits 6 s first.
+- node.lua never just ends: the main parallel.waitForAny is in a pcall; an
+  error is written to `node_crash`, the turtle reboots (5 s, longer when it
+  keeps crashing) and tells the base ("restarted after an ERROR: ..." in the
+  turtle's log). Each command (immediate) is pcall'd too.
+- `turtle <id> diag`: disk free, file sizes (program, backup, state, outbox,
+  trail), saved job, starts, gear, last save error. writeFile never crashes on a
+  full disk. On start, old outbox scans lose their ores (old versions); disk
+  < 100 KB free -> outbox trimmed to 10, startup.old deleted ("clean" result).
 - Chunky upgrade never comes off: every equip goes through equipOn (node.lua),
   which refuses the Chunky side and puts it straight back if the item that
   came off is a Chunky ("chunk" in the name). chunkyFix re-equips a loose one
   (only where turtle.getEquippedLeft/Right exist).
+- Homes (TT.homeTick, comms worker): a turtle without a home is offered one
+  ("homeoffer"): next to another turtle's home, +-1 in X or Z, not a home /
+  offer / spot it reported bad. The turtle checks it the first time it goes
+  home (HOMEPROBE: no digging, no retries - isFinal); blocked -> "homebad"
+  -> next offer. Idle for CONFIG.turtles.idleHome s (default 120, 0 = off)
+  away from home -> sent home (not held / anchor / stuck / needed by a big
+  survey; at most every 10 min). A turtle that never refuelled and has < 1000
+  fuel runs REFUEL once by itself (doRefuel; S.refuelDone).
+- Fuel chest at home (node.lua fuelStation): idle AT home with fuel < lowFuel
+  (2000) -> sucks from an inventory below/above/in front (never a turtle),
+  burns ONLY fuel items up to stationFuel (20000), non-fuel and empty buckets
+  go back; once a minute. Base sends low-fuel idle turtles home after 10 s.
+  Reusable fuel (S.reuse, e.g. a modded item that is never used up) in the
+  chest is recognised (refuel(0) = is fuel; one refuel(1) that leaves the count
+  = reusable), KEPT in the turtle and topped up from; skipped if it already
+  carries one. Shared fuel chest: CONFIG.turtles.fuelChest {x,y,z} -> the base
+  sends ONE low-fuel idle turtle at a time ("fuelup", TT.fuelTrip; others wait
+  instead of going home); the turtle parks on top (else beside, facing it),
+  takes fuel from THAT chest only (fuelStation(side)), then goes home.
 - Permanent rescuer: t.rescuerRole (RESCUER button, saved in turtles.dat;
   base only). TT.patrolTick (comms worker) sends it to: no fuel (<20 for
   60 s), stuck (60 s idle), lost (silent CONFIG.turtles.rescueAfter, default
-  600 s). Never in the first 5 min after the base starts, never when half
+  180 s; no reinstall gear needed - arriving loads the area and wakes it). Never in the first 5 min after the base starts, never when half
   or more turtles are offline (server trouble); called off when the turtle
-  is fine again; max 3 tries, 30 min apart. Rescuer goes home after each
+  is fine again; max 3 tries, 30 min apart (tries reset once the turtle is fine again). Rescuer goes home after each
   rescue, gets no big-survey batches.
-- `$drone notify on|all|off` (owner): pushNote -> notifyChat (base_chat.lua)
+- Themes (base_theme.lua): THEMES = 6 dark palettes, same JOB per colour slot
+  (C.* / map colours unchanged). Chosen at start: theme.dat {mode, last} or
+  CONFIG.theme, default "random" (never the same as last time). `theme
+  [name|random]` switches live (setTheme) and saves. Keep new themes dark.
+- Message log: pushNote -> noteLogAdd (base_me.lua) also appends to
+  events.log (computer, 16 KB, then events.old.log); the EVENTS list is read
+  back on start (after the last CLEAR marker). `events [n] [errors]` shows it.
+- `$drone notify on|all|off` (owner, also buttons on the CHAT tab): pushNote -> notifyChat (base_chat.lua)
   sends the monitor's messages privately in chat; max 6/min, rest summed up;
   saved in chat_notify.dat.
 - Autostart: `startup.lua` (top level of the computer) finds inventory.lua
@@ -141,7 +175,10 @@ names exist on this version (getMaxItemStorage etc.); code tries new and old.
   except the explicit BUFFER -> ME button).
 
 **Drones (PneumaticCraft):** teleport costs ~10,000 mL (~0.85 bar) even when it
-fails; flying costs no air. Teleports only into loaded chunks (players and the
+fails; flying costs no air. Passenger watch: dr.rider (set after pickup) is checked every
+2 s while moving (riderLeft); off = > 12 blocks apart twice -> "passenger got
+off" -> the drone goes straight home. Long trips hop 160 -> 80 -> 48 blocks
+before flying into an area that is not loaded. Teleports only into loaded chunks (players and the
 anchor turtle keep chunks loaded). Charging station + parking in base_drones.lua.
 
 ## Rules for changes
@@ -158,4 +195,4 @@ anchor turtle keep chunks loaded). Charging station + parking in base_drones.lua
 ## Useful console commands (on the base computer)
 help, report, tanks, mesetup, me check, me add <id>, curios check, disks
 [data|move], drones, drone <n>, charger, turtles, turtle <id> <cmd>, update,
-rescue, findlost, map [clear], exit [clear].
+rescue, findlost, map [clear], exit [clear], survey, theme, events.

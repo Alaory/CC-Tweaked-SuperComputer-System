@@ -109,7 +109,7 @@ os.getComputerLabel = function() return "Sim" end
 os.setComputerLabel = function() end
 os.epoch = function() return 1700000000000 + math.floor(clock * 1000) end
 os.clock = function() return clock end
-os.reboot = function() error("REBOOT") end
+os.reboot = function() REBOOTED = clock error("REBOOT", 0) end
 shell = { getRunningProgram = function() return "startup.lua" end }
 
 local function ser(v)
@@ -155,6 +155,8 @@ local main = coroutine.create(function()
   parallel.waitForAny = function(...)
     if first then
       first = false
+      if MODE == "crash" then trailSave = function() error("test crash in trailSave") end end
+      if MODE == "badcmd" then local orig = immediate immediate = function(c, a) if c == "ping" then error("boom in ping") end return orig(c, a) end end
       if MODE == "deaf" then
         -- a job that never looks at the STOP flag
         runJob = function() task = "deaf loop" while true do if not fwd() then right() end end end
@@ -167,6 +169,7 @@ end)
 local plan = {}
 if MODE ~= "reload" then plan[#plan + 1] = { 1, function() immediate("setpos", { pos.x, pos.y, pos.z, "east" }) cmd(MODE == "deaf" and "home" or "goto", { 200, ground(200, 0) + 1, 0 }) end } end
 if MODE == "reload" then N = 1000 end
+if MODE == "badcmd" then plan[#plan + 1] = { 5, function() cmd("ping", {}) end } plan[#plan + 1] = { 8, function() cmd("move", { "up", 1 }) end } end
 if STOPAT > 0 then plan[#plan + 1] = { STOPAT, function() cmd("stop", {}) end } end
 -- AGAIN=<s>: a new job after the STOP (like a survey batch for a stopped turtle)
 if os.getenv("AGAIN") then plan[#plan + 1] = { tonumber(os.getenv("AGAIN")), function() cmd("goto", { 40, ground(40, 0) + 1, 0 }) end } end
@@ -190,6 +193,8 @@ while clock < ENDAT do
   end
 end
 if os.getenv("SAVEF") then local h = io.open(os.getenv("SAVEF"), "w") h:write("return " .. ser(files)) h:close() end
+if MODE == "badcmd" then end
+io.stdout:write("rebooted at: " .. tostring(REBOOTED) .. "  crash file: " .. tostring(files["node_crash"]) .. "\n")
 for _, l in ipairs(SENT) do io.stdout:write(l, "\n") end
 io.stdout:write(string.format("end t=%.1f task=%s real pos %d %d %d  saved %s  moves %d\n", clock, tostring(LASTTASK),
   pos.x, pos.y, pos.z, fmt(), moves))

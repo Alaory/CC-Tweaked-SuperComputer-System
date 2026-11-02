@@ -50,7 +50,9 @@ end
 
 -- add a line to a turtle's log (40 kept)
 function TT.log(t, msg)
-  table.insert(t.log, 1, { t = textutils.formatTime(os.time(), true), msg = msg })
+  -- real time (the game clock was confusing: it runs 72x faster)
+  local okD, now = pcall(os.date, "%H:%M")
+  table.insert(t.log, 1, { t = (okD and now) or textutils.formatTime(os.time(), true), msg = msg })
   while #t.log > 40 do table.remove(t.log) end
 end
 
@@ -105,7 +107,17 @@ function TT.receive(id, m)
   if oldVer and oldVer ~= "?" and m.ver and m.ver ~= oldVer and CODE and m.ver == CODE.ver then
     pcall(TT.updated, t, oldVer)
   end
-  if m.gear then t.gear = m.gear end
+  if m.gear then
+    t.gear = m.gear
+    -- equipment problems: told once per turtle (and again when it changes)
+    local bad = (m.gear:find("NO CHUNKY", 1, true) and "has NO Chunky upgrade equipped (its chunk unloads when you leave)")
+             or (m.gear:find("WIRELESS modem", 1, true) and "has a normal Wireless Modem (~64 blocks) - it loses contact further away; use an Ender Modem")
+    if bad and t.gearWarned ~= bad then
+      t.gearWarned = bad
+      TT.log(t, "Equipment: " .. m.gear)
+      setPopup("TURTLE EQUIPMENT", (t.label or ("Turtle " .. id)) .. " " .. bad, C.warn)
+    elseif not bad then t.gearWarned = nil end
+  end
   t.seenEpoch = os.epoch("utc")
   TT.listDirty = true
   if m.t == "updmiss" and CODE and m.want == CODE.ver and type(m.missing) == "table" then
@@ -115,6 +127,12 @@ function TT.receive(id, m)
       if p then TT.send(id, "upd", { CODE.ver, tonumber(k), #CODE.pieces, p }, true) end
     end
     if TT.updating and TT.updating.id == id then TT.updating.t0 = os.clock() end
+  elseif m.t == "homebad" and tonumber(m.x) then
+    -- an offered home was not free: never offer that spot to it again
+    t.homeBad = t.homeBad or {}
+    t.homeBad[m.x .. "," .. m.y .. "," .. m.z] = true
+    t.homeOfferAt = nil
+    TT.log(t, "Offered home " .. m.x .. " " .. m.y .. " " .. m.z .. " is not free - offering another")
   elseif m.t == "hello" then
     TT.log(t, "Connected")
   elseif m.t == "scan" then
@@ -175,6 +193,7 @@ function TT.receive(id, m)
                " - installs when its job is done", C.label)
     end
   elseif m.t == "result" then
+    if m.cmd == "fuelup" and TT.fuelTrip and TT.fuelTrip.id == id then TT.fuelTrip = nil end   -- the next one may go
     TT.log(t, (m.ok and "Done: " or "Failed: ") .. tostring(m.msg))
     if not m.ok then setToast(t.label .. ": " .. tostring(m.msg), C.warn, 6) end
   end
@@ -662,7 +681,7 @@ end
 function TT.pickRescuer(target, mode, x, z)
   local best, bestD
   for id, t in pairs(state.turtles) do
-    if id ~= target.id and TT.online(t) and not t.anchor and (t.task == nil or t.task == "idle")
+    if id ~= target.id and TT.online(t) and not t.anchor and not t.held and (t.task == nil or t.task == "idle")
        and t.pos and t.pos.x then
       local ok
       if mode == "install" then ok = hasGear(t, "drive") and hasGear(t, "floppy")
@@ -685,7 +704,11 @@ function TT.rescueReady(t)
     return true, hasGear(t, "pick") and "can rescue lost turtles"
                  or "can rescue (no pickaxe: Disk Drives are left behind)", 0
   end
-  return false, "cannot rescue yet - needs " .. table.concat(miss, " + "), #miss
+  if hasGear(t, "scanner") then
+    -- enough to wake up a turtle in an unloaded area (going there loads it)
+    return false, "wakes up lost turtles; reinstalling also needs " .. table.concat(miss, " + "), #miss
+  end
+  return false, "needs " .. table.concat(miss, " + "), #miss
 end
 
 -- nobody knows where they are: the best rescuer searches around the base and
@@ -699,7 +722,7 @@ function TT.findLost(radius, cx, cy, cz)
   local best, bestD
   local why, whyMiss = "no turtle is online and idle", math.huge
   for id, t in pairs(state.turtles) do
-    if TT.online(t) and not t.anchor and (t.task == nil or t.task == "idle") and t.pos and t.pos.x then
+    if TT.online(t) and not t.anchor and not t.held and (t.task == nil or t.task == "idle") and t.pos and t.pos.x then
       local ok, msg, nmiss = TT.rescueReady(t)
       if ok then
         local d = math.abs(t.pos.x - cx) + math.abs(t.pos.z - cz)
@@ -719,7 +742,9 @@ function TT.findLost(radius, cx, cy, cz)
 end
 
 -- send a rescue; x y z = where to look (default: where it was last seen)
-function TT.rescue(targetId, x, y, z, radius, forced)
+-- visit = true: the rescuer may go without reinstall gear (a turtle that is
+-- only in an unloaded area wakes up when the rescuer gets there)
+function TT.rescue(targetId, x, y, z, radius, forced, visit)
   local target = state.turtles[targetId]
   if not target then
     target = TT.get(targetId)
@@ -733,7 +758,7 @@ function TT.rescue(targetId, x, y, z, radius, forced)
   local r = forced or TT.pickRescuer(target, mode, x, z)
   if forced then
     -- the permanent rescuer must carry what this rescue needs
-    if mode == "install" and not (hasGear(forced, "drive") and hasGear(forced, "floppy")) then
+    if mode == "install" and not visit and not (hasGear(forced, "drive") and hasGear(forced, "floppy")) then
       return false, forced.label .. " needs a Disk Drive and the install floppy to reinstall a turtle"
     elseif mode == "supply" and not (hasGear(forced, "fuel") or hasGear(forced, "pick")) then
       return false, forced.label .. " needs fuel (coal ...) or a spare pickaxe to bring"
@@ -826,7 +851,7 @@ local function problemOf(t)
   end
   -- offline: how long, by the real clock (also from before the base started)
   if not (t.pos and t.pos.x and t.seenEpoch) then return nil end
-  local after = tonumber(CONFIG.turtles.rescueAfter) or 600
+  local after = tonumber(CONFIG.turtles.rescueAfter) or 180
   if (os.epoch("utc") - t.seenEpoch) / 1000 < after then return nil end
   return "lost"
 end
@@ -850,6 +875,13 @@ function TT.patrolTick()
   local problems = {}
   for id, t in pairs(state.turtles) do
     if not t.rescuerRole then problems[id] = problemOf(t) end
+    -- fine for 5 minutes: its rescue tries start again from 0
+    if TT.online(t) and not problems[id] and not t.rescuer then
+      t.fineSince = t.fineSince or now
+      if now - t.fineSince > 300 then t.rescueTries, t.rescueAt = nil, nil end
+    else
+      t.fineSince = nil
+    end
   end
   for _, t in pairs(state.turtles) do
     -- a rescue on its way: called off if the turtle is fine again
@@ -865,6 +897,7 @@ function TT.patrolTick()
         end
         TT.log(t, "Fine again - rescue called off")
         t.rescuer, t.rescueKind = nil, nil
+        t.rescueTries, t.rescueAt = nil, nil         -- a new problem later gets new tries
       end
     end
   end
@@ -882,12 +915,12 @@ function TT.patrolTick()
         end
       end
       if pick then
-        local ok, msg = TT.rescue(pick.id, nil, nil, nil, nil, r)
+        local ok, msg = TT.rescue(pick.id, nil, nil, nil, nil, r, pickKind == "lost")
         pick.rescueAt, pick.rescueTries = now, (pick.rescueTries or 0) + 1
         if ok then
           pick.rescueKind = pickKind
           setToast("Rescuer " .. r.label .. " sent to " .. pick.label .. " (" ..
-                   (pickKind == "lost" and "offline - reinstall" or pickKind == "fuel" and "no fuel" or "stuck") .. ")",
+                   (pickKind == "lost" and "offline - going there wakes it up" or pickKind == "fuel" and "no fuel" or "stuck") .. ")",
                    C.label)
         else
           TT.log(r, "Cannot rescue " .. pick.label .. ": " .. tostring(msg))
@@ -896,6 +929,101 @@ function TT.patrolTick()
           setPopup("TURTLE NEEDS YOU", pick.label .. " could not be rescued " .. MAX_TRIES .. " times - please look at it (" ..
                    (pick.pos and fmtPos(pick.pos.x, pick.pos.y, pick.pos.z) or "position unknown") .. ")", C.warn)
         end
+      end
+    end
+  end
+end
+
+-- ===== homes and idle turtles =====
+-- A turtle without a home is offered one: next to another turtle's home (one
+-- block along X or Z, same height), never a spot that is already a home, an
+-- offer to another turtle, or a spot it reported as not free.
+function TT.homeSpot(t)
+  local taken, homes = {}, {}
+  for _, o in pairs(state.turtles) do
+    if o.home and o.home.x then
+      taken[o.home.x .. "," .. o.home.y .. "," .. o.home.z] = true
+      if o.id ~= t.id then homes[#homes + 1] = o end
+    end
+    if o.homeOffer and o.id ~= t.id then taken[o.homeOffer] = true end
+  end
+  table.sort(homes, function(a, b) return a.id < b.id end)
+  local bad = t.homeBad or {}
+  for _, o in ipairs(homes) do
+    local h = o.home
+    for _, d in ipairs({ { 1, 0 }, { -1, 0 }, { 0, 1 }, { 0, -1 } }) do
+      local x, y, z = h.x + d[1], h.y, h.z + d[2]
+      local k = x .. "," .. y .. "," .. z
+      if not taken[k] and not bad[k] then return x, y, z end
+    end
+  end
+end
+
+-- comms worker, every 2 s: offer homes, send idle turtles home
+function TT.homeTick()
+  local now = os.clock()
+  local idleHome = tonumber(CONFIG.turtles.idleHome or 120) or 0    -- seconds; 0 = off
+  local queueIds
+  for id, t in pairs(state.turtles) do
+    local on = TT.online(t)
+    -- 1) no home yet: offer one (once a minute at most)
+    if on and not t.home then
+      if not t.homeOfferAt or now - t.homeOfferAt > 60 then
+        t.homeOfferAt = now
+        local x, y, z = TT.homeSpot(t)
+        if x then
+          t.homeOffer = x .. "," .. y .. "," .. z
+          TT.send(id, "homeoffer", { x, y, z }, true)
+          TT.log(t, "No home yet - offered " .. x .. " " .. y .. " " .. z .. " (next to another turtle's home)")
+        elseif not t.homeNoSpotSaid then
+          t.homeNoSpotSaid = true
+          TT.log(t, "No home yet, and no other turtle has one to sit next to - press SET HOME on one turtle")
+        end
+      end
+    elseif t.home then
+      t.homeOffer = nil
+    end
+    -- 2) idle away from home: go home (a turtle out there keeps its chunk
+    --    loaded for nothing). Not: stopped by you, the anchor, stuck, a turtle
+    --    a running big survey still needs.
+    local idle = on and (t.task == nil or t.task == "idle")
+    if idle then t.idleSince = t.idleSince or now else t.idleSince = nil end
+    -- low on fuel: home after 10 s (the fuel chest is there), not after idleHome
+    local fuel = tonumber(t.fuel)
+    local low = fuel and fuel < (tonumber(CONFIG.turtles.lowFuel) or 2000)
+    -- the shared fuel chest (CONFIG.turtles.fuelChest): one turtle at a time
+    -- goes there, refuels and goes home
+    local fc = CONFIG.turtles.fuelChest
+    if TT.fuelTrip and (not state.turtles[TT.fuelTrip.id] or now - TT.fuelTrip.t0 > 600) then TT.fuelTrip = nil end
+    if low and fc and fc.x and idle and on and t.pos and t.pos.x and not t.held and not t.anchor and not t.stuck
+       and not t.rescuer and not TT.fuelTrip and now - t.idleSince > 10
+       and (not t.fuelTripAt or now - t.fuelTripAt > 600) then
+      t.fuelTripAt = now
+      TT.fuelTrip = { id = id, t0 = now }
+      TT.send(id, "fuelup", { fc.x, fc.y, fc.z }, true)
+      TT.log(t, "Low on fuel (" .. fuel .. ") - going to the fuel chest at " .. fc.x .. " " .. fc.y .. " " .. fc.z)
+      low = false                        -- not also sent home below
+      t.idleHomeAt = now
+    elseif low and fc and fc.x and (not t.fuelTripAt or now - t.fuelTripAt > 600) then
+      low = "wait"                       -- the fuel chest is busy: wait for it, do not go home first
+    end
+    local wait = low and 10 or idleHome
+    if low ~= "wait" and idleHome > 0 and idle and t.home and t.pos and t.pos.x and not t.held and not t.anchor
+       and not t.stuck and not t.rescuer and now - t.idleSince > wait
+       and (not t.idleHomeAt or now - t.idleHomeAt > 600) then
+      local away = math.abs(t.pos.x - t.home.x) + math.abs(t.pos.y - t.home.y) + math.abs(t.pos.z - t.home.z)
+      local needed = false
+      if MAP.queue and not t.rescuerRole and not low then     -- low on fuel: it gets no batches anyway
+        queueIds = queueIds or MAP.queue.ids or TT.available()
+        for _, qid in ipairs(queueIds) do
+          if qid == id and not (MAP.queue.excluded and MAP.queue.excluded[id]) then needed = true end
+        end
+      end
+      if away > 2 and not needed then
+        t.idleHomeAt = now
+        TT.send(id, "home", {}, true)
+        TT.log(t, low and ("Low on fuel (" .. fuel .. ") - going home to the fuel chest")
+                   or ("Idle for " .. math.floor(now - t.idleSince) .. " s away from home - going home"))
       end
     end
   end
@@ -934,6 +1062,13 @@ end
 -- side of the area), each strip going to the turtle closest to it
 function TT.splitSurvey(spots, ids)
   local out = {}
+  -- only turtles with a known position can take a share
+  local known = {}
+  for _, id in ipairs(ids) do
+    local t = state.turtles[id]
+    if t and t.pos and t.pos.x then known[#known + 1] = id end
+  end
+  ids = known
   if #ids == 0 or #spots == 0 then return out end
   local minX, maxX, minZ, maxZ = math.huge, -math.huge, math.huge, -math.huge
   for _, p in ipairs(spots) do

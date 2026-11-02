@@ -219,19 +219,20 @@ end
 
 -- a box in the middle with a title and text (loading, errors)
 function drawMessage(title, lines, col)
-  local boxW = math.min(W - 6, 58)
+  local boxW = math.min(W - 6, 64)
+  -- every line is shown in full (up to 8 rows each), with a gap under the title
   local n = 0
-  for _, l in ipairs(lines) do n = n + #wrap(l, boxW - 4, 4) end
-  local boxH = n + 4
+  for _, l in ipairs(lines) do n = n + #wrap(l, boxW - 4, 8) end
+  local boxH = math.min(H - 4, n + 5)
   local bx = math.floor((W - boxW) / 2) + 1
   local by = math.floor((H - boxH) / 2) + 1
   card(bx, by, boxW, boxH)
   text(bx + 2, by + 1, title, col, C.panel)
   local row = 0
   for _, l in ipairs(lines) do
-    for _, wl in ipairs(wrap(l, boxW - 4, 4)) do
+    for _, wl in ipairs(wrap(l, boxW - 4, 8)) do
       row = row + 1
-      text(bx + 2, by + 1 + row, wl, C.text, C.panel)
+      if 2 + row < boxH - 1 then text(bx + 2, by + 2 + row, wl, C.text, C.panel) end
     end
   end
 end

@@ -102,7 +102,10 @@ function handleTouch(tx, ty)
                 ids = TT.available()
               end
               local spots, skipped = MAP.surveySpots(x1, z1, x2, z2, r)
-              if #ids == 0 then
+              local t1 = a.kind == "survey" and state.turtles[tonumber(a.name)]
+              if t1 and TT.online(t1) and not (t1.pos and t1.pos.x) then
+                setToast(t1.label .. ": position unknown - press GPS LOCATE first", C.warn, 5)
+              elseif #ids == 0 then
                 setToast("No free turtle (online, idle, position known)", C.warn, 5)
               elseif #spots == 0 then
                 setToast("This area is already mapped (" .. skipped .. " spots)", C.label, 5)
@@ -203,7 +206,9 @@ function handleTouch(tx, ty)
         state.tSel = h[6]
       elseif h[5] == "trescuer" then
         local t = state.turtles[h[6]]
-        if t then
+        if t and t.anchor and not t.rescuerRole then
+          setToast(t.label .. " is the ANCHOR - it must stay put. Choose another turtle as rescuer.", C.warn, 6)
+        elseif t then
           t.rescuerRole = not t.rescuerRole or nil
           TT.listDirty = true
           pcall(TT.saveList)
@@ -273,11 +278,22 @@ function handleTouch(tx, ty)
         local cur = state.curiosSel
         if cur and cur.type == h[6][1] and cur.pos == h[6][2] then state.curiosSel = nil
         else state.curiosSel = { type = h[6][1], pos = h[6][2] } state.curiosFitPage = 1 end
+      elseif h[5] == "cnotify" then
+        -- the CHAT tab's buttons = '$drone notify off|on|all' for the owner
+        if state.owner and state.notifySubs then
+          local k = tostring(state.owner):lower()
+          state.notifySubs[k] = (h[6] ~= "off") and { name = state.owner, level = h[6] } or nil
+          pcall(saveNotifySubs)
+          setToast("Base messages in chat: " .. ((h[6] == "off") and "OFF" or
+                   (h[6] == "all") and "everything" or "warnings + errors"), C.label, 3)
+        else
+          setToast("Owner unknown (memory card in the Inventory Manager?)", C.warn, 4)
+        end
       elseif h[5] == "evfilter" then
         state.eventsFilter = h[6]
         state.eventsPage = 1
       elseif h[5] == "evclear" then
-        state.noteLog = {}
+        noteLogClear()                  -- the list only; events.log keeps everything
         state.eventsPage = 1
       end
       return h[5] == "page" or h[5] == "act" or h[5] == "mecraft"

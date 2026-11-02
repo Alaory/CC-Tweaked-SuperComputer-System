@@ -22,3 +22,5 @@ MODE=deaf lua5.3 tools/navsim/stoptest.lua node.lua hills     # a job that ignor
 MODE=goto STOPAT=0 ENDAT=10 SAVEF=/tmp/f.lua lua5.3 tools/navsim/stoptest.lua node.lua hills
 MODE=reload STOPAT=2 ENDAT=30 LOADF=/tmp/f.lua lua5.3 tools/navsim/stoptest.lua node.lua hills
 ```
+MODE=crash (an error after a job: the turtle writes node_crash and restarts),
+MODE=badcmd (a command that errors: answered with the error, program keeps running).

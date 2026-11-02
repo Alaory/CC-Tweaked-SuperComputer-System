@@ -1,3 +1,4 @@
+REALDATE = os.date
 -- Minimal ComputerCraft stand-in: enough to load the base program and draw.
 local SRC = SRC_DIR
 colors = {}
@@ -108,6 +109,7 @@ function fs.open(p, mode)
            close = function()
              local t = table.concat(buf)
              if #t > fs.getFreeSpace(p) + #(FILES[p] or "") then error("Out of space") end
+             if mode == "a" then t = (FILES[p] or "") .. t end      -- append
              FILES[p] = t
            end }
 end
@@ -145,7 +147,9 @@ function textutils.serializeJSON(v) return ser(v) end
 local realOs = os
 os = { clock = function() return CLOCK end, time = function() return 14.5 end,
        epoch = function() return 1761990000000 + CLOCK * 1000 end,
-       date = function(f) return (f == "%H:%M") and "14:30" or "01.11 14:30" end, queueEvent = function() end,
+       date = function(f)
+         if f == "%H:%M" then return "14:30" elseif f == "%d.%m %H:%M" then return "01.11 14:30" end
+         return REALDATE(f, 1761990000 + math.floor(CLOCK)) end, queueEvent = function() end,
        startTimer = function() return 1 end, cancelTimer = function() end,
        getComputerID = function() return 1 end, getComputerLabel = function() return "base" end,
        setComputerLabel = function() end, pullEvent = function() error("no events") end,
