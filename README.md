@@ -11,7 +11,7 @@ mapping turtles and a map of the world.
 
 ## 📑 Contents
 
-- [✨ What it does](#-what-it-does)
+- [ What it does](#-what-it-does)
 - [🧰 What you need](#-what-you-need)
 - [🚀 Installation](#-installation)
 - [⚙️ Configuration](#️-configuration)
@@ -27,7 +27,7 @@ mapping turtles and a map of the world.
 
 ---
 
-## ✨ What it does
+##  What it does
 
 | Tab | What you get |
 |---|---|
