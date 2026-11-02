@@ -1733,7 +1733,7 @@ end
 function warpSave(name)
   if not (S.pos and S.pos.x) then return false, "position unknown" end
   if not hasCore() then return false, "no End Automata Core" end
-  if not canWarp() then return false, "the carried End Automata Core forgets its points - equip it to warp" end
+  if not canWarp() then return false, "the carried End Automata Core forgets its points - it cannot warp (the Chunky stays on)" end
   return withCore(function() return warpSaveNow(name) end)
 end
 function warpSaveNow(name)
@@ -2091,7 +2091,7 @@ gearString = function()
   for _ in pairs(S.warps or {}) do np = np + 1 end
   if warpCore() then g[#g + 1] = "warp core (equipped, " .. np .. " points)"
   elseif coreSlot() then
-    g[#g + 1] = "warp core (carried, " .. (S.coreKeepsPoints == false and "forgets points - equip it"
+    g[#g + 1] = "warp core (carried, " .. (S.coreKeepsPoints == false and "cannot warp while carried"
                 or (np .. " points")) .. ")"
   end
   return table.concat(g, ",")
@@ -2437,7 +2437,7 @@ function runJob(j)
     coreCheck()
     return true, "End Automata Core: functions " .. table.concat(S.coreMethods or { "?" }, ", ") ..
                  (warpCore() and "" or (S.coreKeepsPoints and " - keeps its points when carried"
-                  or " - FORGETS its points when carried: equip it to warp"))
+                  or " - FORGETS its points when carried: cannot warp"))
   end
   return false, "unknown command " .. tostring(j.cmd)
 end
@@ -2493,7 +2493,7 @@ function immediate(cmd, a)
     if a[1] == "check" or not S.coreMethods then return nil end   -- runs as a job (worker)
     return true, "End Automata Core " .. (warpCore() and "equipped" or "carried") .. "; " ..
                  (warpCore() and "warps" or (S.coreKeepsPoints and "keeps points - warps (swapped in)"
-                  or (S.coreKeepsPoints == false and "FORGETS points when taken off - equip it to warp" or "not tested"))) ..
+                  or (S.coreKeepsPoints == false and "FORGETS points when taken off - cannot warp" or "not tested"))) ..
                  "; functions: " .. table.concat(S.coreMethods or { "?" }, ", ")
   elseif cmd == "warps" then
     local o = {}
