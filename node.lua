@@ -932,6 +932,9 @@ end
 
 tryDig = function(dir)
   if not CONFIG.dig then return false end
+  -- never dig into or next to a home spot that is being checked
+  if HOMEPROBE and S.pos and math.abs(S.pos.x - HOMEPROBE.x) + math.abs(S.pos.y - HOMEPROBE.y) +
+     math.abs(S.pos.z - HOMEPROBE.z) <= 2 then return false end
   local inspect = (dir == "up" and turtle.inspectUp) or (dir == "down" and turtle.inspectDown) or turtle.inspect
   local okI, data = inspect()
   if not okI or type(data) ~= "table" or not natural(data.name) then return false end
@@ -1247,6 +1250,8 @@ end
 -- navigation
 ---------------------------------------------------------------------
 function isStop(err) return tostring(err):find("^stopped") ~= nil end
+-- an answer no other way can change (no retries, no backing up)
+function isFinal(err) return tostring(err):find("home spot not free", 1, true) ~= nil end
 function note(cmd, msg) send("result", { cmd = cmd, ok = false, msg = msg }) end
 
 -- ---- sharing with the base (all turtles learn from each other) ----
@@ -1565,6 +1570,11 @@ function gotoLocal(tx, ty, tz)
       if not moved then stuck = true break end
     end
     if not stuck then return true, "arrived at " .. fmt() end
+    -- checking an offered home: right above / below it and blocked = not free
+    -- (no long search for a way in)
+    if HOMEPROBE and HOMEPROBE.x == tx and HOMEPROBE.y == ty and HOMEPROBE.z == tz then
+      return false, "home spot not free"
+    end
     if attempt > CONFIG.pathfind then break end
     local okW, why = findWay(tx, ty, tz)
     if okW then return true, "arrived at " .. fmt() end
@@ -1894,7 +1904,7 @@ end
 -- try from the sky highway; then remember a dead end (shared) and give up
 function withLadder(what, fn)
   local ok, err = fn()
-  if ok or isStop(err) then return ok, err end
+  if ok or isStop(err) or isFinal(err) then return ok, err end
   -- stuck here: remember it NOW, so the tries below go around it instead of
   -- walking straight back into it (shared with every turtle)
   addDead(S.pos.x, S.pos.y, S.pos.z)
@@ -1905,14 +1915,14 @@ function withLadder(what, fn)
     task = "backing up " .. n .. " steps"
     if not backtrackSteps(n) then break end
     ok, err = fn()
-    if ok or isStop(err) then return ok, err end
+    if ok or isStop(err) or isFinal(err) then return ok, err end
   end
   if S.pos.y < CONFIG.skyY - 2 then
     note(what, tostring(err) .. " - trying from the sky highway")
     local okS = climbToSky()
     if okS then
       ok, err = fn()
-      if ok or isStop(err) then return ok, err end
+      if ok or isStop(err) or isFinal(err) then return ok, err end
     end
   end
   addDead(S.pos.x, S.pos.y, S.pos.z)
@@ -1939,9 +1949,13 @@ end
 function goHome()
   if not S.home then return false, "no home set (SET HOME)" end
   local h = S.home
-  local ok, msg = gotoPos(h.x, h.y, h.z)
+  HOMEPROBE = S.homeAuto and { x = h.x, y = h.y, z = h.z } or nil   -- an offered home: check it
+  local okG, ok, msg = pcall(gotoPos, h.x, h.y, h.z)
+  HOMEPROBE = nil
+  if not okG then error(ok, 0) end
   if ok then
     trailReset()
+    if S.homeAuto then S.homeAuto = nil save() end      -- the offered home works: keep it
     -- End Automata Core without a "home" point (e.g. equipped after SET HOME): save it now
     if canWarp() and not (S.warps and S.warps.home) then
       local okW = warpSave("home")
@@ -1950,6 +1964,16 @@ function goHome()
     return true, "home: " .. msg
   end
   if isStop(msg) then return false, msg end
+  -- a home the base offered (next to another turtle's home): if I got close
+  -- but cannot get into it, the block is not free - give it back, the base
+  -- offers the next spot
+  if S.homeAuto and (isFinal(msg) or (S.pos and S.pos.x and
+     math.abs(S.pos.x - h.x) + math.abs(S.pos.y - h.y) + math.abs(S.pos.z - h.z) <= 3)) then
+    send("homebad", { x = h.x, y = h.y, z = h.z })
+    S.home, S.homeAuto = nil, nil
+    save()
+    return false, "the offered home " .. h.x .. " " .. h.y .. " " .. h.z .. " is not free - asked the base for another one"
+  end
   if #trail > 1 then
     note("home", tostring(msg) .. " - retracing my path instead")
     local okB, errB = backtrack()
@@ -2620,7 +2644,17 @@ function immediate(cmd, a)
     S.pos = { x = x, y = y, z = z, f = f }
     save()
     return true, "position set to " .. fmt() .. " facing " .. FNAME[f]
+  elseif cmd == "homeoffer" then
+    -- the base offers a home (next to another turtle's): taken only if I have none
+    local x, y, z = tonumber(a[1]), tonumber(a[2]), tonumber(a[3])
+    if S.home or not (x and y and z) then return nil, "quiet" end
+    S.home = { x = math.floor(x), y = math.floor(y), z = math.floor(z) }
+    S.homeAuto = true
+    save()
+    return true, "home set to " .. S.home.x .. " " .. S.home.y .. " " .. S.home.z ..
+                 " (next to another turtle's home - checked the first time I go there)"
   elseif cmd == "sethome" then
+    S.homeAuto = nil
     local x, y, z = tonumber(a[1]), tonumber(a[2]), tonumber(a[3])
     if x and y and z then
       S.home = { x = math.floor(x), y = math.floor(y), z = math.floor(z) }
@@ -2635,8 +2669,17 @@ function immediate(cmd, a)
     local okW = select(1, warpSave("home"))
     return true, "home set to " .. fmt() .. " (here)" .. (okW and " + warp point 'home' (GO HOME teleports)" or "")
   elseif cmd == "refuel" then
-    -- every slot, like before; a reusable item is used again and again (up to
-    -- 10 s here - the rest it does by itself while idle)
+    return doRefuel()
+  end
+  return nil
+end
+
+-- REFUEL: every slot, like before; a reusable item is used again and again (up
+-- to 10 s here - the rest it does by itself while idle). A new turtle does
+-- this once by itself (worker), so nobody has to press REFUEL.
+function doRefuel()
+  S.refuelDone = true
+  do
     local before = turtle.getFuelLevel()
     local _, more = topUp(refuelTarget(), false, 200)
     local names = {}
@@ -2650,7 +2693,6 @@ function immediate(cmd, a)
                  (#names > 0 and ("; reusable fuel: " .. table.concat(names, ", ") ..
                   (more and " - it keeps filling up by itself while idle" or "")) or "")
   end
-  return nil
 end
 
 function listener()
@@ -2785,6 +2827,20 @@ function worker()
     else
       -- idle: a core not checked yet - read its functions, test it (once)
       if not S.coreChecked and hasCore() and modemAttached then pcall(coreCheck) end
+      -- a new turtle: REFUEL once by itself (finds reusable fuel too)
+      -- (only a turtle that never refuelled and is low: never burns the coal a
+      -- rescuer carries for others)
+      local fl = turtle.getFuelLevel()
+      if not S.refuelDone and (S.reuse ~= nil or fl == "unlimited" or fl >= 1000) then
+        S.refuelDone = true
+      end
+      if not S.refuelDone and not job and not SLOT_LOCK then
+        local okR, okR2, msgR = pcall(doRefuel)
+        S.refuelDone = true
+        save()
+        send("result", { cmd = "refuel", ok = okR and okR2 or false,
+                         msg = "first start - refuelled by myself: " .. tostring(okR and msgR or okR2) })
+      end
       -- idle: fill up with reusable fuel, a little at a time (stays responsive)
       local f = turtle.getFuelLevel()
       if f ~= "unlimited" and S.reuse and next(S.reuse) and f < refuelTarget() then

@@ -78,6 +78,14 @@ PneumaticCraft drone rides, turtle mapping/surveys, and an AE2 ME network view.
   which refuses the Chunky side and puts it straight back if the item that
   came off is a Chunky ("chunk" in the name). chunkyFix re-equips a loose one
   (only where turtle.getEquippedLeft/Right exist).
+- Homes (TT.homeTick, comms worker): a turtle without a home is offered one
+  ("homeoffer"): next to another turtle's home, +-1 in X or Z, not a home /
+  offer / spot it reported bad. The turtle checks it the first time it goes
+  home (HOMEPROBE: no digging, no retries - isFinal); blocked -> "homebad"
+  -> next offer. Idle for CONFIG.turtles.idleHome s (default 120, 0 = off)
+  away from home -> sent home (not held / anchor / stuck / needed by a big
+  survey; at most every 10 min). A turtle that never refuelled and has < 1000
+  fuel runs REFUEL once by itself (doRefuel; S.refuelDone).
 - Permanent rescuer: t.rescuerRole (RESCUER button, saved in turtles.dat;
   base only). TT.patrolTick (comms worker) sends it to: no fuel (<20 for
   60 s), stuck (60 s idle), lost (silent CONFIG.turtles.rescueAfter, default

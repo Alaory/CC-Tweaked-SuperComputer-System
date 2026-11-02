@@ -127,6 +127,12 @@ function TT.receive(id, m)
       if p then TT.send(id, "upd", { CODE.ver, tonumber(k), #CODE.pieces, p }, true) end
     end
     if TT.updating and TT.updating.id == id then TT.updating.t0 = os.clock() end
+  elseif m.t == "homebad" and tonumber(m.x) then
+    -- an offered home was not free: never offer that spot to it again
+    t.homeBad = t.homeBad or {}
+    t.homeBad[m.x .. "," .. m.y .. "," .. m.z] = true
+    t.homeOfferAt = nil
+    TT.log(t, "Offered home " .. m.x .. " " .. m.y .. " " .. m.z .. " is not free - offering another")
   elseif m.t == "hello" then
     TT.log(t, "Connected")
   elseif m.t == "scan" then
@@ -922,6 +928,80 @@ function TT.patrolTick()
           setPopup("TURTLE NEEDS YOU", pick.label .. " could not be rescued " .. MAX_TRIES .. " times - please look at it (" ..
                    (pick.pos and fmtPos(pick.pos.x, pick.pos.y, pick.pos.z) or "position unknown") .. ")", C.warn)
         end
+      end
+    end
+  end
+end
+
+-- ===== homes and idle turtles =====
+-- A turtle without a home is offered one: next to another turtle's home (one
+-- block along X or Z, same height), never a spot that is already a home, an
+-- offer to another turtle, or a spot it reported as not free.
+function TT.homeSpot(t)
+  local taken, homes = {}, {}
+  for _, o in pairs(state.turtles) do
+    if o.home and o.home.x then
+      taken[o.home.x .. "," .. o.home.y .. "," .. o.home.z] = true
+      if o.id ~= t.id then homes[#homes + 1] = o end
+    end
+    if o.homeOffer and o.id ~= t.id then taken[o.homeOffer] = true end
+  end
+  table.sort(homes, function(a, b) return a.id < b.id end)
+  local bad = t.homeBad or {}
+  for _, o in ipairs(homes) do
+    local h = o.home
+    for _, d in ipairs({ { 1, 0 }, { -1, 0 }, { 0, 1 }, { 0, -1 } }) do
+      local x, y, z = h.x + d[1], h.y, h.z + d[2]
+      local k = x .. "," .. y .. "," .. z
+      if not taken[k] and not bad[k] then return x, y, z end
+    end
+  end
+end
+
+-- comms worker, every 2 s: offer homes, send idle turtles home
+function TT.homeTick()
+  local now = os.clock()
+  local idleHome = tonumber(CONFIG.turtles.idleHome or 120) or 0    -- seconds; 0 = off
+  local queueIds
+  for id, t in pairs(state.turtles) do
+    local on = TT.online(t)
+    -- 1) no home yet: offer one (once a minute at most)
+    if on and not t.home then
+      if not t.homeOfferAt or now - t.homeOfferAt > 60 then
+        t.homeOfferAt = now
+        local x, y, z = TT.homeSpot(t)
+        if x then
+          t.homeOffer = x .. "," .. y .. "," .. z
+          TT.send(id, "homeoffer", { x, y, z }, true)
+          TT.log(t, "No home yet - offered " .. x .. " " .. y .. " " .. z .. " (next to another turtle's home)")
+        elseif not t.homeNoSpotSaid then
+          t.homeNoSpotSaid = true
+          TT.log(t, "No home yet, and no other turtle has one to sit next to - press SET HOME on one turtle")
+        end
+      end
+    elseif t.home then
+      t.homeOffer = nil
+    end
+    -- 2) idle away from home: go home (a turtle out there keeps its chunk
+    --    loaded for nothing). Not: stopped by you, the anchor, stuck, a turtle
+    --    a running big survey still needs.
+    local idle = on and (t.task == nil or t.task == "idle")
+    if idle then t.idleSince = t.idleSince or now else t.idleSince = nil end
+    if idleHome > 0 and idle and t.home and t.pos and t.pos.x and not t.held and not t.anchor
+       and not t.stuck and not t.rescuer and now - t.idleSince > idleHome
+       and (not t.idleHomeAt or now - t.idleHomeAt > 600) then
+      local away = math.abs(t.pos.x - t.home.x) + math.abs(t.pos.y - t.home.y) + math.abs(t.pos.z - t.home.z)
+      local needed = false
+      if MAP.queue and not t.rescuerRole then
+        queueIds = queueIds or MAP.queue.ids or TT.available()
+        for _, qid in ipairs(queueIds) do
+          if qid == id and not (MAP.queue.excluded and MAP.queue.excluded[id]) then needed = true end
+        end
+      end
+      if away > 2 and not needed then
+        t.idleHomeAt = now
+        TT.send(id, "home", {}, true)
+        TT.log(t, "Idle for " .. math.floor(now - t.idleSince) .. " s away from home - going home")
       end
     end
   end
