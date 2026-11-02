@@ -81,7 +81,14 @@ PneumaticCraft drone rides, turtle mapping/surveys, and an AE2 ME network view.
   or more turtles are offline (server trouble); called off when the turtle
   is fine again; max 3 tries, 30 min apart (tries reset once the turtle is fine again). Rescuer goes home after each
   rescue, gets no big-survey batches.
-- `$drone notify on|all|off` (owner): pushNote -> notifyChat (base_chat.lua)
+- Themes (base_theme.lua): THEMES = 6 dark palettes, same JOB per colour slot
+  (C.* / map colours unchanged). Chosen at start: theme.dat {mode, last} or
+  CONFIG.theme, default "random" (never the same as last time). `theme
+  [name|random]` switches live (setTheme) and saves. Keep new themes dark.
+- Message log: pushNote -> noteLogAdd (base_me.lua) also appends to
+  events.log (computer, 16 KB, then events.old.log); the EVENTS list is read
+  back on start (after the last CLEAR marker). `events [n] [errors]` shows it.
+- `$drone notify on|all|off` (owner, also buttons on the CHAT tab): pushNote -> notifyChat (base_chat.lua)
   sends the monitor's messages privately in chat; max 6/min, rest summed up;
   saved in chat_notify.dat.
 - Autostart: `startup.lua` (top level of the computer) finds inventory.lua
@@ -165,4 +172,4 @@ anchor turtle keep chunks loaded). Charging station + parking in base_drones.lua
 ## Useful console commands (on the base computer)
 help, report, tanks, mesetup, me check, me add <id>, curios check, disks
 [data|move], drones, drone <n>, charger, turtles, turtle <id> <cmd>, update,
-rescue, findlost, map [clear], exit [clear].
+rescue, findlost, map [clear], exit [clear], survey, theme, events.

@@ -7,7 +7,7 @@
 -- page drawing
 function drawBackpack(x, y, w, h, G)
   card(x, y, w, h)
-  text(x + 2, y + 1, "BACKPACK", C.label, C.panel)
+  text(x + 2, y + 1, "INVENTORY", C.label, C.panel)
   local info = state.used .. " / 36 slots"
   text(x + w - #info - 2, y + 1, info, C.dim, C.panel)
 

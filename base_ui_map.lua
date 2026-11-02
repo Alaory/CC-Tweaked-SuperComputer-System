@@ -110,6 +110,14 @@ function drawMapPage(G)
     win.blit(r[1], r[2], r[3])
   end
   addHit(g.mx0, g.my0, g.mw, g.mh, "mapcell")
+  -- nothing mapped at all yet: say how to start
+  if (MAP.ovN or 0) == 0 and #MAP.order == 0 then
+    local m1 = "Nothing mapped yet."
+    local m2 = "Select a turtle with a Geo Scanner, then SURVEY (right)."
+    local cy = g.my0 + math.floor(g.mh / 2) - 3
+    text(g.mx0 + math.floor((g.mw - #m1) / 2), cy, m1, C.text, C.bg)
+    text(g.mx0 + math.max(0, math.floor((g.mw - #m2) / 2)), cy + 1, trunc(m2, g.mw), C.dim, C.bg)
+  end
 
   -- compass letters on the four edges
   local midX, midY = g.mx0 + math.floor(g.mw / 2), g.my0 + math.floor(g.mh / 2)
@@ -241,6 +249,16 @@ function drawMapPage(G)
   local lh = bottom - ly + 1
   if lh >= 5 then
     card(rx, ly, rw, lh, "LEGEND")
+    -- the letters on the map
+    local mk = { { "B", C.warn, "base" }, { "@", C.accent, "you" }, { "D", colors.pink, "drone" },
+                 { "T", C.good, "turtle" } }
+    local mx = rix
+    for _, m in ipairs(mk) do
+      if mx + 3 + #m[3] > rix + riw then break end
+      text(mx, ly + 2, m[1], C.ink, m[2])
+      text(mx + 2, ly + 2, m[3], C.dim, C.panel)
+      mx = mx + 4 + #m[3]
+    end
     local items = {
       { colors.green, "Grass, plants" }, { colors.lime, "Trees, leaves" },
       { colors.blue, "Water" }, { colors.yellow, "Sand, gravel" },
@@ -248,10 +266,10 @@ function drawMapPage(G)
       { colors.brown, "Stone, buildings" }, { colors.red, "Lava, nether" },
       { colors.cyan, "Warped, prismarine" }, { colors.purple, "Obsidian, amethyst" },
     }
-    for i = 1, math.min(#items, lh - 4) do
+    for i = 1, math.min(#items, lh - 5) do
       local it = items[i]
-      text(rix, ly + 2 + i, "  ", C.text, it[1])
-      text(rix + 3, ly + 2 + i, it[2], C.text, C.panel)
+      text(rix, ly + 3 + i, "  ", C.text, it[1])
+      text(rix + 3, ly + 3 + i, it[2], C.text, C.panel)
     end
   end
 end

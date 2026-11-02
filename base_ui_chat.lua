@@ -80,8 +80,24 @@ function drawAccessPage(G)
     drawButton(bx2, ry, 12, 2, "DECLINE", C.bad, C.ink, "acc_no", r.name)
   end
 
+  ------------------------------------------------ the base's messages in chat ($drone notify)
+  local ny = y0 + qh + 1
+  local nh = 8
+  card(rx, ny, rw, nh, "BASE MESSAGES IN YOUR CHAT")
+  local sub = owner and state.notifySubs and state.notifySubs[tostring(owner):lower()]
+  local level = sub and sub.level or "off"
+  text(rix, ny + 3, trunc("The monitor's messages, sent privately to " .. tostring(owner) ..
+       " in chat (at most 6 a minute)", riw), C.dim, C.panel)
+  local opts = { { "off", "OFF" }, { "important", "WARNINGS + ERRORS" }, { "all", "EVERYTHING" } }
+  local bw = math.floor((riw - 2) / 3)
+  for i, o in ipairs(opts) do
+    local on = level == o[1]
+    drawButton(rix + (i - 1) * (bw + 1), ny + 5, (i == 3) and (riw - 2 * (bw + 1)) or bw, 2, o[2],
+               on and C.accent or C.empty, on and C.ink or C.text, "cnotify", o[1])
+  end
+
   ------------------------------------------------ ALLOWED LIST (also offline people)
-  local ay = y0 + qh + 1
+  local ay = ny + nh + 1
   local ah = bottom - ay + 1
   if ah >= 6 then
     local names = allowedNames()

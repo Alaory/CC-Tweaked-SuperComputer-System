@@ -3,7 +3,8 @@
 --
 --   EVENTS tab: every message the program showed (newest first), with its
 --   date and time. Filter by kind, page through them, clear the list.
---   The list lives in memory only (state.noteLog, see pushNote in base_me.lua).
+--   The list (state.noteLog, see pushNote in base_me.lua) is also written to
+--   events.log and read back on start.
 
 local FILTERS = {
   { "all", "ALL" }, { "error", "ERRORS" }, { "warning", "WARNINGS" },
@@ -47,7 +48,10 @@ function drawEventsPage(G)
   local cy = y0 + 2
   local cardH = bottom - cy + 1
   card(2, cy, W - 3, cardH)
-  local per = math.max(1, math.floor((cardH - 2) / 3))
+  local per = math.max(1, math.floor((cardH - 3) / 3))
+  -- where the messages are kept (also after a restart)
+  text(5, bottom - 1, trunc("Also saved in events.log - type  events  on the computer for older ones. " ..
+       "CLEAR LIST empties this list only.", W - 9), C.dim, C.panel)
   local pages = math.max(1, math.ceil(#list / per))
   state.eventsPage = math.max(1, math.min(state.eventsPage or 1, pages))
   drawPager(y0, "eventsPage", pages, W - #cl - 3)

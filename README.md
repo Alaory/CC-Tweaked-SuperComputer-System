@@ -142,6 +142,7 @@ Type these on the base computer. `help` shows the full list.
 | Map | `map clear` |
 | ME | `mesetup`, `me add <item id>`, `me check`, `tanks` |
 | Checks | `curios check`, `report` (every peripheral and its functions, uploaded to pastebin), `disks [data\|move]` |
+| Screen / messages | `theme [name\|random]` (colours; random = a different one each start), `events [n] [errors]` (saved messages) |
 
 ## Files
 
@@ -176,7 +177,8 @@ the game.
 `waypoints.dat`, `drone_logs.dat`, `drone_charger.dat`, `chat_access.dat`,
 `back_spots.dat`, `player_dims.dat`, `turtles.dat`, `terrain.dat`,
 `exit_route.dat`, `map/` (map files), `map_view.dat`, `me_setup.dat`, `me_names.dat`,
-`me_owed.dat`, `curios_last.dat`.
+`me_owed.dat`, `curios_last.dat`, `theme.dat`, `chat_notify.dat`, `events.log` + `events.old.log`
+(every message, about 32 KB at most).
 
 A computer has only **1 MB** of disk. The biggest files (map, turtle
 knowledge, logs) can be moved to data floppies with `disks data` / `disks move`.

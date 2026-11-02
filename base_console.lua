@@ -27,6 +27,8 @@ HELP = {
   " turtle <id|name> <cmd> [args]   e.g. goto x y z, home,",
   " turtle <id> log [n]  the turtle's last n log lines in full",
   " survey               the big survey: progress, what each turtle is waiting for",
+  " theme [name|random]  the monitor's colours (random = a different one each start)",
+  " events [n] [errors]  the last n saved messages (also after a restart)",
   "      sethome [x y z], setpos x y z north, locate, move up 3, stop",
   " map clear            delete all map scans",
   " exit [clear]         the turtles' exit route out of the base (or delete it)",
@@ -446,6 +448,54 @@ function handleCommand(line)
     local nd = 0
     for _ in pairs(KNOW.dead) do nd = nd + 1 end
     say("Shared knowledge: " .. KNOW.n .. " walls, " .. nd .. " dead ends.")
+
+  elseif cmd == "events" then
+    -- the saved messages (events.log), newest last; "events 30 errors"
+    local n = tonumber(words[2]) or 15
+    local only = (words[3] or words[2] or ""):lower()
+    local kinds = { errors = "ERROR", error = "ERROR", warnings = "WARNING", warning = "WARNING",
+                    done = "DONE", info = "INFO" }
+    local want = kinds[only]
+    local lines, shown = noteLogLines(), {}
+    for i = #lines, 1, -1 do
+      local l = lines[i]
+      local d, kind, title, msg = l:match("^(%S+ %S+)|(%u+)|([^|]*)|(.*)$")
+      if d and (not want or kind == want) then
+        local _, mo, da, hm = d:match("^(%d+)-(%d+)-(%d+) (%S+)$")
+        table.insert(shown, 1, (da and (da .. "." .. mo .. " " .. hm) or d) .. " " ..
+                     (kind == "CLEAR" and "-----" or kind) .. "  " ..
+                     (title ~= "" and (title .. ": ") or "") .. msg)
+        if #shown >= n then break end
+      end
+    end
+    if #shown == 0 then say("No saved messages" .. (want and (" of that kind") or "") .. " yet.") end
+    for _, l in ipairs(shown) do say(l) end
+    say("(saved in events.log + events.old.log on this computer, about 32 KB at most)")
+
+  elseif cmd == "theme" then
+    local want = (words[2] or ""):lower()
+    if want == "" then
+      say("Theme now: " .. tostring(THEME_NAME) .. "   (mode: " .. tostring(THEME_MODE) .. ")")
+      say("Themes: " .. table.concat(THEME_ORDER, ", ") .. ", random")
+      say("theme <name> = keep that one;  theme random = a different one on every start")
+    elseif want == "random" then
+      THEME_MODE = "random"
+      saveTheme(nil)
+      local pick
+      repeat pick = THEME_ORDER[math.random(#THEME_ORDER)] until pick ~= THEME_NAME or #THEME_ORDER < 2
+      setTheme(pick)
+      saveTheme(nil)
+      os.queueEvent("inv_update")
+      say("Random theme on every start. Now: " .. pick)
+    elseif THEMES[want] then
+      setTheme(want)
+      THEME_MODE = want
+      saveTheme(want)
+      os.queueEvent("inv_update")
+      say("Theme: " .. want .. " (kept after restarts)")
+    else
+      say("No theme '" .. want .. "'. Themes: " .. table.concat(THEME_ORDER, ", ") .. ", random")
+    end
 
   elseif cmd == "survey" then
     -- the big survey: progress and what the base sees for every turtle

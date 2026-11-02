@@ -278,11 +278,22 @@ function handleTouch(tx, ty)
         local cur = state.curiosSel
         if cur and cur.type == h[6][1] and cur.pos == h[6][2] then state.curiosSel = nil
         else state.curiosSel = { type = h[6][1], pos = h[6][2] } state.curiosFitPage = 1 end
+      elseif h[5] == "cnotify" then
+        -- the CHAT tab's buttons = '$drone notify off|on|all' for the owner
+        if state.owner and state.notifySubs then
+          local k = tostring(state.owner):lower()
+          state.notifySubs[k] = (h[6] ~= "off") and { name = state.owner, level = h[6] } or nil
+          pcall(saveNotifySubs)
+          setToast("Base messages in chat: " .. ((h[6] == "off") and "OFF" or
+                   (h[6] == "all") and "everything" or "warnings + errors"), C.label, 3)
+        else
+          setToast("Owner unknown (memory card in the Inventory Manager?)", C.warn, 4)
+        end
       elseif h[5] == "evfilter" then
         state.eventsFilter = h[6]
         state.eventsPage = 1
       elseif h[5] == "evclear" then
-        state.noteLog = {}
+        noteLogClear()                  -- the list only; events.log keeps everything
         state.eventsPage = 1
       end
       return h[5] == "page" or h[5] == "act" or h[5] == "mecraft"

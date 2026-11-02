@@ -58,11 +58,82 @@ function pushNote(title, msg, col, secs)
   local when = realTime("%H:%M")
   table.insert(state.notes, 1, { id = noteId, title = title, msg = msg, col = col, t = now,
                                  exp = exp, life = life, when = when })
-  table.insert(state.noteLog, 1, { title = title, msg = msg, col = col, when = realTime("%d.%m %H:%M") })
-  while #state.noteLog > noteSetting("keep") do table.remove(state.noteLog) end
+  noteLogAdd({ title = title, msg = msg, col = col, when = realTime("%d.%m %H:%M") })
   if state.page ~= "events" then state.noteUnread = (state.noteUnread or 0) + 1 end
   if notifyChat then pcall(notifyChat, title, msg, col) end    -- '$drone notify' (base_chat.lua)
   os.queueEvent("inv_update")
+end
+
+-- ===== the message log file =====
+-- Every message is also written to events.log on this computer (newest at the
+-- end), so they survive a restart: the EVENTS tab reads the last ones back on
+-- start, 'events' on the computer shows them. Small: at 16 KB the file becomes
+-- events.old.log (the one before that is dropped) - at most 32 KB in all.
+local NOTE_FILE, NOTE_OLD, NOTE_MAX = "events.log", "events.old.log", 16384
+local KIND_COL = { ERROR = "bad", WARNING = "warn", DONE = "good", INFO = "label" }
+
+-- add an entry to the EVENTS list and the log file
+function noteLogAdd(e)
+  table.insert(state.noteLog, 1, e)
+  while #state.noteLog > noteSetting("keep") do table.remove(state.noteLog) end
+  pcall(function()
+    local okF, free = pcall(fs.getFreeSpace, "/")
+    if okF and type(free) == "number" and free < 8192 then return end   -- disk nearly full: skip
+    if fs.exists(NOTE_FILE) and fs.getSize(NOTE_FILE) > NOTE_MAX then
+      if fs.exists(NOTE_OLD) then fs.delete(NOTE_OLD) end
+      fs.move(NOTE_FILE, NOTE_OLD)
+    end
+    local function clean(v) return (tostring(v or ""):gsub("[\r\n|]", " ")) end
+    local h = fs.open(NOTE_FILE, "a")
+    if not h then return end
+    h.writeLine(realTime("%Y-%m-%d %H:%M") .. "|" .. noteKind(e.col) .. "|" .. clean(e.title) .. "|" .. clean(e.msg))
+    h.close()
+  end)
+end
+
+-- CLEAR LIST on the EVENTS tab: the list is emptied, the file keeps
+-- everything (a marker line: after a restart only newer messages come back)
+function noteLogClear()
+  state.noteLog = {}
+  pcall(function()
+    local h = fs.open(NOTE_FILE, "a")
+    if h then h.writeLine(realTime("%Y-%m-%d %H:%M") .. "|CLEAR||list cleared on the EVENTS tab") h.close() end
+  end)
+end
+
+-- the saved lines (oldest first), from events.old.log and events.log
+function noteLogLines()
+  local lines = {}
+  for _, f in ipairs({ NOTE_OLD, NOTE_FILE }) do
+    if fs.exists(f) then
+      local h = fs.open(f, "r")
+      while h do
+        local l = h.readLine()
+        if not l then break end
+        lines[#lines + 1] = l
+      end
+      if h then h.close() end
+    end
+  end
+  return lines
+end
+
+-- on start: the EVENTS tab gets the last saved messages back
+do
+  local ok, lines = pcall(noteLogLines)
+  if ok then
+    local from = 1
+    for i, l in ipairs(lines) do if l:find("|CLEAR|", 1, true) then from = i + 1 end end
+    for i = math.max(from, #lines - noteSetting("keep") + 1), #lines do
+      local d, kind, title, msg = lines[i]:match("^(%S+ %S+)|(%u+)|([^|]*)|(.*)$")
+      if d and kind ~= "CLEAR" then
+        local y, mo, da, hm = d:match("^(%d+)-(%d+)-(%d+) (%S+)$")
+        table.insert(state.noteLog, 1, { title = (title ~= "") and title or nil, msg = msg,
+                                         col = C[KIND_COL[kind] or "label"],
+                                         when = da and (da .. "." .. mo .. " " .. hm) or d })
+      end
+    end
+  end
 end
 
 -- close one message box
@@ -835,7 +906,7 @@ function curioSignature(fn, slotType)
   CURIO_SIG[fn] = { types = types, roles = roles }
   local NAMES, parts = { slot = "slot type", target = "chest", item = "item name" }, {}
   for k, ty in ipairs(types) do parts[k] = (roles[k] and NAMES[roles[k]]) or ty end
-  table.insert(state.noteLog, 1, { title = "Curios", col = C.label, when = realTime("%d.%m %H:%M"),
+  noteLogAdd({ title = "Curios", col = C.label, when = realTime("%d.%m %H:%M"),
     msg = fn .. " wants (" .. table.concat(parts, ", ") .. ")" })
   return CURIO_SIG[fn]
 end
@@ -915,10 +986,9 @@ local function curioLog(fn, args, n, target, ok, r, before, after)
     for k, nm in pairs(after) do if before[k] ~= nm then changed[#changed + 1] = "on " .. prettify(nm) .. " (" .. k .. ")" end end
   end
   local res = ok and ("-> " .. tostring(type(r) == "table" and (r.count or "table") or r)) or ("error: " .. cleanErr(r))
-  table.insert(state.noteLog, 1, { title = "Curios call", col = C.label, when = realTime("%d.%m %H:%M"),
+  noteLogAdd({ title = "Curios call", col = C.label, when = realTime("%d.%m %H:%M"),
     msg = fn .. "(" .. table.concat(shown, ", ") .. ") " .. res ..
           (#changed > 0 and ("; " .. table.concat(changed, ", ")) or (ok and "; nothing changed" or "")) })
-  while #state.noteLog > noteSetting("keep") do table.remove(state.noteLog) end
 end
 
 -- can the function be told WHICH item (a filter table or an item-name text)?
@@ -986,7 +1056,7 @@ local function probeOptional(fn, sig, target)
   local parts = {}
   local NAMES = { slot = "slot type", target = "chest", item = "item name" }
   for k, ty in ipairs(sig.types) do parts[k] = (sig.roles[k] and NAMES[sig.roles[k]]) or ty end
-  table.insert(state.noteLog, 1, { title = "Curios", col = C.label, when = realTime("%d.%m %H:%M"),
+  noteLogAdd({ title = "Curios", col = C.label, when = realTime("%d.%m %H:%M"),
     msg = fn .. " (checked with the real chest on '" .. pick .. "'): (" .. table.concat(parts, ", ") .. ")" })
 end
 
