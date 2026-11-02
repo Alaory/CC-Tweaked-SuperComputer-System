@@ -729,7 +729,9 @@ function TT.findLost(radius, cx, cy, cz)
 end
 
 -- send a rescue; x y z = where to look (default: where it was last seen)
-function TT.rescue(targetId, x, y, z, radius, forced)
+-- visit = true: the rescuer may go without reinstall gear (a turtle that is
+-- only in an unloaded area wakes up when the rescuer gets there)
+function TT.rescue(targetId, x, y, z, radius, forced, visit)
   local target = state.turtles[targetId]
   if not target then
     target = TT.get(targetId)
@@ -743,7 +745,7 @@ function TT.rescue(targetId, x, y, z, radius, forced)
   local r = forced or TT.pickRescuer(target, mode, x, z)
   if forced then
     -- the permanent rescuer must carry what this rescue needs
-    if mode == "install" and not (hasGear(forced, "drive") and hasGear(forced, "floppy")) then
+    if mode == "install" and not visit and not (hasGear(forced, "drive") and hasGear(forced, "floppy")) then
       return false, forced.label .. " needs a Disk Drive and the install floppy to reinstall a turtle"
     elseif mode == "supply" and not (hasGear(forced, "fuel") or hasGear(forced, "pick")) then
       return false, forced.label .. " needs fuel (coal ...) or a spare pickaxe to bring"
@@ -836,7 +838,7 @@ local function problemOf(t)
   end
   -- offline: how long, by the real clock (also from before the base started)
   if not (t.pos and t.pos.x and t.seenEpoch) then return nil end
-  local after = tonumber(CONFIG.turtles.rescueAfter) or 600
+  local after = tonumber(CONFIG.turtles.rescueAfter) or 180
   if (os.epoch("utc") - t.seenEpoch) / 1000 < after then return nil end
   return "lost"
 end
@@ -860,6 +862,13 @@ function TT.patrolTick()
   local problems = {}
   for id, t in pairs(state.turtles) do
     if not t.rescuerRole then problems[id] = problemOf(t) end
+    -- fine for 5 minutes: its rescue tries start again from 0
+    if TT.online(t) and not problems[id] and not t.rescuer then
+      t.fineSince = t.fineSince or now
+      if now - t.fineSince > 300 then t.rescueTries, t.rescueAt = nil, nil end
+    else
+      t.fineSince = nil
+    end
   end
   for _, t in pairs(state.turtles) do
     -- a rescue on its way: called off if the turtle is fine again
@@ -875,6 +884,7 @@ function TT.patrolTick()
         end
         TT.log(t, "Fine again - rescue called off")
         t.rescuer, t.rescueKind = nil, nil
+        t.rescueTries, t.rescueAt = nil, nil         -- a new problem later gets new tries
       end
     end
   end
@@ -892,12 +902,12 @@ function TT.patrolTick()
         end
       end
       if pick then
-        local ok, msg = TT.rescue(pick.id, nil, nil, nil, nil, r)
+        local ok, msg = TT.rescue(pick.id, nil, nil, nil, nil, r, pickKind == "lost")
         pick.rescueAt, pick.rescueTries = now, (pick.rescueTries or 0) + 1
         if ok then
           pick.rescueKind = pickKind
           setToast("Rescuer " .. r.label .. " sent to " .. pick.label .. " (" ..
-                   (pickKind == "lost" and "offline - reinstall" or pickKind == "fuel" and "no fuel" or "stuck") .. ")",
+                   (pickKind == "lost" and "offline - going there wakes it up" or pickKind == "fuel" and "no fuel" or "stuck") .. ")",
                    C.label)
         else
           TT.log(r, "Cannot rescue " .. pick.label .. ": " .. tostring(msg))

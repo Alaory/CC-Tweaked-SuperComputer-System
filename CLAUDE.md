@@ -77,9 +77,9 @@ PneumaticCraft drone rides, turtle mapping/surveys, and an AE2 ME network view.
 - Permanent rescuer: t.rescuerRole (RESCUER button, saved in turtles.dat;
   base only). TT.patrolTick (comms worker) sends it to: no fuel (<20 for
   60 s), stuck (60 s idle), lost (silent CONFIG.turtles.rescueAfter, default
-  600 s). Never in the first 5 min after the base starts, never when half
+  180 s; no reinstall gear needed - arriving loads the area and wakes it). Never in the first 5 min after the base starts, never when half
   or more turtles are offline (server trouble); called off when the turtle
-  is fine again; max 3 tries, 30 min apart. Rescuer goes home after each
+  is fine again; max 3 tries, 30 min apart (tries reset once the turtle is fine again). Rescuer goes home after each
   rescue, gets no big-survey batches.
 - `$drone notify on|all|off` (owner): pushNote -> notifyChat (base_chat.lua)
   sends the monitor's messages privately in chat; max 6/min, rest summed up;
