@@ -93,6 +93,20 @@ function handleTouch(tx, ty)
                          math.floor((z2 - z1) / 16) .. " chunks), handed out in batches - progress on the MAP tab",
                          C.good)
               end
+            elseif a.kind == "surveyall" then
+              -- a smaller area: also through the (saved) queue, so spots a
+              -- turtle does not finish are handed out again
+              if #TT.available() == 0 then
+                setToast("No free turtle (online, idle, position known)", C.warn, 5)
+              else
+                local n, skipped = MAP.addSurvey(x1, z1, x2, z2, r)
+                if n == 0 then
+                  setToast("This area is already mapped (" .. skipped .. " spots)", C.label, 5)
+                else
+                  setToast("Survey: " .. n .. " spots queued" .. (skipped > 0 and (" (" .. skipped .. " already mapped)") or "") ..
+                           " - handed out in batches, progress on the MAP tab", C.good, 6)
+                end
+              end
             else
               local ids
               if a.kind == "survey" then

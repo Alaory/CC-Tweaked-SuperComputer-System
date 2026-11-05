@@ -194,6 +194,7 @@ function TT.receive(id, m)
     end
   elseif m.t == "result" then
     if m.cmd == "fuelup" and TT.fuelTrip and TT.fuelTrip.id == id then TT.fuelTrip = nil end   -- the next one may go
+    if m.cmd == "surveypts" and MAP.batchResult then pcall(MAP.batchResult, id, m.ok) end
     TT.log(t, (m.ok and "Done: " or "Failed: ") .. tostring(m.msg))
     if not m.ok then setToast(t.label .. ": " .. tostring(m.msg), C.warn, 6) end
   end

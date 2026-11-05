@@ -823,6 +823,12 @@ end
 local function nextBatch(q)
   local total = q.cols * q.rows
   local out, checked = {}, 0
+  -- first the spots a turtle gave back unscanned (see MAP.reclaim)
+  while q.redo and #q.redo > 0 and #out < BATCH do
+    local p = table.remove(q.redo, 1)
+    if not MAP.getOverview(p[1], p[2]) then out[#out + 1] = p end
+  end
+  if #out >= BATCH then return out end
   while #out < BATCH and q.cursor < total and checked < 3000 do
     local i = q.cursor
     q.cursor = q.cursor + 1
@@ -835,6 +841,56 @@ local function nextBatch(q)
     else out[#out + 1] = { x, z } end
   end
   return out
+end
+
+-- A turtle stopped working on its batch (finished, failed, low on fuel, gave
+-- up after restarts, result lost ...): every spot of it that is still not in
+-- the map goes back into the queue (q.redo) for the next free turtle. Safe to
+-- call any time - scanned spots are simply dropped.
+function MAP.reclaim(id)
+  local q = MAP.queue
+  if not (q and q.out and q.out[id]) then return 0 end
+  local n = 0
+  q.redo = q.redo or {}
+  for _, p in ipairs(q.out[id]) do
+    if not MAP.getOverview(p[1], p[2]) then q.redo[#q.redo + 1] = p n = n + 1 end
+  end
+  q.out[id] = nil
+  saveQueue()
+  return n
+end
+
+-- a turtle answered its survey batch (TT.receive): done -> forget the batch;
+-- failed -> its unscanned spots go back into the queue
+function MAP.batchResult(id, ok)
+  local q = MAP.queue
+  if not (q and q.out and q.out[id]) then return end
+  local n = MAP.reclaim(id)
+  if n > 0 then
+    local t = state.turtles[id]
+    TT.log(t, n .. " survey spot(s) not done - back in the queue for the next free turtle")
+  end
+end
+
+-- a survey of a small area (SURVEY: ALL): its spots join the running survey,
+-- or become a new one - either way kept in the queue file and handed out in
+-- batches, so nothing is lost when a turtle stops
+function MAP.addSurvey(x1, z1, x2, z2, r)
+  local spots, skipped = MAP.surveySpots(x1, z1, x2, z2, r)
+  if #spots == 0 then return 0, skipped end
+  local q = MAP.queue
+  if not q then
+    MAP.queueSurvey(x1, z1, x2, z2, r, nil)
+    return #spots, skipped
+  end
+  q.redo = q.redo or {}
+  for i = #spots, 1, -1 do table.insert(q.redo, 1, spots[i]) end    -- before the rest
+  for _, id in ipairs(TT.available()) do
+    local t = state.turtles[id]
+    if t and t.held then t.held = nil TT.listDirty = true end
+  end
+  saveQueue()
+  return #spots, skipped
 end
 
 -- hand batches to idle turtles (comms worker, every few seconds)
@@ -866,10 +922,18 @@ function MAP.feedSurvey()
       if w then why[#why + 1] = (t.label or ("#" .. id)) .. ": " .. w end
     end
     if free then anyFree = true end
-    if free and q.cursor < total then
+    -- idle while the base still counts a batch as theirs: take it back
+    -- (whatever was scanned is dropped; the rest is handed out again)
+    if t and q.out and q.out[id] and TT.online(t) and (t.task == nil or t.task == "idle")
+       and (not t.queueAt or os.clock() - t.queueAt > 30) then
+      MAP.reclaim(id)
+    end
+    if free and (q.cursor < total or (q.redo and #q.redo > 0)) then
       local spots = nextBatch(q)
       if #spots > 0 then
         TT.sendSpots(id, spots, q.r)
+        q.out = q.out or {}
+        q.out[id] = spots
         t.queueAt = os.clock()
         q.sent = q.sent + #spots
         busy = true
@@ -879,7 +943,7 @@ function MAP.feedSurvey()
   -- no turtle CAN work on it: say why - once, again only when the reason
   -- changes or after 10 minutes (a free turtle that is just skipping
   -- already-mapped spots is not a problem)
-  if not busy and not anyFree and q.cursor < total then
+  if not busy and not anyFree and (q.cursor < total or (q.redo and #q.redo > 0)) then
     local msg = (#list == 0) and "No turtle can survey (online, idle, position known, not anchor/rescuer)."
                 or ("No turtle takes a batch - " .. table.concat(why, ", "))
     if msg ~= MAP.queueToldMsg or os.clock() - (MAP.queueToldAt or 0) > 600 then
@@ -889,7 +953,8 @@ function MAP.feedSurvey()
   else
     MAP.queueToldMsg = nil
   end
-  if q.cursor >= total and not busy then
+  local open = (q.redo and #q.redo > 0) or (q.out and next(q.out) ~= nil)
+  if q.cursor >= total and not busy and not open then
     setToast("Survey finished: " .. q.sent .. " scans, " .. q.skipped .. " spots were already mapped", C.good)
     MAP.queue = nil
   end
@@ -901,7 +966,8 @@ function MAP.surveyProgress()
   local q = MAP.queue
   if not q then return nil end
   local total = q.cols * q.rows
-  return q.cursor / total, total, q.sent, q.skipped
+  local again = q.redo and #q.redo or 0
+  return q.cursor / total, total, q.sent, q.skipped, again
 end
 
 -- one screen cell to the right (r) and one down (d), as world x/z steps

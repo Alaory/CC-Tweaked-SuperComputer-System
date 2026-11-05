@@ -507,6 +507,9 @@ function handleCommand(line)
       local frac, total = MAP.surveyProgress()
       say(string.format("Big survey %d %d -> %d %d: %d of %d spots checked, %d sent, %d already mapped",
           q.x1, q.z1, q.x2, q.z2, q.cursor, total, q.sent, q.skipped))
+      local busyN = 0
+      for _ in pairs(q.out or {}) do busyN = busyN + 1 end
+      say("Batches out now: " .. busyN .. "   spots to redo (a turtle did not finish them): " .. #(q.redo or {}))
       say("Turtles: " .. (q.ids and "chosen ones" or "all free ones") .. " - free now: " .. #TT.available())
       for _, t in ipairs(TT.list()) do
         local fuel = tonumber(t.fuel)

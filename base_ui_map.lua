@@ -234,14 +234,14 @@ function drawMapPage(G)
 
   ------------------------------------------------ a big survey in progress
   local ly = ty0 + 11
-  local frac, total, sent, skipped = MAP.surveyProgress()
+  local frac, total, sent, skipped, again = MAP.surveyProgress()
   if frac then
     card(rx, ly, rw, 7, "BIG SURVEY")
     drawButton(rix + riw - 8, ly + 1, 8, 1, "STOP", C.bad, C.ink, "mqstop")
     barW(rix, ly + 3, riw, math.floor(frac * riw + 0.5), C.good)
     text(rix, ly + 4, trunc(string.format("%d%% of %s spots", math.floor(frac * 100), compact(total)), riw), C.text, C.panel)
-    text(rix, ly + 5, trunc(string.format("%s sent, %s mapped before", compact(sent), compact(skipped)), riw),
-         C.dim, C.panel)
+    text(rix, ly + 5, trunc(string.format("%s sent, %s mapped before", compact(sent), compact(skipped)) ..
+         ((again or 0) > 0 and (", " .. again .. " to redo") or ""), riw), C.dim, C.panel)
     ly = ly + 8
   end
 
