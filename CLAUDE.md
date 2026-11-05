@@ -67,7 +67,11 @@ PneumaticCraft drone rides, turtle mapping/surveys, and an AE2 ME network view.
   helpers as plain `function f()` (the turtle program has its own
   environment), not `local function`. Check with
   `python3 tools/check_locals.py node.lua` (must stay well under 200). The
-  base also compiles node.lua before sending it (TT.codeLoad).
+  base also compiles node.lua before sending it (TT.codeLoad), and sends /
+  writes a SHRUNK copy (TT.shrinkCode: whole-line comments, --[[ ]] blocks and
+  indentation removed, every line kept in place so error line numbers match;
+  ~97 KB vs 128 KB - a floppy holds 125 KB). Falls back to the full text if
+  the small one does not compile. CODE.ver is the hash of what is sent.
 - STOP (node.lua): clears the saved job at once (no resume after a reload);
   a job that ignores it for 2 s is cut off (FORCE_STOP: no new move/turn;
   stopWatch kills it when not STEPPING / modem on / no slot lock, then

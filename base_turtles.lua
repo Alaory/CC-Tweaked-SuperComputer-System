@@ -403,6 +403,29 @@ function TT.codePath()
   return here
 end
 
+-- the turtle program without comments and indentation (a floppy holds only
+-- 125 KB; smaller updates too). Every line stays where it is - an error
+-- message still names the right line of node.lua. Only whole-line comments
+-- and --[[ ]] blocks go; code is never touched.
+function TT.shrinkCode(text)
+  local out, inBlock = {}, false
+  for line in (text .. "\n"):gmatch("(.-)\n") do
+    local t = line:match("^%s*(.-)$")
+    if inBlock then
+      if line:find("]]", 1, true) then inBlock = false end
+      t = ""
+    elseif t:sub(1, 4) == "--[[" then
+      if not t:find("]]", 5, true) then inBlock = true end
+      t = ""
+    elseif t:sub(1, 2) == "--" then
+      t = ""
+    end
+    out[#out + 1] = t
+  end
+  if out[#out] == "" then out[#out] = nil end
+  return table.concat(out, "\n") .. "\n"
+end
+
 -- (re)read node.lua if it is new or changed
 function TT.codeLoad(force)
   local path = TT.codePath()
@@ -420,6 +443,11 @@ function TT.codeLoad(force)
   -- it would not compile there either - keep the version the turtles have
   local okC, errC = load(text, "node", "t", {})
   TT.codeError = (not okC) and (path .. ": " .. tostring(errC)) or nil
+  if okC then
+    -- send / install the small version (same code, no comments) if it compiles too
+    local okS, small = pcall(TT.shrinkCode, text)
+    if okS and load(small, "node", "t", {}) then text = small end
+  end
   if not okC then
     if not (CODE and CODE.badMod == mod) then
       setPopup("TURTLE PROGRAM", "The new node.lua does not compile - not sent to the turtles: " ..
