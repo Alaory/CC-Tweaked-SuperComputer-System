@@ -623,6 +623,31 @@ local function hopTowards(dr, x, z)
   return false, "too many hops"
 end
 
+-- open sky above x y z? From the base's map (turtle scans): the highest block
+-- of that column is not above the target. nil = the map does not know.
+function skyOpenAbove(x, y, z)
+  if not MAP or not MAP.get then return nil end
+  local top = MAP.get(math.floor(x), math.floor(z))
+  if not top then return nil end
+  return y >= top + 1, top
+end
+
+-- the exact spot was refused (blocked / tight): with open sky above it,
+-- teleport ONCE into the air above (always free) and fly down - flying costs
+-- no air. Under a roof or underground this is never tried.
+function skyApproach(dr, x, y, z)
+  local open, top = skyOpenAbove(x, y, z)
+  if not open then return false end
+  local sy = math.min(300, math.max(y + 12, top + 8))
+  droneLog(dr, "Spot " .. x .. ", " .. y .. ", " .. z .. " refused - open sky above it: teleporting to Y " .. sy ..
+               " and flying down")
+  local ok, err = droneMoveTo(dr, "pneumaticcraft:teleport", x, sy, z, CONFIG.drone.travelTimeout)
+  if not ok then return false, err end
+  ok, err = droneMoveTo(dr, "pneumaticcraft:goto", x, y, z, 40)
+  if ok then dr.lastSpot = { x = x, y = y, z = z } end
+  return ok, err
+end
+
 -- loaded = true: the target is next to a player (players keep their own area
 -- loaded), so a refused teleport means a blocked spot, never "not loaded"
 function travelTo(dr, x, y, z, spots, noFly, loaded)
@@ -658,6 +683,13 @@ function travelTo(dr, x, y, z, spots, noFly, loaded)
                    " (blocked or not loaded) - trying spots nearby")
     end
     local ok, err = droneMoveTo(dr, act, x + o[1], y + o[2], z + o[3], limit)
+    -- the first spot refused: open sky above it? one teleport up + fly down
+    -- instead of trying the spots around it (each try costs air)
+    if not ok and i == 1 and err == "did not get there" and act ~= "pneumaticcraft:goto" and not noFly then
+      local okS, errS = skyApproach(dr, x + o[1], y + o[2], z + o[3])
+      if okS then return true end
+      if errS and errS ~= "did not get there" then return false, errS end   -- stopped / got off / gone
+    end
     if err == "low on air" then
       droneLog(dr, "Low on air after failed teleports - flying the rest")
       act = "pneumaticcraft:goto"

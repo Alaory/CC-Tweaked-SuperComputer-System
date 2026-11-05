@@ -191,7 +191,10 @@ names exist on this version (getMaxItemStorage etc.); code tries new and old.
 fails; flying costs no air. Passenger watch: dr.rider (set after pickup) is checked every
 2 s while moving (riderLeft); off = > 12 blocks apart twice -> "passenger got
 off" -> the drone goes straight home. Long trips hop 160 -> 80 -> 48 blocks
-before flying into an area that is not loaded. Teleports only into loaded chunks (players and the
+before flying into an area that is not loaded. A refused (blocked/tight)
+target with OPEN SKY above it (MAP.get column top <= y-1; skyOpenAbove) ->
+one teleport into the air above + fly down (skyApproach) instead of trying
+the nearby spots; under a roof / unknown column / pickups (noFly): as before. Teleports only into loaded chunks (players and the
 anchor turtle keep chunks loaded). Charging station + parking in base_drones.lua.
 
 ## Rules for changes
