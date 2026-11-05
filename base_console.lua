@@ -42,7 +42,6 @@ HELP = {
   " curios probe         what the curios move functions want (nothing is moved)",
   " tanks                your fluid containers: contents and what they offer (for filling from ME)",
   " report [local]       all peripherals + functions -> report.txt, uploaded to pastebin",
-  " blockreader [find <text>] [upload]  what a Block Reader sees (getBlockData) -> blockreader.txt",
   " disks [data|move]    floppy disks; 'disks data' makes empty floppies data disks,",
   "                      'disks move' moves the map, turtle knowledge and logs onto them now",
   " rescue <id> [x y z [radius]]  send a rescue turtle to a lost or stuck turtle",
@@ -473,68 +472,6 @@ function handleCommand(line)
     if #shown == 0 then say("No saved messages" .. (want and (" of that kind") or "") .. " yet.") end
     for _, l in ipairs(shown) do say(l) end
     say("(saved in events.log + events.old.log on this computer, about 32 KB at most)")
-
-  elseif cmd == "blockreader" then
-    -- what an Advanced Peripherals Block Reader returns for the block it faces
-    -- (getBlockData = the block entity's NBT). For testing ideas like reading
-    -- player data from an Integrated Dynamics Display Panel.
-    local name
-    for _, n in ipairs(peripheral.getNames()) do
-      local okM, m = pcall(peripheral.getMethods, n)
-      if okM and type(m) == "table" then
-        for _, f in ipairs(m) do if f == "getBlockData" then name = n end end
-      end
-    end
-    if not name then
-      say("No Block Reader found (a peripheral with getBlockData). Connect it to the computer or the wired network.")
-      return out
-    end
-    local okN, blockName = pcall(peripheral.call, name, "getBlockName")
-    local okD, data = pcall(peripheral.call, name, "getBlockData")
-    say("Block Reader " .. name .. " faces: " .. tostring(okN and blockName or "?"))
-    if not okD then say("getBlockData failed: " .. tostring(data)) return out end
-    if type(data) ~= "table" then say("getBlockData returned: " .. tostring(data) .. " (no block entity / no data)") return out end
-    -- every value as "path = value", one per line
-    local lines, find = {}, nil
-    for i = 2, #words do
-      if words[i] == "find" and words[i + 1] then find = words[i + 1]:lower() end
-    end
-    local function walk(v, path, depth)
-      if #lines > 4000 then return end
-      if type(v) == "table" and depth < 40 then
-        local keys = {}
-        for k in pairs(v) do keys[#keys + 1] = k end
-        table.sort(keys, function(a, b) return tostring(a) < tostring(b) end)
-        for _, k in ipairs(keys) do walk(v[k], path .. "." .. tostring(k), depth + 1) end
-      else
-        lines[#lines + 1] = path:sub(2) .. " = " .. tostring(v)
-      end
-    end
-    walk(data, "", 0)
-    local text = table.concat(lines, "\n") .. "\n"
-    local file = "blockreader.txt"
-    local saved = saveFileSafe(file, text)
-    say(#lines .. " values; " .. (saved and ("saved in " .. file) or "could not save the file (disk full?)"))
-    -- the top-level keys, and where a word shows up (e.g. your name)
-    local top = {}
-    for k in pairs(data) do top[#top + 1] = tostring(k) end
-    table.sort(top)
-    say("Top-level keys: " .. table.concat(top, ", "))
-    local want = find or (state.owner and tostring(state.owner):lower())
-    if want then
-      local hits = 0
-      for _, l in ipairs(lines) do
-        if l:lower():find(want, 1, true) then
-          hits = hits + 1
-          if hits <= 8 then say("  " .. l:sub(1, 120)) end
-        end
-      end
-      say(hits .. " value(s) contain '" .. want .. "'" .. (hits > 8 and " (first 8 shown, all in the file)" or ""))
-    end
-    if saved and shell and http and words[#words] == "upload" then
-      local okU = pcall(shell.run, "pastebin", "put", file)
-      if okU then say("Send me the pastebin link shown above.") end
-    end
 
   elseif cmd == "theme" then
     local want = (words[2] or ""):lower()
