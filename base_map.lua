@@ -58,8 +58,11 @@ local function dec2(s, p)
 end
 
 -- one cell as 4 bytes
-local function cell(h, b)
-  local v = math.max(0, math.min(65535, floor(h) + 64))
+-- partial = true (overview only): the chunk was only touched at its edge by a
+-- neighbouring scan; kept in the top bit of the height (heights stay < 32768)
+local function cell(h, b, partial)
+  local v = math.max(0, math.min(32767, floor(h) + 64))
+  if partial then v = v + 32768 end
   return char(floor(v / 256), v % 256, floor(b / 256), b % 256)
 end
 local EMPTY = "\0\0\0\0"
@@ -69,7 +72,10 @@ local function cellAt(L, i)
   local a, b, c, d
   if e then a, b, c, d = e:byte(1, 4) else a, b, c, d = L.d:byte(i * 4 + 1, i * 4 + 4) end
   if not d or (c == 0 and d == 0) then return nil end
-  return a * 256 + b - 64, c * 256 + d
+  local v = a * 256 + b
+  local partial = v >= 32768
+  if partial then v = v - 32768 end
+  return v - 64, c * 256 + d, partial
 end
 -- put the edits into the text (after a scan)
 local function pack(L, n)
@@ -124,6 +130,12 @@ function MAP.get(x, z)
 end
 
 -- height, block of the chunk that holds x, z (overview), or nil
+-- is the chunk of x z really scanned (not just touched at its edge)?
+function MAP.scanned(x, z)
+  local h, _, partial = MAP.getOverview(x, z)
+  return h ~= nil and not partial
+end
+
 function MAP.getOverview(x, z)
   local cx, cz = floor(x / 16), floor(z / 16)
   local o = MAP.ov[okey(cx, cz)]
@@ -158,11 +170,13 @@ local function summarize(c)
   if n == 0 then return end
   local o = ovAt(c.cx, c.cz, true)
   local i = (c.cz % OVR) * OVR + (c.cx % OVR)
-  local had = cellAt(o, i)
-  if had and n < 128 then return end
+  local had, _, wasPartial = cellAt(o, i)
+  if had and n < 128 and not wasPartial then return end     -- a real overview: keep it
   if not had then MAP.ovN = MAP.ovN + 1 end
   o.e = o.e or {}
-  o.e[i] = cell(floor(sum / n + 0.5), best)
+  -- under half the chunk known (only the edge a neighbouring scan reaches):
+  -- shown, but marked PARTIAL - the survey still scans this chunk
+  o.e[i] = cell(floor(sum / n + 0.5), best, n < 128)
   MAP.dirty[o.r] = true
 end
 
@@ -232,17 +246,19 @@ end
 
 -- n cells as text: per cell the height as the change from the cell before
 -- (1 char; "A" + 2 chars = exact height) and the block (1 char; "/" + 2 chars
--- for big numbers), "~" = nothing, "*n" = the cell before n more times
+-- for big numbers), "~" = nothing, "*n" = the cell before n more times,
+-- "!" before a cell = PARTIAL (overview: only the edge of the chunk is known)
 local function cellsText(L, n, loc)
   local out, prev, run, ph = {}, nil, 0, 64
   for i = 0, n - 1 do
-    local h, b = cellAt(L, i)
+    local h, b, partial = cellAt(L, i)
     local tok = "~"
     if h then
       b = loc(b)
       local dh = h - ph
       ph = h
-      tok = ((dh >= -31 and dh <= 31) and c1(dh + 32) or ("A" .. enc2(h + 64))) ..
+      tok = (partial and "!" or "") ..
+            ((dh >= -31 and dh <= 31) and c1(dh + 32) or ("A" .. enc2(h + 64))) ..
             ((b < 63) and c1(b) or ("/" .. enc2(b)))
     end
     if tok == prev and run < 63 then
@@ -259,15 +275,17 @@ end
 -- text -> n cells as 4-byte text (glob: the file's block numbers -> the map's)
 local function readCells(s, n, glob)
   local out, p, i, ph, len = {}, 1, 0, 64, #s
-  local last, lastDh, lastAbs, lastB = EMPTY, 0, false, 0
+  local last, lastDh, lastAbs, lastB, lastP, nextP = EMPTY, 0, false, 0, false, false
   while p <= len and i < n do
     local ch = s:sub(p, p)
-    if ch == "*" then
+    if ch == "!" then
+      nextP, p = true, p + 1                -- the next cell is partial
+    elseif ch == "*" then
       for _ = 1, DEC[s:sub(p + 1, p + 1)] or 0 do
         if i >= n then break end
         if last ~= EMPTY and not lastAbs then
           ph = ph + lastDh
-          last = cell(ph, lastB)
+          last = cell(ph, lastB, lastP)
         end
         out[i + 1], i = last, i + 1
       end
@@ -286,7 +304,8 @@ local function readCells(s, n, glob)
       if bch == "/" then b, p = glob[dec2(s, p + 1) or 0], p + 3
       else b, p = glob[DEC[bch] or 0], p + 1 end
       lastB = b or MAP.pal("unknown")
-      last = cell(ph, lastB)
+      lastP, nextP = nextP, false
+      last = cell(ph, lastB, lastP)
       out[i + 1], i = last, i + 1
     end
   end
@@ -608,8 +627,11 @@ function MAP.load()
   end
   -- every detail chunk must be in the overview (older saves had no overview)
   countOverview()
+  -- and older saves stored edge-only chunks as if they were fully mapped:
+  -- summarize again (marks them partial, so a survey scans them properly)
   for _, c in pairs(MAP.ch) do
-    if not MAP.getOverview(c.cx * 16, c.cz * 16) then summarize(c) end
+    local h, _, partial = MAP.getOverview(c.cx * 16, c.cz * 16)
+    if not h or not partial then summarize(c) end
   end
   for _, o in pairs(MAP.ov) do pack(o, OVR * OVR) end
   table.sort(MAP.order, function(a, b) return MAP.ch[a].s < MAP.ch[b].s end)
@@ -768,7 +790,7 @@ function MAP.surveySpots(x1, z1, x2, z2, r)
           if MAP.get(x + dx, z + dz) then known = known + 1 end
         end
       end
-      if known / total >= need then skipped = skipped + 1
+      if known / total >= need or MAP.scanned(x, z) then skipped = skipped + 1
       else spots[#spots + 1] = { x, z } end
     end
   end
@@ -826,7 +848,7 @@ local function nextBatch(q)
   -- first the spots a turtle gave back unscanned (see MAP.reclaim)
   while q.redo and #q.redo > 0 and #out < BATCH do
     local p = table.remove(q.redo, 1)
-    if not MAP.getOverview(p[1], p[2]) then out[#out + 1] = p end
+    if not MAP.scanned(p[1], p[2]) then out[#out + 1] = p end
   end
   if #out >= BATCH then return out end
   while #out < BATCH and q.cursor < total and checked < 3000 do
@@ -837,7 +859,7 @@ local function nextBatch(q)
     local row, col = math.floor(i / q.cols), i % q.cols
     if row % 2 == 1 then col = q.cols - 1 - col end
     local x, z = q.x1 + q.r + col * q.step, q.z1 + q.r + row * q.step
-    if MAP.getOverview(x, z) then q.skipped = q.skipped + 1
+    if MAP.scanned(x, z) then q.skipped = q.skipped + 1
     else out[#out + 1] = { x, z } end
   end
   return out
@@ -853,7 +875,7 @@ function MAP.reclaim(id)
   local n = 0
   q.redo = q.redo or {}
   for _, p in ipairs(q.out[id]) do
-    if not MAP.getOverview(p[1], p[2]) then q.redo[#q.redo + 1] = p n = n + 1 end
+    if not MAP.scanned(p[1], p[2]) then q.redo[#q.redo + 1] = p n = n + 1 end
   end
   q.out[id] = nil
   saveQueue()

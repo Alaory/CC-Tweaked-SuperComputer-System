@@ -37,7 +37,12 @@ PneumaticCraft drone rides, turtle mapping/surveys, and an AE2 ME network view.
   floppies first (owner has at most 10), computer at most `computerKB`. Saved
   at most once a minute (MAP.autoSave in commsWorker) and on exit. In memory
   layers are TEXT, 4 bytes per cell (numbers in tables are costly in Cobalt).
-  `MAP.get` / `MAP.getOverview(x, z)` return height, block. No ores (owner
+  `MAP.get` / `MAP.getOverview(x, z)` return height, block (getOverview also
+  `partial`: a chunk only touched at its EDGE by a neighbouring scan - a 17-wide
+  scan reaches 1 column into the next chunk; stored as the top bit of the
+  height, "!" before the cell in the files). Surveys only skip chunks that are
+  MAP.scanned (overview and not partial). The MAP draws 2x2 chunks per cell
+  from zoom 32. No ores (owner
   does not want them). An old `map.dat` is converted once on start-up.
   World border is -20000..20000 (CONFIG.map.border); zoom goes to 512 so the
   whole world fits. Big surveys (> 400x400 blocks) go through a queue

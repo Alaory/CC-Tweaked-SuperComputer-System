@@ -80,9 +80,9 @@ function drawMapPage(G)
         local hgt, blk
         if not zoomedOut then hgt, blk = detail(wx, wz) end
         if not hgt then hgt, blk = overview(wx, wz) end
-        -- far out a cell covers many chunks: look at a few more of them, so
+        -- far out a cell covers 2x2 chunks or more: look at a few more of them, so
         -- a partly scanned area does not show as scattered dots
-        if not hgt and V.zoom >= 64 then
+        if not hgt and V.zoom >= 32 then
           local hz = floor(V.zoom / 2)
           hgt, blk = overview(wx + hz, wz)
           if not hgt then hgt, blk = overview(wx, wz + hz) end
