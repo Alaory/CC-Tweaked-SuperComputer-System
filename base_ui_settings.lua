@@ -54,6 +54,10 @@ SETTING_GROUPS = {
         else setTheme(nxt) THEME_MODE = nxt saveTheme(nxt) end
       end },
     cyc("style", "Look", "flat = solid blocks, rounded = rounded corners and thin bars", "flat", { "flat", "rounded" }),
+    cyc("notes.show", "Message boxes for", "which messages get a box (all are in EVENTS anyway; your taps always)",
+        "important", { "important", "errors", "all", "none" },
+        function(v) return ({ important = "warnings+errors", errors = "errors only", all = "everything", none = "none" })[v] or tostring(v) end),
+    cyc("notes.where", "Message boxes at", "where the boxes appear on the monitor", "bottom", { "bottom", "top" }),
     num("notes.info", "Message boxes stay for", "seconds a message box stays in the corner", 3, 1, 60, 1,
         function(v) return v .. " s" end, { "notes.done", "notes.warning", "notes.error" }),
     num("notes.keep", "EVENTS list keeps", "messages in the EVENTS list (all are saved in events.log anyway)",

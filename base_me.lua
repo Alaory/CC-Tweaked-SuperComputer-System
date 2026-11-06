@@ -54,10 +54,41 @@ function pushNote(title, msg, col, secs)
       return
     end
   end
+  -- a BOX in the corner only when it matters; every message still goes to
+  -- EVENTS (its badge counts it), events.log and - if wanted - your chat.
+  --   CONFIG.notes.show: "all" | "important" (warnings + errors, default) |
+  --   "errors" | "none". What you just tapped is always shown. Not more than
+  --   one new box every 4 s (errors excepted), the same one again within a
+  --   minute gets no new box.
+  local kind = noteKind(col)
+  local level = (CONFIG.notes and CONFIG.notes.show) or "important"
+  local show
+  if USER_ACTION then show = true
+  elseif level == "none" then show = false
+  elseif level == "errors" then show = kind == "ERROR"
+  elseif level == "important" then show = (kind == "ERROR" or kind == "WARNING")
+  else show = true end
+  local key = tostring(title) .. "|" .. msg
+  NOTE_SEEN = NOTE_SEEN or {}
+  if show and not USER_ACTION and NOTE_SEEN[key] and now - NOTE_SEEN[key] < 60 then show = false end
+  if show and not USER_ACTION and kind ~= "ERROR" and now - (NOTE_LASTBOX or -100) < 4 then show = false end
   noteId = noteId + 1
   local when = realTime("%H:%M")
-  table.insert(state.notes, 1, { id = noteId, title = title, msg = msg, col = col, t = now,
-                                 exp = exp, life = life, when = when })
+  if show then
+    NOTE_SEEN[key], NOTE_LASTBOX = now, now
+    table.insert(state.notes, 1, { id = noteId, title = title, msg = msg, col = col, t = now,
+                                   exp = exp, life = life, when = when })
+  end
+  -- the very same message again within 30 s: not logged again (no flood in
+  -- EVENTS, events.log or your chat)
+  NOTE_LOGGED = NOTE_LOGGED or {}
+  if NOTE_LOGGED[key] and now - NOTE_LOGGED[key] < 30 and not USER_ACTION then
+    if show then os.queueEvent("inv_update") end
+    return
+  end
+  NOTE_LOGGED[key] = now
+  NOTE_LOGGED_N = (NOTE_LOGGED_N or 0) + 1
+  if NOTE_LOGGED_N > 300 then NOTE_LOGGED, NOTE_SEEN, NOTE_LOGGED_N = { [key] = now }, {}, 0 end   -- keep it small
   noteLogAdd({ title = title, msg = msg, col = col, when = realTime("%d.%m %H:%M") })
   if state.page ~= "events" then state.noteUnread = (state.noteUnread or 0) + 1 end
   if notifyChat then pcall(notifyChat, title, msg, col) end    -- '$drone notify' (base_chat.lua)

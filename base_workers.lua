@@ -308,7 +308,9 @@ function actionWorker()
   while state.running do
     local a = table.remove(state.actionQueue, 1)
     if a then
+      USER_ACTION = true                -- a button you pressed: its result is always shown
       local ok, err = pcall(runAction, a)
+      USER_ACTION = false
       if not ok then setToast("Error: " .. tostring(err), C.bad, 10) end
       state.busy = false
       state.force.inv = true          -- the inventory just changed
@@ -540,7 +542,11 @@ function uiLoop()
     local ev, a, b, c, d = os.pullEventRaw()
 
     if ev == "monitor_touch" and a == monName then
-      local wake = handleTouch(b, c)
+      -- messages from what you just tapped are always shown (USER_ACTION, pushNote)
+      USER_ACTION = true
+      local okT, wake = pcall(handleTouch, b, c)
+      USER_ACTION = false
+      if not okT then error(wake, 0) end
       if wake then os.queueEvent("inv_wake") end
       drawNow()                         -- react to a touch immediately
 

@@ -454,24 +454,41 @@ function drawNotes()
     if n.exp and now >= n.exp then table.remove(state.notes, i) end
   end
   if #state.notes == 0 or state.page == "events" then return end
-  local nw = math.min(60, math.max(40, math.floor(W * 0.34)))
+  local nw = math.min(56, math.max(36, math.floor(W * 0.3)))
   local x = W - nw - 1
-  local top, bottom = 6, H - 4
+  -- where: at the BOTTOM (default - away from what you read most) or the top
+  local atTop = CONFIG.notes and CONFIG.notes.where == "top"
+  local maxBoxes = 3
 
-  -- which boxes fit (always at least the newest one)
-  local list, y = {}, top
+  -- which boxes fit (always at least the newest one), newest nearest the edge
+  local list, used = {}, 0
+  local room = H - 10
   for _, n in ipairs(state.notes) do
+    if #list >= maxBoxes then break end
     local lines = wrap(n.msg, nw - 6, 3)
     local h = #lines + 3
-    if y + h - 1 > bottom - 2 and #list > 0 then break end
-    list[#list + 1] = { n = n, lines = lines, h = h, y = y }
-    y = y + h + 1
+    if used + h + 1 > room and #list > 0 then break end
+    list[#list + 1] = { n = n, lines = lines, h = h }
+    used = used + h + 1
   end
   local more = #state.notes - #list
   local footer = (more > 0 or #state.notes > 1)
+  local top, y
+  if atTop then
+    top = 6
+    y = top
+    for _, b in ipairs(list) do b.y = y y = y + b.h + 1 end
+  else
+    -- stacked upward from just above the footer line
+    local base = H - 2 - (footer and 1 or 0)
+    y = base + 1
+    for _, b in ipairs(list) do b.y = y - b.h y = b.y - 1 end
+    top = y + 1
+    y = base + 2                         -- the "+N more / CLOSE ALL" row goes under the boxes
+  end
 
   -- solid backing, so the page behind does not show between the boxes
-  local backH = (y - top) + (footer and 1 or 0)
+  local backH = atTop and ((y - top) + (footer and 1 or 0)) or (H - 1 - top)
   fill(x - 1, top - 1, nw + 2, backH + 1, C.bg)
 
   for _, b in ipairs(list) do

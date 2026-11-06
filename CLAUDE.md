@@ -131,6 +131,12 @@ PneumaticCraft drone rides, turtle mapping/surveys, and an AE2 ME network view.
   changes the frame (bg, cards, lines, buttons, titles). Chosen at start: theme.dat {mode, last} or
   CONFIG.theme, default "random" (never the same as last time). `theme
   [name|random]` switches live (setTheme) and saves. Keep new themes dark.
+- Message boxes (pushNote, base_me.lua): a BOX only for CONFIG.notes.show
+  ("important" = warnings + errors, default; "errors", "all", "none") - INFO/DONE
+  go to EVENTS only; USER_ACTION (set around handleTouch and runAction in
+  base_workers.lua) = always a box; max one new box per 4 s (errors excepted),
+  same box again within 60 s: no; same message within 30 s: not logged again.
+  Boxes at the bottom-right (CONFIG.notes.where = "top" for the old place), max 3.
 - Message log: pushNote -> noteLogAdd (base_me.lua) also appends to
   events.log (computer, 16 KB, then events.old.log); the EVENTS list is read
   back on start (after the last CLEAR marker). `events [n] [errors]` shows it.
