@@ -177,7 +177,17 @@ end
 -- a message from a turtle (status every few seconds, results of commands)
 function TT.receive(id, m)
   if type(m) ~= "table" or type(m.n) ~= "number" or type(m.t) ~= "string" then return end
-  if m.sig ~= TT.sign(CONFIG.turtles.key, m.t, m.n) then return end
+  if m.sig ~= TT.sign(CONFIG.turtles.key, m.t, m.n) then
+    -- a turtle with a different key: its messages are ignored - say so (every 10 min)
+    TT.badKey = TT.badKey or {}
+    if not TT.badKey[id] or os.clock() - TT.badKey[id] > 600 then
+      TT.badKey[id] = os.clock()
+      pushNote("WARNING", "Turtle #" .. id .. (type(m.label) == "string" and (" (" .. m.label .. ")") or "") ..
+               " uses a DIFFERENT KEY - its messages are ignored. Give it the key from base_config.lua" ..
+               (m.mine and " (miner setup)" or ""), C.warn)
+    end
+    return
+  end
   if m.mine then return MINE.receive(id, m) end      -- a mining-dimension team turtle (miner.lua)
   local t = TT.get(id)
   if m.n <= (t.lastN or 0) then return end           -- old / replayed message

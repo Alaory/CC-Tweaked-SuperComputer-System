@@ -393,6 +393,7 @@ local function envFor(u)
   env.os = {
     epoch = function() return 1700000000000 + math.floor(T * 1000) end,
     clock = function() return T end,
+    time = function() return 12 end,
     getComputerLabel = function() return (u.role == "miner" and "Miner " or "Loader ") .. u.id end,
     setComputerLabel = function() end,
     getComputerID = function() return u.id end,
@@ -402,7 +403,9 @@ local function envFor(u)
   env.turtle = turtleApi(u)
   env.peripheral = peripheralApi(u)
   env.rednet = rednetApi(u)
-  env.term = { clear = function() end, setCursorPos = function() end }
+  env.term = { clear = function() end, setCursorPos = function() end, getSize = function() return 39, 13 end,
+               getCursorPos = function() return 1, 1 end, clearLine = function() end, write = function() end }
+  env.textutils = { formatTime = function() return "12:00" end, serialize = textutils.serialize, unserialize = textutils.unserialize }
   env.print = function(...) local t = {} for i, v in ipairs({ ... }) do t[i] = tostring(v) end u.lastPrint = table.concat(t, " ") end
   env.printError = env.print
   env.write = function() end

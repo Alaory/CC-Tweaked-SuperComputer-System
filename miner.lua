@@ -187,10 +187,24 @@ function topN(t, n)
   for i = 1, math.min(n, #list) do out[list[i][1]] = list[i][2] end
   return out
 end
+-- the bottom line of the turtle's screen: can it reach the base?
+function showLink(msg)
+  LINK = msg
+  local okS, w, h = pcall(term.getSize)
+  if not okS or not h then return end
+  local x, y = term.getCursorPos()
+  term.setCursorPos(1, h)
+  term.clearLine()
+  term.write(("[" .. (task or "") .. "] " .. msg):sub(1, w))
+  term.setCursorPos(x, math.min(y, h - 1))
+end
 function sendBase(t, extra)
-  if not modemSide() then return end
+  if not modemSide() then showLink("NO MODEM EQUIPPED - cannot report to the base") return end
   local id = baseId()
-  if not id then return end
+  if not id then
+    showLink("BASE NOT FOUND - is the base's Ender Modem on? (protocol " .. CONFIG.protocol .. ")")
+    return
+  end
   local m = {}
   for k, v in pairs(extra or {}) do m[k] = v end
   m.t, m.n = t, nextN()
@@ -219,7 +233,10 @@ function sendBase(t, extra)
     m.stats = S.stats
   end
   if #NOTES > 0 then m.notes = NOTES NOTES = {} end
-  pcall(rednet.send, id, m, CONFIG.protocol)
+  local okS, errS = pcall(rednet.send, id, m, CONFIG.protocol)
+  showLink(okS and ("reported to base #" .. id .. " at " .. textutils.formatTime(os.time(), true) ..
+                    " (key " .. tostring(S.key) .. ")")
+               or ("SEND FAILED: " .. tostring(errS)))
   LAST_STATUS = os.clock()
 end
 function sendTeam(to, t, extra)
