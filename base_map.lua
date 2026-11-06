@@ -521,6 +521,8 @@ function MAP.checkSpace()
   end
   local failed = next(MAP.dirty) ~= nil
   local dropping = (MAP.lastDrop or 0) > 0             -- room was made by dropping detail
+  -- no room for more map: auto-map pauses (MAP.autoTick) until there is
+  MAP.full = failed or (dropping and free < LOW_KB * 1024)
   if free >= LOW_KB * 1024 and not failed and not dropping then
     if state.diskLow and state.diskLow:find("floppies", 1, true) then state.diskLow = nil end
     return
@@ -828,15 +830,101 @@ function MAP.queueSurvey(x1, z1, x2, z2, r, ids)
     if t and t.held then t.held = nil TT.listDirty = true end
   end
   local step = 2 * r + 1
+  local old = MAP.queue
+  if old and old.auto then MAP.auto.cursor = old.cursor MAP.saveAuto() end     -- auto-map goes on later from here
   MAP.queue = { x1 = x1, z1 = z1, x2 = x2, z2 = z2, r = r, step = step,
                 cols = math.max(1, math.floor((x2 - x1) / step) + 1),
                 rows = math.max(1, math.floor((z2 - z1) / step) + 1),
                 cursor = 0, sent = 0, skipped = 0, ids = ids }
+  if old then MAP.queue.redo, MAP.queue.out = old.redo, old.out end   -- nothing handed out is lost
   saveQueue()
   return MAP.queue.cols * MAP.queue.rows
 end
 
+-- is a survey spot done? Its own scan arrived (the spot's column is in the
+-- detail layer), or its chunk is fully in the overview. (Spots are 17 blocks
+-- apart, chunks 16: a done spot's chunk can stay half-covered until the
+-- neighbouring spot is scanned - that is not "undone".)
+function MAP.spotDone(x, z)
+  return MAP.get(x, z) ~= nil or MAP.scanned(x, z)
+end
+
+-- n-th position (0, 1, 2 ...) of a square spiral around 0,0: the centre first,
+-- then ring after ring outward
+local function spiral(n)
+  if n == 0 then return 0, 0 end
+  local k = math.ceil((math.sqrt(n + 1) - 1) / 2)    -- the ring
+  local side = 2 * k
+  local first = (2 * k - 1) * (2 * k - 1)            -- index of the ring's first spot
+  local m = n - first
+  if m < side then return k, -k + 1 + m end           -- right side, going up
+  m = m - side
+  if m < side then return k - 1 - m, k end            -- top, going left
+  m = m - side
+  if m < side then return -k, k - 1 - m end           -- left side, going down
+  m = m - side
+  return -k + 1 + m, -k                               -- bottom, going right
+end
+MAP.spiral = spiral
+
+-- ===== AUTO-MAP: always a survey running, from the base outward =====
+-- When no survey is running, the base starts (or continues) one that spirals
+-- out from the base over the whole world, and hands it out like any survey.
+-- Paused while the map floppies are full; ends at the world border. Your own
+-- surveys go first; auto-map continues where it was afterwards.
+local AUTO_FILE = "auto_survey.dat"
+MAP.auto = { on = (CONFIG.map.autoSurvey ~= false), cursor = 0 }
+do
+  if fs.exists(AUTO_FILE) then
+    local h = fs.open(AUTO_FILE, "r")
+    local t = h and textutils.unserialize(h.readAll() or "")
+    if h then h.close() end
+    if type(t) == "table" then MAP.auto = t end
+  end
+end
+function MAP.saveAuto() saveFileSafe(AUTO_FILE, textutils.serialize(MAP.auto)) end
+function MAP.setAuto(on)
+  MAP.auto.on = on and true or false
+  MAP.auto.done = nil
+  if not on and MAP.queue and MAP.queue.auto then
+    MAP.auto.cursor = MAP.queue.cursor
+    MAP.queue = nil
+    saveQueue()
+  end
+  MAP.saveAuto()
+end
+
+-- comms worker: start / continue auto-map when nothing else runs
+function MAP.autoTick()
+  local a = MAP.auto
+  if not a.on or a.done or MAP.queue or MAP.full then return end
+  local c = CONFIG.drone.home or state.basePos
+  if not (c and c.x) or #TT.available() == 0 then return end
+  local r = CONFIG.map.scanRadius or 8
+  local step = 2 * r + 1
+  local border = tonumber(CONFIG.map.border) or 20000
+  local rad = math.ceil((border + math.max(math.abs(c.x), math.abs(c.z))) / step)
+  MAP.queue = { auto = true, spiral = true, cx = math.floor(c.x), cz = math.floor(c.z), r = r, step = step,
+                cols = 2 * rad + 1, rows = 2 * rad + 1, cursor = a.cursor or 0, sent = 0, skipped = 0 }
+  saveQueue()
+  setToast("Auto-map: surveying on from the base outward (" ..
+           math.floor(MAP.autoRadius() + 0.5) .. " blocks done around it)", C.label)
+end
+
+-- how far around the base auto-map has got (blocks)
+function MAP.autoRadius()
+  local q = MAP.queue
+  local cur = (q and q.auto) and q.cursor or (MAP.auto.cursor or 0)
+  local step = (q and q.step) or (2 * (CONFIG.map.scanRadius or 8) + 1)
+  return math.max(0, math.ceil((math.sqrt(cur + 1) - 1) / 2) - 1) * step
+end
+
 function MAP.stopSurvey()
+  if MAP.queue and MAP.queue.auto then
+    -- stopping auto-map = turning it off (else it would start again at once)
+    MAP.auto.cursor, MAP.auto.on = MAP.queue.cursor, false
+    MAP.saveAuto()
+  end
   MAP.queue = nil
   saveQueue()
 end
@@ -848,18 +936,28 @@ local function nextBatch(q)
   -- first the spots a turtle gave back unscanned (see MAP.reclaim)
   while q.redo and #q.redo > 0 and #out < BATCH do
     local p = table.remove(q.redo, 1)
-    if not MAP.scanned(p[1], p[2]) then out[#out + 1] = p end
+    if not MAP.spotDone(p[1], p[2]) then out[#out + 1] = p end
   end
   if #out >= BATCH then return out end
   while #out < BATCH and q.cursor < total and checked < 3000 do
     local i = q.cursor
     q.cursor = q.cursor + 1
     checked = checked + 1
-    -- snake order: every other row backwards, so a turtle never jumps back
-    local row, col = math.floor(i / q.cols), i % q.cols
-    if row % 2 == 1 then col = q.cols - 1 - col end
-    local x, z = q.x1 + q.r + col * q.step, q.z1 + q.r + row * q.step
-    if MAP.scanned(x, z) then q.skipped = q.skipped + 1
+    local x, z
+    if q.spiral then
+      -- auto-map: a spiral from the base outward
+      local dx, dz = spiral(i)
+      x, z = q.cx + dx * q.step, q.cz + dz * q.step
+    else
+      -- snake order: every other row backwards, so a turtle never jumps back
+      local row, col = math.floor(i / q.cols), i % q.cols
+      if row % 2 == 1 then col = q.cols - 1 - col end
+      x, z = q.x1 + q.r + col * q.step, q.z1 + q.r + row * q.step
+    end
+    local border = tonumber(CONFIG.map.border) or 20000
+    if math.abs(x) > border or math.abs(z) > border then
+      -- outside the world border: nothing to do
+    elseif MAP.spotDone(x, z) then q.skipped = q.skipped + 1
     else out[#out + 1] = { x, z } end
   end
   return out
@@ -875,7 +973,7 @@ function MAP.reclaim(id)
   local n = 0
   q.redo = q.redo or {}
   for _, p in ipairs(q.out[id]) do
-    if not MAP.scanned(p[1], p[2]) then q.redo[#q.redo + 1] = p n = n + 1 end
+    if not MAP.spotDone(p[1], p[2]) then q.redo[#q.redo + 1] = p n = n + 1 end
   end
   q.out[id] = nil
   saveQueue()
@@ -919,6 +1017,7 @@ end
 function MAP.feedSurvey()
   local q = MAP.queue
   if not q then return end
+  if q.auto and MAP.full then return end           -- auto-map waits for room on the floppies
   local total = q.cols * q.rows
   local minFuel = tonumber(CONFIG.map.surveyMinFuel) or 500
   local busy, why, anyFree = false, {}, false
@@ -976,7 +1075,12 @@ function MAP.feedSurvey()
     MAP.queueToldMsg = nil
   end
   local open = (q.redo and #q.redo > 0) or (q.out and next(q.out) ~= nil)
-  if q.cursor >= total and not busy and not open then
+  if q.cursor >= total and not busy and not open and q.auto then
+    MAP.auto.done, MAP.auto.cursor = true, q.cursor
+    MAP.saveAuto()
+    setPopup("AUTO-MAP DONE", "The whole world up to the border is surveyed.", C.good)
+    MAP.queue = nil
+  elseif q.cursor >= total and not busy and not open then
     setToast("Survey finished: " .. q.sent .. " scans, " .. q.skipped .. " spots were already mapped", C.good)
     MAP.queue = nil
   end

@@ -232,17 +232,36 @@ function drawMapPage(G)
               { kind = "survey", name = tostring(t.id), count = 0 }, true)
   end
 
-  ------------------------------------------------ a big survey in progress
+  ------------------------------------------------ a survey in progress / auto-map
   local ly = ty0 + 11
   local frac, total, sent, skipped, again = MAP.surveyProgress()
-  if frac then
+  local q = MAP.queue
+  if frac and not q.auto then
     card(rx, ly, rw, 7, "BIG SURVEY")
     drawButton(rix + riw - 8, ly + 1, 8, 1, "STOP", C.bad, C.ink, "mqstop")
     barW(rix, ly + 3, riw, math.floor(frac * riw + 0.5), C.good)
     text(rix, ly + 4, trunc(string.format("%d%% of %s spots", math.floor(frac * 100), compact(total)), riw), C.text, C.panel)
     text(rix, ly + 5, trunc(string.format("%s sent, %s mapped before", compact(sent), compact(skipped)) ..
          ((again or 0) > 0 and (", " .. again .. " to redo") or ""), riw), C.dim, C.panel)
+    text(rix, ly + 6, trunc(MAP.auto.on and "Auto-map goes on after this one" or "", riw), C.dim, C.panel)
     ly = ly + 8
+  else
+    -- auto-map: always a survey running, spiralling out from the base
+    local on = MAP.auto.on
+    card(rx, ly, rw, 6, "AUTO-MAP")
+    drawButton(rix + riw - 10, ly + 1, 10, 1, on and "ON" or "OFF", on and C.good or C.empty,
+               on and C.ink or C.text, "mauto")
+    local radius = math.floor(MAP.autoRadius())
+    local line1, col1
+    if not on then line1, col1 = "Off - turtles only survey when you tell them", C.dim
+    elseif MAP.auto.done then line1, col1 = "Done: the whole world is surveyed", C.good
+    elseif MAP.full then line1, col1 = "Paused: the map floppies are full - add an EMPTY floppy", C.warn
+    elseif q and q.auto then line1, col1 = "Surveying from the base outward", C.good
+    else line1, col1 = "Waiting for a free turtle", C.dim end
+    text(rix, ly + 3, trunc(line1, riw), col1, C.panel)
+    text(rix, ly + 4, trunc("Done around the base: " .. radius .. " blocks" ..
+         (q and q.auto and (again or 0) > 0 and (", " .. again .. " to redo") or ""), riw), C.dim, C.panel)
+    ly = ly + 7
   end
 
   ------------------------------------------------ what the colours mean

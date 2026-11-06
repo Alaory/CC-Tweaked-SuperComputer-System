@@ -50,7 +50,15 @@ PneumaticCraft drone rides, turtle mapping/surveys, and an AE2 ME network view.
   handed out is kept (q.out[id]); when the turtle answers with a failure, or
   is idle 30 s while it still has one, its UNSCANNED spots go to q.redo and are
   handed out first (MAP.reclaim). SURVEY: ALL for small areas also goes through
-  the queue (MAP.addSurvey); SURVEY: THIS ONE is a direct order. When the data
+  the queue (MAP.addSurvey); SURVEY: THIS ONE is a direct order. A spot is
+  done when MAP.spotDone (its own column in detail, or its chunk fully in the
+  overview) - NOT MAP.scanned alone (17-block spots vs 16-block chunks).
+  AUTO-MAP (MAP.auto, auto_survey.dat, default on; CONFIG.map.autoSurvey =
+  false to start off; MAP tab ON/OFF, `survey auto on|off`): MAP.autoTick
+  (comms worker) starts a queue {auto, spiral} around CONFIG.drone.home when
+  none runs - spiral(n) from the base outward to the border; a manual survey
+  goes first (auto cursor saved, unfinished spots carried over); paused while
+  MAP.full (floppies full, set in checkSpace); STOP on it turns auto off. When the data
   floppies run low, empty floppies are made data disks automatically (one is
   kept for the turtle installer) and the owner is warned (popup, chat,
   footer) - MAP.checkSpace.

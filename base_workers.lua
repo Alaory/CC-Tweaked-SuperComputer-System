@@ -299,6 +299,7 @@ function commsWorker()
       pcall(TT.stopTick)                 -- STOP again until the turtle answers
       pcall(TT.patrolTick)               -- the rescue turtle: send it where it is needed
       pcall(TT.homeTick)                 -- homes for new turtles; idle turtles go home
+      pcall(MAP.autoTick)                -- auto-map: a survey always running (from the base outward)
       if TT.listDirty and codeTick % 15 == 0 then pcall(TT.saveList) end
       codeTick = codeTick + 1
       if codeTick % 15 == 1 then pcall(TT.codeLoad) end     -- every 30 s

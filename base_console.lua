@@ -28,6 +28,7 @@ HELP = {
   " turtle <id> log [n]  the turtle's last n log lines in full",
   " turtle <id> diag     its disk, files, saved job and gear (answer in its log)",
   " survey               the big survey: progress, what each turtle is waiting for",
+  " survey auto [on|off] auto-map: turtles keep surveying from the base outward",
   " theme [name|random]  the monitor's colours (random = a different one each start)",
   " events [n] [errors]  the last n saved messages (also after a restart)",
   "      sethome [x y z], setpos x y z north, locate, move up 3, stop",
@@ -497,6 +498,14 @@ function handleCommand(line)
     else
       say("No theme '" .. want .. "'. Themes: " .. table.concat(THEME_ORDER, ", ") .. ", random")
     end
+
+  elseif cmd == "survey" and words[2] == "auto" then
+    local w = (words[3] or ""):lower()
+    if w == "on" or w == "off" then MAP.setAuto(w == "on") end
+    say("Auto-map: " .. (MAP.auto.on and "ON" or "OFF") .. (MAP.auto.done and " (done: whole world)" or "") ..
+        (MAP.full and " - PAUSED, map floppies full" or "") ..
+        " - surveyed around the base: " .. math.floor(MAP.autoRadius()) .. " blocks")
+    say("survey auto on | off")
 
   elseif cmd == "survey" then
     -- the big survey: progress and what the base sees for every turtle

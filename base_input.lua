@@ -286,8 +286,14 @@ function handleTouch(tx, ty)
       elseif h[5] == "nclear" then
         state.notes = {}
       elseif h[5] == "mqstop" then
+        local wasAuto = MAP.queue and MAP.queue.auto
         MAP.stopSurvey()
-        setToast("Big survey stopped (turtles finish their current batch - STOP ALL stops them now)", C.label)
+        setToast(wasAuto and "Auto-map is OFF (turn it on again on the MAP tab)" or
+                 "Big survey stopped (turtles finish their current batch - STOP ALL stops them now)", C.label)
+      elseif h[5] == "mauto" then
+        MAP.setAuto(not MAP.auto.on)
+        setToast(MAP.auto.on and "Auto-map is ON: the turtles keep surveying from the base outward, by themselves"
+                 or "Auto-map is OFF", MAP.auto.on and C.good or C.label)
       elseif h[5] == "csel" then
         local cur = state.curiosSel
         if cur and cur.type == h[6][1] and cur.pos == h[6][2] then state.curiosSel = nil
