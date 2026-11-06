@@ -43,6 +43,22 @@ function handleTouch(tx, ty)
             if submitDrone(dr, { kind = what, passenger = a.pass }) then
               setToast(dr.label .. ": " .. what .. " started", C.label, 4)
             end
+          elseif a.kind == "syssave" then
+            local okS = pcall(MAP.save)
+            setToast(okS and "Map saved" or "Map could not be saved (floppies full?)", okS and C.good or C.warn, 4)
+          elseif a.kind == "sysupdate" then
+            pcall(TT.codeLoad, true)
+            local n = 0
+            for _, t in pairs(state.turtles) do
+              if TT.online(t) and TT.outdated(t) then t.updRetry = nil n = n + 1 end
+            end
+            setToast(CODE and (n == 0 and ("All online turtles run " .. TT.verName(CODE.ver))
+                     or (n .. " turtle(s) get " .. TT.verName(CODE.ver) .. ", one by one")) or "No node.lua found", C.label, 5)
+          elseif a.kind == "sysrestart" then
+            pcall(MAP.save)
+            if sysLog then sysLog("Base restarted from the SYSTEM tab", "INFO") end
+            if baseExit then pcall(baseExit, nil) end
+            os.reboot()
           elseif a.kind == "findlost" then
             local ok, msg = TT.findLost()
             setToast(msg, ok and C.good or C.warn, 8)
@@ -308,6 +324,15 @@ function handleTouch(tx, ty)
                    (h[6] == "all") and "everything" or "warnings + errors"), C.label, 3)
         else
           setToast("Owner unknown (memory card in the Inventory Manager?)", C.warn, 4)
+        end
+      elseif h[5] == "sysset" then
+        -- SYSTEM tab: the next value of a setting
+        local def = SYS_SETTINGS and SYS_SETTINGS[h[6]]
+        if def then
+          local okN, errN = pcall(def.next)
+          local okG, v = pcall(def.get)
+          if okN then setToast(def.label .. ": " .. tostring(okG and v or "?"), C.label, 3)
+          else setToast("Could not change it: " .. tostring(errN), C.warn, 5) end
         end
       elseif h[5] == "evfilter" then
         state.eventsFilter = h[6]

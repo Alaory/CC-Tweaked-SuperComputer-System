@@ -516,6 +516,7 @@ function MAP.checkSpace()
     local got = MAP.claimEmptyFloppies()
     if got > 0 then
       setToast(got .. " new floppy disk(s) are now used for the map", C.good)
+      if sysLog then sysLog(got .. " new floppy disk(s) are now used for the map", "DONE") end
       free, count = MAP.floppySpace()
     end
   end
@@ -536,6 +537,7 @@ function MAP.checkSpace()
   if os.clock() - lastWarn >= 1800 or failed and os.clock() - lastWarn >= 300 then
     lastWarn = os.clock()
     setPopup("MAP FLOPPIES", msg, failed and C.bad or C.warn)
+    if sysLog then sysLog(msg, failed and "ERROR" or "WARNING") end
     if state.owner then chatTell(state.owner, msg) end
   end
 end
@@ -1079,6 +1081,7 @@ function MAP.feedSurvey()
     MAP.auto.done, MAP.auto.cursor = true, q.cursor
     MAP.saveAuto()
     setPopup("AUTO-MAP DONE", "The whole world up to the border is surveyed.", C.good)
+    if sysLog then sysLog("Auto-map done: the whole world up to the border is surveyed", "DONE") end
     MAP.queue = nil
   elseif q.cursor >= total and not busy and not open then
     setToast("Survey finished: " .. q.sent .. " scans, " .. q.skipped .. " spots were already mapped", C.good)

@@ -146,6 +146,9 @@ function headerTabs()
   end
   tabs[#tabs + 1] = { "events", "EVENTS", unread > 0 and tostring(unread) or nil,
                       unread > 0 and (anyErr and C.bad or C.warn) or nil }
+  -- SYSTEM: a dot when the base was off / crashed since you last looked
+  local sysNew = (state.sysSeen or 0) < #SYSLOG and SYSLOG[1] and SYSLOG[1].kind ~= "INFO" and SYSLOG[1].kind ~= "DONE"
+  tabs[#tabs + 1] = { "system", "SYSTEM", sysNew and "!" or nil, sysNew and C.warn or nil }
   return tabs
 end
 
@@ -366,6 +369,7 @@ function drawFooter()
     turtles = "Select a turtle, then use the pad. On the computer:  turtle <id> goto x y z",
     drone   = "Pick a passenger + destination, then FERRY (tap twice). Type 'help' on the computer for coordinates",
     events  = "Every message, newest first. Tap a filter to show one kind only",
+    system  = "Tap a setting's value to change it (kept after restarts). The SYSTEM LOG keeps system things only",
   }
   if state.diskLow then
     text(3, H, trunc("  " .. state.diskLow .. "  ", W - 24), C.ink, C.bad)
@@ -465,6 +469,9 @@ function draw()
     drawMapPage(G)
   elseif state.page == "events" then
     drawEventsPage(G)
+  elseif state.page == "system" then
+    state.sysSeen = #SYSLOG
+    drawSystemPage(G)
   elseif state.status == "nocard" then
     drawMessage("NO PLAYER LINKED",
       { "Bind a Memory Card to yourself (right-click with it),",

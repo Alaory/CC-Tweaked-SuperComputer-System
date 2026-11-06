@@ -5,6 +5,68 @@
 --   loop. inventory.lua runs these together: uiLoop, invWorker, pageWorker,
 --   actionWorker, droneWorker, terminalWorker, chatWorker, commsWorker.
 
+-- ===== the SYSTEM log =====
+-- Only system things (the base was off / crashed, new turtle program, map
+-- floppies, auto-map ...), so they are not pushed out of the EVENTS list by
+-- everyday messages. system.log on the computer (16 KB, then system.old.log);
+-- the SYSTEM tab shows the newest 100.
+local SYS_FILE, SYS_OLD = "system.log", "system.old.log"
+SYSLOG = {}
+do
+  for _, f in ipairs({ SYS_OLD, SYS_FILE }) do
+    if fs.exists(f) then
+      local h = fs.open(f, "r")
+      while h do
+        local l = h.readLine()
+        if not l then break end
+        local d, kind, msg = l:match("^(.-)|(%u+)|(.*)$")
+        if d then table.insert(SYSLOG, 1, { when = d, kind = kind, msg = msg }) end
+      end
+      if h then h.close() end
+    end
+  end
+  while #SYSLOG > 100 do table.remove(SYSLOG) end
+end
+-- add a line to the system log (kind: "ERROR", "WARNING", "DONE", "INFO")
+function sysLog(msg, kind)
+  kind = kind or "INFO"
+  local okD, d = pcall(os.date, "%d.%m %H:%M")
+  d = okD and d or "?"
+  msg = tostring(msg):gsub("[\r\n|]", " ")
+  table.insert(SYSLOG, 1, { when = d, kind = kind, msg = msg })
+  while #SYSLOG > 100 do table.remove(SYSLOG) end
+  pcall(function()
+    local okF, free = pcall(fs.getFreeSpace, "/")
+    if okF and type(free) == "number" and free < 8192 then return end
+    if fs.exists(SYS_FILE) and fs.getSize(SYS_FILE) > 16384 then
+      if fs.exists(SYS_OLD) then fs.delete(SYS_OLD) end
+      fs.move(SYS_FILE, SYS_OLD)
+    end
+    local h = fs.open(SYS_FILE, "a")
+    if h then h.writeLine(d .. "|" .. kind .. "|" .. msg) h.close() end
+  end)
+end
+
+-- ===== system status for the SYSTEM tab (worker; drawing only reads it) =====
+function sysRefresh()
+  local s = {}
+  local okF, free = pcall(fs.getFreeSpace, "/")
+  local okC, cap = pcall(fs.getCapacity, "/")
+  s.pcFree, s.pcCap = okF and free or nil, okC and cap or nil
+  local okM, mfree, mcount = pcall(MAP.floppySpace)
+  s.mapFree, s.mapFloppies = okM and mfree or nil, okM and mcount or nil
+  local okU, total, onPc, files = pcall(MAP.diskUse)
+  s.mapBytes, s.mapOnPc, s.mapFiles = okU and total or nil, okU and onPc or nil, okU and files or nil
+  local up, all = 0, 0
+  for _, t in pairs(state.turtles) do
+    all = all + 1
+    if CODE and t.ver == CODE.ver then up = up + 1 end
+  end
+  s.turtlesUp, s.turtlesAll = up, all
+  s.eventsLog = fs.exists("events.log") and fs.getSize("events.log") or 0
+  state.sys = s
+end
+
 -- ===== was the base computer off? =====
 -- Every 30 s the real time is written to base_alive.dat. On the next start
 -- the gap tells how long the computer was off, and why: after an error, you
@@ -55,6 +117,8 @@ function baseStartCheck()
       table.insert(BASE_ALIVE.offs, 1, { from = last, to = now, why = why })
       while #BASE_ALIVE.offs > 10 do table.remove(BASE_ALIVE.offs) end
       local msg = "Off from " .. when(last) .. " to " .. when(now) .. " (" .. fmtSpan(gap) .. ") - " .. why
+      sysLog("Base was OFF " .. fmtSpan(gap) .. " (" .. when(last) .. " - " .. when(now) .. "): " .. why,
+             BASE_ALIVE.crash and "ERROR" or (BASE_ALIVE.stopped and "INFO" or "WARNING"))
       if BASE_ALIVE.crash or not BASE_ALIVE.stopped then setPopup("BASE WAS OFF", msg, C.warn)
       else setToast("Base was off " .. fmtSpan(gap) .. " (you stopped it)", C.label) end
     end
@@ -364,6 +428,7 @@ function commsWorker()
       if TT.listDirty and codeTick % 15 == 0 then pcall(TT.saveList) end
       codeTick = codeTick + 1
       if codeTick % 15 == 7 then pcall(baseAliveTick) end    -- every 30 s: "still running"
+      if codeTick % 5 == 3 then pcall(sysRefresh) end        -- SYSTEM tab numbers (every 10 s)
       if codeTick % 15 == 1 then pcall(TT.codeLoad) end     -- every 30 s
       os.queueEvent("inv_update")       -- online/offline can change with time
     end

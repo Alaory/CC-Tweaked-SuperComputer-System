@@ -41,6 +41,7 @@ mapping turtles and a map of the world.
 | 🐢 **TURTLES** | Every turtle: status, fuel, position, gear and log, plus a control pad (move, STOP, GO HOME, REFUEL …), anchor and rescuer. |
 | 🗺️ **MAP** | The terrain your turtles scanned: zoom from 1 to 512 blocks per cell (a 40,000 × 40,000 world fits), rotate, and send turtles to survey. |
 | 🔔 **EVENTS** | Every message the program showed, with date and time and a filter (errors, warnings, done, info). Kept after restarts. |
+| ⚙️ **SYSTEM** | How the base is doing (running time, when it was off and why, disk and floppy space, turtle program, auto-map), a **system log** kept apart from EVENTS, **settings** you change by tapping (saved in `settings.dat`, your `base_config.lua` stays as it is) and actions (save map, update turtles, restart). |
 
 A tab only shows up when the block it needs is connected.
 
@@ -335,7 +336,7 @@ Type these on the base computer. `help` lists them all.
 | `base_drones.lua` | drone missions, charging, parking |
 | `base_turtles.lua` · `base_map.lua` | turtle communication, homes, fuel, rescue, updates · map data and surveys |
 | `base_console.lua` · `base_chat.lua` · `base_input.lua` · `base_workers.lua` | keyboard commands · chat commands · monitor touches · background workers |
-| `base_ui_*.lua` | one file per tab (`base_ui_core.lua` = shared drawing) |
+| `base_ui_*.lua` | one file per tab (`base_ui_core.lua` = shared drawing, `base_ui_system.lua` = SYSTEM) |
 | `node.lua` | 🐢 the turtle program |
 
 **Data files the program creates** (keep them; delete one only to reset that part):
@@ -343,7 +344,7 @@ Type these on the base computer. `help` lists them all.
 `chat_notify.dat`, `back_spots.dat`, `player_dims.dat`, `turtles.dat`,
 `turtle_versions.dat`, `terrain.dat`, `exit_route.dat`, `map/`, `map_view.dat`,
 `me_setup.dat`, `me_names.dat`, `me_owed.dat`, `curios_last.dat`, `ui_page.dat`,
-`theme.dat`, `events.log` + `events.old.log`.
+`theme.dat`, `settings.dat`, `auto_survey.dat`, `base_alive.dat`, `events.log` + `events.old.log`, `system.log` + `system.old.log`.
 
 A computer has only **1 MB** of disk. The big files (map, turtle knowledge) can
 live on data floppies (`disks data` / `disks move`).
