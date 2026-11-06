@@ -147,6 +147,26 @@ PneumaticCraft drone rides, turtle mapping/surveys, and an AE2 ME network view.
   (comms worker): NOT MOVING 3 min -> STOP (no hold, once per 10 min) +
   sysLog; the turtle is free again, and if it cannot move the next trip fails
   -> STUCK -> rescuer.
+- Mining teams (miner.lua, base_mining.lua MINE, base_ui_mining.lua; TURTLES >
+  MINING): two turtles per mining dimension (S.dim overworld/nether/end), same
+  signed protocol with m.mine = true -> TT.receive hands them to MINE.receive
+  (never in state.turtles: no map/survey/home/rescue). LOADER = Chunky + Ender
+  Modem, never digs, follows the miner's corridor (team proto "basemine":
+  loaderhere/paired pairing by dim, follow {ref, pts} / arrived). MINER = End
+  Automata Core fixed + pickaxe; modem / Geo Scanner swapped in on the free side
+  (report every CONFIG.checkIn 30 s, base commands queue in u.queue until
+  m.lastCmd shows them). NEEDS chunkyTurtleRadius = 1 (3x3): the loader waits in
+  the centre of the chunk just finished, the miner works the next one. Plan:
+  rows of rowLength chunks forward from the start facing, next row to the right;
+  per chunk: tunnel to the centre at the start Y, layers every 17 down to minY
+  (Geo Scanner r 8, ores + CONFIG.mining.want inside the chunk), exit to the
+  chunk edge, handoff. Junk thrown away; full -> shulker in front with air
+  above (stash). Every dumpEvery s (or full shulker): savePoint "work", warp
+  "station", unload (empty block in front = shulker there for an Import Bus;
+  inventory in front = drop + shulker ABOVE and suckUp), warp back. noMine /
+  noDig around the station. Base sends cfg (dumpEvery, rowLength, noMine,
+  want, keep) when it changes. tools/navsim/minesim.lua runs the real
+  miner.lua x2 + base_mining.lua in a voxel world (plain/reboot/want/full/direct).
 - Permanent rescuer: t.rescuerRole (RESCUER button, saved in turtles.dat;
   base only). TT.patrolTick (comms worker) sends it to: no fuel (<20 for
   60 s), stuck (60 s idle), lost (silent CONFIG.turtles.rescueAfter, default
@@ -224,6 +244,8 @@ PneumaticCraft drone rides, turtle mapping/surveys, and an AE2 ME network view.
 | base_console.lua / base_chat.lua / base_input.lua / base_workers.lua | console commands, chat commands, touch input, workers |
 | base_ui_*.lua | one file per page (base_ui_system.lua = STATUS, base_ui_settings.lua = SETTINGS) + base_ui_core.lua (header groups, cards, buttons, bars, footer) |
 | node.lua | the turtle program |
+| miner.lua | mining-dimension team program (MINER + LOADER roles; installed by hand, not OTA) |
+| base_mining.lua / base_ui_mining.lua | mining teams on the base (MINE) / MINING tab |
 
 ## The owner's setup (found out the hard way)
 Peripherals (from the `report` command): `me_bridge_4`, `inventory_manager_3`,

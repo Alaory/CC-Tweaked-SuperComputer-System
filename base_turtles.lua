@@ -178,6 +178,7 @@ end
 function TT.receive(id, m)
   if type(m) ~= "table" or type(m.n) ~= "number" or type(m.t) ~= "string" then return end
   if m.sig ~= TT.sign(CONFIG.turtles.key, m.t, m.n) then return end
+  if m.mine then return MINE.receive(id, m) end      -- a mining-dimension team turtle (miner.lua)
   local t = TT.get(id)
   if m.n <= (t.lastN or 0) then return end           -- old / replayed message
   t.lastN = m.n

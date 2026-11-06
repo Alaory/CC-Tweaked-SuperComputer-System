@@ -271,6 +271,12 @@ function handleTouch(tx, ty)
         end
       elseif h[5] == "tcmd" then
         TT.send(h[6][1], h[6][2], h[6][3])
+      elseif h[5] == "minecmd" then
+        MINE.cmd(h[6][1], h[6][2], {})
+        local u = MINE.units[h[6][1]]
+        local wait = u and u.role == "miner" and u.running
+        setToast(string.upper(h[6][2]) .. " sent" .. (wait and " - the miner gets it at its next report (up to 30 s)" or ""),
+                 C.label, 5)
       elseif h[5] == "acc_allow" then
         allowPlayer(h[6])
         chatTell(h[6], tostring(state.owner) .. " allowed you to use the drones: $" ..

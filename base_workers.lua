@@ -94,6 +94,7 @@ function baseExit(crashErr)
   BASE_ALIVE.t = os.epoch("utc")
   if crashErr then BASE_ALIVE.crash = tostring(crashErr) else BASE_ALIVE.stopped = true end
   pcall(aliveSave)
+  if MINE and MINE.dirty then pcall(MINE.save) end
 end
 local function when(ms)
   local ok, r = pcall(os.date, "%d.%m %H:%M", math.floor(ms / 1000))

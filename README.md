@@ -19,6 +19,7 @@ mapping turtles and a map of the world.
 - [🚁 Drones](#-drones)
 - [📦 ME / Curios](#-me--curios)
 - [🗺️ The map](#️-the-map)
+- [⛏️ Mining dimension teams](#️-mining-dimension-teams)
 - [💬 Chat commands](#-chat-commands)
 - [⌨️ Console commands](#️-console-commands)
 - [🎨 Themes & the message log](#-themes--the-message-log)
@@ -263,6 +264,44 @@ again …)", "after an update" or "after an ERROR: …".
 
 ---
 
+## ⛏️ Mining dimension teams
+
+Two turtles per mining dimension (e.g. *Just Another Mining Dimension*), both
+running `miner.lua`. They show up on **TURTLES > MINING**, never on the map.
+
+| Turtle | Equipped | Carries |
+|---|---|---|
+| ⛏️ **MINER** | End Automata Core (stays on) + pickaxe | Ender Modem, Geo Scanner, shulker box, some coal |
+| 📦 **LOADER** | Chunky upgrade + Ender Modem | nothing |
+
+- Mines **ores only** (plus the blocks in `CONFIG.mining.want`), chunk by chunk in rows
+  forward from where it starts; stone/dirt are thrown away. Burns the coal it mines.
+- Full -> everything goes into the shulker (put down with air above it, filled, picked up).
+- Every few minutes (SETTINGS > MINING) it **teleports to the unload station**, empties
+  itself and the shulker into the ME, and teleports back.
+- Never mines near the station (SETTINGS > MINING), never digs right next to it.
+
+**Setup**
+1. Server config `config/advancedperipherals/peripherals.toml`: `chunkyTurtleRadius = 1`
+   (the loader keeps 3x3 chunks loaded, so the miner can work next to it).
+2. The unload station's chunk must stay loaded (a chunk loader there). The miner stands on it facing
+   **either** an empty block with air above it and an **AE2 Import Bus** touching it,
+   **or** an ME Interface / linked chest (then keep 2 blocks of air above the station).
+3. Put the miner on the station, copy `miner.lua` onto it, run `miner`, answer the questions
+   (say **y** to "standing on the unload station").
+4. Pick it up, put it where mining starts (facing the way to mine, away from your base),
+   run `miner here` and type the new position. Put the loader right **behind** it (same height),
+   copy `miner.lua` onto it and run `miner`.
+5. They pair by themselves. Press **START** on TURTLES > MINING.
+
+Optional lines in `base_config.lua`:
+```lua
+mining = {
+  want = { "minecraft:tuff", "minecraft:calcite" },   -- stone types to go and dig too
+  keep = { "minecraft:deepslate" },                    -- keep these when dug (normally thrown away)
+},
+```
+
 ## 🗺️ The map
 
 - **Two layers:** *detail* (every block column, newest chunks) and *overview* (one
@@ -360,6 +399,8 @@ Type these on the base computer. `help` lists them all.
 | `base_console.lua` · `base_chat.lua` · `base_input.lua` · `base_workers.lua` | keyboard commands · chat commands · monitor touches · background workers |
 | `base_ui_*.lua` | one file per page (`base_ui_core.lua` = header and shared drawing, `base_ui_system.lua` = Status, `base_ui_settings.lua` = Settings) |
 | `node.lua` | 🐢 the turtle program |
+| `miner.lua` | ⛏️ the mining dimension team program (miner + loader) |
+| `base_mining.lua` / `base_ui_mining.lua` | the mining teams on the base / the MINING tab |
 | `store.lua` | 💽 the storage helper program (for extra computers) |
 
 **Data files the program creates** (keep them; delete one only to reset that part):

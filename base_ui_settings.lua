@@ -133,6 +133,13 @@ SETTING_GROUPS = {
     bool("chat.othersToPlayers", "Others may fly to players", "other players may ride TO a player", true),
     bool("chat.notifyOwner", "Tell me about others' rides", "a message whenever someone else gets a ride", true),
   } },
+  { name = "MINING", list = {
+    num("mining.dumpEvery", "Miner unloads every", "it teleports to the unload station this often", 600, 120, 3600, 60, secs),
+    num("mining.rowLength", "Chunks per row", "a row goes this far forward, the next row is to its right", 16, 2, 64, 2,
+        function(v) return v .. " chunks (" .. (v * 16) .. " blocks)" end),
+    num("mining.noMine", "No mining near the station", "no ores taken this close to the unload station",
+        64, 0, 256, 16, function(v) return v .. " blocks" end),
+  } },
   { name = "ME", list = {
     num("me.refresh", "Read the network every", "seconds between ME network reads", 3, 1, 60, 1, secs),
     num("me.chunk", "Items per transfer step", "most items moved in one step", 576, 64, 2304, 64, plain),

@@ -138,6 +138,14 @@ function pageTabs()
     tabs[#tabs + 1] = { "turtles", "TURTLES", all > 0 and (on .. "/" .. all) or nil }
   end
   if state.tModem or next(state.turtles) or MAP.hasData() then tabs[#tabs + 1] = { "map", "MAP" } end
+  if state.tModem or next(MINE.units) then
+    local bad = false
+    for _, u in pairs(MINE.units) do
+      local lab = MINE.status(u)
+      if lab == "STOPPED" or lab == "BLOCKED" or (lab == "OFFLINE" and u.seenEpoch) then bad = true end
+    end
+    tabs[#tabs + 1] = { "mining", "MINING", bad and "!" or nil, bad and C.warn or nil }
+  end
   -- EVENTS: the number of new messages (red if one of them is an error)
   local unread = state.noteUnread or 0
   local anyErr = false
@@ -160,7 +168,7 @@ local GROUPS = {
   { id = "people",  label = "PLAYERS", pages = { "players", "access" } },
   { id = "me",      label = nil,       pages = { "me" } },
   { id = "drone",   label = nil,       pages = { "drone" } },
-  { id = "turtles", label = "TURTLES", pages = { "turtles", "map" } },
+  { id = "turtles", label = "TURTLES", pages = { "turtles", "map", "mining" } },
   { id = "system",  label = "SYSTEM",  pages = { "system", "events", "settings" } },
 }
 -- the group a page belongs to
@@ -431,6 +439,7 @@ function drawFooter()
     events  = "Every message, newest first. Tap a filter to show one kind only",
     system  = "How the base is doing. The SYSTEM LOG keeps system things only (not pushed out by everyday messages)",
     settings = "Pick a group on the left, then tap - / + or the value. RESET = back to base_config.lua",
+    mining = "START / PAUSE reach the miner at its next report (up to 30 s). Unload interval: SETTINGS > MINING",
   }
   if state.diskLow then
     text(3, H, trunc("  " .. state.diskLow .. "  ", W - 24), C.ink, C.bad)
@@ -545,6 +554,8 @@ function draw()
     drawTurtlesPage(G)
   elseif state.page == "map" then
     drawMapPage(G)
+  elseif state.page == "mining" then
+    drawMiningPage(G)
   elseif state.page == "events" then
     drawEventsPage(G)
   elseif state.page == "system" then
