@@ -125,8 +125,10 @@ PneumaticCraft drone rides, turtle mapping/surveys, and an AE2 ME network view.
   or more turtles are offline (server trouble); called off when the turtle
   is fine again; max 3 tries, 30 min apart (tries reset once the turtle is fine again). Rescuer goes home after each
   rescue, gets no big-survey batches.
-- Themes (base_theme.lua): THEMES = 6 dark palettes, same JOB per colour slot
-  (C.* / map colours unchanged). Chosen at start: theme.dat {mode, last} or
+- Themes (base_theme.lua): THEMES = 6 dark palettes, same JOB per colour slot.
+  The 11 slots the MAP uses (MAP_SLOTS: green lime blue yellow orange white
+  brown red cyan purple pink) always keep the midnight colours; a theme only
+  changes the frame (bg, cards, lines, buttons, titles). Chosen at start: theme.dat {mode, last} or
   CONFIG.theme, default "random" (never the same as last time). `theme
   [name|random]` switches live (setTheme) and saves. Keep new themes dark.
 - Message log: pushNote -> noteLogAdd (base_me.lua) also appends to

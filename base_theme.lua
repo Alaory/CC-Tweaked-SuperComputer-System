@@ -12,7 +12,7 @@
 ---------------------------------------------------------------------
 -- Every theme gives each colour slot the same JOB (page background, cards,
 -- text, accent, green = good / grass on the map, blue = water ...), only the
--- shades change. All themes are dark (the pills write dark text on colours).
+-- shades change - and only for the frame (see MAP_SLOTS below). All themes are dark (the pills write dark text on colours).
 -- Slot order: bg, cards, lines, buttons, text, dim, accent, titles,
 --             cyan, green, yellow, orange, red, pink, purple, lime
 local SLOTS = { colors.black, colors.gray, colors.magenta, colors.lightGray, colors.white,
@@ -56,12 +56,21 @@ local function chooseTheme()
   return pick, saved
 end
 
+-- colours the MAP uses (grass, water, sand, stone, snow ...): the same in
+-- every theme, so the map always looks the same and stays easy to read.
+-- A theme only changes the frame: background, cards, lines, buttons, titles.
+local MAP_SLOTS = { [colors.green] = true, [colors.lime] = true, [colors.blue] = true, [colors.yellow] = true,
+                    [colors.orange] = true, [colors.white] = true, [colors.brown] = true, [colors.red] = true,
+                    [colors.cyan] = true, [colors.purple] = true, [colors.pink] = true }
+
 -- switch to a theme (also while running: the monitor gets the new colours)
 function setTheme(name)
   if not THEMES[name] then return false end
   THEME_NAME = name
   PALETTE = {}
-  for i, c in ipairs(SLOTS) do PALETTE[c] = THEMES[name][i] end
+  for i, c in ipairs(SLOTS) do
+    PALETTE[c] = MAP_SLOTS[c] and THEMES.midnight[i] or THEMES[name][i]
+  end
   if mon then pcall(applyPalette, mon) end
   if win then pcall(applyPalette, win) end
   shownRows = {}                -- every row is drawn again
