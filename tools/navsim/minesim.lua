@@ -448,6 +448,7 @@ if SCEN == "corein" then
   m.left = nil
   m.inv[6] = { name = "advancedperipherals:end_automata_core", count = 1 }
 end
+if SCEN == "nofuel" then m.fuel = 0 m.inv[4] = nil end
 if SCEN == "full" then
   for i = 5, 13 do m.inv[i] = { name = "minecraft:torch", count = 64 } end
 end
@@ -563,6 +564,7 @@ print("base says delivered:", mu and textutils.serialize(mu.got))
 print("in shulker:", mu and textutils.serialize(mu.carry))
 print("shulker used in the field:", FIELD or 0)
 for _, n in ipairs(NOTES) do print("NOTE", n) end
+if mu then print("base shows:", MINE.status(mu)) end
 for _, e in ipairs(mu and mu.log or {}) do print("LOG", e.msg) end
 if #FAIL > 0 then
   print("FAILURES:")

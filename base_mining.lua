@@ -152,6 +152,13 @@ function MINE.status(u)
     return "OFFLINE", C.bad, "last seen " .. (u.seenEpoch and TT.ago(u.seenEpoch) or "never")
   end
   local task = tostring(u.task or "")
+  local fuel = tonumber(u.fuel)
+  if fuel and fuel < 100 then
+    return "NO FUEL", C.bad, "fuel " .. fuel .. " - put coal in it and type  refuel all  on the turtle"
+  end
+  if u.role == "loader" and fuel and fuel < 2000 then
+    return "LOW FUEL", C.warn, "fuel " .. fuel .. " - the loader cannot refuel itself: give it coal (refuel all)"
+  end
   if u.role == "loader" then
     if task:find("STUCK", 1, true) or task:find("blocked", 1, true) then return "BLOCKED", C.bad, task end
     if not u.partner then return "NOT PAIRED", C.warn, task end

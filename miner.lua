@@ -245,16 +245,20 @@ function handle(id, m, proto)
   elseif proto == CONFIG.team then
     if type(m.n) ~= "number" or m.sig ~= sign(S.key or "change-me", m.t, m.n) then return end
     if m.dim ~= S.dim then return end
-    if m.t == "loaderhere" and S.role == "miner" and not S.partner then
-      S.partner = id
-      save()
-      note("Paired with loader " .. id)
+    if m.t == "loaderhere" and S.role == "miner" and (not S.partner or S.partner == id) then
+      -- (again when the loader did not hear the first "paired")
+      if S.partner ~= id then
+        S.partner = id
+        save()
+        note("Paired with loader " .. id)
+      end
       sendTeam(id, "paired")
     elseif m.t == "paired" and S.role == "loader" and (not S.partner or S.partner == id) then
       S.partner = id
       save()
       note("Paired with miner " .. id)
-    elseif m.t == "follow" and S.role == "loader" and id == S.partner then
+    elseif m.t == "follow" and S.role == "loader" and (id == S.partner or not S.partner) then
+      if not S.partner then S.partner = id note("Paired with miner " .. id) end
       if not (S.follow and S.follow.ref == m.ref) then
         S.follow = { ref = m.ref, pts = m.pts, i = 1 }
         save()
@@ -993,6 +997,12 @@ function minerRun()
       listen(3)
     else
       if not S.plan then newPlan() end
+      burnCoal()
+      if turtle.getFuelLevel() ~= "unlimited" and turtle.getFuelLevel() < 100 then
+        S.running, S.err = false, "NO FUEL - put coal (or other fuel) in it and type  refuel all"
+        note(S.err)
+        save()
+      end
       local okR, ok, err = pcall(workStep)
       if not okR then ok, err = false, "error: " .. tostring(ok) end
       if not ok then
@@ -1119,6 +1129,10 @@ end
 if args[1] == "setup" or not S.role or not S.pos then setup() end
 if args[1] == "here" then
   askPos()
+  -- moved by hand: the old plan and the loader's trail no longer fit
+  S.plan, S.trail, S.follow, S.running = nil, nil, nil, false
+  save()
+  print("Old mining plan cleared - press START on the base when both turtles are placed.")
   if S.role == "miner" and S.station then
     local c = core()
     if c and hasPoint(c, "station") == false then
