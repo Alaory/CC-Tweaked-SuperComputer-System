@@ -95,6 +95,13 @@ PneumaticCraft drone rides, turtle mapping/surveys, and an AE2 ME network view.
   trail), saved job, starts, gear, last save error. writeFile never crashes on a
   full disk. On start, old outbox scans lose their ores (old versions); disk
   < 100 KB free -> outbox trimmed to 10, startup.old deleted ("clean" result).
+- Digging (node.lua tryDig): only with a pickaxe the turtle carries (swapped in on
+  the modem side for the dig), only NATURAL blocks (CONFIG.digOk, exact names after
+  the colon, "*x" = ends in x - never bricks/smooth/polished/cobblestone/planks),
+  never within digNearHome (24) of its home, never into a home being probed.
+  Allowed when the turtle's setting dig is on (base: SETTINGS > TURTLES "Turtles
+  dig ..." -> TT.setDig, sent to all and on every hello) or always during rescue /
+  sweep jobs (DIG_JOB).
 - Chunky upgrade never comes off: every equip goes through equipOn (node.lua),
   which refuses the Chunky side and puts it straight back if the item that
   came off is a Chunky ("chunk" in the name). chunkyFix re-equips a loose one

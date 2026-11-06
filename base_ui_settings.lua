@@ -89,6 +89,10 @@ SETTING_GROUPS = {
     num("turtles.rescueAfter", "Rescue a silent turtle after", "the RESCUER goes to wake it up", 180, 60, 3600, 30, secs),
     num("turtles.offlineAfter", "Offline after", "no report for this long = offline", 45, 15, 300, 5, secs),
     bool("turtles.autoUpdate", "Turtle program updates", "new node.lua goes to the turtles by itself", true),
+    { kind = "custom", label = "Turtles dig through natural blocks",
+      hint = "with a pickaxe they carry: stone, dirt, sand, leaves ... never builds, never near home. The rescuer always does",
+      get = function() return CONFIG.turtles.dig and "ON" or "OFF" end,
+      next = function() TT.setDig(not CONFIG.turtles.dig) end },
   } },
   { name = "MAP", list = {
     { kind = "custom", label = "Auto-map", hint = "turtles keep surveying from the base outward, by themselves",

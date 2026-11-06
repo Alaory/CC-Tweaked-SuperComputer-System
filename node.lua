@@ -48,9 +48,15 @@ local CONFIG = {
   -- Dig through NATURAL blocks when stuck. Needs a pickaxe ITEM in the
   -- inventory (it is swapped in for a moment, like the Geo Scanner).
   dig       = false,
-  digOk     = { "stone", "dirt", "grass_block", "gravel", "sand", "deepslate", "tuff",
-                "andesite", "diorite", "granite", "netherrack", "leaves", "snow", "clay",
-                "moss", "mud", "calcite", "basalt", "blackstone", "cobblestone", "podzol" },
+  -- blocks a turtle may dig (with a pickaxe it carries): NATURAL blocks only,
+  -- matched by their exact name (the part after "minecraft:"), "*x" = ends in x.
+  -- Never player-built things (bricks, planks, smooth/polished stone, glass ...).
+  digOk     = { "stone", "dirt", "grass_block", "coarse_dirt", "rooted_dirt", "podzol", "mycelium",
+                "gravel", "sand", "red_sand", "clay", "mud", "moss_block", "snow", "snow_block",
+                "deepslate", "tuff", "andesite", "diorite", "granite", "calcite", "dripstone_block",
+                "netherrack", "basalt", "blackstone", "soul_sand", "soul_soil", "end_stone",
+                "*_leaves", "*_ore", "terracotta", "*_terracotta" },
+  digNearHome = 24,          -- never dig this close (blocks) to my home - the base
   geoItem   = "advancedperipherals:geo_scanner",
   scanRadius = 8,            -- 8 = free scan (17x17x17); the base can ask for another
   minFuel   = 200,           -- a survey stops below this fuel level
@@ -925,15 +931,22 @@ function withEquipped(part, fn)
 end
 
 function natural(name)
-  name = tostring(name)
+  local id = tostring(name):match(":(.+)$") or tostring(name)
   for _, n in ipairs(CONFIG.digOk) do
-    if name:find(n, 1, true) then return true end
+    if n:sub(1, 1) == "*" then
+      local suf = n:sub(2)
+      if id:sub(-#suf) == suf then return true end
+    elseif id == n then return true end
   end
   return false
 end
 
 tryDig = function(dir)
-  if not CONFIG.dig then return false end
+  -- digging: when it is switched on (setting dig), and always on rescue trips
+  if not (CONFIG.dig or DIG_JOB) then return false end
+  -- never near home (the base and its builds)
+  if S.home and S.pos and S.pos.x and math.abs(S.pos.x - S.home.x) + math.abs(S.pos.z - S.home.z) <
+     (tonumber(CONFIG.digNearHome) or 24) then return false end
   -- never dig into or next to a home spot that is being checked
   if HOMEPROBE and S.pos and math.abs(S.pos.x - HOMEPROBE.x) + math.abs(S.pos.y - HOMEPROBE.y) +
      math.abs(S.pos.z - HOMEPROBE.z) <= 2 then return false end
@@ -2417,6 +2430,8 @@ end
 ---------------------------------------------------------------------
 function runJob(j)
   local a = j.args
+  -- rescue trips dig their way through natural blocks (with a pickaxe)
+  DIG_JOB = (j.cmd == "rescue" or j.cmd == "sweep")
   if S.anchor and (j.cmd == "survey" or j.cmd == "surveypts") then
     return false, "I am the ANCHOR (I keep the base loaded) - turn ANCHOR off first"
   end
@@ -2925,6 +2940,7 @@ function worker()
         if not modemAttached or SLOT_LOCK or TOPUP_RUNNING then afterForcedStop() end
       end
       job, task = nil, "idle"
+      DIG_JOB = false                            -- only during rescue trips
       S.job = nil                                -- finished, failed or stopped: forget it
       trailSave()
       if ok or tostring(msg):find("^stopped") then

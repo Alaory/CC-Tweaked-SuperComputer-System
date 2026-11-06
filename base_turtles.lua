@@ -135,6 +135,8 @@ function TT.receive(id, m)
     TT.log(t, "Offered home " .. m.x .. " " .. m.y .. " " .. m.z .. " is not free - offering another")
   elseif m.t == "hello" then
     TT.log(t, "Connected")
+    -- the base's dig setting (SETTINGS > TURTLES), so new / restarted turtles have it
+    if CONFIG.turtles.dig ~= nil then TT.send(id, "setting", { "dig", tostring(CONFIG.turtles.dig == true) }, true) end
   elseif m.t == "scan" then
     local ok = pcall(MAP.addScan, m)
     TT.log(t, ok and ("Scan received at " .. tostring(m.x) .. " " .. tostring(m.z))
@@ -963,6 +965,16 @@ function TT.patrolTick()
       end
     end
   end
+end
+
+-- digging on/off for every turtle (the SETTINGS page): sent to all online ones
+function TT.setDig(on)
+  setSetting("turtles.dig", on and true or false)
+  local n = 0
+  for id, t in pairs(state.turtles) do
+    if TT.online(t) then TT.send(id, "setting", { "dig", tostring(on and true or false) }, true) n = n + 1 end
+  end
+  return n
 end
 
 -- ===== homes and idle turtles =====
