@@ -133,7 +133,9 @@ PneumaticCraft drone rides, turtle mapping/surveys, and an AE2 ME network view.
   (100, 0 = off) gets STOP with again=true (no hold), t.avoidHome -> "home" once
   idle; its batch is reclaimed as usual. nextBatch puts spots near a player into
   q.redo (later). avoidWho "strangers" (default: not owner, not allow list) or
-  "everyone" (not owner). Overworld players only.
+  "everyone" (not owner). Overworld players only. A player within avoidRange
+  of the turtle's own home (a visitor at the base) is not avoided by that turtle
+  (no stop -> home -> leave -> stop loop). No owner known yet -> nobody avoided.
 - Permanent rescuer: t.rescuerRole (RESCUER button, saved in turtles.dat;
   base only). TT.patrolTick (comms worker) sends it to: no fuel (<20 for
   60 s), stuck (60 s idle), lost (silent CONFIG.turtles.rescueAfter, default

@@ -218,6 +218,7 @@ base) through the base.
 - 🙈 **Keeping away from players:** a surveying turtle with another player within
   100 blocks (Player Detector) stops and goes home; survey spots near that player
   wait until they leave. You and your allow list are ignored (SETTINGS > TURTLES).
+  Visitors at your base don't stop turtles leaving or coming home.
 
 ### 🩺 When a turtle misbehaves
 

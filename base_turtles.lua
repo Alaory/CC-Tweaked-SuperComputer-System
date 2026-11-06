@@ -1028,7 +1028,17 @@ function TT.avoidTick()
   local now = os.clock()
   for id, t in pairs(state.turtles) do
     if TT.online(t) and t.pos and t.pos.x and not t.anchor and not t.held then
-      local name, d = TT.nearThreat(t.pos.x, t.pos.z, list, range)
+      -- a player AT THIS TURTLE'S HOME (a visitor at the base) is not avoided:
+      -- the turtle only passes them on its way out / in, and sending it home
+      -- would bring it right back to them (a loop)
+      local away = list
+      if t.home and t.home.x then
+        away = {}
+        for _, p in ipairs(list) do
+          if math.sqrt((p.x - t.home.x) ^ 2 + (p.z - t.home.z) ^ 2) > range then away[#away + 1] = p end
+        end
+      end
+      local name, d = TT.nearThreat(t.pos.x, t.pos.z, away, range)
       -- only map work is given up (survey / scans); trips home, refuelling and rescues go on
       local task = tostring(t.task or "")
       local work = task:find("^survey") or task:find("^scanning")
