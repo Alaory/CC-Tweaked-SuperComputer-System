@@ -670,8 +670,25 @@ function travelTo(dr, x, y, z, spots, noFly, loaded)
         return true
       end
       if err ~= "did not get there" then return false, err end
-      local okH, errH = hopTowards(dr, x, z)
-      if not okH then return false, errH end
+      -- refused: blocked (a cave, a turtle in the way) or not loaded? The air
+      -- high above the spot is always free, so a teleport there tells which:
+      -- it works = loaded (the spot was just blocked) -> carry on from up
+      -- there; it fails = not loaded -> hop as before
+      local above = false
+      if not noFly and canTeleport(dr, 2) then
+        local _, top = skyOpenAbove(x, y, z)
+        local sy = math.min(300, math.max(y + 12, (top or 0) + 8, top and 0 or (CONFIG.drone.hopY or 200)))
+        droneLog(dr, "Could not teleport straight to " .. (x + f[1]) .. ", " .. (y + f[2]) .. ", " .. (z + f[3]) ..
+                     " - trying the air above it (Y " .. sy .. ")")
+        local okA, errA = droneMoveTo(dr, "pneumaticcraft:teleport", x, sy, z, CONFIG.drone.travelTimeout)
+        if not okA and errA ~= "did not get there" then return false, errA end
+        above = okA
+        if okA then droneLog(dr, "Above the spot - the area is loaded, the spot itself was blocked") end
+      end
+      if not above then
+        local okH, errH = hopTowards(dr, x, z)
+        if not okH then return false, errH end
+      end
     end
   end
   local limit = (act == "pneumaticcraft:goto") and CONFIG.drone.stepTimeout or CONFIG.drone.travelTimeout
@@ -713,7 +730,25 @@ function travelTo(dr, x, y, z, spots, noFly, loaded)
                  "probably not loaded) - FLYING there instead")
     local ok, err = droneMoveTo(dr, "pneumaticcraft:goto", x, y, z, CONFIG.drone.stepTimeout)
     if ok then dr.lastSpot = { x = x, y = y, z = z } return true end
+    if err ~= "did not get there" then return false, err end
     lastErr = err
+    -- underground (a cave, a turtle stuck in rock): the ground right above it
+    -- is the closest a drone can get - land there
+    local open, top = skyOpenAbove(x, y, z)
+    if open == false and top then
+      droneLog(dr, "The spot is under ground (surface at Y " .. top .. ") - landing on the surface right above it")
+      for _, o in ipairs({ { 0, 1, 0 }, { 0, 2, 0 }, { 1, 1, 0 }, { -1, 1, 0 }, { 0, 1, 1 }, { 0, 1, -1 } }) do
+        local okS, errS = droneMoveTo(dr, act, x + o[1], top + o[2], z + o[3], CONFIG.drone.travelTimeout)
+        if okS then
+          dr.lastSpot = { x = x + o[1], y = top + o[2], z = z + o[3] }
+          droneLog(dr, "Landed above the spot: " .. math.max(0, top + 1 - y) ..
+                       " blocks above it - dig down from here")
+          return true
+        end
+        if errS == "low on air" then break end
+        if errS ~= "did not get there" then return false, errS end
+      end
+    end
   end
   return false, "could not reach " .. x .. ", " .. y .. ", " .. z .. " (" .. tostring(lastErr) .. ")"
 end

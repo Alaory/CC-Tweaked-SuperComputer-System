@@ -260,7 +260,12 @@ off" -> the drone goes straight home. Long trips hop 160 -> 80 -> 48 blocks
 before flying into an area that is not loaded. A refused (blocked/tight)
 target with OPEN SKY above it (MAP.get column top <= y-1; skyOpenAbove) ->
 one teleport into the air above + fly down (skyApproach) instead of trying
-the nearby spots; under a roof / unknown column / pickups (noFly): as before. Teleports only into loaded chunks (players and the
+the nearby spots; under a roof / unknown column / pickups (noFly): as before. A FAR
+target refused at once is not hopped to straight away: one teleport into the
+air above it (map top + 8, or hopY when unknown) tells loaded (spot was just
+blocked -> carry on from there) from not loaded (-> hops). Everything refused
+and the spot is UNDER GROUND (map top > y): the drone lands on the surface
+right above it. Teleports only into loaded chunks (players and the
 anchor turtle keep chunks loaded). Charging station + parking in base_drones.lua.
 
 ## Rules for changes
