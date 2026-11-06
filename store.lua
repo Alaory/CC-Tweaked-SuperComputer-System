@@ -127,7 +127,8 @@ local function answer(id, req, t)
   rednet.send(id, t, PROTO)
 end
 
-while true do
+local function serve()
+ while true do
   local id, req = rednet.receive(PROTO)
   if type(req) == "table" and req.op then
     if not owner and req.op ~= "hello" then
@@ -217,4 +218,15 @@ while true do
     end
     show()
   end
+end
+end
+
+-- never just stop: an error is shown, then the helper restarts itself
+-- (Ctrl+T still stops it for good)
+local ok, err = pcall(serve)
+if not ok and tostring(err) ~= "Terminated" then
+  printError("store.lua stopped with an error: " .. tostring(err))
+  print("Restarting in 5 s ...")
+  sleep(5)
+  os.reboot()
 end
