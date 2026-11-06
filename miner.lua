@@ -71,7 +71,7 @@ CONFIG = {
 }
 
 STATE_FILE = "miner_state"
-MYVER = "m1"
+MYVER = "m3"            -- shown on the screen and the base (MINING tab)
 DX = { [0] = 0, 1, 0, -1 }
 DZ = { [0] = -1, 0, 1, 0 }
 FNAME = { [0] = "north", "east", "south", "west" }
@@ -1267,7 +1267,8 @@ if args[1] == "station" then
 end
 term.clear()
 term.setCursorPos(1, 1)
-print(string.upper(S.role) .. " - " .. S.dim .. " mining dimension - " .. fmtPos())
+print(string.upper(S.role) .. " (miner.lua " .. MYVER .. ") - " .. S.dim .. " - " .. fmtPos())
+if S.err then print("Last stop: " .. tostring(S.err) .. "  (START on the base clears it)") end
 print("Ctrl+T stops it.  'miner setup' asks everything again.")
 local okRun, err = pcall(function()
   if S.role == "miner" then minerRun() else loaderRun() end

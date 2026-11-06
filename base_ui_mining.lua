@@ -30,7 +30,7 @@ end
 local function unitLines(x, y, w, u, role)
   local lab, col, why = MINE.status(u)
   text(x, y, role, C.dim, C.panel)
-  local name = u and ((u.label or "?") .. "  #" .. u.id) or "-"
+  local name = u and ((u.label or "?") .. "  #" .. u.id .. (u.ver and ("  " .. u.ver) or "")) or "-"
   text(x + #role + 2, y, trunc(name, w - #role - #lab - 8), C.text, C.panel)
   pill(x + w - #lab - 2, y, lab, C.ink, col)
   text(x, y + 1, trunc(why, w), (col == C.bad or col == C.warn) and col or C.dim, C.panel)
