@@ -149,7 +149,14 @@ PneumaticCraft drone rides, turtle mapping/surveys, and an AE2 ME network view.
   nothing for 60 s ...). Used by the TURTLES page and `turtles`. TT.stallTick
   (comms worker): NOT MOVING 3 min -> STOP (no hold, once per 10 min) +
   sysLog; the turtle is free again, and if it cannot move the next trip fails
-  -> STUCK -> rescuer.
+  -> STUCK -> rescuer. No turtle selected -> drawFleet (FLEET card: status
+  counts, fuel total + lowest, program, survey progress, mining teams, NEEDS A
+  LOOK list - tap = select); tapping the selected turtle again deselects. List
+  fuel colours by amount (<1000 red, <5000 yellow), not by share of the tank.
+- Route planner (node.lua astar): a sideways direction change costs 0.4 (a
+  turn), opposite 0.8 (HD[k] = last sideways direction); h weighted 1.001
+  (tie-break). tools/navsim/world.lua: turns cost time and are counted; maze /
+  maze2 (TX=44) and "astar" (planner alone on 6 random mazes) scenarios.
 - Mining teams (miner.lua, base_mining.lua MINE, base_ui_mining.lua; TURTLES >
   MINING): two turtles per mining dimension (S.dim overworld/nether/end), same
   signed protocol with m.mine = true -> TT.receive hands them to MINE.receive

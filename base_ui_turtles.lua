@@ -3,6 +3,83 @@
 --
 --   TURTLES tab: the turtle list, the selected turtle's status and control pad.
 
+-- FLEET overview (no turtle selected): counts per status, what needs you
+-- (tap a line to select that turtle), fuel, program, survey, mining teams
+local ORDER = { "busy", "trouble", "still", "stuck", "nofuel", "held", "idle", "offline" }
+local NAMES = { busy = "WORKING", trouble = "FINDING A WAY", still = "NOT MOVING", stuck = "STUCK",
+                nofuel = "NO FUEL", held = "STOPPED", idle = "IDLE", offline = "OFFLINE" }
+function drawFleet(x, y, w, h, list)
+  card(x, y, w, h, "FLEET   (tap a turtle on the left for its controls)")
+  local ix, iw = x + 2, w - 4
+  local count, col, need = {}, {}, {}
+  local fuelSum, low, up = 0, nil, 0
+  for _, t in ipairs(list) do
+    local key, lab, c, why = TT.status(t)
+    count[key] = (count[key] or 0) + 1
+    col[key] = col[key] or c
+    -- FINDING A WAY is a turtle already working around something: not listed
+    if key == "stuck" or key == "nofuel" or key == "still" or (key == "idle" and c == C.warn) then
+      need[#need + 1] = { t = t, lab = lab, c = c, why = why }
+    end
+    local f = tonumber(t.fuel)
+    if f and TT.online(t) then
+      fuelSum = fuelSum + f
+      if not low or f < tonumber(low.fuel) then low = t end
+    end
+    if CODE and t.ver == CODE.ver then up = up + 1 end
+  end
+  -- status pills
+  local px, py = ix, y + 3
+  for _, k in ipairs(ORDER) do
+    if count[k] then
+      local lbl = NAMES[k] .. " " .. count[k]
+      if px + #lbl + 3 > ix + iw then px, py = ix, py + 2 end
+      px = px + pill(px, py, lbl, C.ink, col[k] or C.label) + 1
+    end
+  end
+  local ry = py + 2
+  -- numbers
+  kv(ix, ry, iw, "Turtles", #list .. "   (" .. (#list - (count.offline or 0)) .. " online)")
+  kv(ix, ry + 1, iw, "Fuel, all together", commas(fuelSum) .. (low and ("   lowest: " .. low.label .. " " .. commas(low.fuel)) or ""),
+     (low and tonumber(low.fuel) < 2000) and C.warn or C.text)
+  kv(ix, ry + 2, iw, "Turtle program", CODE and (up .. "/" .. #list .. " on " .. TT.verName(CODE.ver) ..
+     (TT.updWaiting and "  (updates wait until you are offline)" or "")) or "?", (CODE and up < #list) and C.warn or C.text)
+  local frac, total, sent = MAP.surveyProgress()
+  if frac then
+    local q = MAP.queue
+    kv(ix, ry + 3, iw, q.auto and "Auto-map" or "Survey", math.floor(frac * 100 + 0.5) .. "%   " .. commas(sent or 0) ..
+       " spots sent" .. (q.auto and ("   " .. math.floor(MAP.autoRadius() + 0.5) .. " blocks around the base") or ""))
+    barW(ix, ry + 4, iw, frac * iw, C.accent)
+  else
+    kv(ix, ry + 3, iw, "Survey", (MAP.auto and MAP.auto.on) and "auto-map waits for a free turtle" or "none running", C.dim)
+  end
+  -- mining teams
+  local my = ry + 6
+  if MINE and next(MINE.units) then
+    text(ix, my, "MINING TEAMS", C.label, C.panel)
+    my = my + 1
+    for dim, team in pairs(MINE.teams()) do
+      local lm = team.miner and MINE.status(team.miner) or "MISSING"
+      local ll = team.loader and MINE.status(team.loader) or "MISSING"
+      text(ix, my, trunc(dim .. ":  miner " .. lm .. "   loader " .. ll, iw),
+           (lm == "MINING" and ll ~= "BLOCKED") and C.dim or C.warn, C.panel)
+      my = my + 1
+    end
+    my = my + 1
+  end
+  -- what needs you (tap = select)
+  text(ix, my, #need > 0 and ("NEEDS A LOOK (" .. #need .. ")") or "NOTHING NEEDS YOU", #need > 0 and C.warn or C.good, C.panel)
+  local ny = my + 1
+  for _, n in ipairs(need) do
+    if ny > y + h - 2 then break end
+    local lbl = n.lab
+    pill(ix, ny, lbl, C.ink, n.c)
+    text(ix + #lbl + 3, ny, trunc(n.t.label .. " #" .. n.t.id .. "  " .. tostring(n.why), iw - #lbl - 3), C.text, C.panel)
+    addHit(ix, ny, iw, 1, "tsel", n.t.id)
+    ny = ny + 1
+  end
+end
+
 -- page drawing
 function drawTurtlesPage(G)
   local y0, bottom = G.y0, G.y1
@@ -74,9 +151,11 @@ function drawTurtlesPage(G)
     text(ix + #name + 2, ry, vn, (CODE and t.ver == CODE.ver) and C.good or C.warn, C.panel)
     if type(t.fuel) == "number" and type(t.fuelMax) == "number" and t.fuelMax > 0 then
       local f = math.max(0, math.min(1, t.fuel / t.fuelMax))
-      kv(ix, ry + 1, iw, "Fuel", commas(t.fuel) .. " / " .. commas(t.fuelMax),
-         f < 0.1 and C.bad or C.text)
-      barW(ix, ry + 2, iw, f * iw, f < 0.1 and C.bad or (f < 0.3 and C.warn or C.good))
+      -- colours by the amount itself (1,000 / 5,000), not by the share of a
+      -- 100,000 tank - 9,000 fuel is plenty
+      local fc = (t.fuel < 1000 and C.bad) or (t.fuel < 5000 and C.warn) or C.good
+      kv(ix, ry + 1, iw, "Fuel", commas(t.fuel) .. " / " .. commas(t.fuelMax), t.fuel < 1000 and C.bad or C.text)
+      barW(ix, ry + 2, iw, math.max(f * iw, t.fuel > 0 and 1 or 0), fc)
     else
       kv(ix, ry + 1, iw, "Fuel", tostring(t.fuel or "?"))
     end
@@ -89,8 +168,7 @@ function drawTurtlesPage(G)
   ------------------------------------------------ selected turtle
   local t = state.tSel and state.turtles[state.tSel]
   if not t then
-    card(rx, y0, rw, 7, "CONTROL")
-    text(rix, y0 + 3, "Select a turtle on the left.", C.dim, C.panel)
+    drawFleet(rx, y0, rw, bottom - y0 + 1, list)
     return
   end
   local ch = 27

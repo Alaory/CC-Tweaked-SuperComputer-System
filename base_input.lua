@@ -259,7 +259,8 @@ function handleTouch(tx, ty)
           setToast("That turtle's position is unknown", C.warn, 4)
         end
       elseif h[5] == "tsel" then
-        state.tSel = h[6]
+        -- tapping the selected turtle again goes back to the FLEET overview
+        if state.tSel == h[6] then state.tSel = nil else state.tSel = h[6] end
       elseif h[5] == "trescuer" then
         local t = state.turtles[h[6]]
         if t and t.anchor and not t.rescuerRole then
