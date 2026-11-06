@@ -554,6 +554,12 @@ while T < maxT do
   local ok, w = coroutine.resume(c.co)
   if not ok then fail(c.u.role .. " CRASHED: " .. tostring(w)) break end
   c.wake = tonumber(w) or T
+  do
+    local mu0 = MINE.units[MINER]
+    if c.u.role == "miner" and mu0 and tostring(mu0.task):find("waiting for the loader", 1, true) then
+      WAITED = (WAITED or 0) + ((tonumber(w) or T) - T)
+    end
+  end
   if T - lastLog > 600 then
     lastLog = T
     local mu = MINE.units[MINER]
@@ -572,6 +578,7 @@ print("delivered by the bus:", textutils.serialize(delivered))
 print("base says delivered:", mu and textutils.serialize(mu.got))
 print("in shulker:", mu and textutils.serialize(mu.carry))
 print("shulker used in the field:", FIELD or 0)
+print(string.format("miner waited for the loader: about %.0f s", WAITED or 0))
 for _, n in ipairs(NOTES) do print("NOTE", n) end
 if mu then print("base shows:", MINE.status(mu)) end
 for _, e in ipairs(mu and mu.log or {}) do print("LOG", e.msg) end

@@ -953,6 +953,15 @@ function workStep()
     setTask("tunnel to the edge of chunk " .. P.ci)
     local ok, err = goTo(mx, P.yt, mz, S.trail)
     if not ok then return false, err end
+    -- call the loader NOW (it comes to this centre while we tunnel to the
+    -- edge - both move at the same time, so there is little or no waiting)
+    if P.called ~= P.ci and S.partner and equipTool("modem") then
+      local pts = {}
+      for _, p in ipairs(S.trail or {}) do pts[#pts + 1] = p end
+      sendTeam(S.partner, "follow", { ref = P.ci, pts = pts })
+      P.called = P.ci
+      save()
+    end
     ok, err = goTo(bx, P.yt, bz, S.trail)
     if not ok then return false, err end
     ok, err = handoff(P, cx, cz)
