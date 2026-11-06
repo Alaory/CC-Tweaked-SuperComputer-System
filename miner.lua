@@ -71,7 +71,7 @@ CONFIG = {
 }
 
 STATE_FILE = "miner_state"
-MYVER = "m3"            -- shown on the screen and the base (MINING tab)
+MYVER = "m4"            -- shown on the screen and the base (MINING tab)
 DX = { [0] = 0, 1, 0, -1 }
 DZ = { [0] = -1, 0, 1, 0 }
 FNAME = { [0] = "north", "east", "south", "west" }
@@ -415,10 +415,18 @@ end
 -- returns { name = count } of what went
 function dropLoot(dropFn)
   local moved, keptCoal = {}, 0
+  local own = {}
+  for k, v in pairs(S.own or {}) do own[k] = v end
   for i = 1, 16 do
     local d = turtle.getItemDetail(i)
     if d and isLoot(d.name) then
       local give = d.count
+      -- items that were in it when mining started are yours: they stay
+      if own[d.name] and own[d.name] > 0 then
+        local keep = math.min(give, own[d.name])
+        own[d.name] = own[d.name] - keep
+        give = give - keep
+      end
       if isCoal(d.name) and keptCoal < CONFIG.keepCoal then
         local keep = math.min(d.count, CONFIG.keepCoal - keptCoal)
         keptCoal = keptCoal + keep
@@ -615,8 +623,24 @@ function afterMove()
   if freeSlots() <= 2 then
     dropJunk()
     if freeSlots() <= 2 then
-      local ok, err = stash()
-      if not ok then note("Could not use the shulker: " .. tostring(err)) DUMP_NOW = true end
+      -- anything mined to put away? (your own items stay in the turtle)
+      local mined = false
+      local own = {}
+      for k, v in pairs(S.own or {}) do own[k] = v end
+      for i = 1, 16 do
+        local d = turtle.getItemDetail(i)
+        if d and isLoot(d.name) and not isCoal(d.name) then
+          local keep = math.min(d.count, own[d.name] or 0)
+          own[d.name] = (own[d.name] or 0) - keep
+          if d.count > keep then mined = true end
+        end
+      end
+      if not mined then
+        HALT = "the inventory is full of YOUR items (in it before START) - take them out, then START"
+      else
+        local ok, err = stash()
+        if not ok then note("Could not use the shulker: " .. tostring(err)) DUMP_NOW = true end
+      end
     end
   end
 end
@@ -838,11 +862,9 @@ function center(cx, cz) return cx * 16 + 8, cz * 16 + 8 end
 -- must be right behind us (a typed facing can be wrong). Then the loader gets
 -- its real position and finds its own facing by turning to us.
 function calibrate()
-  local ok, err = equipTool("geo")
-  if not ok then return false, err end
-  local side = toolSide()
-  local okS, res = pcall(peripheral.call, side, "scan", 1)
-  if not okS or type(res) ~= "table" then return false, "Geo Scanner scan failed: " .. tostring(res) end
+  local res, err = geoScan(1)
+  if not res then return false, err end
+  local ok
   local ox, oz
   for _, b in ipairs(res) do
     if b.y == 0 and math.abs(b.x) + math.abs(b.z) == 1 and tostring(b.name):find("computercraft:turtle", 1, true) then
@@ -878,6 +900,15 @@ function calibrate()
   end
   return true
 end
+-- what is in the miner at START (not tools, not coal) belongs to you: never unloaded
+function rememberOwn()
+  S.own = {}
+  for i = 1, 16 do
+    local d = turtle.getItemDetail(i)
+    if d and not isTool(d.name) and not isCoal(d.name) then S.own[d.name] = (S.own[d.name] or 0) + d.count end
+  end
+  if next(S.own) then note("Items in me at START are kept (not unloaded)") end
+end
 function newPlan()
   local p = S.pos
   -- the loader stands right behind: it must be in the SAME chunk (it keeps
@@ -891,6 +922,16 @@ function newPlan()
   S.plan = { sx = math.floor(p.x / 16), sz = math.floor(p.z / 16), f = p.f, yt = p.y, ci = 0, phase = "exit",
              done = 0, x0 = p.x, z0 = p.z }
   S.trail = { { x = p.x, y = p.y, z = p.z } }    -- the loader starts right behind this spot
+  rememberOwn()
+  local used = 0
+  for i = 1, 16 do
+    local d = turtle.getItemDetail(i)
+    if d and not isTool(d.name) and not isCoal(d.name) then used = used + 1 end
+  end
+  if used > 4 then
+    S.plan = nil
+    return false, used .. " slots hold your own items - the miner needs the room for what it mines. Take them out, then START"
+  end
   S.lastDump = S.lastDump or now()
   save()
   return true
@@ -924,6 +965,11 @@ function checkpoint()
       listen(1.5)
     end
   end
+  if HALT then
+    local e = HALT
+    HALT = nil
+    return false, e
+  end
   if not S.running then return false, "paused" end
   if DUMP_NOW or (S.lastDump and now() - S.lastDump > CONFIG.dumpEvery) then
     -- nothing to unload: no trip, just start the timer again
@@ -943,33 +989,36 @@ function checkpoint()
   return true
 end
 -- the ores (and wanted blocks) of one layer inside this chunk
-function scanLayer(cx, cz)
+-- scan with the Geo Scanner (equipped first). Its scan function is looked up
+-- by name - it is not called "scan" in every version. Returns the list or nil, why
+function geoScan(radius)
   local ok, err = equipTool("geo")
   if not ok then return nil, err end
   local side = toolSide()
-  local fname
   local okM, methods = pcall(peripheral.getMethods, side)
-  for _, mth in ipairs(okM and methods or {}) do
-    if mth == "scan" then fname = mth end
-  end
+  methods = okM and methods or {}
+  local fname
+  for _, mth in ipairs(methods) do if mth == "scan" then fname = mth end end
   if not fname then
-    for _, mth in ipairs(okM and methods or {}) do
+    for _, mth in ipairs(methods) do
       local l = mth:lower()
       if l:find("scan", 1, true) and not l:find("cost", 1, true) and not l:find("cooldown", 1, true) then fname = mth break end
     end
   end
-  if not fname then
-    return nil, "the Geo Scanner has no scan function (side " .. side .. ": " ..
-                table.concat(okM and methods or { "?" }, ",") .. ")"
-  end
-  local res
+  local what = "side " .. side .. " = " .. tostring(peripheral.getType(side)) .. ": " .. table.concat(methods, ",")
+  if not fname then return nil, "the Geo Scanner has no scan function (" .. what .. ")" end
+  local e
   for _ = 1, 10 do
-    local okS, a, b = pcall(peripheral.call, side, fname, CONFIG.scanR)
-    if okS and type(a) == "table" then res = a break end
-    err = okS and b or a
+    local okS, a, b = pcall(peripheral.call, side, fname, radius)
+    if okS and type(a) == "table" then return a end
+    e = okS and b or a
     sleep(1)
   end
-  if not res then return nil, "scan failed: " .. tostring(err) end
+  return nil, "scan failed: " .. tostring(e) .. " (" .. what .. ")"
+end
+function scanLayer(cx, cz)
+  local res, err = geoScan(CONFIG.scanR)
+  if not res then return nil, err end
   local x0, z0 = cx * 16, cz * 16
   local out, wantN = {}, {}
   for _, b in ipairs(res) do
@@ -1225,7 +1274,10 @@ function minerRun()
         save()
       end
       local okR, ok, err = pcall(workStep)
-      if not okR then ok, err = false, "error: " .. tostring(ok) end
+      if not okR then
+        if tostring(ok):find("Terminated", 1, true) then error("Terminated", 0) end
+        ok, err = false, "error: " .. tostring(ok)
+      end
       if not ok then
         if err ~= "paused" then
           S.running, S.err = false, tostring(err)

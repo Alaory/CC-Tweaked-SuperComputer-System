@@ -338,7 +338,8 @@ local function peripheralApi(u)
         end,
       }
     elseif ty == "geoScanner" then
-      return { scan = function(r)
+      local g = {}
+      g[SCEN == "geoname" and "scanBlocks" or "scan"] = function(r)
         act(u)
         local out = {}
         for dx = -r, r do for dy = -r, r do for dz = -r, r do
@@ -352,7 +353,10 @@ local function peripheralApi(u)
           end
         end end end
         return out
-      end }
+      end
+      g.cost = function() return 0 end
+      g.getScanCooldown = function() return 0 end
+      return g
     end
   end
   P.call = function(side, m, ...) local w = P.wrap(side) return w[m](...) end
@@ -498,7 +502,8 @@ if SCEN == "modemon" then
   m.inv[1] = { name = "minecraft:netherite_pickaxe", count = 1 }
 end
 if SCEN == "nofuel" then m.fuel = 0 m.inv[4] = nil end
-if SCEN == "full" then
+if SCEN == "geoname" then m.inv[7] = { name = "jamd:mining_dim_core", count = 1 } end
+if SCEN == "ownfull" then
   for i = 5, 13 do m.inv[i] = { name = "minecraft:torch", count = 64 } end
 end
 if SCEN == "direct" then
@@ -597,6 +602,10 @@ while T < maxT do
       end
     end
   end
+  if SCEN == "full" and not FILLED and T > 120 then
+    FILLED = true
+    for i = 5, 13 do if not m.inv[i] then m.inv[i] = { name = "minecraft:raw_copper", count = 64 } end end
+  end
   -- next coroutine to run
   table.sort(cos, function(p, q) return p.wake < q.wake end)
   local c = cos[1]
@@ -638,9 +647,10 @@ print("in shulker:", mu and textutils.serialize(mu.carry))
 print("shulker used in the field:", FIELD or 0)
 print(string.format("miner waited for the loader: about %.0f s", WAITED or 0))
 for _, n in ipairs(NOTES) do print("NOTE", n) end
+if delivered["jamd:mining_dim_core"] then fail("the OWNER'S item was unloaded") end
 if mu then
   print("base shows:", MINE.status(mu))
-  if MINE.status(mu) == "STOPPED" and SCEN ~= "nofuel" then fail("miner STOPPED: " .. tostring(mu.err)) end
+  if MINE.status(mu) == "STOPPED" and SCEN ~= "nofuel" and SCEN ~= "ownfull" then fail("miner STOPPED: " .. tostring(mu.err)) end
 end
 for _, e in ipairs(mu and mu.log or {}) do print("LOG", e.msg) end
 if #FAIL > 0 then

@@ -170,7 +170,12 @@ PneumaticCraft drone rides, turtle mapping/surveys, and an AE2 ME network view.
   nothing to unload is skipped. MYVER shown on the turtle and the MINING tab.
   GPS (the owner has a GPS system in the mining dimension): gpsCheck at start,
   at every miner report (modem on anyway) and every 30 s on an idle loader -
-  the tracked position is corrected; setup / miner here offer the GPS spot. Plan:
+  the tracked position is corrected; setup / miner here offer the GPS spot.
+  geoScan(r): the Geo Scanner's scan function is looked up by name (it is NOT
+  "scan" on the owner's version; the error lists the methods). Items in the
+  miner at START (not tools / coal) are the owner's (S.own): never unloaded;
+  more than 4 such slots -> START refused; full of only those -> HALT.
+  Ctrl+T (Terminated) is passed on, not saved as an error. Plan:
   rows of rowLength chunks forward from the start facing, next row to the right;
   per chunk: tunnel to the centre at the start Y, layers every 17 down to minY
   (Geo Scanner r 8, ores + CONFIG.mining.want inside the chunk), exit to the
