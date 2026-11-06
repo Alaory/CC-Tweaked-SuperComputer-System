@@ -133,7 +133,10 @@ PneumaticCraft drone rides, turtle mapping/surveys, and an AE2 ME network view.
   (100, 0 = off) gets STOP with again=true (no hold), t.avoidHome -> "home" once
   idle; its batch is reclaimed as usual. nextBatch puts spots near a player into
   q.redo (later). avoidWho "strangers" (default: not owner, not allow list) or
-  "everyone" (not owner). Overworld players only. A player within avoidRange
+  "everyone" (not owner). Only players whose dimension is KNOWN to be the
+  overworld (unknown dim = not avoided: a mining dimension uses the same x z).
+  nextBatch keeps q.lastWhy {near, who, done, redo} -> TT.idleWhy says why a
+  survey hands out nothing. A player within avoidRange
   of the turtle's own home (a visitor at the base) is not avoided by that turtle
   (no stop -> home -> leave -> stop loop). No owner known yet -> nobody avoided.
 - Turtle status (TT.status(t) -> key, LABEL, colour, why; base_turtles.lua):
@@ -175,7 +178,12 @@ PneumaticCraft drone rides, turtle mapping/surveys, and an AE2 ME network view.
   "scan" on the owner's version; the error lists the methods). Items in the
   miner at START (not tools / coal) are the owner's (S.own): never unloaded;
   more than 4 such slots -> START refused; full of only those -> HALT.
-  Ctrl+T (Terminated) is passed on, not saved as an error. Plan:
+  Ctrl+T (Terminated) is passed on, not saved as an error. MINING tab: per
+  team unitBox (status, why wrapped, fuel bar from m.fuelMax, position),
+  FIELD map (one cell per chunk index, rowLength per row), layer bar, ores/hour
+  (u.runT0/u.ores0 on the base), unload countdown, item lists with totals,
+  START/PAUSE, UNLOAD NOW, NEW FIELD (actButton kind "minecmd", two taps),
+  TO DO hint, wrapped LOG. Plan:
   rows of rowLength chunks forward from the start facing, next row to the right;
   per chunk: tunnel to the centre at the start Y, layers every 17 down to minY
   (Geo Scanner r 8, ores + CONFIG.mining.want inside the chunk), exit to the

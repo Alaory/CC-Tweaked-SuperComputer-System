@@ -71,7 +71,7 @@ CONFIG = {
 }
 
 STATE_FILE = "miner_state"
-MYVER = "m4"            -- shown on the screen and the base (MINING tab)
+MYVER = "m5"            -- shown on the screen and the base (MINING tab)
 DX = { [0] = 0, 1, 0, -1 }
 DZ = { [0] = -1, 0, 1, 0 }
 FNAME = { [0] = "north", "east", "south", "west" }
@@ -222,6 +222,8 @@ function sendBase(t, extra)
   m.task = task
   local fuel = turtle.getFuelLevel()
   m.fuel = fuel
+  m.fuelMax = (fuel ~= "unlimited") and turtle.getFuelLimit() or nil
+  m.rowLength = CONFIG.rowLength
   m.free = freeSlots()
   m.pos = S.pos and { x = S.pos.x, y = S.pos.y, z = S.pos.z, f = FNAME[S.pos.f or 0] } or nil
   m.partner = S.partner

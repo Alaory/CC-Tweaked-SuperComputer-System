@@ -59,6 +59,13 @@ function handleTouch(tx, ty)
               local okP, msgP = settingHere(def)
               setToast(msgP, okP and C.good or C.warn, 5)
             end
+          elseif a.kind == "minecmd" then
+            -- a mining team command that needs a second tap (NEW FIELD)
+            local id, cmd = tostring(a.name):match("^(%d+):(%a+)$")
+            if id then
+              MINE.cmd(tonumber(id), cmd, {})
+              setToast(cmd:upper() .. " sent - the miner gets it at its next report (up to 30 s)", C.label, 5)
+            end
           elseif a.kind == "syssave" then
             -- the map worker saves (it may have to wait for storage helpers)
             MAP.saveNow = true

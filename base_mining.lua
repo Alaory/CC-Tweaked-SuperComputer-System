@@ -95,9 +95,16 @@ function MINE.receive(id, m)
   if m.n <= (u.lastN or 0) then return end
   u.lastN = m.n
   u.lastSeen, u.seenEpoch = os.clock(), os.epoch("utc")
-  for _, k in ipairs({ "label", "role", "dim", "task", "fuel", "free", "pos", "partner", "running", "err", "ci",
-                       "li", "nl", "phase", "station", "carry", "got", "stats", "ver" }) do
+  for _, k in ipairs({ "label", "role", "dim", "task", "fuel", "fuelMax", "free", "pos", "partner", "running", "err",
+                       "ci", "li", "nl", "phase", "station", "carry", "got", "stats", "ver", "rowLength" }) do
     u[k] = m[k]
+  end
+  -- ores per hour: counted from when it was first seen running
+  local ores = type(u.stats) == "table" and tonumber(u.stats.ores) or 0
+  if u.running then
+    if not u.runT0 then u.runT0, u.ores0 = os.clock(), ores end
+  else
+    u.runT0, u.ores0 = nil, nil
   end
   u.nextDump = m.nextDump and (os.clock() + m.nextDump) or nil
   for _, msg in ipairs(type(m.notes) == "table" and m.notes or {}) do
