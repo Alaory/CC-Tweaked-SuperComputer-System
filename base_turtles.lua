@@ -998,10 +998,14 @@ end
 function TT.threats()
   local range = tonumber(CONFIG.turtles.avoidRange or 100) or 0
   if range <= 0 then return {}, 0 end
+  -- owner not known yet (Inventory Manager not read): nobody is avoided, so
+  -- the owner is never mistaken for a stranger
+  if not state.owner then return {}, 0 end
+  local me = tostring(state.owner):lower()
   local who = CONFIG.turtles.avoidWho or "strangers"
   local list = {}
   for _, e in ipairs(state.players or {}) do
-    local friend = e.isOwner or (who ~= "everyone" and state.access and state.access.allowed
+    local friend = e.isOwner or tostring(e.name):lower() == me or (who ~= "everyone" and state.access and state.access.allowed
                                  and state.access.allowed[tostring(e.name):lower()])
     local here = e.p and e.p.x and not e.dimOther and (not e.dim or e.dim == (DRONE_DIM or "minecraft:overworld"))
     if not friend and here then list[#list + 1] = { name = e.name, x = e.p.x, z = e.p.z } end
