@@ -14,6 +14,7 @@
 ---------------------------------------------------------------------
 SETTINGS_FILE = "settings.dat"
 SETTINGS = {}
+CONFIG_ORIGINAL = {}       -- the base_config.lua value of every changed setting (for RESET)
 function setConfigPath(path, value)
   local t = CONFIG
   local parts = {}
@@ -39,15 +40,30 @@ do
     if h then h.close() end
     if type(t) == "table" then SETTINGS = t end
   end
-  for path, v in pairs(SETTINGS) do pcall(setConfigPath, path, v) end
+  for path, v in pairs(SETTINGS) do
+    CONFIG_ORIGINAL[path] = getConfigPath(path)
+    pcall(setConfigPath, path, v)
+  end
 end
--- change a setting now and keep it (settings.dat)
-function setSetting(path, value)
-  setConfigPath(path, value)
-  SETTINGS[path] = value
+local function saveSettings()
   local h = fs.open(SETTINGS_FILE, "w")
   if h then h.write(textutils.serialize(SETTINGS)) h.close() end
 end
+-- change a setting now and keep it (settings.dat)
+function setSetting(path, value)
+  if SETTINGS[path] == nil and CONFIG_ORIGINAL[path] == nil then CONFIG_ORIGINAL[path] = getConfigPath(path) end
+  setConfigPath(path, value)
+  SETTINGS[path] = value
+  saveSettings()
+end
+-- back to the value in base_config.lua
+function resetSetting(path)
+  if SETTINGS[path] == nil then return end
+  setConfigPath(path, CONFIG_ORIGINAL[path])
+  SETTINGS[path] = nil
+  saveSettings()
+end
+function isChanged(path) return SETTINGS[path] ~= nil end
 
 ---------------------------------------------------------------------
 -- PERIPHERALS

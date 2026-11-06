@@ -3,77 +3,9 @@
 --
 --   SYSTEM tab: how the base is doing (running time, when it was off, disk and
 --   floppy space, turtle program, theme, auto-map), the SYSTEM LOG (system
---   things only - kept apart from the everyday EVENTS), the SETTINGS (tap a
---   value to change it; kept in settings.dat over base_config.lua) and a few
---   actions. The numbers come from sysRefresh() in the comms worker.
-
--- a setting stored in CONFIG (path like "turtles.idleHome"): tap = next option
-local function cfgSetting(label, path, opts, default, fmt, also)
-  return {
-    label = label,
-    get = function()
-      local v = getConfigPath(path)
-      if v == nil then v = default end
-      return fmt and fmt(v) or tostring(v)
-    end,
-    next = function()
-      local v = getConfigPath(path)
-      if v == nil then v = default end
-      local idx = 0
-      for i, o in ipairs(opts) do if o == v then idx = i end end
-      local nv = opts[idx % #opts + 1]
-      setSetting(path, nv)
-      for _, p in ipairs(also or {}) do setSetting(p, nv) end
-    end,
-  }
-end
-local function secs(v) v = tonumber(v) or 0 if v == 0 then return "never" end
-  return (v >= 120 and v % 60 == 0) and (math.floor(v / 60) .. " min") or (v .. " s") end
-local function onoff(v) return v and "ON" or "OFF" end
-
-SYS_SETTINGS = {
-  { label = "Auto-map (turtles survey by themselves)",
-    get = function() return MAP.auto.on and "ON" or "OFF" end,
-    next = function() MAP.setAuto(not MAP.auto.on) end },
-  { label = "Theme (colours of the frame)",
-    get = function() return (THEME_MODE == "random") and ("random: " .. tostring(THEME_NAME)) or tostring(THEME_NAME) end,
-    next = function()
-      local list = {}
-      for _, n in ipairs(THEME_ORDER) do list[#list + 1] = n end
-      list[#list + 1] = "random"
-      local cur = (THEME_MODE == "random") and "random" or THEME_NAME
-      local idx = 0
-      for i, n in ipairs(list) do if n == cur then idx = i end end
-      local nxt = list[idx % #list + 1]
-      if nxt == "random" then THEME_MODE = "random" saveTheme(nil)
-      else setTheme(nxt) THEME_MODE = nxt saveTheme(nxt) end
-    end },
-  { label = "Base messages in your chat",
-    get = function()
-      local sub = state.owner and state.notifySubs and state.notifySubs[tostring(state.owner):lower()]
-      local l = sub and sub.level or "off"
-      return (l == "important") and "warnings+errors" or (l == "all" and "everything" or "off")
-    end,
-    next = function()
-      if not (state.owner and state.notifySubs) then return end
-      local k = tostring(state.owner):lower()
-      local sub = state.notifySubs[k]
-      local l = sub and sub.level or "off"
-      local nxt = (l == "off") and "important" or (l == "important" and "all" or "off")
-      state.notifySubs[k] = (nxt ~= "off") and { name = state.owner, level = nxt } or nil
-      pcall(saveNotifySubs)
-    end },
-  cfgSetting("Message boxes stay for", "notes.info", { 3, 5, 10, 20 }, 3, function(v) return v .. " s" end,
-             { "notes.done", "notes.warning", "notes.error" }),
-  cfgSetting("EVENTS list keeps", "notes.keep", { 100, 200, 500 }, 100, function(v) return v .. " messages" end),
-  cfgSetting("Idle turtles go home after", "turtles.idleHome", { 0, 60, 120, 300, 600 }, 120, secs),
-  cfgSetting("Turtles go refuelling below", "turtles.lowFuel", { 1000, 2000, 5000, 10000 }, 2000,
-             function(v) return v .. " fuel" end),
-  cfgSetting("Rescue a silent turtle after", "turtles.rescueAfter", { 90, 180, 300, 600, 1200 }, 180, secs),
-  cfgSetting("Turtle program updates", "turtles.autoUpdate", { true, false }, true, onoff),
-  cfgSetting("Drone travel", "drone.travel", { "teleport", "fly" }, "teleport"),
-  cfgSetting("Drones fly home after a mission", "drone.returnHome", { true, false }, true, onoff),
-}
+--   things only - kept apart from the everyday EVENTS), the times the base
+--   was off, and a few actions. Settings have their own page
+--   (base_ui_settings.lua). The numbers come from sysRefresh() (comms worker).
 
 local KIND_COL = { ERROR = "bad", WARNING = "warn", DONE = "good", INFO = "label" }
 local function kb(b) return b and (math.floor(b / 1024) .. " KB") or "..." end
@@ -145,32 +77,31 @@ function drawSystemPage(G)
     end
   end
 
-  ------------------------------------------------ settings
-  local actH = 6
-  local sh2 = bottom - y0 + 1 - actH - 1
-  card(rx, y0, rw, sh2, "SETTINGS  (tap a value to change it)")
-  local bw = math.min(24, math.floor(riw * 0.45))
-  local per = 2
-  local srows = math.max(1, math.floor((sh2 - 4) / per))
-  local offS = scrollBar(rx, y0 + 1, rw, "sysSetOff", #SYS_SETTINGS, srows)
-  for i = 1, math.min(srows, #SYS_SETTINGS - offS) do
-    local def = SYS_SETTINGS[offS + i]
-    local ry = y0 + 3 + (i - 1) * per
-    local okG, v = pcall(def.get)
-    v = okG and tostring(v) or "?"
-    text(rix, ry, trunc(def.label, riw - bw - 2), C.text, C.panel)
-    local on = (v == "ON")
-    drawButton(rix + riw - bw, ry, bw, 1, trunc(v, bw - 2), on and C.good or C.empty, on and C.ink or C.text,
-               "sysset", offS + i)
+  ------------------------------------------------ times the base was off
+  local actH = 9
+  local oh = bottom - y0 + 1 - actH - 1
+  card(rx, y0, rw, oh, "TIMES THE BASE WAS OFF")
+  local offs = A.offs or {}
+  if #offs == 0 then
+    text(rix, y0 + 3, trunc("None noticed yet. (A gap of more than 90 s counts.)", riw), C.dim, C.panel)
   end
-  text(rix, y0 + sh2 - 2, trunc("Kept in settings.dat (base_config.lua is not changed)", riw), C.dim, C.panel)
+  for i = 1, math.min(#offs, math.floor((oh - 4) / 2)) do
+    local o = offs[i]
+    local ry = y0 + 3 + (i - 1) * 2
+    local okW, w = pcall(os.date, "%d.%m %H:%M", math.floor(o.from / 1000))
+    local why = tostring(o.why)
+    local col = why:find("ERROR", 1, true) and C.bad or (why:find("stopped", 1, true) and C.dim or C.warn)
+    text(rix, ry, (okW and w or "?") .. "   off for " .. fmtSpan((o.to - o.from) / 1000), C.text, C.panel)
+    text(rix + 2, ry + 1, trunc(why, riw - 2), col, C.panel)
+  end
 
   ------------------------------------------------ actions
-  local ay = y0 + sh2 + 1
+  local ay = y0 + oh + 1
   card(rx, ay, rw, actH, "ACTIONS  (tap twice)")
   local aw = math.floor((riw - 2) / 3)
   actButton(rix, ay + 3, aw, 2, "SAVE MAP NOW", { kind = "syssave", name = "map", count = 0 }, true)
   actButton(rix + aw + 1, ay + 3, aw, 2, "UPDATE TURTLES", { kind = "sysupdate", name = "turtles", count = 0 }, true)
   actButton(rix + 2 * (aw + 1), ay + 3, riw - 2 * (aw + 1), 2, "RESTART BASE",
             { kind = "sysrestart", name = "base", count = 0 }, true)
+  drawButton(rix, ay + 6, riw, 2, "SETTINGS  >", C.accent, C.ink, "page", "settings")
 end

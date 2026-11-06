@@ -29,19 +29,17 @@ mapping turtles and a map of the world.
 
 ## ✨ What it does
 
-| Tab | What you get |
-|---|---|
-| 🎒 **INVENTORY** | Your inventory grid, armour and offhand, how full it is, and an item list (sort by count, name or slot). Tap an item to highlight every slot that holds it. |
-| 👥 **PLAYERS** | A card per online player: dimension, health, air, position, facing. |
-| 🧳 **STORAGE** | What is inside the backpacks and tanks you carry. |
-| 💍 **CURIOS** | Your worn curios. Store an item in ME, move it to your inventory, or put on something from ME. |
-| 📦 **ME** (or **RS**) | Network status, an item / fluid browser, taking and storing items, filling fluid containers, crafting. |
-| 🚁 **DRONES** | PneumaticCraft drones: air, mission steps, log. Pick a passenger and a destination, then fly, pick up, drop or ferry. |
-| 💬 **CHAT** | Who may use the `$drone` chat commands, ride requests to approve, and the switch for the base's messages in your chat. |
-| 🐢 **TURTLES** | Every turtle: status, fuel, position, gear and log, plus a control pad (move, STOP, GO HOME, REFUEL …), anchor and rescuer. |
-| 🗺️ **MAP** | The terrain your turtles scanned: zoom from 1 to 512 blocks per cell (a 40,000 × 40,000 world fits), rotate, and send turtles to survey. |
-| 🔔 **EVENTS** | Every message the program showed, with date and time and a filter (errors, warnings, done, info). Kept after restarts. |
-| ⚙️ **SYSTEM** | How the base is doing (running time, when it was off and why, disk and floppy space, turtle program, auto-map), a **system log** kept apart from EVENTS, **settings** you change by tapping (saved in `settings.dat`, your `base_config.lua` stays as it is) and actions (save map, update turtles, restart). |
+The top row has **6 tabs**; tabs with more than one page show their pages as small
+tabs right under it.
+
+| Tab | Pages | What you get |
+|---|---|---|
+| 🎒 **YOU** | Inventory · Storage · Curios | Your inventory grid, armour and item list (tap an item to highlight it) · what is inside your backpacks and tanks · your curios: store in ME, move to your inventory, put on from ME. |
+| 👥 **PLAYERS** | Players · Chat | A card per online player (dimension, health, position) · who may use the `$drone` chat commands, ride requests, the base's messages in your chat. |
+| 📦 **ME** (or **RS**) | | Network status, item / fluid browser, take and store items, fill fluid containers, craft. |
+| 🚁 **DRONES** | | PneumaticCraft drones: air, mission steps, log. Pick a passenger and a destination, then fly, pick up, drop or ferry. |
+| 🐢 **TURTLES** | Turtles · Map | Every turtle with status, fuel, gear, log and a control pad · the terrain map: zoom 1–512 blocks per cell, surveys, **AUTO-MAP**. |
+| ⚙️ **SYSTEM** | Status · Events · Settings | How the base is doing, a **system log** and the times it was off · every message (kept after restarts) · **settings** you change by tapping (−/+, choices, "use my position"; saved in `settings.dat`, your `base_config.lua` stays as it is). |
 
 A tab only shows up when the block it needs is connected.
 
@@ -336,7 +334,7 @@ Type these on the base computer. `help` lists them all.
 | `base_drones.lua` | drone missions, charging, parking |
 | `base_turtles.lua` · `base_map.lua` | turtle communication, homes, fuel, rescue, updates · map data and surveys |
 | `base_console.lua` · `base_chat.lua` · `base_input.lua` · `base_workers.lua` | keyboard commands · chat commands · monitor touches · background workers |
-| `base_ui_*.lua` | one file per tab (`base_ui_core.lua` = shared drawing, `base_ui_system.lua` = SYSTEM) |
+| `base_ui_*.lua` | one file per page (`base_ui_core.lua` = header and shared drawing, `base_ui_system.lua` = Status, `base_ui_settings.lua` = Settings) |
 | `node.lua` | 🐢 the turtle program |
 
 **Data files the program creates** (keep them; delete one only to reset that part):

@@ -112,8 +112,8 @@ function drawCell(x, y, w, h, item, emptyLabel)
   end
 end
 
--- the tabs to show: { page, label, badge, badge colour } (a tab only when its block is there)
-function headerTabs()
+-- the pages there are: { page, label, badge, badge colour } (only when its block is there)
+function pageTabs()
   local tabs = { { "inventory", "INVENTORY" } }
   local np = det and #(state.players or {}) or 0
   tabs[#tabs + 1] = { "players", "PLAYERS", np > 0 and tostring(np) or nil }
@@ -148,8 +148,44 @@ function headerTabs()
                       unread > 0 and (anyErr and C.bad or C.warn) or nil }
   -- SYSTEM: a dot when the base was off / crashed since you last looked
   local sysNew = (state.sysSeen or 0) < #SYSLOG and SYSLOG[1] and SYSLOG[1].kind ~= "INFO" and SYSLOG[1].kind ~= "DONE"
-  tabs[#tabs + 1] = { "system", "SYSTEM", sysNew and "!" or nil, sysNew and C.warn or nil }
+  tabs[#tabs + 1] = { "system", "STATUS", sysNew and "!" or nil, sysNew and C.warn or nil }
+  tabs[#tabs + 1] = { "settings", "SETTINGS" }
   return tabs
+end
+
+-- the top row: pages GROUPED, so it fits on any monitor. A group with more
+-- than one page shows its pages as a second row of small tabs (row 5).
+local GROUPS = {
+  { id = "you",     label = "YOU",     pages = { "inventory", "storage", "curios" } },
+  { id = "people",  label = "PLAYERS", pages = { "players", "access" } },
+  { id = "me",      label = nil,       pages = { "me" } },
+  { id = "drone",   label = nil,       pages = { "drone" } },
+  { id = "turtles", label = "TURTLES", pages = { "turtles", "map" } },
+  { id = "system",  label = "SYSTEM",  pages = { "system", "events", "settings" } },
+}
+-- the group a page belongs to
+function groupOf(page)
+  for _, g in ipairs(GROUPS) do
+    for _, p in ipairs(g.pages) do if p == page then return g.id end end
+  end
+end
+function headerTabs()
+  local byPage = {}
+  for _, t in ipairs(pageTabs()) do byPage[t[1]] = t end
+  local out = {}
+  for _, g in ipairs(GROUPS) do
+    local members = {}
+    for _, p in ipairs(g.pages) do if byPage[p] then members[#members + 1] = byPage[p] end end
+    if #members > 0 then
+      -- the group's badge: the first member badge (a coloured one wins)
+      local badge, bcol
+      for _, m in ipairs(members) do
+        if m[3] and (not badge or (m[4] and not bcol)) then badge, bcol = m[3], m[4] end
+      end
+      out[#out + 1] = { g.id, g.label or members[1][2], badge, bcol, members = members }
+    end
+  end
+  return out
 end
 
 -- the title, the tabs, the owner and the clock
@@ -200,7 +236,7 @@ function drawHeader()
 
   local tx = x0
   for _, t in ipairs(tabs) do
-    local active = state.page == t[1]
+    local active = groupOf(state.page) == t[1]
     local w = widthOf(t, pad, badges)
     local bg = active and C.accent or C.head
     local fg = active and C.ink or C.text
@@ -215,8 +251,32 @@ function drawHeader()
     end
     -- the active tab runs into the page: a thin line in its colour under it
     if active then text(tx, 4, string.char(131):rep(w), C.accent, C.bg) end
-    addHit(tx, 1, w, 3, "page", t[1])
+    addHit(tx, 1, w, 3, "group", t[1])
     tx = tx + w + 1
+  end
+  -- the pages of the open group: small tabs on row 5
+  for _, t in ipairs(tabs) do
+    if groupOf(state.page) == t[1] and #t.members > 1 then
+      local sx = 2
+      for _, m in ipairs(t.members) do
+        local on = state.page == m[1]
+        local label = " " .. m[2] .. ((m[3] and m[3] ~= "") and (" " .. m[3]) or "") .. " "
+        text(sx, 5, label, on and C.ink or C.text, on and C.label or (m[4] or C.empty))
+        addHit(sx, 5, #label, 1, "page", m[1])
+        sx = sx + #label + 1
+      end
+    end
+  end
+end
+
+-- open a group: the page used last in it (or its first page)
+function openGroup(id)
+  for _, t in ipairs(headerTabs()) do
+    if t[1] == id then
+      local want = state.groupLast and state.groupLast[id]
+      for _, m in ipairs(t.members) do if m[1] == want then return want end end
+      return t.members[1][1]
+    end
   end
 end
 
@@ -369,7 +429,8 @@ function drawFooter()
     turtles = "Select a turtle, then use the pad. On the computer:  turtle <id> goto x y z",
     drone   = "Pick a passenger + destination, then FERRY (tap twice). Type 'help' on the computer for coordinates",
     events  = "Every message, newest first. Tap a filter to show one kind only",
-    system  = "Tap a setting's value to change it (kept after restarts). The SYSTEM LOG keeps system things only",
+    system  = "How the base is doing. The SYSTEM LOG keeps system things only (not pushed out by everyday messages)",
+    settings = "Pick a group on the left, then tap - / + or the value. RESET = back to base_config.lua",
   }
   if state.diskLow then
     text(3, H, trunc("  " .. state.diskLow .. "  ", W - 24), C.ink, C.bad)
@@ -472,6 +533,8 @@ function draw()
   elseif state.page == "system" then
     state.sysSeen = #SYSLOG
     drawSystemPage(G)
+  elseif state.page == "settings" then
+    drawSettingsPage(G)
   elseif state.status == "nocard" then
     drawMessage("NO PLAYER LINKED",
       { "Bind a Memory Card to yourself (right-click with it),",

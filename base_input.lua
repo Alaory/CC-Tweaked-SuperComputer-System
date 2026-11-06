@@ -16,8 +16,18 @@ function handleTouch(tx, ty)
         sortMode = sortMode == "count" and "name"
                 or sortMode == "name" and "slot" or "count"
         sortList()
+      elseif h[5] == "group" then
+        -- a top tab: the page used last in that group
+        local pg = openGroup(h[6])
+        if pg then
+          state.page = pg
+          saveFileSafe("ui_page.dat", pg)
+          if pg == "events" then state.noteUnread = 0 end
+        end
       elseif h[5] == "page" then
         state.page = h[6]
+        state.groupLast = state.groupLast or {}
+        if groupOf(h[6]) then state.groupLast[groupOf(h[6])] = h[6] end
         saveFileSafe("ui_page.dat", h[6])                 -- opened again after a restart
         if h[6] == "events" then state.noteUnread = 0 end   -- seen
       elseif h[5] == "meitem" then
@@ -42,6 +52,12 @@ function handleTouch(tx, ty)
             if dr and a.pass and a.pass ~= "" then dr.passenger = a.pass end
             if submitDrone(dr, { kind = what, passenger = a.pass }) then
               setToast(dr.label .. ": " .. what .. " started", C.label, 4)
+            end
+          elseif a.kind == "setpos" then
+            local def = settingAt(state.setGroup or 1, tonumber(a.name))
+            if def then
+              local okP, msgP = settingHere(def)
+              setToast(msgP, okP and C.good or C.warn, 5)
             end
           elseif a.kind == "syssave" then
             local okS = pcall(MAP.save)
@@ -325,14 +341,16 @@ function handleTouch(tx, ty)
         else
           setToast("Owner unknown (memory card in the Inventory Manager?)", C.warn, 4)
         end
-      elseif h[5] == "sysset" then
-        -- SYSTEM tab: the next value of a setting
-        local def = SYS_SETTINGS and SYS_SETTINGS[h[6]]
+      elseif h[5] == "setgroup" then
+        state.setGroup = h[6]
+      elseif h[5] == "setdec" or h[5] == "setinc" or h[5] == "setreset" then
+        -- SETTINGS page: one step down / up, or back to base_config.lua
+        local def = settingAt(state.setGroup or 1, h[6])
         if def then
-          local okN, errN = pcall(def.next)
-          local okG, v = pcall(def.get)
-          if okN then setToast(def.label .. ": " .. tostring(okG and v or "?"), C.label, 3)
-          else setToast("Could not change it: " .. tostring(errN), C.warn, 5) end
+          local okN, errN
+          if h[5] == "setreset" then okN, errN = pcall(settingReset, def)
+          else okN, errN = pcall(settingStep, def, h[5] == "setdec" and -1 or 1) end
+          if not okN then setToast("Could not change it: " .. tostring(errN), C.warn, 5) end
         end
       elseif h[5] == "evfilter" then
         state.eventsFilter = h[6]
@@ -341,7 +359,7 @@ function handleTouch(tx, ty)
         noteLogClear()                  -- the list only; events.log keeps everything
         state.eventsPage = 1
       end
-      return h[5] == "page" or h[5] == "act" or h[5] == "mecraft"
+      return h[5] == "page" or h[5] == "group" or h[5] == "act" or h[5] == "mecraft"
     end
   end
   return false

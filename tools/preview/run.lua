@@ -22,7 +22,7 @@ local MODULES = {
   "base_me", "base_players", "base_drones", "base_turtles", "base_map", "base_console",
   "base_chat", "base_ui_core", "base_ui_inventory", "base_ui_players",
   "base_ui_storage", "base_ui_me", "base_ui_drone", "base_ui_turtles", "base_ui_map",
-  "base_ui_chat", "base_ui_events", "base_ui_system", "base_input", "base_workers",
+  "base_ui_chat", "base_ui_events", "base_ui_system", "base_ui_settings", "base_input", "base_workers",
 }
 for _, name in ipairs(MODULES) do
   local fn, err = loadfile(SRC_DIR .. "/" .. name .. ".lua", "t", env)

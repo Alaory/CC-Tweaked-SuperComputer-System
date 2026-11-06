@@ -134,13 +134,22 @@ PneumaticCraft drone rides, turtle mapping/surveys, and an AE2 ME network view.
 - Message log: pushNote -> noteLogAdd (base_me.lua) also appends to
   events.log (computer, 16 KB, then events.old.log); the EVENTS list is read
   back on start (after the last CLEAR marker). `events [n] [errors]` shows it.
+- Header: pages are GROUPED (GROUPS in base_ui_core.lua: YOU = inventory/storage/
+  curios, PLAYERS = players/access, ME, DRONES, TURTLES = turtles/map, SYSTEM =
+  system/events/settings); a group with several pages shows small sub-tabs on
+  row 5 (hit "page"); the top tab is hit "group" -> openGroup (last page used).
+  pageTabs() lists the pages that exist; headerTabs() the groups.
+- SETTINGS page (base_ui_settings.lua, SETTING_GROUPS): click-only - num (-/+ by
+  step, min/max), cycle, bool, pos ("USE MY POSITION" / "BLOCK UNDER ME" from
+  the Player Detector, tap twice), custom (theme, chat messages, auto-map).
+  setSetting / resetSetting (base_devices.lua; CONFIG_ORIGINAL keeps the
+  base_config.lua value for RESET). Only settings that are read live belong here.
 - SYSTEM tab (base_ui_system.lua): STATUS (state.sys from sysRefresh in the comms
   worker - disk/floppy calls never in drawing), SYSTEM LOG (sysLog -> system.log,
   16 KB + system.old.log, newest 100 in SYSLOG; only system things: base off /
-  crash, new turtle program, floppies, auto-map, turtle crashes), SETTINGS
-  (SYS_SETTINGS: tap = next value; setSetting(path, v) -> settings.dat, applied
-  over CONFIG at the top of base_devices.lua - base_config.lua never changed),
-  ACTIONS (save map, update turtles, restart base).
+  crash, new turtle program, floppies, auto-map, turtle crashes), times the base
+  was off, ACTIONS (save map, update turtles, restart base). settings.dat is
+  applied over CONFIG at the top of base_devices.lua - base_config.lua never changed.
 - `$drone notify on|all|off` (owner, also buttons on the CHAT tab): pushNote -> notifyChat (base_chat.lua)
   sends the monitor's messages privately in chat; max 6/min, rest summed up;
   saved in chat_notify.dat.
@@ -166,7 +175,7 @@ PneumaticCraft drone rides, turtle mapping/surveys, and an AE2 ME network view.
 | base_drones.lua | PneumaticCraft drone missions (teleport mode, air checks, parking/charging) |
 | base_turtles.lua / base_map.lua | turtle comms, shared terrain knowledge, OTA updates, map data |
 | base_console.lua / base_chat.lua / base_input.lua / base_workers.lua | console commands, chat commands, touch input, workers |
-| base_ui_*.lua | one file per tab (base_ui_system.lua = SYSTEM) + base_ui_core.lua (cards, buttons, bars, footer) |
+| base_ui_*.lua | one file per page (base_ui_system.lua = STATUS, base_ui_settings.lua = SETTINGS) + base_ui_core.lua (header groups, cards, buttons, bars, footer) |
 | node.lua | the turtle program |
 
 ## The owner's setup (found out the hard way)
