@@ -53,6 +53,8 @@ CONFIG = {
   lowFuel    = 2000,
   fuelTarget = 20000,
   keepCoal   = 64,            -- coal kept for fuel, the rest is delivered
+  -- endless fuel items (refuelling does not use them up): kept, never unloaded
+  fuelItems  = { "*mining_dim_core*" },
   wantMax    = 64,            -- max blocks of a CONFIG.want type per layer
   -- items thrown away (exact names; "*x" = ends in x)
   junk = { "minecraft:cobblestone", "minecraft:cobbled_deepslate", "minecraft:stone", "minecraft:deepslate",
@@ -71,7 +73,7 @@ CONFIG = {
 }
 
 STATE_FILE = "miner_state"
-MYVER = "m5"            -- shown on the screen and the base (MINING tab)
+MYVER = "m6"            -- shown on the screen and the base (MINING tab)
 DX = { [0] = 0, 1, 0, -1 }
 DZ = { [0] = -1, 0, 1, 0 }
 FNAME = { [0] = "north", "east", "south", "west" }
@@ -143,7 +145,8 @@ function isProtected(name) return match(name, CONFIG.protect) end
 function isLiquid(name) return match(name, { "*water*", "*lava*" }) end
 TOOLS = { "pickaxe", "modem", "geo_scanner", "geoscanner", "shulker", "automata", "chunk" }
 function isTool(name) return match(name, { "*pickaxe*", "*modem*", "*geo_scanner*", "*geoscanner*", "*shulker*",
-                                            "*automata*", "*chunk*" }) end
+                                            "*automata*", "*chunk*" }) or isEndless(name) end
+function isEndless(name) return match(name, CONFIG.fuelItems) or (S.reuse and S.reuse[name]) end
 function isCoal(name) return name == "minecraft:coal" or name == "minecraft:charcoal" or name == "minecraft:coal_block" end
 function isJunk(name)
   if match(name, CONFIG.want) or match(name, CONFIG.keep or {}) then return false end
@@ -402,6 +405,23 @@ end
 function burnCoal()
   local fuel = turtle.getFuelLevel()
   if fuel == "unlimited" or fuel >= CONFIG.lowFuel then return end
+  -- endless fuel first (e.g. the Mining Dim Core): refuel(1) keeps the item
+  for i = 1, 16 do
+    local d = turtle.getItemDetail(i)
+    if d and isEndless(d.name) then
+      turtle.select(i)
+      for _ = 1, 500 do
+        local before, n0 = turtle.getFuelLevel(), turtle.getItemCount(i)
+        if before >= CONFIG.fuelTarget then break end
+        local ok = turtle.refuel(1)
+        if not ok or turtle.getFuelLevel() <= before then
+          if not S.notFuel then S.notFuel = true note(d.name .. " does not work as turtle fuel here") end
+          break
+        end
+        if turtle.getItemCount(i) < n0 then break end          -- it WAS used up: not endless
+      end
+    end
+  end
   for i = 1, 16 do
     local d = turtle.getItemDetail(i)
     if d and isCoal(d.name) then
@@ -541,6 +561,7 @@ function digDir(d)
 end
 -- one step ("f", "u", "d"), digging when allowed (miner) or waiting (loader)
 function step(d)
+  if S.role ~= "miner" then burnCoal() end
   local mv = (d == "u" and turtle.up) or (d == "d" and turtle.down) or turtle.forward
   local det = (d == "u" and turtle.detectUp) or (d == "d" and turtle.detectDown) or turtle.detect
   local att = (d == "u" and turtle.attackUp) or (d == "d" and turtle.attackDown) or turtle.attack
@@ -957,6 +978,30 @@ function gpsCheck()
     save()
   end
 end
+-- which way do we really face? one step forward (or back) and GPS before/after.
+-- nil when there is no GPS or no room to step
+function gpsFacing()
+  local x0, _, z0 = gpsHere(2)
+  if not x0 then return nil end
+  local function dirOf(dx, dz)
+    for i = 0, 3 do if DX[i] == dx and DZ[i] == dz then return i end end
+  end
+  for turn = 0, 3 do
+    if turtle.forward() then
+      local x1, _, z1 = gpsHere(2)
+      turtle.back()
+      return x1 and dirOf(x1 - x0, z1 - z0)
+    elseif turtle.back() then
+      local x1, _, z1 = gpsHere(2)
+      turtle.forward()
+      local f = x1 and dirOf(x0 - x1, z0 - z1)
+      return f
+    end
+    turtle.turnRight()
+    S.pos.f = (S.pos.f + 1) % 4
+  end
+  return nil
+end
 -- a safe point: report, fuel, unload when it is time
 function checkpoint()
   if os.clock() - LAST_CHECK > CONFIG.checkIn then
@@ -1115,6 +1160,9 @@ function waitLoader(P)
   local t0, sent = os.clock(), -1000
   while ARRIVED ~= c.ref do
     if not S.running then return false, "paused" end
+    if os.clock() - t0 > 300 then
+      return false, "the loader did not follow (5 min) - look at the loader's line, then START"
+    end
     if os.clock() - sent > 30 then callLoader(P) sent = os.clock() end
     setTask("waiting for the loader (" .. math.floor(os.clock() - t0) .. " s)")
     if os.clock() - LAST_STATUS > 15 then sendBase("status") end
@@ -1132,6 +1180,9 @@ function workStep()
   local cx, cz = chunkAt(P, P.ci)
   local mx, mz = center(cx, cz)
   if P.phase == "go" then
+    -- the loader comes after us into this chunk: wait until it is here
+    local okL, errL = waitLoader(P)
+    if not okL then return false, errL end
     setTask("tunnel to chunk " .. P.ci .. " (" .. mx .. " " .. mz .. ")")
     local ok, err = goTo(mx, P.yt, mz, S.trail)
     if not ok then return false, err end
@@ -1305,19 +1356,39 @@ function loaderRun()
     end
     local F = S.follow
     if F and not F.done then
+      -- before walking: where am I really, and which way do I face? (GPS)
+      if not F.checked then
+        gpsCheck()
+        local f = gpsFacing()
+        if f and f ~= S.pos.f then note("Facing corrected by GPS: " .. FNAME[S.pos.f] .. " -> " .. FNAME[f]) end
+        if f then S.pos.f = f end
+        gpsCheck()                                   -- (the test step could not go back: right spot again)
+        F.checked = true
+        save()
+      end
       while F.i <= #F.pts do
         local p = F.pts[F.i]
         setTask("following the miner (" .. F.i .. "/" .. #F.pts .. ")")
         local ok, err = goTo(p.x, p.y, p.z)
-        if not ok then
+        if ok then
+          -- really there? (GPS) - if not, the next round walks from the right spot
+          gpsCheck()
+          if S.pos.x ~= p.x or S.pos.y ~= p.y or S.pos.z ~= p.z then
+            F.miss = (F.miss or 0) + 1
+            ok, err = false, "not where it should be after walking (" .. F.miss .. "x)"
+            if F.miss < 5 then ok = nil end
+          end
+        end
+        if ok == false then
           setTask("STUCK following the miner: " .. tostring(err))
           note("Loader: " .. tostring(err))
           sendBase("status")
           sleep(5)
           break
+        elseif ok then
+          F.i, F.miss = F.i + 1, nil
+          save()
         end
-        F.i = F.i + 1
-        save()
       end
       if F.i > #F.pts then
         F.done = true

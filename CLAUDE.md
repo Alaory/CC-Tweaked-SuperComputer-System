@@ -178,7 +178,15 @@ PneumaticCraft drone rides, turtle mapping/surveys, and an AE2 ME network view.
   "scan" on the owner's version; the error lists the methods). Items in the
   miner at START (not tools / coal) are the owner's (S.own): never unloaded;
   more than 4 such slots -> START refused; full of only those -> HALT.
-  Ctrl+T (Terminated) is passed on, not saved as an error. MINING tab: per
+  Ctrl+T (Terminated) is passed on, not saved as an error. Endless fuel
+  (CONFIG.fuelItems "*mining_dim_core*", or learned S.reuse): burnCoal uses
+  it first (refuel(1) keeps the item), both roles (loader before every step);
+  counts as a tool (never unloaded). Loader following: before each walk
+  gpsCheck + gpsFacing (one step forward/back, GPS delta = real facing),
+  GPS check after every leg (5 misses -> STUCK); the miner waits for
+  "arrived" at the START of each new chunk ("go") and before crossing, max
+  5 min, then stops with "the loader did not follow". Works with 1-chunk AND
+  3x3 Chunky loading (minesim default = 1 chunk, scenario r1 = 3x3). MINING tab: per
   team unitBox (status, why wrapped, fuel bar from m.fuelMax, position),
   FIELD map (one cell per chunk index, rowLength per row), layer bar, ores/hour
   (u.runT0/u.ores0 on the base), unload countdown, item lists with totals,

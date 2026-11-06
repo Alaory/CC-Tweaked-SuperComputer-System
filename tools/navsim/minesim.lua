@@ -211,6 +211,10 @@ local function turtleApi(u)
   t.getItemDetail = function(i) local it = u.inv[i or u.sel] return it and { name = it.name, count = it.count } or nil end
   t.refuel = function(n)
     local it = u.inv[u.sel]
+    if it and it.name == "jamd:mining_dim_core" then
+      u.fuel = math.min(100000, u.fuel + 1000 * (n or 1))        -- endless: not used up
+      return true
+    end
     if not it or not (it.name == "minecraft:coal" or it.name == "minecraft:coal_block") then return false end
     n = math.min(n or it.count, it.count)
     u.fuel = u.fuel + 80 * n
@@ -502,6 +506,10 @@ if SCEN == "modemon" then
   m.inv[1] = { name = "minecraft:netherite_pickaxe", count = 1 }
 end
 if SCEN == "nofuel" then m.fuel = 0 m.inv[4] = nil end
+if SCEN == "core" then
+  m.inv[4] = { name = "jamd:mining_dim_core", count = 1 }      -- no coal, only the endless core
+  m.fuel = 300
+end
 if SCEN == "geoname" then m.inv[7] = { name = "jamd:mining_dim_core", count = 1 } end
 if SCEN == "ownfull" then
   for i = 5, 13 do m.inv[i] = { name = "minecraft:torch", count = 64 } end
@@ -510,8 +518,10 @@ if SCEN == "direct" then
   setBlock(DUMP.x, DUMP.y, DUMP.z, "ae2:interface")
   SHULKERS[key(DUMP.x, DUMP.y, DUMP.z)] = {}
 end
-local l = newTurtle(LOADER, "loader", LX, MY, LZ, MF, {},
+local l = newTurtle(LOADER, "loader", LX, MY, LZ, MF,
+  (SCEN == "core") and { [1] = { name = "jamd:mining_dim_core", count = 1 } } or {},
   "advancedperipherals:chunk_controller", "computercraft:wireless_modem_advanced")
+if SCEN == "core" then l.fuel = 300 end
 -- the station: miner was set up there (point saved, station known)
 m.points.station = { x = STATION.x, y = STATION.y, z = STATION.z }
 setBlock(STATION.x, STATION.y, STATION.z, nil)
@@ -533,8 +543,10 @@ if SCEN == "wrongface" then
 end
 local SRC = io.open(ROOT .. "miner.lua"):read("a")
 local cos = {}
+ENVS = {}
 for _, u in ipairs({ m, l }) do
   local env = envFor(u)
+  ENVS[u.role] = env
   local fn = assert(load(SRC, "miner.lua", "t", env))
   cos[#cos + 1] = { co = coroutine.create(fn), wake = 0, u = u }
 end
@@ -606,6 +618,13 @@ while T < maxT do
     FILLED = true
     for i = 5, 13 do if not m.inv[i] then m.inv[i] = { name = "minecraft:raw_copper", count = 64 } end end
   end
+  -- the loader's remembered facing goes wrong in the middle of the run
+  if SCEN == "loaderdrift" and not DRIFTED and T > 1500 and ENVS.loader.S and ENVS.loader.S.pos then
+    DRIFTED = true
+    ENVS.loader.S.pos.f = (ENVS.loader.S.pos.f + 1) % 4
+    io.write("** loader now believes it faces " .. ENVS.loader.S.pos.f .. " (wrong)\n")
+  end
+  if SCEN == "core" and T > 3000 and l.fuel < 500 then fail("loader ran low on fuel despite the core") end
   -- next coroutine to run
   table.sort(cos, function(p, q) return p.wake < q.wake end)
   local c = cos[1]
@@ -638,7 +657,7 @@ end
 local mu = MINE.units[MINER]
 print("---")
 print("miner pos", m.pos.x, m.pos.y, m.pos.z, "fuel", m.fuel, "warps", m.warps or 0)
-print("loader pos", l.pos.x, l.pos.y, l.pos.z)
+print("loader pos", l.pos.x, l.pos.y, l.pos.z, "fuel", l.fuel)
 print("miner paused (unloaded) " .. (m.frozen or 0) .. " times, shut down " .. (m.shutdowns or 0) .. " times")
 print("chunk index", mu and mu.ci, "stats", mu and mu.stats and textutils.serialize(mu.stats))
 print("delivered by the bus:", textutils.serialize(delivered))
@@ -653,6 +672,7 @@ if mu then
   if MINE.status(mu) == "STOPPED" and SCEN ~= "nofuel" and SCEN ~= "ownfull" then fail("miner STOPPED: " .. tostring(mu.err)) end
 end
 for _, e in ipairs(mu and mu.log or {}) do print("LOG", e.msg) end
+for _, e in ipairs(MINE.units[LOADER] and MINE.units[LOADER].log or {}) do print("LOADERLOG", e.msg) end
 if #FAIL > 0 then
   print("FAILURES:")
   for _, f in ipairs(FAIL) do print("  " .. f) end
