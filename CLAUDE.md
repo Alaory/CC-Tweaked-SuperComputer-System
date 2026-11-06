@@ -63,8 +63,9 @@ PneumaticCraft drone rides, turtle mapping/surveys, and an AE2 ME network view.
   kept for the turtle installer) and the owner is warned (popup, chat,
   footer) - MAP.checkSpace.
 - Turtle updates: every new node.lua gets a number (v1, v2 ... in
-  turtle_versions.dat). TT.updateTick (comms worker) updates ONE turtle at a
-  time; a busy turtle keeps the update (UPD_READY) and installs it after its
+  turtle_versions.dat). TT.updateTick (comms worker) updates up to 3 turtles at a
+  time (TT.sending; t.updState sending/ready/retry + t.updNote for the screen;
+  runs when autoUpdate is on, or 10 min after UPDATE TURTLES = TT.updateForce); a busy turtle keeps the update (UPD_READY) and installs it after its
   job; missing pieces are asked for ("updmiss"). Toasts on each update.
 - Install drive: the Disk Drive under the computer ("bottom", not wired;
   CONFIG.turtles.installDrive). A floppy put in gets the installer + current

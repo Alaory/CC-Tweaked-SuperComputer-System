@@ -66,6 +66,7 @@ function handleTouch(tx, ty)
             setToast("Saving the map ...", C.label, 3)
           elseif a.kind == "sysupdate" then
             pcall(TT.codeLoad, true)
+            TT.updateForce = os.clock() + 600          -- also when automatic updates are off
             local n = 0
             for _, t in pairs(state.turtles) do
               if TT.online(t) and TT.outdated(t) then t.updRetry = nil n = n + 1 end

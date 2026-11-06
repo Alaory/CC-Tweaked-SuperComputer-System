@@ -59,7 +59,9 @@ function drawTurtlesPage(G)
     local vn = TT.verName(t.ver)
     local old = on and TT.outdated(t)
     local ready = old and CODE and t.updReady == CODE.ver
-    local st = (on and t.stuck) and "STUCK" or ready and "UPDATE READY" or old and "UPDATING"
+    local upd = old and (t.updState == "sending" and "SENDING UPDATE" or (t.updState == "retry" and "RETRY UPDATE")
+                         or "UPDATE QUEUED")
+    local st = (on and t.stuck) and "STUCK" or ready and "UPDATE READY" or upd
                or (on and t.held) and "STOPPED"
                or (on and t.anchor) and "ANCHOR" or (on and t.rescuerRole) and "RESCUER"
                or (on and "ONLINE" or "OFFLINE")
@@ -106,6 +108,15 @@ function drawTurtlesPage(G)
   stat(rix + 4 * (q + 2), y0 + 3, q, "ITEMS", tostring(t.items or "?"))
   if t.stuck then
     text(rix, y0 + 5, trunc("STUCK: " .. tostring(t.stuck), riw), C.warn, C.panel)
+  elseif CODE and TT.online(t) and TT.outdated(t) then
+    local msg = (t.updReady == CODE.ver) and ("Has " .. TT.verName(CODE.ver) .. " ready - installs when its job is done")
+                or (t.updState == "sending") and ("Sending " .. TT.verName(CODE.ver) .. " now (" .. #CODE.pieces .. " pieces)")
+                or (t.updState == "retry") and ("Update: " .. tostring(t.updNote or "failed") .. " - next try in " ..
+                     math.max(0, math.floor((t.updRetry or 0) - os.clock())) .. " s")
+                or ("Waiting for its turn to get " .. TT.verName(CODE.ver) ..
+                    ((not CONFIG.turtles.autoUpdate and not (TT.updateForce and os.clock() < TT.updateForce))
+                     and " (automatic updates are OFF - press UPDATE TURTLES)" or ""))
+    text(rix, y0 + 5, trunc(msg, riw), C.label, C.panel)
   elseif t.held then
     text(rix, y0 + 5, trunc("STOPPED by you - automatic jobs skip it. Any button (e.g. PING) releases it.", riw),
          C.warn, C.panel)

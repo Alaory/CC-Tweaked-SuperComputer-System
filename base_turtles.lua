@@ -126,7 +126,7 @@ function TT.receive(id, m)
       local p = CODE.pieces[tonumber(k) or 0]
       if p then TT.send(id, "upd", { CODE.ver, tonumber(k), #CODE.pieces, p }, true) end
     end
-    if TT.updating and TT.updating.id == id then TT.updating.t0 = os.clock() end
+    if TT.sending[id] then TT.sending[id] = os.clock() end      -- still on it: wait longer
   elseif m.t == "homebad" and tonumber(m.x) then
     -- an offered home was not free: never offer that spot to it again
     t.homeBad = t.homeBad or {}
@@ -189,7 +189,8 @@ function TT.receive(id, m)
     TT.log(t, "Update: " .. tostring(m.msg))
     if not m.ok then
       setToast(t.label .. ": update failed - " .. tostring(m.msg), C.warn)
-      if TT.updating and TT.updating.id == id then TT.updating = nil t.updRetry = os.clock() + 120 end
+      TT.sending[id] = nil
+      t.updRetry, t.updState, t.updNote = os.clock() + 120, "retry", tostring(m.msg)
     elseif tostring(m.msg):find("ready", 1, true) then
       setToast(t.label .. " got " .. (CODE and TT.verName(CODE.ver) or "the update") ..
                " - installs when its job is done", C.label)
@@ -473,8 +474,8 @@ function TT.codeLoad(force)
     end
     if sysLog then sysLog("New turtle program " .. TT.verName(CODE.ver) .. " (" .. #text .. " bytes)", "INFO") end
   end
-  for _, t in pairs(state.turtles) do t.updSent, t.updRetry = nil, nil end
-  TT.updating = nil
+  for _, t in pairs(state.turtles) do t.updSent, t.updRetry, t.updState = nil, nil, nil end
+  TT.updating, TT.sending = nil, {}
   TT.writeInstallDisk()
 end
 
@@ -495,29 +496,40 @@ end
 -- updates, ONE turtle at a time (comms worker, every 2 s): send it, wait until
 -- it runs the new version or has it ready (busy turtles install it after their
 -- job), then the next one. No answer in 45 s: try that one again in 2 minutes.
+-- Up to 3 turtles at a time. Runs when updates are on (SETTINGS) or for 10
+-- minutes after UPDATE TURTLES (TT.updateForce). t.updState tells the screen
+-- what is going on for each turtle: "sending", "ready", "retry", nil.
+TT.sending = {}              -- [id] = time it was sent
 function TT.updateTick()
-  if not CODE or not CONFIG.turtles.autoUpdate then return end
-  local u = TT.updating
-  if u then
-    local t = state.turtles[u.id]
+  if not CODE then return end
+  local forced = TT.updateForce and os.clock() < TT.updateForce
+  if not CONFIG.turtles.autoUpdate and not forced then return end
+  local now = os.clock()
+  local busy = 0
+  for id, t0 in pairs(TT.sending) do
+    local t = state.turtles[id]
     if not t or t.ver == CODE.ver or t.updReady == CODE.ver then
-      TT.updating = nil
-    elseif os.clock() - u.t0 > 45 then
-      t.updRetry = os.clock() + 120
-      TT.log(t, "No answer to the update - trying again later")
-      TT.updating = nil
+      TT.sending[id] = nil
+      if t then t.updState = (t.updReady == CODE.ver and t.ver ~= CODE.ver) and "ready" or nil end
+    elseif now - t0 > 45 then
+      TT.sending[id] = nil
+      t.updRetry, t.updState = now + 120, "retry"
+      t.updNote = "no answer in 45 s (scanning? out of range?)"
+      TT.log(t, "No answer to the update - trying again in 2 min")
     else
-      return
+      busy = busy + 1
     end
   end
   for _, t in ipairs(TT.list()) do
-    if TT.online(t) and TT.outdated(t) and t.updReady ~= CODE.ver
-       and (not t.updRetry or os.clock() > t.updRetry) then
+    if busy >= 3 then break end
+    if TT.online(t) and TT.outdated(t) and t.updReady ~= CODE.ver and not TT.sending[t.id]
+       and (not t.updRetry or now > t.updRetry) then
       TT.pushCode(t.id)
-      TT.updating = { id = t.id, t0 = os.clock() }
-      return
+      TT.sending[t.id], t.updState = now, "sending"
+      busy = busy + 1
     end
   end
+  TT.updating = next(TT.sending) and { id = next(TT.sending), t0 = now } or nil
 end
 
 -- a turtle runs a new version now: tell the owner (and when all are done)
