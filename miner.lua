@@ -193,13 +193,17 @@ function showLink(msg)
   local okS, w, h = pcall(term.getSize)
   if not okS or not h then return end
   local x, y = term.getCursorPos()
+  term.setCursorPos(1, h - 1)
+  term.clearLine()
+  term.write(("> " .. (task or "")):sub(1, w))
   term.setCursorPos(1, h)
   term.clearLine()
-  term.write(("[" .. (task or "") .. "] " .. msg):sub(1, w))
-  term.setCursorPos(x, math.min(y, h - 1))
+  term.write(msg:sub(1, w))
+  term.setCursorPos(x, math.min(y, h - 2))
 end
 function sendBase(t, extra)
   if not modemSide() then showLink("NO MODEM EQUIPPED - cannot report to the base") return end
+  if not rednet.isOpen(modemSide()) then pcall(rednet.open, modemSide()) end
   local id = baseId()
   if not id then
     showLink("BASE NOT FOUND - is the base's Ender Modem on? (protocol " .. CONFIG.protocol .. ")")
@@ -241,6 +245,7 @@ function sendBase(t, extra)
 end
 function sendTeam(to, t, extra)
   if not modemSide() then return end
+  if not rednet.isOpen(modemSide()) then pcall(rednet.open, modemSide()) end
   local m = {}
   for k, v in pairs(extra or {}) do m[k] = v end
   m.t, m.n = t, nextN()
@@ -427,7 +432,11 @@ function toolNow()
 end
 TOOL_ITEM = { pickaxe = "*pickaxe*", modem = "*modem*", geo = "*geo_scanner*" }
 function equipTool(kind)
-  if toolNow() == kind then return true end
+  if toolNow() == kind then
+    -- already on (e.g. after a restart): the modem must still be OPENED
+    if kind == "modem" and not rednet.isOpen(toolSide()) then pcall(rednet.open, toolSide()) end
+    return true
+  end
   local slot = findSlot(function(n) return match(n, { TOOL_ITEM[kind] }) end)
   if not slot then
     return false, "no " .. kind .. " in the inventory"

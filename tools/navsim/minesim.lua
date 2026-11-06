@@ -351,7 +351,7 @@ local function rednetApi(u)
   local R = {}
   R.open = function(side) if u[side] and UPTYPE[u[side]] == "modem" then u.open[side] = true end end
   R.close = function() u.open = {} end
-  R.isOpen = function() return next(u.open) ~= nil end
+  R.isOpen = function(side) if side then return u.open[side] == true end return next(u.open) ~= nil end
   R.send = function(to, msg, proto) if next(u.open) then deliver(u.id, to, msg, proto) end return true end
   R.broadcast = function(msg, proto)
     if not next(u.open) then return end
@@ -451,6 +451,11 @@ if SCEN == "corein" then
   m.left = nil
   m.inv[6] = { name = "advancedperipherals:end_automata_core", count = 1 }
 end
+if SCEN == "modemon" then
+  -- the modem already equipped at start (closed, like after any restart)
+  m.left, m.right = "computercraft:wireless_modem_advanced", "advancedperipherals:end_automata_core"
+  m.inv[1] = { name = "minecraft:netherite_pickaxe", count = 1 }
+end
 if SCEN == "nofuel" then m.fuel = 0 m.inv[4] = nil end
 if SCEN == "full" then
   for i = 5, 13 do m.inv[i] = { name = "minecraft:torch", count = 64 } end
@@ -534,6 +539,7 @@ while T < maxT do
     REBOOTED = true
     for _, c in ipairs(cos) do
       if c.u.role == "miner" then
+        c.u.open = {}                          -- a restart closes the modems
         c.co = coroutine.create(assert(load(SRC, "miner.lua", "t", envFor(c.u))))
         c.wake = T + 5
         io.write("** miner rebooted at " .. c.u.pos.x .. " " .. c.u.pos.y .. " " .. c.u.pos.z .. "\n")
