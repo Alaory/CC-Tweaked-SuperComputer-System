@@ -798,6 +798,8 @@ function layers(yt)
   local out = {}
   local y = yt
   while y >= CONFIG.minY do out[#out + 1] = y y = y - CONFIG.layerStep end
+  -- the last stop did not reach the bedrock (its scan goes 8 down): one more
+  if #out > 0 and out[#out] - CONFIG.minY > 5 then out[#out + 1] = CONFIG.minY end
   return out
 end
 function chunkAt(P, i)
