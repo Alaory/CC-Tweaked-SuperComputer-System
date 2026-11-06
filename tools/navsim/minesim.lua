@@ -431,6 +431,14 @@ local function envFor(u)
     reboot = function() error("REBOOT") end,
   }
   env.sleep = function(s) wait(s or 0) end
+  -- a GPS system in the dimension (scenario nogps: none)
+  env.gps = { locate = function(t)
+    wait(t or 1)
+    if SCEN == "nogps" then return nil end
+    local has = (u.left and UPTYPE[u.left] == "modem") or (u.right and UPTYPE[u.right] == "modem")
+    if not has then return nil end
+    return u.pos.x + 0.0, u.pos.y + 0.0, u.pos.z + 0.0
+  end }
   env.turtle = turtleApi(u)
   env.peripheral = peripheralApi(u)
   env.rednet = rednetApi(u)
@@ -471,7 +479,7 @@ end
 ---------------------------------------------------------------- the two turtles
 local MINER, LOADER = 11, 12
 local MX, MY, MZ, MF, LX, LZ = 100, 40, 0, 1, 99, 0
-if SCEN == "owner" or SCEN == "wrongface" then MX, MY, MZ, MF, LX, LZ = -5271, 69, 10851, 2, -5271, 10850 end
+if SCEN == "owner" or SCEN == "wrongface" or SCEN == "gpsfix" then MX, MY, MZ, MF, LX, LZ = -5271, 69, 10851, 2, -5271, 10850 end
 local KEY = "test-key"
 local m = newTurtle(MINER, "miner", MX, MY, MZ, MF, {
   [1] = { name = "computercraft:wireless_modem_advanced", count = 1 },
@@ -508,6 +516,11 @@ m.files.miner_state = textutils.serialize({ role = "miner", key = KEY, dim = "ov
 l.files.miner_state = textutils.serialize({ role = "loader", key = KEY, dim = "overworld",
   pos = { x = LX, y = MY, z = LZ, f = MF } })
 
+if SCEN == "gpsfix" then
+  -- typed positions 3 blocks off (and the loader's too)
+  local ms = textutils.unserialize(m.files.miner_state) ms.pos.x = ms.pos.x + 3 m.files.miner_state = textutils.serialize(ms)
+  local ls = textutils.unserialize(l.files.miner_state) ls.pos.z = ls.pos.z - 2 l.files.miner_state = textutils.serialize(ls)
+end
 if SCEN == "wrongface" then
   -- typed facings were wrong: miner says east (really south), loader says west
   local ms = textutils.unserialize(m.files.miner_state) ms.pos.f = 1 m.files.miner_state = textutils.serialize(ms)

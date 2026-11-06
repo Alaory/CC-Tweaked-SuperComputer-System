@@ -895,11 +895,31 @@ function newPlan()
   save()
   return true
 end
+-- GPS (a GPS system in this dimension): our real position, or nil
+function gpsHere(timeout)
+  if not gps or not modemSide() then return nil end
+  local ok, x, y, z = pcall(gps.locate, timeout or 1)
+  if not ok or not x then return nil end
+  return math.floor(x + 0.5), math.floor(y + 0.5), math.floor(z + 0.5)
+end
+-- the tracked position against GPS: corrected when it is off
+function gpsCheck()
+  if not S.pos then return end
+  local x, y, z = gpsHere(1)
+  if not x then return end
+  S.gpsOk = true
+  if x ~= S.pos.x or y ~= S.pos.y or z ~= S.pos.z then
+    note("GPS: position corrected " .. fmtPos() .. " -> " .. x .. " " .. y .. " " .. z)
+    S.pos.x, S.pos.y, S.pos.z = x, y, z
+    save()
+  end
+end
 -- a safe point: report, fuel, unload when it is time
 function checkpoint()
   if os.clock() - LAST_CHECK > CONFIG.checkIn then
     LAST_CHECK = os.clock()
     if equipTool("modem") then
+      gpsCheck()
       sendBase("status")
       listen(1.5)
     end
@@ -1152,6 +1172,7 @@ function equipCore()
 end
 function minerRun()
   local okE, errE = equipCore()
+  if equipTool("modem") then gpsCheck() end
   if okE then
     note("End Automata Core equipped on the " .. coreSide() .. " side")
   else
@@ -1220,6 +1241,8 @@ end
 function loaderRun()
   local side = modemSide()
   if side then pcall(rednet.open, side) else note("No modem on the loader!") end
+  gpsCheck()
+  local lastGps = os.clock()
   local lastHello = -1000
   while true do
     if not S.partner and os.clock() - lastHello > 5 then
@@ -1251,6 +1274,7 @@ function loaderRun()
     else
       setTask(S.partner and "keeping the miner's area loaded" or "waiting for a miner (same dimension)")
     end
+    if os.clock() - lastGps > 30 and not (S.follow and not S.follow.done) then lastGps = os.clock() gpsCheck() end
     if os.clock() - LAST_STATUS > 10 then sendBase("status") end
     listen(2)
   end
@@ -1264,9 +1288,15 @@ function ask(q, default)
   return a
 end
 function askPos()
-  print("Position of THIS turtle (look at it, F3 'Targeted Block').")
+  if S.role == "miner" then equipTool("modem") end
+  local gx, gy, gz = gpsHere(2)
+  if gx then
+    print("GPS says: " .. gx .. " " .. gy .. " " .. gz .. "  (Enter = use it)")
+  else
+    print("Position of THIS turtle (look at it, F3 'Targeted Block').")
+  end
   while true do
-    local a = ask("x y z", S.pos and (S.pos.x .. " " .. S.pos.y .. " " .. S.pos.z) or nil)
+    local a = ask("x y z", gx and (gx .. " " .. gy .. " " .. gz) or (S.pos and (S.pos.x .. " " .. S.pos.y .. " " .. S.pos.z)) or nil)
     local x, y, z = tostring(a):match("^%s*(-?%d+)[%s,]+(-?%d+)[%s,]+(-?%d+)%s*$")
     if x then
       local f
