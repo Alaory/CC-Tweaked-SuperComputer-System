@@ -30,6 +30,7 @@ HELP = {
   " survey               the big survey: progress, what each turtle is waiting for",
   " survey auto [on|off] auto-map: turtles keep surveying from the base outward",
   " theme [name|random]  the monitor's colours (random = a different one each start)",
+  " uptime               how long the base runs, and when it was off (and why)",
   " events [n] [errors]  the last n saved messages (also after a restart)",
   "      sethome [x y z], setpos x y z north, locate, move up 3, stop",
   " map clear            delete all map scans",
@@ -473,6 +474,16 @@ function handleCommand(line)
     if #shown == 0 then say("No saved messages" .. (want and (" of that kind") or "") .. " yet.") end
     for _, l in ipairs(shown) do say(l) end
     say("(saved in events.log + events.old.log on this computer, about 32 KB at most)")
+
+  elseif cmd == "uptime" then
+    local a = BASE_ALIVE or {}
+    local now = os.epoch("utc")
+    say("Running for " .. fmtSpan((now - (a.since or now)) / 1000) .. " (start #" .. tostring(a.starts or "?") .. ")")
+    if not a.offs or #a.offs == 0 then say("No time off noted yet.") end
+    for _, o in ipairs(a.offs or {}) do
+      local okF, f = pcall(os.date, "%d.%m %H:%M", math.floor(o.from / 1000))
+      say("  off " .. (okF and f or "?") .. " for " .. fmtSpan((o.to - o.from) / 1000) .. " - " .. tostring(o.why))
+    end
 
   elseif cmd == "theme" then
     local want = (words[2] or ""):lower()

@@ -287,7 +287,7 @@ Type these on the base computer. `help` lists them all.
 | 💬 Chat | `allow <name>` · `deny <name>` · `allowed` |
 | 📦 ME | `mesetup` · `me check` · `me add <id>` · `tanks` · `curios check` · `curios probe` |
 | 🎨 Screen | `theme [name\|random]` · `events [n] [errors]` |
-| 🩺 Checks | `report` (every block and its functions, uploaded to pastebin) |
+| 🩺 Checks | `report` (every block and its functions, uploaded to pastebin) · `uptime` (when the base was off, and why) |
 
 ---
 

@@ -5,6 +5,67 @@
 --   loop. inventory.lua runs these together: uiLoop, invWorker, pageWorker,
 --   actionWorker, droneWorker, terminalWorker, chatWorker, commsWorker.
 
+-- ===== was the base computer off? =====
+-- Every 30 s the real time is written to base_alive.dat. On the next start
+-- the gap tells how long the computer was off, and why: after an error, you
+-- stopped it, or (otherwise) its chunk was unloaded / the server restarted.
+-- The last 10 times are kept ('uptime' on the computer).
+local ALIVE_FILE = "base_alive.dat"
+BASE_ALIVE = { starts = 0, offs = {} }
+do
+  if fs.exists(ALIVE_FILE) then
+    local h = fs.open(ALIVE_FILE, "r")
+    local t = h and textutils.unserialize(h.readAll() or "")
+    if h then h.close() end
+    if type(t) == "table" then BASE_ALIVE = t end
+  end
+  BASE_ALIVE.offs = BASE_ALIVE.offs or {}
+end
+local function aliveSave() saveFileSafe(ALIVE_FILE, textutils.serialize(BASE_ALIVE)) end
+function baseAliveTick()
+  BASE_ALIVE.t = os.epoch("utc")
+  aliveSave()
+end
+-- inventory.lua calls this when the program ends (error or Ctrl+T)
+function baseExit(crashErr)
+  BASE_ALIVE.t = os.epoch("utc")
+  if crashErr then BASE_ALIVE.crash = tostring(crashErr) else BASE_ALIVE.stopped = true end
+  pcall(aliveSave)
+end
+local function when(ms)
+  local ok, r = pcall(os.date, "%d.%m %H:%M", math.floor(ms / 1000))
+  return ok and r or "?"
+end
+function fmtSpan(sec)
+  sec = math.floor(sec)
+  if sec < 120 then return sec .. " s" end
+  if sec < 7200 then return math.floor(sec / 60) .. " min" end
+  return math.floor(sec / 3600) .. " h " .. math.floor(sec % 3600 / 60) .. " min"
+end
+-- on start: report the time the base was off (called once, before the workers run)
+function baseStartCheck()
+  local now = os.epoch("utc")
+  local last = tonumber(BASE_ALIVE.t)
+  if last then
+    local gap = (now - last) / 1000
+    local why = BASE_ALIVE.crash and ("after an ERROR: " .. BASE_ALIVE.crash)
+                or BASE_ALIVE.stopped and "you stopped it"
+                or "its chunk was unloaded or the server restarted (nothing kept it loaded)"
+    if gap > 90 or BASE_ALIVE.crash then
+      table.insert(BASE_ALIVE.offs, 1, { from = last, to = now, why = why })
+      while #BASE_ALIVE.offs > 10 do table.remove(BASE_ALIVE.offs) end
+      local msg = "Off from " .. when(last) .. " to " .. when(now) .. " (" .. fmtSpan(gap) .. ") - " .. why
+      if BASE_ALIVE.crash or not BASE_ALIVE.stopped then setPopup("BASE WAS OFF", msg, C.warn)
+      else setToast("Base was off " .. fmtSpan(gap) .. " (you stopped it)", C.label) end
+    end
+  end
+  BASE_ALIVE.crash, BASE_ALIVE.stopped = nil, nil
+  BASE_ALIVE.starts = (BASE_ALIVE.starts or 0) + 1
+  BASE_ALIVE.since = now
+  BASE_ALIVE.t = now
+  aliveSave()
+end
+
 ---------------------------------------------------------------------
 -- MAIN
 ---------------------------------------------------------------------
@@ -302,6 +363,7 @@ function commsWorker()
       pcall(MAP.autoTick)                -- auto-map: a survey always running (from the base outward)
       if TT.listDirty and codeTick % 15 == 0 then pcall(TT.saveList) end
       codeTick = codeTick + 1
+      if codeTick % 15 == 7 then pcall(baseAliveTick) end    -- every 30 s: "still running"
       if codeTick % 15 == 1 then pcall(TT.codeLoad) end     -- every 30 s
       os.queueEvent("inv_update")       -- online/offline can change with time
     end

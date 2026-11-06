@@ -137,6 +137,10 @@ PneumaticCraft drone rides, turtle mapping/surveys, and an AE2 ME network view.
 - `$drone notify on|all|off` (owner, also buttons on the CHAT tab): pushNote -> notifyChat (base_chat.lua)
   sends the monitor's messages privately in chat; max 6/min, rest summed up;
   saved in chat_notify.dat.
+- Base off-time (base_workers.lua): base_alive.dat gets the real time every 30 s;
+  baseStartCheck (inventory.lua, after buildWindow) reports a gap > 90 s as
+  "BASE WAS OFF from .. to .. - why" (crash text / you stopped it / unloaded or
+  server restart); baseExit marks crash or Ctrl+T. `uptime` lists the last 10.
 - Autostart: `startup.lua` (top level of the computer) finds inventory.lua
   in any folder and restarts it after a crash (inventory.lua raises an error
   on a crash, returns normally on Ctrl+T). inventory.lua turns off
