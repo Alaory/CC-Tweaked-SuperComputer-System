@@ -49,10 +49,13 @@ local STATION = { x = 0, y = 70, z = 0 }
 local DUMP = { x = 1, y = 70, z = 0 }       -- the empty block in front of the station (Import Bus)
 local delivered, busDrained = {}, 0
 local function chunk(x) return math.floor(x / 16) end
-local function loaded(x, z)
-  if math.abs(chunk(x) - chunk(STATION.x)) <= 0 and math.abs(chunk(z) - chunk(STATION.z)) <= 0 then return true end
+-- chunkyTurtleRadius: 0 = the game default (only its own chunk); "r1" scenario = 3x3
+local RADIUS = (SCEN == "r1") and 1 or 0
+local function loaded(x, z, extra)
+  local r = RADIUS + (extra or 0)
+  if math.abs(chunk(x) - chunk(STATION.x)) <= r and math.abs(chunk(z) - chunk(STATION.z)) <= r then return true end
   for _, u in pairs(turtles) do
-    if u.role == "loader" and math.abs(chunk(x) - chunk(u.pos.x)) <= 1 and math.abs(chunk(z) - chunk(u.pos.z)) <= 1 then
+    if u.role == "loader" and math.abs(chunk(x) - chunk(u.pos.x)) <= r and math.abs(chunk(z) - chunk(u.pos.z)) <= r then
       return true
     end
   end
@@ -79,9 +82,16 @@ local function newTurtle(id, role, x, y, z, f, inv, left, right)
   return u
 end
 local function act(u)
-  -- a turtle in an unloaded chunk does not run
+  -- a turtle in an unloaded chunk is paused; after 5 s the game shuts its
+  -- computer down - it starts again (from startup) once the chunk is loaded
   if not loaded(u.pos.x, u.pos.z) then
-    fail(u.role .. " acting in an UNLOADED chunk at " .. u.pos.x .. " " .. u.pos.y .. " " .. u.pos.z)
+    local t0 = T
+    u.frozen = (u.frozen or 0) + 1
+    while not loaded(u.pos.x, u.pos.z) do
+      wait(1)
+      if T - t0 > 1800 then fail(u.role .. " FROZEN 30 min in an unloaded chunk (deadlock)") wait(1e9) end
+    end
+    if T - t0 > 5 then u.shutdowns = (u.shutdowns or 0) + 1 coroutine.yield("SHUTDOWN") end
   end
   wait(0.4)
 end
@@ -122,7 +132,7 @@ local function turtleApi(u)
     if d == "b" then x, z = u.pos.x - DX[u.f], u.pos.z - DZ[u.f] end
     local b = block(x, y, z)
     if (b and not b:find("water")) or occupied(x, y, z) or u.fuel < 1 then return false, "Movement obstructed" end
-    if not loaded(x, z) and not loaded(u.pos.x, u.pos.z) then return false, "Cannot leave loaded world" end
+    if not loaded(x, z, 1) then return false, "Cannot leave loaded world" end
     u.pos.x, u.pos.y, u.pos.z = x, y, z
     u.fuel = u.fuel - 1
     -- gravel above falls
@@ -332,6 +342,13 @@ local function peripheralApi(u)
     end
   end
   P.call = function(side, m, ...) local w = P.wrap(side) return w[m](...) end
+  P.getMethods = function(side)
+    local w = P.wrap(side)
+    if not w then return nil end
+    local l = {}
+    for k in pairs(w) do l[#l + 1] = k end
+    return l
+  end
   return P
 end
 
@@ -552,6 +569,12 @@ while T < maxT do
   if c.wake > T then T = c.wake end
   if coroutine.status(c.co) == "dead" then fail(c.u.role .. " program ENDED") break end
   local ok, w = coroutine.resume(c.co)
+  if ok and w == "SHUTDOWN" then
+    -- shut down while paused: starts again from startup
+    c.u.open = {}
+    c.co = coroutine.create(assert(load(SRC, "miner.lua", "t", envFor(c.u))))
+    ok, w = true, T + 1
+  end
   if not ok then fail(c.u.role .. " CRASHED: " .. tostring(w)) break end
   c.wake = tonumber(w) or T
   do
@@ -573,6 +596,7 @@ local mu = MINE.units[MINER]
 print("---")
 print("miner pos", m.pos.x, m.pos.y, m.pos.z, "fuel", m.fuel, "warps", m.warps or 0)
 print("loader pos", l.pos.x, l.pos.y, l.pos.z)
+print("miner paused (unloaded) " .. (m.frozen or 0) .. " times, shut down " .. (m.shutdowns or 0) .. " times")
 print("chunk index", mu and mu.ci, "stats", mu and mu.stats and textutils.serialize(mu.stats))
 print("delivered by the bus:", textutils.serialize(delivered))
 print("base says delivered:", mu and textutils.serialize(mu.got))
@@ -580,7 +604,10 @@ print("in shulker:", mu and textutils.serialize(mu.carry))
 print("shulker used in the field:", FIELD or 0)
 print(string.format("miner waited for the loader: about %.0f s", WAITED or 0))
 for _, n in ipairs(NOTES) do print("NOTE", n) end
-if mu then print("base shows:", MINE.status(mu)) end
+if mu then
+  print("base shows:", MINE.status(mu))
+  if MINE.status(mu) == "STOPPED" and SCEN ~= "nofuel" then fail("miner STOPPED: " .. tostring(mu.err)) end
+end
 for _, e in ipairs(mu and mu.log or {}) do print("LOG", e.msg) end
 if #FAIL > 0 then
   print("FAILURES:")

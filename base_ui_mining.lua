@@ -113,11 +113,11 @@ function drawMiningPage(G)
       "  MINER   End Automata Core (stays on) + pickaxe; carries an Ender Modem, a Geo Scanner and a shulker box",
       "  LOADER  Chunky upgrade + Ender Modem - keeps the miner's area loaded and follows it",
       "",
-      "1. Server config: config/advancedperipherals/peripherals.toml  ->  chunkyTurtleRadius = 1",
+      "1. The unload station's chunk must stay loaded (a chunk loader, or a player there).",
       "2. Put the MINER on its unload station (facing an empty block with an AE2 Import Bus next to it,",
       "   or facing an ME Interface), copy miner.lua onto it, run  miner  and answer the questions.",
       "3. Pick it up, put it where mining should start (facing the way to mine, away from your base),",
-      "   type  miner here  and its new position. Put the LOADER right next to it and run  miner  there.",
+      "   type  miner here  and its new position. Put the LOADER right BEHIND it and run  miner  there.",
       "4. They pair by themselves. Then press START here.",
     }
     for i, s in ipairs(lines) do text(4, y0 + 2 + i, trunc(s, W - 6), i == 1 and C.text or C.dim, C.panel) end

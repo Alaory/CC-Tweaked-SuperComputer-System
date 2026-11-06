@@ -8,9 +8,12 @@
     LOADER  Chunky upgrade + Ender Modem. Keeps the miner's area loaded and
             follows it through the tunnel it digs. It never digs.
 
-  NEEDS the Advanced Peripherals server config  chunkyTurtleRadius = 1
-  (config/advancedperipherals/peripherals.toml): the loader then keeps 3x3
-  chunks loaded, so the miner can work in the chunk next to it.
+  Works with the default Chunky (only its own chunk loaded): the loader
+  stays in the miner's chunk (above the tunnel entry). At a chunk edge the
+  miner digs the first block of the next chunk and the one above it, the
+  loader gets its way (and confirms), the miner steps over first (the game may
+  pause or restart it there - it continues), the loader follows into the
+  block above. Both turtles must START in the same chunk.
 
   The miner works one chunk at a time, in rows of CONFIG.rowLength chunks
   forward from where it starts (the way it faces), each next row to its right.
@@ -284,11 +287,17 @@ function handle(id, m, proto)
       if not (S.follow and S.follow.ref == m.ref) then
         S.follow = { ref = m.ref, pts = m.pts, i = 1 }
         save()
-      elseif S.follow.done then
+      end
+      if S.follow.done then
         sendTeam(id, "arrived", { ref = m.ref })
+      else
+        sendTeam(id, "got", { ref = m.ref })
       end
     elseif m.t == "arrived" and S.role == "miner" and id == S.partner then
       ARRIVED = m.ref
+      GOT = m.ref
+    elseif m.t == "got" and S.role == "miner" and id == S.partner then
+      GOT = m.ref
     end
   end
 end
@@ -446,10 +455,13 @@ function equipTool(kind)
   local ok = (side == "left") and turtle.equipLeft() or turtle.equipRight()
   turtle.select(1)
   if not ok then return false, "could not equip the " .. kind end
-  if kind == "modem" then
-    for _ = 1, 10 do if peripheral.hasType(side, "modem") then break end sleep(0.05) end
-    pcall(rednet.open, side)
+  -- the new upgrade takes a moment to show up (until then the OLD one answers)
+  for _ = 1, 40 do
+    if toolNow() == kind then break end
+    sleep(0.05)
   end
+  if toolNow() ~= kind then return false, "the " .. kind .. " did not show up after equipping it" end
+  if kind == "modem" then pcall(rednet.open, side) end
   return true
 end
 function ensurePick()
@@ -800,11 +812,20 @@ end
 function center(cx, cz) return cx * 16 + 8, cz * 16 + 8 end
 function newPlan()
   local p = S.pos
-  S.plan = { sx = math.floor(p.x / 16), sz = math.floor(p.z / 16), f = p.f, yt = p.y, ci = 0, phase = "go",
-             done = 0 }
-  S.trail = { { x = p.x, y = p.y, z = p.z } }    -- the loader starts next to this spot
+  -- the loader stands right behind: it must be in the SAME chunk (it keeps
+  -- only its own chunk loaded)
+  local bx, bz = p.x - DX[p.f], p.z - DZ[p.f]
+  if math.floor(bx / 16) ~= math.floor(p.x / 16) or math.floor(bz / 16) ~= math.floor(p.z / 16) then
+    return false, "the loader behind the miner is in another chunk - move both one block forward, " ..
+                  "type  miner here  on both, then START"
+  end
+  -- chunk 0 = the start chunk: only left (towards chunk 1, straight ahead)
+  S.plan = { sx = math.floor(p.x / 16), sz = math.floor(p.z / 16), f = p.f, yt = p.y, ci = 0, phase = "exit",
+             done = 0, x0 = p.x, z0 = p.z }
+  S.trail = { { x = p.x, y = p.y, z = p.z } }    -- the loader starts right behind this spot
   S.lastDump = S.lastDump or now()
   save()
+  return true
 end
 -- a safe point: report, fuel, unload when it is time
 function checkpoint()
@@ -826,10 +847,25 @@ end
 function scanLayer(cx, cz)
   local ok, err = equipTool("geo")
   if not ok then return nil, err end
-  local g = peripheral.wrap(toolSide())
+  local side = toolSide()
+  local fname
+  local okM, methods = pcall(peripheral.getMethods, side)
+  for _, mth in ipairs(okM and methods or {}) do
+    if mth == "scan" then fname = mth end
+  end
+  if not fname then
+    for _, mth in ipairs(okM and methods or {}) do
+      local l = mth:lower()
+      if l:find("scan", 1, true) and not l:find("cost", 1, true) and not l:find("cooldown", 1, true) then fname = mth break end
+    end
+  end
+  if not fname then
+    return nil, "the Geo Scanner has no scan function (side " .. side .. ": " ..
+                table.concat(okM and methods or { "?" }, ",") .. ")"
+  end
   local res
   for _ = 1, 10 do
-    local okS, a, b = pcall(g.scan, CONFIG.scanR)
+    local okS, a, b = pcall(peripheral.call, side, fname, CONFIG.scanR)
     if okS and type(a) == "table" then res = a break end
     err = okS and b or a
     sleep(1)
@@ -865,28 +901,77 @@ function nearest(list)
   end
   return bi
 end
--- the loader comes to the centre of the chunk just finished
-function handoff(P, cxp, czp)
+-- Crossing into the next chunk. The loader keeps ONLY its own chunk loaded,
+-- so the miner goes first: it digs the first block of the next chunk (X1)
+-- and the one above it (X1up) from the edge (E), steps into X1, and the
+-- loader comes after it - through E and up - into X1up. Until the loader is
+-- there the miner may be paused by the game (or restarted - it continues).
+-- The loader then stays in X1up (above the tunnel) for the whole chunk.
+function crossTo(P, ref, dir)
+  turnTo(dir)
+  local ok, err = digDir("f")                     -- X1
+  if not ok then return false, err end
+  ok, err = step("u")                             -- Eup
+  if not ok then return false, err end
+  local up = { x = S.pos.x, y = S.pos.y, z = S.pos.z }
+  ok, err = digDir("f")                           -- X1up
+  local okD, errD = step("d")
+  if not ok then return false, err end
+  if not okD then return false, errD end
+  local x1 = { x = S.pos.x + DX[dir], y = S.pos.y, z = S.pos.z + DZ[dir] }
   local pts = {}
   for _, p in ipairs(S.trail or {}) do pts[#pts + 1] = p end
-  -- the last point is where the miner stands now (the chunk edge): the loader stops before
-  if #pts > 1 then table.remove(pts) end
-  local ref = P.ci
+  pts[#pts + 1] = up
+  pts[#pts + 1] = { x = x1.x, y = x1.y + 1, z = x1.z }
+  P.crossing = { ref = ref, pts = pts }
+  save()
+  -- the loader must have its way BEFORE we step over: once over there we may
+  -- be paused until it arrives (and could not tell it anything)
+  GOT = nil
+  local t0, sent = os.clock(), -1000
+  while GOT ~= ref do
+    if not S.running then return false, "paused" end
+    if os.clock() - t0 > 600 then return false, "the loader does not answer" end
+    if os.clock() - sent > 5 then callLoader(P) sent = os.clock() end
+    setTask("telling the loader the way")
+    listen(1)
+  end
+  -- next: the new chunk; the loader's next trail starts below its spot
+  P.ci, P.phase = P.ci + 1, "go"
+  S.trail = { x1 }
+  save()
+  ok, err = step("f")                             -- into the next chunk (the loader follows)
+  if not ok then
+    P.ci, P.phase = P.ci - 1, "exit"
+    S.trail = pts
+    table.remove(S.trail) table.remove(S.trail)
+    save()
+    return false, err
+  end
+  return true
+end
+-- send the loader its way (again); true once it has arrived
+function callLoader(P)
+  local c = P.crossing
+  if not c or c.done then return true end
+  if equipTool("modem") then sendTeam(S.partner, "follow", { ref = c.ref, pts = c.pts }) end
+  return false
+end
+-- before the next crossing: the loader must have finished the last one
+function waitLoader(P)
+  local c = P.crossing
+  if not c or c.done then return true end
   ARRIVED = nil
   local t0, sent = os.clock(), -1000
-  while ARRIVED ~= ref do
+  while ARRIVED ~= c.ref do
     if not S.running then return false, "paused" end
-    if os.clock() - sent > 60 then
-      equipTool("modem")
-      sendTeam(S.partner, "follow", { ref = ref, pts = pts })
-      sent = os.clock()
-    end
+    if os.clock() - sent > 30 then callLoader(P) sent = os.clock() end
     setTask("waiting for the loader (" .. math.floor(os.clock() - t0) .. " s)")
     if os.clock() - LAST_STATUS > 15 then sendBase("status") end
     listen(2)
   end
-  local last = S.trail[#S.trail]
-  S.trail = { pts[#pts], last }
+  c.done = true
+  save()
   return true
 end
 -- one piece of work; false, why = stop (paused or a problem)
@@ -945,29 +1030,25 @@ function workStep()
     save()
     return true
   elseif P.phase == "exit" then
-    local nx, nz = chunkAt(P, P.ci + 1)
-    -- the last cell of this chunk on the way to the next centre
-    local bx, bz = mx, mz
-    if nx > cx then bx = cx * 16 + 15 elseif nx < cx then bx = cx * 16 end
-    if nz > cz then bz = cz * 16 + 15 elseif nz < cz then bz = cz * 16 end
-    setTask("tunnel to the edge of chunk " .. P.ci)
-    local ok, err = goTo(mx, P.yt, mz, S.trail)
+    local ok, err = waitLoader(P)
     if not ok then return false, err end
-    -- call the loader NOW (it comes to this centre while we tunnel to the
-    -- edge - both move at the same time, so there is little or no waiting)
-    if P.called ~= P.ci and S.partner and equipTool("modem") then
-      local pts = {}
-      for _, p in ipairs(S.trail or {}) do pts[#pts + 1] = p end
-      sendTeam(S.partner, "follow", { ref = P.ci, pts = pts })
-      P.called = P.ci
-      save()
-    end
+    local nx, nz = chunkAt(P, P.ci + 1)
+    local dir = (nx > cx and 1) or (nx < cx and 3) or (nz > cz and 2) or 0
+    -- the edge cell of this chunk on the line towards the next one: from the
+    -- centre (a mined chunk) or straight ahead from the start spot (chunk 0)
+    local fx, fz = mx, mz
+    if P.ci == 0 then fx, fz = P.x0, P.z0 end
+    local bx, bz = fx, fz
+    if dir == 1 then bx = cx * 16 + 15 elseif dir == 3 then bx = cx * 16 end
+    if dir == 2 then bz = cz * 16 + 15 elseif dir == 0 then bz = cz * 16 end
+    setTask("tunnel to the edge of chunk " .. P.ci)
+    ok, err = goTo(fx, P.yt, fz, S.trail)
+    if not ok then return false, err end
     ok, err = goTo(bx, P.yt, bz, S.trail)
     if not ok then return false, err end
-    ok, err = handoff(P, cx, cz)
+    setTask("into chunk " .. (P.ci + 1) .. " (the loader follows)")
+    ok, err = crossTo(P, P.ci, dir)
     if not ok then return false, err end
-    P.ci, P.phase = P.ci + 1, "go"
-    save()
     return true
   end
   P.phase = "go"
@@ -1031,7 +1112,10 @@ function minerRun()
       if os.clock() - LAST_STATUS > 10 then sendBase("status") end
       listen(3)
     else
-      if not S.plan then newPlan() end
+      if not S.plan then
+        local okP, errP = newPlan()
+        if not okP then S.running, S.err = false, errP note("Cannot start: " .. errP) save() end
+      end
       burnCoal()
       if turtle.getFuelLevel() ~= "unlimited" and turtle.getFuelLevel() < 100 then
         S.running, S.err = false, "NO FUEL - put coal (or other fuel) in it and type  refuel all"

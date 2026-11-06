@@ -282,8 +282,8 @@ running `miner.lua`. They show up on **TURTLES > MINING**, never on the map.
 - Never mines near the station (SETTINGS > MINING), never digs right next to it.
 
 **Setup**
-1. Server config `config/advancedperipherals/peripherals.toml`: `chunkyTurtleRadius = 1`
-   (the loader keeps 3x3 chunks loaded, so the miner can work next to it).
+1. No server config needed: the loader keeps the miner's chunk loaded and follows it into the
+   next one (the miner may pause for a moment at each chunk edge - normal).
 2. The unload station's chunk must stay loaded (a chunk loader there). The miner stands on it facing
    **either** an empty block with air above it and an **AE2 Import Bus** touching it,
    **or** an ME Interface / linked chest (then keep 2 blocks of air above the station).

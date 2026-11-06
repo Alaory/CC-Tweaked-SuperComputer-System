@@ -155,8 +155,14 @@ PneumaticCraft drone rides, turtle mapping/surveys, and an AE2 ME network view.
   loaderhere/paired pairing by dim, follow {ref, pts} / arrived). MINER = End
   Automata Core fixed + pickaxe; modem / Geo Scanner swapped in on the free side
   (report every CONFIG.checkIn 30 s, base commands queue in u.queue until
-  m.lastCmd shows them). NEEDS chunkyTurtleRadius = 1 (3x3): the loader waits in
-  the centre of the chunk just finished, the miner works the next one. Plan:
+  m.lastCmd shows them). Works with the DEFAULT chunkyTurtleRadius 0 (owner
+  cannot change server configs): the loader parks in X1up (above the first
+  tunnel block of the miner's chunk) for the whole chunk. Crossing (crossTo):
+  at the edge E the miner digs X1 + X1up, sends follow (trail + Eup + X1up),
+  waits for "got", then steps into X1 FIRST (the game may pause / shut it
+  down there - it restarts and continues from the saved plan); the loader comes
+  through E and Eup into X1up. waitLoader before the next crossing. The start
+  chunk (ci 0) is only left; loader + miner must start in the same chunk. Plan:
   rows of rowLength chunks forward from the start facing, next row to the right;
   per chunk: tunnel to the centre at the start Y, layers every 17 down to minY
   (Geo Scanner r 8, ores + CONFIG.mining.want inside the chunk), exit to the
