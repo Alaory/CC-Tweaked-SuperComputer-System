@@ -993,7 +993,14 @@ local function nextBatch(q)
   -- spots near a player to avoid wait (back into q.redo, tried again later)
   local threats, range = {}, 0
   if TT and TT.threats then threats, range = TT.threats() end
-  local function nearPlayer(x, z) return #threats > 0 and TT.nearThreat(x, z, threats, range) ~= nil end
+  local why = { near = 0, done = 0, redo = 0 }
+  local function nearPlayer(x, z)
+    if #threats == 0 then return false end
+    local who = TT.nearThreat(x, z, threats, range)
+    if who then why.near, why.who = why.near + 1, who end
+    return who ~= nil
+  end
+  q.lastWhy = why
   q.redo = q.redo or {}
   -- first the spots a turtle gave back unscanned (see MAP.reclaim) - each looked at once
   local n0 = #q.redo
@@ -1024,10 +1031,11 @@ local function nextBatch(q)
     local border = tonumber(CONFIG.map.border) or 20000
     if math.abs(x) > border or math.abs(z) > border then
       -- outside the world border: nothing to do
-    elseif MAP.spotDone(x, z) then q.skipped = q.skipped + 1
+    elseif MAP.spotDone(x, z) then q.skipped = q.skipped + 1 why.done = why.done + 1
     elseif nearPlayer(x, z) then q.redo[#q.redo + 1] = { x, z }       -- later
     else out[#out + 1] = { x, z } end
   end
+  why.redo = #q.redo
   return out
 end
 

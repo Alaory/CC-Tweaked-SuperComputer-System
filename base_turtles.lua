@@ -92,7 +92,15 @@ function TT.idleWhy(t)
     if q.auto and MAP.full then return "auto-map paused - the map floppies are full", C.warn end
     if t.queueAt and os.clock() - t.queueAt < 30 then return "just got survey spots - starting", C.good end
     local idle = t.idleSince and os.clock() - t.idleSince or 0
-    if idle > 60 then return "a survey runs but it got nothing for " .. math.floor(idle) .. " s (spots near a player?)", C.warn end
+    -- why the last hand-out found nothing (MAP.feedSurvey / nextBatch)
+    local w = q.lastWhy
+    if idle > 20 and w then
+      if w.near > 0 and w.near >= w.redo then
+        return "survey: " .. w.near .. " spots wait - " .. (w.who or "a player") .. " is near them", C.warn
+      end
+      if w.done > 0 then return "survey: skipping already mapped spots (" .. commas(w.done) .. " so far)", C.label end
+    end
+    if idle > 60 then return "a survey runs but it got nothing for " .. math.floor(idle) .. " s", C.warn end
     return "waiting for the next survey spots", C.good
   end
   local a = MAP and MAP.auto
@@ -1129,7 +1137,9 @@ function TT.threats()
   for _, e in ipairs(state.players or {}) do
     local friend = e.isOwner or tostring(e.name):lower() == me or (who ~= "everyone" and state.access and state.access.allowed
                                  and state.access.allowed[tostring(e.name):lower()])
-    local here = e.p and e.p.x and not e.dimOther and (not e.dim or e.dim == (DRONE_DIM or "minecraft:overworld"))
+    -- only players KNOWN to be in the overworld: one in another dimension (a
+    -- mining dimension uses the same x z) must not hold the turtles back
+    local here = e.p and e.p.x and not e.dimOther and e.dim == (DRONE_DIM or "minecraft:overworld")
     if not friend and here then list[#list + 1] = { name = e.name, x = e.p.x, z = e.p.z } end
   end
   return list, range
