@@ -936,9 +936,27 @@ function workStep()
 end
 
 ---------------------------------------------------------------------- roles
+-- the End Automata Core in the inventory but not equipped: put it on a side
+-- (whatever was on that side goes into its slot - the tools take turns anyway)
+function equipCore()
+  if coreSide() then return true end
+  local slot = findSlot(function(n) return match(n, { "*automata*" }) end)
+  if not slot then return false, "no End Automata Core (equipped or in the inventory)" end
+  turtle.select(slot)
+  -- the side without a modem first (the modem keeps working while we do this)
+  local first = peripheral.hasType("left", "modem") and "right" or "left"
+  local ok = (first == "left") and turtle.equipLeft() or turtle.equipRight()
+  turtle.select(1)
+  for _ = 1, 10 do if coreSide() then break end sleep(0.1) end
+  if not coreSide() then return false, "could not equip the End Automata Core" end
+  return true
+end
 function minerRun()
-  if not coreSide() then
-    note("No End Automata Core equipped - the miner needs one (it stays on)")
+  local okE, errE = equipCore()
+  if okE then
+    note("End Automata Core equipped on the " .. coreSide() .. " side")
+  else
+    note("! " .. tostring(errE) .. " - the miner needs one (it stays on)")
   end
   -- the station point lives in the core: still there? (it may be lost when the
   -- turtle is picked up and put down again)
@@ -1069,7 +1087,9 @@ function setup()
   askPos()
   if not os.getComputerLabel() then os.setComputerLabel((S.role == "miner" and "Miner " or "Loader ") .. os.getComputerID()) end
   if S.role == "miner" then
-    if not coreSide() then print("! No End Automata Core equipped - equip it (it stays on).") end
+    local okE, errE = equipCore()
+    if okE then print("End Automata Core: equipped (" .. coreSide() .. " side)")
+    else print("! " .. tostring(errE)) end
     for _, k in ipairs({ "pickaxe", "modem", "geo" }) do
       if toolNow() ~= k and not findSlot(function(n) return match(n, { TOOL_ITEM[k] }) end) then
         print("! Missing: " .. k)

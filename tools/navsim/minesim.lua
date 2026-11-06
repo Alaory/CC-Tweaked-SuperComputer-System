@@ -443,6 +443,11 @@ local m = newTurtle(MINER, "miner", 100, 40, 0, 1, {
   [3] = { name = "sophisticatedstorage:netherite_shulker_box", count = 1, contents = {} },
   [4] = { name = "minecraft:coal", count = 32 },
 }, "advancedperipherals:end_automata_core", "minecraft:netherite_pickaxe")
+if SCEN == "corein" then
+  -- the core in the inventory, not equipped (seen in game)
+  m.left = nil
+  m.inv[6] = { name = "advancedperipherals:end_automata_core", count = 1 }
+end
 if SCEN == "full" then
   for i = 5, 13 do m.inv[i] = { name = "minecraft:torch", count = 64 } end
 end
