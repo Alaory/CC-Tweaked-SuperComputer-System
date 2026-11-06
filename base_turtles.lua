@@ -61,6 +61,102 @@ function TT.online(t)
   return t.lastSeen ~= nil and (os.clock() - t.lastSeen) < CONFIG.turtles.offlineAfter
 end
 
+-- ===== what is this turtle doing, really? =====
+-- key, LABEL (for the pill), colour, one line why. Used by the TURTLES page
+-- and the `turtles` command. Problems come first, then work, then idle with
+-- the reason it gets nothing to do.
+local QUIET_TASK = { "waiting", "refuel", "gps", "install" }   -- standing still is normal there
+local TROUBLE_TASK = { "backing up", "retracing", "planning a route", "following a planned route" }
+function TT.stillFor(t)
+  return os.clock() - math.max(t.movedAt or os.clock(), t.taskAt or 0)
+end
+function TT.idleWhy(t)
+  local fuel = tonumber(t.fuel)
+  local minFuel = tonumber(CONFIG.map.surveyMinFuel) or 500
+  local q = MAP and MAP.queue
+  if not (t.pos and t.pos.x) then return "position unknown - press GPS LOCATE", C.warn end
+  if t.anchor then return "anchor - keeps the base loaded", C.purple end
+  if t.rescuerRole then return "rescuer - waits for a turtle in trouble", C.warn end
+  if fuel and fuel < minFuel then
+    return "fuel " .. fuel .. " is below " .. minFuel .. " - " ..
+           ((CONFIG.turtles.fuelChest and CONFIG.turtles.fuelChest.x) and "waiting for the fuel chest"
+            or "needs fuel at home (fuel chest under / next to its home)"), C.warn
+  end
+  if q then
+    if q.ids then
+      local mine = false
+      for _, i in ipairs(q.ids) do if i == t.id then mine = true end end
+      if not mine then return "not chosen for the running survey", C.warn end
+    end
+    if q.excluded and q.excluded[t.id] then return "taken off the survey by STOP - any button gives it back", C.warn end
+    if q.auto and MAP.full then return "auto-map paused - the map floppies are full", C.warn end
+    if t.queueAt and os.clock() - t.queueAt < 30 then return "just got survey spots - starting", C.good end
+    local idle = t.idleSince and os.clock() - t.idleSince or 0
+    if idle > 60 then return "a survey runs but it got nothing for " .. math.floor(idle) .. " s (spots near a player?)", C.warn end
+    return "waiting for the next survey spots", C.good
+  end
+  local a = MAP and MAP.auto
+  local home = t.home and t.pos and (math.abs(t.pos.x - t.home.x) + math.abs(t.pos.y - t.home.y)
+                                     + math.abs(t.pos.z - t.home.z) <= 2)
+  local where = home and "at home" or (t.home and "away from home" or "no home yet")
+  if a and a.done then return "nothing to do (" .. where .. ") - the whole map is done", C.dim end
+  if a and not a.on then return "nothing to do (" .. where .. ") - auto-map is OFF (MAP tab)", C.warn end
+  return "nothing to do (" .. where .. ")", C.dim
+end
+function TT.status(t)
+  local now = os.clock()
+  if not TT.online(t) then
+    return "offline", "OFFLINE", C.bad,
+           ((t.seenEpoch and ("last seen " .. TT.ago(t.seenEpoch)) or "never seen") ..
+            (t.rescuer and " - rescue on its way" or ""))
+  end
+  local task = tostring(t.task or "idle")
+  local busy = task ~= "idle"
+  local low = task:lower()
+  local fuel = tonumber(t.fuel)
+  if fuel and fuel < 20 then return "nofuel", "NO FUEL", C.bad, "fuel " .. fuel .. " - it cannot move" end
+  -- STUCK (reported by the turtle) - unless it has moved away since
+  if t.stuck and not busy then
+    local sp, p = t.stuckPos, t.pos
+    local moved = sp and p and p.x and (math.abs(p.x - sp.x) + math.abs(p.z - sp.z) > 3)
+    if not moved then return "stuck", "STUCK", C.bad, tostring(t.stuck) end
+  end
+  if t.held then return "held", "STOPPED", C.warn, "stopped by you - any button (e.g. PING) releases it" end
+  if busy then
+    for _, w in ipairs(TROUBLE_TASK) do
+      if low:find(w, 1, true) then return "trouble", "FINDING A WAY", C.warn, "blocked - " .. task end
+    end
+    local quiet = false
+    for _, w in ipairs(QUIET_TASK) do if low:find(w, 1, true) then quiet = true end end
+    local still = TT.stillFor(t)
+    if not quiet and still > 90 then
+      return "still", "NOT MOVING", C.bad, "has not moved for " .. math.floor(still) .. " s - " .. task
+    end
+    local lab = t.anchor and "ANCHOR" or t.rescuerRole and "RESCUER" or "WORKING"
+    return "busy", lab, t.anchor and C.purple or C.good, task
+  end
+  local why, col = TT.idleWhy(t)
+  local lab = t.anchor and "ANCHOR" or t.rescuerRole and "RESCUER" or "IDLE"
+  return "idle", lab, (t.anchor and C.purple) or (t.rescuerRole and C.good) or (col == C.warn and C.warn or C.label), why
+end
+
+-- comms worker: a turtle "busy" but not moving for 3 min is hung in its job -
+-- STOP it (no hold). Then it is free again: it gets new work / goes home, and
+-- if it really cannot move that trip fails -> STUCK -> the rescuer comes.
+function TT.stallTick()
+  local now = os.clock()
+  for id, t in pairs(state.turtles) do
+    local key = TT.online(t) and not t.held and not t.anchor and TT.status(t)
+    if key == "still" and TT.stillFor(t) > 180 and (not t.stallAt or now - t.stallAt > 600) then
+      t.stallAt = now
+      TT.send(id, "stop", {}, true, true)
+      TT.log(t, "Not moving for " .. math.floor(TT.stillFor(t)) .. " s in '" .. tostring(t.task) ..
+                "' - stopped it so it can start again")
+      if sysLog then sysLog((t.label or ("Turtle " .. id)) .. " hung in its job (not moving 3 min) - stopped it", "WARNING") end
+    end
+  end
+end
+
 -- all turtles, sorted by ID
 function TT.list()
   local out = {}
@@ -85,10 +181,25 @@ function TT.receive(id, m)
   local t = TT.get(id)
   if m.n <= (t.lastN or 0) then return end           -- old / replayed message
   t.lastN = m.n
+  local prevSeen = t.lastSeen
   t.lastSeen = os.clock()
   if type(m.label) == "string" then t.label = m.label end
   t.fuel, t.fuelMax, t.items = m.fuel, m.fuelMax, m.items
+  -- movement / task changes (for TT.status: a busy turtle that does not move)
+  local op, np = t.pos, m.pos
+  -- first word since the base started, or back after being offline: count from now
+  if not t.movedAt or not prevSeen or os.clock() - prevSeen > CONFIG.turtles.offlineAfter then
+    t.movedAt = os.clock()
+  end
+  if type(np) == "table" and np.x and (not (op and op.x) or math.abs(np.x - op.x) + math.abs((np.y or 0) - (op.y or 0))
+                                        + math.abs(np.z - op.z) >= 1) then
+    t.movedAt = os.clock()
+  end
+  if m.task ~= t.task then t.taskAt = os.clock() end
   t.pos, t.task, t.home = m.pos, m.task, m.home
+  -- where it reported STUCK (a stuck flag is old news once it has moved away)
+  if m.stuck and not t.stuck and type(np) == "table" and np.x then t.stuckPos = { x = np.x, y = np.y, z = np.z } end
+  if not m.stuck then t.stuckPos = nil end
   t.stuck, t.trail = m.stuck, m.trail
   t.anchor, t.waiting = m.anchor, m.waiting
   t.rec = m.rec

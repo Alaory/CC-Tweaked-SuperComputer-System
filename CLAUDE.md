@@ -136,6 +136,17 @@ PneumaticCraft drone rides, turtle mapping/surveys, and an AE2 ME network view.
   "everyone" (not owner). Overworld players only. A player within avoidRange
   of the turtle's own home (a visitor at the base) is not avoided by that turtle
   (no stop -> home -> leave -> stop loop). No owner known yet -> nobody avoided.
+- Turtle status (TT.status(t) -> key, LABEL, colour, why; base_turtles.lua):
+  OFFLINE / NO FUEL (<20) / STUCK (t.stuck while idle and not moved > 3 blocks
+  from t.stuckPos) / STOPPED (held) / FINDING A WAY (task backing up, retracing,
+  planning/following a route) / NOT MOVING (busy, no move and no task change
+  for 90 s; t.movedAt / t.taskAt from TT.receive; not for waiting/refuel/gps/
+  install tasks) / WORKING (ANCHOR, RESCUER) / IDLE + TT.idleWhy (fuel below
+  surveyMinFuel, not chosen / excluded, floppies full, auto-map off/done, got
+  nothing for 60 s ...). Used by the TURTLES page and `turtles`. TT.stallTick
+  (comms worker): NOT MOVING 3 min -> STOP (no hold, once per 10 min) +
+  sysLog; the turtle is free again, and if it cannot move the next trip fails
+  -> STUCK -> rescuer.
 - Permanent rescuer: t.rescuerRole (RESCUER button, saved in turtles.dat;
   base only). TT.patrolTick (comms worker) sends it to: no fuel (<20 for
   60 s), stuck (60 s idle), lost (silent CONFIG.turtles.rescueAfter, default

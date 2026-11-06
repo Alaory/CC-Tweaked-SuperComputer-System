@@ -591,8 +591,8 @@ function handleCommand(line)
     local list = TT.list()
     if #list == 0 then say("No turtles yet. Run node.lua on a turtle.") end
     for _, t in ipairs(list) do
-      say(string.format(" #%d %s - %s, fuel %s, %s", t.id, t.label,
-          TT.online(t) and "online" or "offline", tostring(t.fuel or "?"),
+      local _, lab, _, why = TT.status(t)
+      say(string.format(" #%d %s - %s: %s, fuel %s, %s", t.id, t.label, lab, why, tostring(t.fuel or "?"),
           t.pos and fmtPos(t.pos.x, t.pos.y, t.pos.z) or "position unknown"))
       if t.gear and t.gear ~= "" then say("     gear: " .. t.gear) end
     end

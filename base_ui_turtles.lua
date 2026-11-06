@@ -61,13 +61,12 @@ function drawTurtlesPage(G)
     local ready = old and CODE and t.updReady == CODE.ver
     local upd = old and (t.updState == "sending" and "SENDING UPDATE" or (t.updState == "retry" and "RETRY UPDATE")
                          or "UPDATE QUEUED")
-    local st = (on and t.stuck) and "STUCK" or ready and "UPDATE READY" or upd
-               or (on and t.held) and "STOPPED"
-               or (on and t.anchor) and "ANCHOR" or (on and t.rescuerRole) and "RESCUER"
-               or (on and "ONLINE" or "OFFLINE")
-    local stc = (on and t.stuck) and C.warn or old and C.label or (on and t.held) and C.warn
-                or (on and t.anchor) and C.purple
-                or (on and t.rescuerRole) and C.warn or (on and C.good or C.bad)
+    -- the real state first (stuck / not moving / working / idle + why); an
+    -- update in progress only shows when nothing is wrong
+    local key, st, stc, why = TT.status(t)
+    if upd and (key == "idle" or key == "busy") then
+      st, stc = ready and "UPDATE READY" or upd, C.label
+    end
     pill(lx + leftW - #st - 4, ry, st, C.ink, stc)
     -- name + program version (green = the newest, yellow = older), in the room left of the pill
     local name = trunc(t.label .. "  #" .. t.id, math.max(6, iw - #st - #vn - 6))
@@ -82,10 +81,8 @@ function drawTurtlesPage(G)
       kv(ix, ry + 1, iw, "Fuel", tostring(t.fuel or "?"))
     end
     local where = t.pos and fmtPos(t.pos.x, t.pos.y, t.pos.z) or "position unknown"
-    local doing = on and tostring(t.task or "idle")
-                  or ((t.seenEpoch and ("offline - last seen " .. TT.ago(t.seenEpoch)) or "offline")
-                      .. (t.rescuer and " - rescue on its way" or ""))
-    text(ix, ry + 3, trunc(where .. "   " .. doing, iw), on and C.dim or C.warn, C.panel)
+    local bad = key ~= "idle" and key ~= "busy"
+    text(ix, ry + 3, trunc(where .. "   " .. why, iw), bad and stc or C.dim, C.panel)
     addHit(lx + 1, ry, leftW - 2, 4, "tsel", t.id)
   end
 
@@ -106,8 +103,9 @@ function drawTurtlesPage(G)
        t.home and fmtPos(t.home.x, t.home.y, t.home.z) or "not set", t.home and C.text or C.warn)
   stat(rix + 3 * (q + 2), y0 + 3, q, "TASK", t.task or "idle", t.task and t.task ~= "idle" and C.warn or C.text)
   stat(rix + 4 * (q + 2), y0 + 3, q, "ITEMS", tostring(t.items or "?"))
-  if t.stuck then
-    text(rix, y0 + 5, trunc("STUCK: " .. tostring(t.stuck), riw), C.warn, C.panel)
+  local sKey, sLab, sCol, sWhy = TT.status(t)
+  if sKey ~= "idle" and sKey ~= "busy" and sKey ~= "held" then
+    text(rix, y0 + 5, trunc(sLab .. ": " .. sWhy, riw), sCol, C.panel)
   elseif CODE and TT.online(t) and TT.outdated(t) then
     local msg = (t.updReady == CODE.ver) and ("Has " .. TT.verName(CODE.ver) .. " ready - installs when its job is done")
                 or (t.updState == "sending") and ("Sending " .. TT.verName(CODE.ver) .. " now (" .. #CODE.pieces .. " pieces)")
@@ -123,6 +121,8 @@ function drawTurtlesPage(G)
   elseif not t.pos or not t.pos.f then
     text(rix, y0 + 5, trunc("Position unknown: press GPS LOCATE, or type  turtle " .. t.id ..
          " setpos <x> <y> <z> <north|south|east|west>", riw), C.warn, C.panel)
+  else
+    text(rix, y0 + 5, trunc(sLab .. ": " .. sWhy, riw), sCol == C.label and C.dim or sCol, C.panel)
   end
 
   local function cmdBtn(x, y, w, h, label, cmd, args, bg, fg)
