@@ -1390,10 +1390,16 @@ function astar(sx, sy, sz, tx, ty, tz, goalY, near)
     end
     return k
   end
-  local g, X, Y, Z, parent, closed = {}, {}, {}, {}, {}, {}
+  -- HD[k] = the last sideways direction on the way to k: changing it costs a
+  -- turn (as slow as a step), so straight routes are preferred. h is weighted
+  -- a hair (1.001): among equally good cells the one nearer the goal goes
+  -- first - far fewer cells looked at.
+  local g, X, Y, Z, parent, closed, HD = {}, {}, {}, {}, {}, {}, {}
   local sk = key(sx, sy, sz)
   g[sk], X[sk], Y[sk], Z[sk], parent[sk] = 0, sx, sy, sz, false
-  push(h(sx, sy, sz), sk)
+  -- facing (0 +z, 1 -x, 2 -z, 3 +x) -> D6 index (1 +x, 2 -x, 3 +z, 4 -z)
+  HD[sk] = S.pos and S.pos.f and ({ [0] = 3, 2, 4, 1 })[S.pos.f] or nil
+  push(h(sx, sy, sz) * 1.001, sk)
   local D6 = { { 1, 0, 0 }, { -1, 0, 0 }, { 0, 0, 1 }, { 0, 0, -1 }, { 0, 1, 0 }, { 0, -1, 0 } }
   local expanded = 0
   while hn > 0 do
@@ -1415,7 +1421,7 @@ function astar(sx, sy, sz, tx, ty, tz, goalY, near)
         os.queueEvent("nav_yield")
         os.pullEvent("nav_yield")
       end
-      for _, d in ipairs(D6) do
+      for di, d in ipairs(D6) do
         local nx, ny, nz = x + d[1], y + d[2], z + d[3]
         if nx >= minX and nx <= maxX and ny >= minY and ny <= maxY and nz >= minZ and nz <= maxZ then
           local mk = memKey(nx, ny, nz)
@@ -1427,10 +1433,17 @@ function astar(sx, sy, sz, tx, ty, tz, goalY, near)
             if not closed[nk] then
               local step = 1 + extra + (deadCost[mk] or 0)
               if not ty and not goalY and d[2] < 0 then step = step + 0.5 end  -- don't sink into caves
+              -- a sideways step in a new direction = one turn (opposite = two)
+              local hd = HD[k]
+              if di <= 4 and hd and hd ~= di then
+                step = step + (((hd == 1 and di == 2) or (hd == 2 and di == 1) or (hd == 3 and di == 4)
+                                or (hd == 4 and di == 3)) and 0.8 or 0.4)
+              end
               local ng = g[k] + step
               if g[nk] == nil or ng < g[nk] then
                 g[nk], X[nk], Y[nk], Z[nk], parent[nk] = ng, nx, ny, nz, k
-                push(ng + h(nx, ny, nz), nk)
+                HD[nk] = (di <= 4) and di or hd
+                push(ng + h(nx, ny, nz) * 1.001, nk)
               end
             end
           end
