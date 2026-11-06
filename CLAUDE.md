@@ -194,6 +194,22 @@ PneumaticCraft drone rides, turtle mapping/surveys, and an AE2 ME network view.
   noDig around the station. Base sends cfg (dumpEvery, rowLength, noMine,
   want, keep) when it changes. tools/navsim/minesim.lua runs the real
   miner.lua x2 + base_mining.lua in a voxel world (plain/reboot/want/full/direct).
+- AWAY MODE (base_away.lua AWAY, comms tick AWAY.tick): owner offline (Player
+  Detector; players refreshed every 30 s on any page) for CONFIG.away.after
+  (300 s) -> AWAY.start: snapshot (MINE got/ores/ci per dim, MAP.ovN, turtles
+  up to date), monitor shows the MAP following the turtles (AWAY.followMap:
+  zoom to fit home + online turtles + q.out spots; previous page restored),
+  auto-map ON if you had it off (AWAY.autoOn, off again after), turtles top up
+  fuel at 3x lowFuel (homeTick), map saved every 30 min. Turtle updates wait
+  while the owner is online (CONFIG.turtles.updateWhenAway, max 2 h,
+  TT.updWaiting; UPDATE TURTLES forces). Back -> AWAY.report() (time away,
+  map growth, mining per dim with top items, updates, base off times, system
+  warnings since "away mode on", "Needs you" list) -> box (USER_ACTION), chat
+  to the owner (up to 6 lines), SYSTEM tab card WHILE YOU WERE AWAY, sysLog,
+  `away` console command. away.dat keeps it over restarts. SETTINGS > AWAY.
+  Unknown owner state (no detector / old data) -> nothing changes.
+  NOTE cfg helpers (MINE.cfg / AWAY.cfg): `type(t)=="table" and t[k]` gives
+  false, not nil - use an if (fixed; the mining cfg was never sent before).
 - Permanent rescuer: t.rescuerRole (RESCUER button, saved in turtles.dat;
   base only). TT.patrolTick (comms worker) sends it to: no fuel (<20 for
   60 s), stuck (60 s idle), lost (silent CONFIG.turtles.rescueAfter, default
@@ -273,6 +289,7 @@ PneumaticCraft drone rides, turtle mapping/surveys, and an AE2 ME network view.
 | node.lua | the turtle program |
 | miner.lua | mining-dimension team program (MINER + LOADER roles; installed by hand, not OTA) |
 | base_mining.lua / base_ui_mining.lua | mining teams on the base (MINE) / MINING tab |
+| base_away.lua | away mode: uses the time you are offline, WHILE YOU WERE AWAY report |
 
 ## The owner's setup (found out the hard way)
 Peripherals (from the `report` command): `me_bridge_4`, `inventory_manager_3`,

@@ -113,7 +113,8 @@ function drawTurtlesPage(G)
                      math.max(0, math.floor((t.updRetry or 0) - os.clock())) .. " s")
                 or ("Waiting for its turn to get " .. TT.verName(CODE.ver) ..
                     ((not CONFIG.turtles.autoUpdate and not (TT.updateForce and os.clock() < TT.updateForce))
-                     and " (automatic updates are OFF - press UPDATE TURTLES)" or ""))
+                     and " (automatic updates are OFF - press UPDATE TURTLES)"
+                     or (TT.updWaiting and " (waits until you are offline - or press UPDATE TURTLES)") or ""))
     text(rix, y0 + 5, trunc(msg, riw), C.label, C.panel)
   elseif t.held then
     text(rix, y0 + 5, trunc("STOPPED by you - automatic jobs skip it. Any button (e.g. PING) releases it.", riw),

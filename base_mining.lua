@@ -14,7 +14,8 @@ local FILE = "mining.dat"
 -- settings (CONFIG.mining in base_config.lua and the SETTINGS page)
 function MINE.cfg(k, default)
   local m = CONFIG.mining
-  local v = type(m) == "table" and m[k]
+  local v
+  if type(m) == "table" then v = m[k] end
   if v == nil then return default end
   return v
 end

@@ -79,17 +79,45 @@ function drawSystemPage(G)
     end
   end
 
-  ------------------------------------------------ times the base was off
+  ------------------------------------------------ while you were away
   local actH = 9
-  local oh = bottom - y0 + 1 - actH - 1
-  card(rx, y0, rw, oh, "TIMES THE BASE WAS OFF")
+  local free = bottom - y0 + 1 - actH - 1
+  local awH = math.max(8, math.floor(free * 0.5))
+  do
+    local lines, title
+    if AWAY and AWAY.on then
+      lines, title = AWAY.report(), "AWAY MODE - YOU ARE OFFLINE (so far)"
+    elseif AWAY and AWAY.last then
+      local okD, d = pcall(os.date, "%d.%m %H:%M", math.floor(AWAY.last.t / 1000))
+      lines, title = AWAY.last.lines or {}, "WHILE YOU WERE AWAY  (back " .. (okD and d or "?") .. ")"
+    end
+    card(rx, y0, rw, awH, title or "WHILE YOU WERE AWAY")
+    if not lines then
+      text(rix, y0 + 3, trunc("Nothing yet. When you leave the server for " ..
+           math.floor((tonumber(AWAY and AWAY.cfg("after", 300)) or 300) / 60) .. " min, the base", riw), C.dim, C.panel)
+      text(rix, y0 + 4, trunc("updates turtles, tops up their fuel, follows them on the map -", riw), C.dim, C.panel)
+      text(rix, y0 + 5, trunc("and tells you here (and in chat) what happened.", riw), C.dim, C.panel)
+    else
+      local ry = y0 + 3
+      for _, l in ipairs(lines) do
+        if ry > y0 + awH - 2 then break end
+        text(rix, ry, trunc(l.t, riw), l.col or C.text, C.panel)
+        ry = ry + 1
+      end
+    end
+  end
+
+  ------------------------------------------------ times the base was off
+  local oy = y0 + awH + 1
+  local oh = free - awH - 1
+  card(rx, oy, rw, oh, "TIMES THE BASE WAS OFF")
   local offs = A.offs or {}
   if #offs == 0 then
-    text(rix, y0 + 3, trunc("None noticed yet. (A gap of more than 90 s counts.)", riw), C.dim, C.panel)
+    text(rix, oy + 3, trunc("None noticed yet. (A gap of more than 90 s counts.)", riw), C.dim, C.panel)
   end
   for i = 1, math.min(#offs, math.floor((oh - 4) / 2)) do
     local o = offs[i]
-    local ry = y0 + 3 + (i - 1) * 2
+    local ry = oy + 3 + (i - 1) * 2
     local okW, w = pcall(os.date, "%d.%m %H:%M", math.floor(o.from / 1000))
     local why = tostring(o.why)
     local col = why:find("ERROR", 1, true) and C.bad or (why:find("stopped", 1, true) and C.dim or C.warn)
@@ -98,7 +126,7 @@ function drawSystemPage(G)
   end
 
   ------------------------------------------------ actions
-  local ay = y0 + oh + 1
+  local ay = oy + oh + 1
   card(rx, ay, rw, actH, "ACTIONS  (tap twice)")
   local aw = math.floor((riw - 2) / 3)
   actButton(rix, ay + 3, aw, 2, "SAVE MAP NOW", { kind = "syssave", name = "map", count = 0 }, true)

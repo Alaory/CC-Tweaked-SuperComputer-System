@@ -634,6 +634,14 @@ function TT.updateTick()
   if not CODE then return end
   local forced = TT.updateForce and os.clock() < TT.updateForce
   if not CONFIG.turtles.autoUpdate and not forced then return end
+  -- updates wait while you play (they restart the turtles) - at most 2 h
+  if TT.codeSeenVer ~= CODE.ver then TT.codeSeenVer, TT.codeSeenAt = CODE.ver, os.clock() end
+  TT.updWaiting = false
+  if not forced and CONFIG.turtles.updateWhenAway ~= false and AWAY and not AWAY.on
+     and AWAY.ownerOnline() == true and os.clock() - TT.codeSeenAt < 7200 then
+    TT.updWaiting = true
+    return
+  end
   local now = os.clock()
   local busy = 0
   for id, t0 in pairs(TT.sending) do
@@ -1250,7 +1258,8 @@ function TT.homeTick()
     if idle then t.idleSince = t.idleSince or now else t.idleSince = nil end
     -- low on fuel: home after 10 s (the fuel chest is there), not after idleHome
     local fuel = tonumber(t.fuel)
-    local low = fuel and fuel < (tonumber(CONFIG.turtles.lowFuel) or 2000)
+    -- while you are away they top up earlier (full tanks when you are back)
+    local low = fuel and fuel < (tonumber(CONFIG.turtles.lowFuel) or 2000) * ((AWAY and AWAY.on) and 3 or 1)
     -- the shared fuel chest (CONFIG.turtles.fuelChest): one turtle at a time
     -- goes there, refuels and goes home
     local fc = CONFIG.turtles.fuelChest

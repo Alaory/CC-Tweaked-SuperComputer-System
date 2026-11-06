@@ -264,6 +264,18 @@ again …)", "after an update" or "after an ERROR: …".
 
 ---
 
+## 🌙 While you are away
+
+5 minutes after you leave the server (Player Detector), the base uses the time:
+- 🔄 turtle program **updates** (they wait while you play - at most 2 h; UPDATE TURTLES forces them)
+- ⛽ turtles **top up their fuel** early, so they are full when you are back
+- 🗺️ the monitor shows the **map**, zoomed out by itself, following the turtles; **auto-map** runs even if you switched it off (off again when you are back)
+- 💾 the map is saved every 30 minutes
+
+When you come back: a **WELCOME BACK** box, a private chat message and the SYSTEM tab tell you
+how long you were away, what was mined and mapped, what went wrong and what needs you now.
+Type `away` on the computer to see it again. Settings: SETTINGS > AWAY.
+
 ## ⛏️ Mining dimension teams
 
 Two turtles per mining dimension (e.g. *Just Another Mining Dimension*), both

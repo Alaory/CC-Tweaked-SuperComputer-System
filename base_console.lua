@@ -503,6 +503,22 @@ function handleCommand(line)
       say("Together: " .. math.floor(free / 1024) .. " KB free for the map (used after the data floppies).")
     end
 
+  elseif cmd == "away" then
+    -- the last WHILE YOU WERE AWAY report (or the live one while away)
+    if AWAY.on then
+      say("Away mode is ON since " .. fmtSpan((os.epoch("utc") - (AWAY.since or 0)) / 1000) .. " - so far:")
+      for _, l in ipairs(AWAY.report()) do say("  " .. l.t) end
+    elseif AWAY.last then
+      local okD, d = pcall(os.date, "%d.%m %H:%M", math.floor(AWAY.last.t / 1000))
+      say("Last time you came back (" .. (okD and d or "?") .. "):")
+      for _, l in ipairs(AWAY.last.lines or {}) do say("  " .. l.t) end
+    else
+      say("No away report yet. Away mode starts " .. math.floor((tonumber(AWAY.cfg("after", 300)) or 300) / 60) ..
+          " min after you leave the server.")
+    end
+    local on = AWAY.ownerOnline()
+    say("You are " .. (on == true and "online" or (on == false and "offline" or "unknown (no Player Detector?)")))
+
   elseif cmd == "uptime" then
     local a = BASE_ALIVE or {}
     local now = os.epoch("utc")

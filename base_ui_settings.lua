@@ -133,6 +133,14 @@ SETTING_GROUPS = {
     bool("chat.othersToPlayers", "Others may fly to players", "other players may ride TO a player", true),
     bool("chat.notifyOwner", "Tell me about others' rides", "a message whenever someone else gets a ride", true),
   } },
+  { name = "AWAY", list = {
+    num("away.after", "Away mode after you leave", "the base uses the time and reports when you are back",
+        300, 60, 3600, 60, function(v) return (v >= 120 and v % 60 == 0) and (math.floor(v / 60) .. " min") or (v .. " s") end),
+    bool("away.map", "Monitor shows the map while away", "zoomed out to everything, following the turtles", true),
+    bool("turtles.updateWhenAway", "Turtle updates wait until you leave", "they restart the turtles (2 h at most)", true),
+    bool("away.chat", "Report in chat when you are back", "a private message with the summary", true),
+    bool("away.autoMap", "Auto-map while away", "on while you are away even if you switched it off", true),
+  } },
   { name = "MINING", list = {
     num("mining.dumpEvery", "Miner unloads every", "it teleports to the unload station this often", 600, 120, 3600, 60, secs),
     num("mining.rowLength", "Chunks per row", "a row goes this far forward, the next row is to its right", 16, 2, 64, 2,
