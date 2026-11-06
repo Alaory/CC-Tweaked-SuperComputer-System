@@ -31,7 +31,7 @@ HELP = {
   " survey auto [on|off] auto-map: turtles keep surveying from the base outward",
   " theme [name|random]  the monitor's colours (random = a different one each start)",
   " uptime               how long the base runs, and when it was off (and why)",
-  " store [find]         storage helper computers (store.lua) and their free space",
+  " store [find|update]  storage helper computers (store.lua): free space, update them now",
   " events [n] [errors]  the last n saved messages (also after a restart)",
   "      sethome [x y z], setpos x y z north, locate, move up 3, stop",
   " map clear            delete all map scans",
@@ -478,16 +478,22 @@ function handleCommand(line)
 
   elseif cmd == "store" then
     -- storage helpers (store.lua on other computers on the wired network)
-    if words[2] == "find" or not next(STORE.helpers) then
+    if words[2] == "find" or words[2] == "update" or not next(STORE.helpers) then
       say("Looking for storage helpers (2 s) ...")
       pcall(STORE.find)
     end
+    if words[2] == "update" then
+      local okU, n = pcall(STORE.updateAll)
+      say(okU and (n .. " helper(s) got the new store.lua") or ("Update failed: " .. tostring(n)))
+    end
+    local code = STORE.code()
     local n = 0
     for id, h in pairs(STORE.helpers) do
       n = n + 1
       if h.refused then say("  computer " .. id .. ": " .. h.refused)
-      else say(string.format("  computer %d %s: %d KB free of %d KB, %d files", id, h.label and ("(" .. h.label .. ")") or "",
-                             math.floor((h.free or 0) / 1024), math.floor((h.cap or 0) / 1024), h.files or 0)) end
+      else say(string.format("  computer %d %s: %d KB free of %d KB, %d files, %s", id, h.label and ("(" .. h.label .. ")") or "",
+                             math.floor((h.free or 0) / 1024), math.floor((h.cap or 0) / 1024), h.files or 0,
+                             (code and h.ver == code.ver) and "up to date" or (h.ver and "OLDER store.lua" or "old store.lua (copy by hand once)"))) end
     end
     if n == 0 then
       say("No storage helpers. Put store.lua on another computer with a WIRED modem on the base's cable,")

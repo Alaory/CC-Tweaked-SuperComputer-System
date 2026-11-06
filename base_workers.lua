@@ -404,9 +404,10 @@ function mapWorker()
     else
       pcall(MAP.autoSave)                -- changed map regions, at most once a minute
     end
-    if os.clock() - lastFind > 300 then  -- storage helpers added / gone
+    if os.clock() - lastFind > 300 then  -- storage helpers added / gone, and their updates
       lastFind = os.clock()
       pcall(STORE.find)
+      pcall(STORE.updateAll)
     end
   end
 end

@@ -81,7 +81,7 @@ function STORE.find(quick)
       local r, err = STORE.call(id, { op = "hello" }, 3)
       if r then
         found[id] = { id = id, free = tonumber(r.free) or 0, cap = tonumber(r.cap) or 0, files = r.files or 0,
-                      label = r.label }
+                      label = r.label, ver = r.ver }
       elseif err and err:find("belongs", 1, true) then
         found[id] = { id = id, free = 0, cap = 0, refused = err }
       end
@@ -100,6 +100,50 @@ function STORE.find(quick)
     if sysLog then sysLog("Storage helpers: " .. n .. " found", "DONE") end
   end
   return found
+end
+
+-- ===== updates: a new store.lua next to inventory.lua goes to every helper =====
+local function codeHash(str)                     -- the same checksum as store.lua
+  local h1, h2 = 5381, 52711
+  for i = 1, #str do
+    local c = str:byte(i)
+    h1 = (h1 * 33 + c) % 4294967296
+    h2 = (h2 * 131 + c * 7 + i) % 4294967296
+  end
+  return string.format("%08x%08x", h1, h2)
+end
+-- the newest store.lua (read again when it changed): { text, ver } or nil
+function STORE.code()
+  local path = fs.combine(BASE_DIR or "", "store.lua")
+  if not fs.exists(path) then return nil end
+  local size = fs.getSize(path)
+  if STORE.codeCache and STORE.codeCache.size == size and STORE.codeCache.path == path then return STORE.codeCache end
+  local h = fs.open(path, "r")
+  local text = h and h.readAll() or ""
+  if h then h.close() end
+  if not load(text, "store", "t", {}) then return nil end      -- does not compile: never sent
+  STORE.codeCache = { text = text, ver = codeHash(text), size = size, path = path }
+  return STORE.codeCache
+end
+-- every helper with an older store.lua gets the new one (it restarts)
+function STORE.updateAll()
+  local code = STORE.code()
+  if not code then return 0 end
+  local n = 0
+  for id, h in pairs(STORE.helpers) do
+    if not h.refused and h.ver and h.ver ~= code.ver then
+      local r, err = STORE.call(id, { op = "upd", data = code.text, ver = code.ver }, 10)
+      if r then
+        n = n + 1
+        h.ver = code.ver
+        if sysLog then sysLog("Storage helper " .. id .. ": updated store.lua", "DONE") end
+      elseif sysLog then
+        sysLog("Storage helper " .. id .. ": update failed - " .. tostring(err), "WARNING")
+      end
+    end
+  end
+  if n > 0 and setToast then setToast(n .. " storage helper(s) updated (they restart)", C.good) end
+  return n
 end
 
 -- a helper path?  "store:7/map/o1_2.dat" -> 7, "map/o1_2.dat"

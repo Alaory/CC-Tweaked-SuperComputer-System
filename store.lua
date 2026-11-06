@@ -8,6 +8,8 @@
       store
 
   It installs itself as startup.lua, so it starts by itself from now on.
+  UPDATES come from the base by themselves: put a new store.lua next to the
+  base's inventory.lua - every helper gets it and restarts.
   It keeps files for the base (the map) on its own disk: 1 MB per computer.
 
   Safety:
@@ -39,6 +41,23 @@ if me ~= "startup.lua" then
   print("Installed as startup.lua - starts by itself from now on.")
 end
 if not os.getComputerLabel() then os.setComputerLabel("Store " .. os.getComputerID()) end
+
+-- this program's version: a checksum of its text (the base compares it)
+local function codeHash(str)
+  local h1, h2 = 5381, 52711
+  for i = 1, #str do
+    local c = str:byte(i)
+    h1 = (h1 * 33 + c) % 4294967296
+    h2 = (h2 * 131 + c * 7 + i) % 4294967296
+  end
+  return string.format("%08x%08x", h1, h2)
+end
+local MYVER = "?"
+if fs.exists("startup.lua") then
+  local h = fs.open("startup.lua", "r")
+  MYVER = codeHash(h.readAll() or "")
+  h.close()
+end
 
 -- wired modems only
 local opened = 0
@@ -121,7 +140,28 @@ while true do
       answer(id, req, { ok = false, err = "this helper belongs to computer " .. owner .. " (store reset to change)" })
     elseif req.op == "hello" then
       answer(id, req, { ok = true, free = freeSpace(), cap = capacity(), files = countFiles(ROOT),
-                        label = os.getComputerLabel() })
+                        label = os.getComputerLabel(), ver = MYVER })
+    elseif req.op == "upd" then
+      -- a new store.lua from the base: checked (checksum + it compiles), then
+      -- installed as startup.lua and the computer restarts with it
+      local code = tostring(req.data or "")
+      if codeHash(code) ~= req.ver then
+        answer(id, req, { ok = false, err = "update arrived damaged" })
+      elseif not load(code, "store", "t", {}) then
+        answer(id, req, { ok = false, err = "update does not compile - not installed" })
+      else
+        local h = fs.open("startup.tmp", "w")
+        local okW = h and pcall(function() h.write(code) h.close() end)
+        if okW then
+          if fs.exists("startup.lua") then fs.delete("startup.lua") end
+          fs.move("startup.tmp", "startup.lua")
+          answer(id, req, { ok = true })
+          sleep(0.5)
+          os.reboot()
+        else
+          answer(id, req, { ok = false, err = "could not write the update (disk full?)" })
+        end
+      end
     elseif req.op == "put" then
       local path = safe(req.name)
       local data = tostring(req.data or "")

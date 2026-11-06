@@ -127,6 +127,10 @@ Each extra computer gives the map **1 MB** more (about 8 floppies):
 A helper belongs to the first base that uses it (`store reset` on the helper
 changes that) and only listens on wired modems.
 
+**Updating helpers:** put the new `store.lua` next to the base's `inventory.lua`.
+Every helper gets it by itself within a few minutes and restarts
+(`store update` on the base computer does it at once).
+
 ### 3️⃣ ME network
 
 Put **one** item in the buffer chest and type `mesetup` on the computer. It finds
