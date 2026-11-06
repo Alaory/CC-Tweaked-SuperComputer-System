@@ -1037,7 +1037,7 @@ function workStep()
     -- the edge cell of this chunk on the line towards the next one: from the
     -- centre (a mined chunk) or straight ahead from the start spot (chunk 0)
     local fx, fz = mx, mz
-    if P.ci == 0 then fx, fz = P.x0, P.z0 end
+    if P.ci == 0 then fx, fz = P.x0 or mx, P.z0 or mz end    -- (an older plan has no x0)
     local bx, bz = fx, fz
     if dir == 1 then bx = cx * 16 + 15 elseif dir == 3 then bx = cx * 16 end
     if dir == 2 then bz = cz * 16 + 15 elseif dir == 0 then bz = cz * 16 end
