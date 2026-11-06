@@ -162,7 +162,12 @@ PneumaticCraft drone rides, turtle mapping/surveys, and an AE2 ME network view.
   waits for "got", then steps into X1 FIRST (the game may pause / shut it
   down there - it restarts and continues from the saved plan); the loader comes
   through E and Eup into X1up. waitLoader before the next crossing. The start
-  chunk (ci 0) is only left; loader + miner must start in the same chunk. Plan:
+  chunk (ci 0) is only left; loader + miner must start in the same chunk.
+  calibrate() before a new plan: Geo Scanner scan r 1 finds the loader behind
+  -> the miner's facing is corrected; the loader gets "setpos" (its real
+  position + facing = towards the miner, it turns until inspect sees a turtle)
+  and answers "posok". START resets the unload timer; an unload trip with
+  nothing to unload is skipped. MYVER shown on the turtle and the MINING tab. Plan:
   rows of rowLength chunks forward from the start facing, next row to the right;
   per chunk: tunnel to the centre at the start Y, layers every 17 down to minY
   (Geo Scanner r 8, ores + CONFIG.mining.want inside the chunk), exit to the

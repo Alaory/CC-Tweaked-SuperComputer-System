@@ -133,8 +133,19 @@ local function turtleApi(u)
     local b = block(x, y, z)
     if (b and not b:find("water")) or occupied(x, y, z) or u.fuel < 1 then return false, "Movement obstructed" end
     if not loaded(x, z, 1) then return false, "Cannot leave loaded world" end
+    local oc = chunk(u.pos.x) .. "," .. chunk(u.pos.z)
     u.pos.x, u.pos.y, u.pos.z = x, y, z
     u.fuel = u.fuel - 1
+    local nc = chunk(x) .. "," .. chunk(z)
+    if nc ~= oc and u.role == "miner" then
+      u.left = u.left
+      VISITED = VISITED or {}
+      if VISITED[nc] then
+        BACK = (BACK or 0) + 1
+        if BACK <= 5 then io.write(string.format("** miner went BACK into chunk %s from %s at %d %d %d (t=%.0f)\n", nc, oc, x, y, z, T)) end
+      end
+      VISITED[oc] = true
+    end
     -- gravel above falls
     local ab = block(x, y + 1, z)
     if ab == "minecraft:gravel" then end
@@ -332,6 +343,9 @@ local function peripheralApi(u)
         local out = {}
         for dx = -r, r do for dy = -r, r do for dz = -r, r do
           local b = block(u.pos.x + dx, u.pos.y + dy, u.pos.z + dz)
+          if occupied(u.pos.x + dx, u.pos.y + dy, u.pos.z + dz) and (dx ~= 0 or dy ~= 0 or dz ~= 0) then
+            b = "computercraft:turtle_advanced"
+          end
           if b then
             out[#out + 1] = { x = dx, y = dy, z = dz, name = b,
                               tags = b:find("_ore") and { "minecraft:block/c:ores" } or {} }
@@ -456,8 +470,10 @@ end
 
 ---------------------------------------------------------------- the two turtles
 local MINER, LOADER = 11, 12
+local MX, MY, MZ, MF, LX, LZ = 100, 40, 0, 1, 99, 0
+if SCEN == "owner" or SCEN == "wrongface" then MX, MY, MZ, MF, LX, LZ = -5271, 69, 10851, 2, -5271, 10850 end
 local KEY = "test-key"
-local m = newTurtle(MINER, "miner", 100, 40, 0, 1, {
+local m = newTurtle(MINER, "miner", MX, MY, MZ, MF, {
   [1] = { name = "computercraft:wireless_modem_advanced", count = 1 },
   [2] = { name = "advancedperipherals:geo_scanner", count = 1 },
   [3] = { name = "sophisticatedstorage:netherite_shulker_box", count = 1, contents = {} },
@@ -481,17 +497,22 @@ if SCEN == "direct" then
   setBlock(DUMP.x, DUMP.y, DUMP.z, "ae2:interface")
   SHULKERS[key(DUMP.x, DUMP.y, DUMP.z)] = {}
 end
-local l = newTurtle(LOADER, "loader", 99, 40, 0, 1, {},
+local l = newTurtle(LOADER, "loader", LX, MY, LZ, MF, {},
   "advancedperipherals:chunk_controller", "computercraft:wireless_modem_advanced")
 -- the station: miner was set up there (point saved, station known)
 m.points.station = { x = STATION.x, y = STATION.y, z = STATION.z }
 setBlock(STATION.x, STATION.y, STATION.z, nil)
 setBlock(DUMP.x, DUMP.y, DUMP.z, nil)
 m.files.miner_state = textutils.serialize({ role = "miner", key = KEY, dim = "overworld",
-  pos = { x = 100, y = 40, z = 0, f = 1 }, station = { x = STATION.x, y = STATION.y, z = STATION.z, f = 1 } })
+  pos = { x = MX, y = MY, z = MZ, f = MF }, station = { x = STATION.x, y = STATION.y, z = STATION.z, f = 1 } })
 l.files.miner_state = textutils.serialize({ role = "loader", key = KEY, dim = "overworld",
-  pos = { x = 99, y = 40, z = 0, f = 1 } })
+  pos = { x = LX, y = MY, z = LZ, f = MF } })
 
+if SCEN == "wrongface" then
+  -- typed facings were wrong: miner says east (really south), loader says west
+  local ms = textutils.unserialize(m.files.miner_state) ms.pos.f = 1 m.files.miner_state = textutils.serialize(ms)
+  local ls = textutils.unserialize(l.files.miner_state) ls.pos.f = 3 l.files.miner_state = textutils.serialize(ls)
+end
 local SRC = io.open(ROOT .. "miner.lua"):read("a")
 local cos = {}
 for _, u in ipairs({ m, l }) do

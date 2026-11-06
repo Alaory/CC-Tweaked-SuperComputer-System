@@ -298,6 +298,27 @@ function handle(id, m, proto)
       GOT = m.ref
     elseif m.t == "got" and S.role == "miner" and id == S.partner then
       GOT = m.ref
+    elseif m.t == "posok" and S.role == "miner" and id == S.partner then
+      POSOK = m.ref
+    elseif m.t == "setpos" and S.role == "loader" and id == S.partner then
+      -- the miner saw us with its Geo Scanner: this is our real position; our
+      -- facing = the side where the miner is (turn until we see a turtle)
+      S.pos = S.pos or {}
+      S.pos.x, S.pos.y, S.pos.z = m.x, m.y, m.z
+      local found
+      for _ = 1, 4 do
+        local okI, b = turtle.inspect()
+        if okI and tostring(b.name):find("computercraft:turtle", 1, true) then found = true break end
+        turtle.turnRight()
+      end
+      if found then
+        local was = S.pos.f
+        S.pos.f = m.f
+        if was ~= m.f then note("Facing corrected: " .. FNAME[m.f]) end
+      end
+      S.follow = nil
+      save()
+      sendTeam(id, "posok", { ref = m.ref, ok = found and true or false })
     end
   end
 end
@@ -305,6 +326,7 @@ function doCmd(cmd, args)
   if cmd == "start" then
     if S.role == "miner" then
       S.running, S.err = true, nil
+      if not S.plan then S.lastDump = now() end       -- a new field: the unload timer starts now
       note("START")
     end
   elseif cmd == "pause" then
@@ -812,6 +834,50 @@ function chunkAt(P, i)
   return cx, cz
 end
 function center(cx, cz) return cx * 16 + 8, cz * 16 + 8 end
+-- before a new field: check our FACING with the Geo Scanner - the loader
+-- must be right behind us (a typed facing can be wrong). Then the loader gets
+-- its real position and finds its own facing by turning to us.
+function calibrate()
+  local ok, err = equipTool("geo")
+  if not ok then return false, err end
+  local side = toolSide()
+  local okS, res = pcall(peripheral.call, side, "scan", 1)
+  if not okS or type(res) ~= "table" then return false, "Geo Scanner scan failed: " .. tostring(res) end
+  local ox, oz
+  for _, b in ipairs(res) do
+    if b.y == 0 and math.abs(b.x) + math.abs(b.z) == 1 and tostring(b.name):find("computercraft:turtle", 1, true) then
+      ox, oz = b.x, b.z
+    end
+  end
+  if not ox then
+    return false, "no loader right behind the miner (same height, touching it) - place it there, then START"
+  end
+  -- behind = (ox, oz) -> forward is the other way
+  local f
+  for i = 0, 3 do if DX[i] == -ox and DZ[i] == -oz then f = i end end
+  if f ~= S.pos.f then
+    note("Facing corrected: " .. FNAME[S.pos.f or 0] .. " -> " .. FNAME[f] .. " (the loader is behind me)")
+    S.pos.f = f
+    save()
+  end
+  -- the loader: its real position and facing (it faces towards us)
+  ok = equipTool("modem")
+  local ref = os.epoch("utc")
+  local lf
+  for i = 0, 3 do if DX[i] == -ox and DZ[i] == -oz then lf = i end end
+  POSOK = nil
+  local t0, sent = os.clock(), -1000
+  while POSOK ~= ref do
+    if os.clock() - t0 > 60 then return false, "the loader does not answer" end
+    if os.clock() - sent > 5 then
+      sendTeam(S.partner, "setpos", { ref = ref, x = S.pos.x + ox, y = S.pos.y, z = S.pos.z + oz, f = lf })
+      sent = os.clock()
+    end
+    setTask("checking positions with the loader")
+    listen(1)
+  end
+  return true
+end
 function newPlan()
   local p = S.pos
   -- the loader stands right behind: it must be in the SAME chunk (it keeps
@@ -840,8 +906,19 @@ function checkpoint()
   end
   if not S.running then return false, "paused" end
   if DUMP_NOW or (S.lastDump and now() - S.lastDump > CONFIG.dumpEvery) then
-    local ok, err = doDump()
-    if not ok then return false, err end
+    -- nothing to unload: no trip, just start the timer again
+    local any = next(S.carry) ~= nil
+    for i = 1, 16 do
+      local d = turtle.getItemDetail(i)
+      if d and isLoot(d.name) and not isCoal(d.name) then any = true end
+    end
+    if not any then
+      DUMP_NOW = false
+      S.lastDump = now()
+    else
+      local ok, err = doDump()
+      if not ok then return false, err end
+    end
   end
   return true
 end
@@ -1115,7 +1192,9 @@ function minerRun()
       listen(3)
     else
       if not S.plan then
-        local okP, errP = newPlan()
+        local okC, errC = calibrate()
+        local okP, errP = okC, errC
+        if okC then okP, errP = newPlan() end
         if not okP then S.running, S.err = false, errP note("Cannot start: " .. errP) save() end
       end
       burnCoal()
