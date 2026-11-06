@@ -31,6 +31,7 @@ HELP = {
   " survey auto [on|off] auto-map: turtles keep surveying from the base outward",
   " theme [name|random]  the monitor's colours (random = a different one each start)",
   " uptime               how long the base runs, and when it was off (and why)",
+  " store [find]         storage helper computers (store.lua) and their free space",
   " events [n] [errors]  the last n saved messages (also after a restart)",
   "      sethome [x y z], setpos x y z north, locate, move up 3, stop",
   " map clear            delete all map scans",
@@ -474,6 +475,27 @@ function handleCommand(line)
     if #shown == 0 then say("No saved messages" .. (want and (" of that kind") or "") .. " yet.") end
     for _, l in ipairs(shown) do say(l) end
     say("(saved in events.log + events.old.log on this computer, about 32 KB at most)")
+
+  elseif cmd == "store" then
+    -- storage helpers (store.lua on other computers on the wired network)
+    if words[2] == "find" or not next(STORE.helpers) then
+      say("Looking for storage helpers (2 s) ...")
+      pcall(STORE.find)
+    end
+    local n = 0
+    for id, h in pairs(STORE.helpers) do
+      n = n + 1
+      if h.refused then say("  computer " .. id .. ": " .. h.refused)
+      else say(string.format("  computer %d %s: %d KB free of %d KB, %d files", id, h.label and ("(" .. h.label .. ")") or "",
+                             math.floor((h.free or 0) / 1024), math.floor((h.cap or 0) / 1024), h.files or 0)) end
+    end
+    if n == 0 then
+      say("No storage helpers. Put store.lua on another computer with a WIRED modem on the base's cable,")
+      say("run  store  on it once (it then starts by itself), then type  store find  here.")
+    else
+      local free = STORE.space()
+      say("Together: " .. math.floor(free / 1024) .. " KB free for the map (used after the data floppies).")
+    end
 
   elseif cmd == "uptime" then
     local a = BASE_ALIVE or {}

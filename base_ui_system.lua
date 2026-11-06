@@ -23,7 +23,7 @@ function drawSystemPage(G)
   local now = os.epoch("utc")
 
   ------------------------------------------------ status
-  local sh = 13
+  local sh = 14
   card(lx, y0, leftW, sh, "STATUS")
   local r = y0 + 3
   kv(ix, r, iw, "Running for", fmtSpan((now - (A.since or now)) / 1000) .. "   (start #" .. tostring(A.starts or "?") .. ")")
@@ -47,6 +47,8 @@ function drawSystemPage(G)
      "   " .. math.floor(MAP.autoRadius()) .. " blocks around the base", MAP.auto.on and C.good or C.dim)
   kv(ix, r + 7, iw, "Messages", #state.noteLog .. " in EVENTS, " .. kb(s.eventsLog) .. " saved")
   kv(ix, r + 8, iw, "Theme", tostring(THEME_NAME) .. ((THEME_MODE == "random") and " (random each start)" or ""))
+  kv(ix, r + 9, iw, "Storage helpers", (s.helpers and s.helpers > 0) and (s.helpers .. " (" .. kb(s.helperFree) .. " free)")
+     or "none (store.lua on a computer on the cable)", (s.helpers and s.helpers > 0) and C.text or C.dim)
 
   ------------------------------------------------ system log (kept apart from EVENTS)
   local ly = y0 + sh + 1

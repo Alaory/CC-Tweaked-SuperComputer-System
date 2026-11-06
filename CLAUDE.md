@@ -19,7 +19,7 @@ PneumaticCraft drone rides, turtle mapping/surveys, and an AE2 ME network view.
   Order matters: a file may only use globals defined by files loaded before it
   at load time (inside functions, anything goes).
 - Workers run together via `parallel.waitForAny`: uiLoop, invWorker,
-  pageWorker, actionWorker, droneWorker, terminalWorker, chatWorker, commsWorker.
+  pageWorker, actionWorker, droneWorker, terminalWorker, chatWorker, commsWorker, mapWorker.
 - **Peripheral calls belong in workers or fetch functions, never in drawing
   code.** Drawing reads `state.*` only.
 - Drawing: everything is drawn into an off-screen window `win`; `flushWindow()`
@@ -163,6 +163,15 @@ PneumaticCraft drone rides, turtle mapping/surveys, and an AE2 ME network view.
   baseStartCheck (inventory.lua, after buildWindow) reports a gap > 90 s as
   "BASE WAS OFF from .. to .. - why" (crash text / you stopped it / unloaded or
   server restart); baseExit marks crash or Ctrl+T. `uptime` lists the last 10.
+- Storage helpers (base_store.lua + store.lua): other computers on the WIRED
+  network run store.lua (rednet protocol "basestore", wired modems only; a helper
+  belongs to the first base that uses it - `store reset` on it to change). The map
+  saves to them after the data floppies, before this computer (places(): rank
+  floppy > helper > computer; path "store:<id>/map/<key>.dat"; MAP.rsize = sizes).
+  Calls wait for answers, so map saving runs in its own mapWorker (also finds new
+  helpers ~20 s after start, then every 5 min); at start only helpers seen before
+  are asked (store_helpers.dat, no 2-s lookup). Helper gone -> files go to the
+  computer. `store [find]` on the base computer.
 - Autostart: `startup.lua` (top level of the computer) finds inventory.lua
   in any folder and restarts it after a crash (inventory.lua raises an error
   on a crash, returns normally on Ctrl+T). inventory.lua turns off

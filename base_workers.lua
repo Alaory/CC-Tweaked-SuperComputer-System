@@ -64,6 +64,7 @@ function sysRefresh()
   end
   s.turtlesUp, s.turtlesAll = up, all
   s.eventsLog = fs.exists("events.log") and fs.getSize("events.log") or 0
+  if STORE then s.helperFree, s.helpers = STORE.space() end
   state.sys = s
 end
 
@@ -387,6 +388,29 @@ end
 -- busy talking to a peripheral); replies are paced (the Chat Box needs ~1 s).
 -- worker 7: turtles. Opens the wireless/ender modem, receives their reports
 -- and sends the queued commands (no game calls that could block the screen).
+-- the map worker: saving the map (also onto storage helpers - those calls
+-- wait for an answer, so they get a worker of their own: the turtles' messages
+-- and the monitor never wait for them) and finding the storage helpers
+function mapWorker()
+  local lastFind = os.clock() - 280         -- first look for new helpers ~20 s after the start
+  while state.running do
+    waitFor(5, "map_save")
+    if MAP.saveNow then
+      MAP.saveNow = false
+      local okS = pcall(MAP.save)
+      pcall(MAP.checkSpace)
+      setToast(okS and not next(MAP.dirty) and "Map saved" or "Map not fully saved (no room?)",
+               okS and not next(MAP.dirty) and C.good or C.warn, 4)
+    else
+      pcall(MAP.autoSave)                -- changed map regions, at most once a minute
+    end
+    if os.clock() - lastFind > 300 then  -- storage helpers added / gone
+      lastFind = os.clock()
+      pcall(STORE.find)
+    end
+  end
+end
+
 function commsWorker()
   local opened
   local codeTick = 0
@@ -416,7 +440,6 @@ function commsWorker()
     elseif ev == "timer" and a == tick then
       tick = os.startTimer(2)
       if KNOW.dirty and os.clock() - KNOW.saved > 30 then pcall(KNOW.save) end
-      pcall(MAP.autoSave)                -- changed map regions, at most once a minute
       local okF, errF = pcall(MAP.feedSurvey)  -- a big survey: next batch to each idle turtle
       if not okF and (not state.feedErrAt or os.clock() - state.feedErrAt > 60) then
         state.feedErrAt = os.clock()

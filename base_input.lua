@@ -60,8 +60,10 @@ function handleTouch(tx, ty)
               setToast(msgP, okP and C.good or C.warn, 5)
             end
           elseif a.kind == "syssave" then
-            local okS = pcall(MAP.save)
-            setToast(okS and "Map saved" or "Map could not be saved (floppies full?)", okS and C.good or C.warn, 4)
+            -- the map worker saves (it may have to wait for storage helpers)
+            MAP.saveNow = true
+            os.queueEvent("map_save")
+            setToast("Saving the map ...", C.label, 3)
           elseif a.kind == "sysupdate" then
             pcall(TT.codeLoad, true)
             local n = 0

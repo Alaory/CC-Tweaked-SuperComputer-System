@@ -113,6 +113,20 @@ chat as well.
 
 A new turtle refuels by itself and gets a home by itself (see [🐢 Turtles](#-turtles)).
 
+### 💽 Extra storage: helper computers (optional)
+
+Each extra computer gives the map **1 MB** more (about 8 floppies):
+
+1. Put a computer near the base, **in the same chunk if you can** (it must stay
+   loaded), with a **Wired Modem** connected to the base's cable. Right-click
+   the modem so it turns on.
+2. Copy `store.lua` onto it and run `store` once. It then starts by itself.
+3. On the base computer, type `store find`. The map uses the helpers when the
+   data floppies are full.
+
+A helper belongs to the first base that uses it (`store reset` on the helper
+changes that) and only listens on wired modems.
+
 ### 3️⃣ ME network
 
 Put **one** item in the buffer chest and type `mesetup` on the computer. It finds
@@ -332,10 +346,12 @@ Type these on the base computer. `help` lists them all.
 | `base_storage.lua` · `base_players.lua` | backpacks, curios · players, dimensions, `$drone back` |
 | `base_me.lua` | ME / RS network, transfers, fluids, crafting, messages and their log |
 | `base_drones.lua` | drone missions, charging, parking |
+| `base_store.lua` | talking to the storage helper computers |
 | `base_turtles.lua` · `base_map.lua` | turtle communication, homes, fuel, rescue, updates · map data and surveys |
 | `base_console.lua` · `base_chat.lua` · `base_input.lua` · `base_workers.lua` | keyboard commands · chat commands · monitor touches · background workers |
 | `base_ui_*.lua` | one file per page (`base_ui_core.lua` = header and shared drawing, `base_ui_system.lua` = Status, `base_ui_settings.lua` = Settings) |
 | `node.lua` | 🐢 the turtle program |
+| `store.lua` | 💽 the storage helper program (for extra computers) |
 
 **Data files the program creates** (keep them; delete one only to reset that part):
 `waypoints.dat`, `drone_logs.dat`, `drone_charger.dat`, `chat_access.dat`,

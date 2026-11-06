@@ -228,6 +228,15 @@ end
 -- ===== files =====
 -- the "map" folders: data floppies, then the computer. On the computer the
 -- map may use at most CONFIG.map.computerKB (default 200 KB).
+-- files can be on this computer, a data floppy, or a storage helper
+-- ("store:<id>/map/<key>.dat", base_store.lua)
+local function dirOf(p) return tostring(p):match("^(.*)/[^/]*$") or "" end
+local function mExists(p) if STORE and STORE.isRemote(p) then return true end return fs.exists(p) end
+local function mDelete(p)
+  if STORE and STORE.isRemote(p) then pcall(STORE.delete, p) else pcall(fs.delete, p) end
+end
+MAP.rsize = {}        -- sizes of the files on storage helpers (key -> bytes)
+
 local function places()
   local out = {}
   for _, d in ipairs(mountedDisks()) do
@@ -237,10 +246,14 @@ local function places()
   free = okF and free or 0
   local onPc = 0
   for _, p in pairs(MAP.where) do
-    if fs.getDir(p) == DIR and fs.exists(p) then onPc = onPc + fs.getSize(p) end
+    if dirOf(p) == DIR and fs.exists(p) then onPc = onPc + fs.getSize(p) end
   end
   local cap = (tonumber(CONFIG.map.computerKB) or 200) * 1024 - onPc
   out[#out + 1] = { dir = DIR, free = math.max(0, math.min(free, cap)), floppy = false }
+  -- storage helpers (after the floppies, before this computer)
+  for id, h in pairs(STORE and STORE.helpers or {}) do
+    if not h.refused then out[#out + 1] = { dir = "store:" .. id .. "/" .. DIR, free = h.free or 0, remote = id } end
+  end
   return out
 end
 
@@ -347,13 +360,9 @@ local function fileText(key)
 end
 
 -- read one map file into memory (old "O" ore lines are skipped)
-local function readFile(path)
-  local h = fs.open(path, "r")
-  if not h then return end
+local function readText(text)
   local glob, nloc = {}, 0
-  while true do
-    local line = h.readLine()
-    if not line then break end
+  for line in tostring(text or ""):gmatch("[^\n]+") do
     local tag = line:sub(1, 1)
     if tag == "P" then
       glob[nloc] = MAP.pal(line:sub(3))
@@ -374,7 +383,13 @@ local function readFile(path)
       end
     end
   end
+end
+local function readFile(path)
+  local h = fs.open(path, "r")
+  if not h then return end
+  local t = h.readAll()
   h.close()
+  readText(t)
 end
 
 -- write one file where it fits: a data floppy first (the one it is on, else
@@ -384,18 +399,27 @@ local function writeFile(key, text, plc)
   local need = #text + 4096                       -- the same check as saveFileSafe
   local order = {}
   for _, p in ipairs(plc) do order[#order + 1] = p end
+  local function rank(p) return p.floppy and 3 or (p.remote and 2 or 1) end
   table.sort(order, function(a, b)
-    if a.floppy ~= b.floppy then return a.floppy end
-    local aOld, bOld = old and fs.getDir(old) == a.dir, old and fs.getDir(old) == b.dir
+    if rank(a) ~= rank(b) then return rank(a) > rank(b) end
+    local aOld, bOld = old and dirOf(old) == a.dir, old and dirOf(old) == b.dir
     if aOld ~= bOld then return aOld end
     return a.free > b.free
   end)
   for _, p in ipairs(order) do
-    local path = fs.combine(p.dir, key .. ".dat")
+    local path = p.dir .. "/" .. key .. ".dat"
     if p.free >= need then
-      pcall(fs.makeDir, p.dir)
-      if saveFileSafe(path, text) then
-        if old and old ~= path and fs.exists(old) then pcall(fs.delete, old) end
+      local ok
+      if p.remote then
+        ok = STORE.write(path, text)
+        if ok then MAP.rsize[key] = #text end
+      else
+        pcall(fs.makeDir, p.dir)
+        ok = saveFileSafe(path, text)
+      end
+      if ok then
+        if old and old ~= path and mExists(old) then mDelete(old) end
+        if not p.remote then MAP.rsize[key] = nil end
         MAP.where[key] = path
         p.free = p.free - #text
         return true
@@ -411,7 +435,7 @@ end
 -- overview keeps those chunks). noTrim = never drop anything.
 function MAP.save(toDisks, noTrim)
   if toDisks then
-    for k, p in pairs(MAP.where) do if fs.getDir(p) == DIR then MAP.dirty[k] = true end end
+    for k, p in pairs(MAP.where) do if dirOf(p) == DIR then MAP.dirty[k] = true end end
   end
   if not next(MAP.dirty) then return true end
   local dropped = 0
@@ -422,7 +446,7 @@ function MAP.save(toDisks, noTrim)
       if t then
         keys[#keys + 1], texts[k] = k, t
       else                                           -- nothing left in it: delete the file
-        if MAP.where[k] and fs.exists(MAP.where[k]) then pcall(fs.delete, MAP.where[k]) end
+        if MAP.where[k] and mExists(MAP.where[k]) then mDelete(MAP.where[k]) end
         MAP.where[k], MAP.dirty[k] = nil, nil
       end
     end
@@ -506,6 +530,11 @@ function MAP.floppySpace()
   for _, d in ipairs(mountedDisks()) do
     if d.data then free, count = free + (d.free or 0), count + 1 end
   end
+  -- storage helpers count as room for the map too
+  if STORE then
+    local hf, hn = STORE.space()
+    free, count = free + hf, count + hn
+  end
   return free, count
 end
 
@@ -545,11 +574,13 @@ end
 -- how much room the map files take: total bytes, on the computer, files
 function MAP.diskUse()
   local total, onPc, files = 0, 0, 0
-  for _, p in pairs(MAP.where) do
-    if fs.exists(p) then
+  for k, p in pairs(MAP.where) do
+    if STORE and STORE.isRemote(p) then
+      total, files = total + (MAP.rsize[k] or 0), files + 1
+    elseif fs.exists(p) then
       local s = fs.getSize(p)
       total, files = total + s, files + 1
-      if fs.getDir(p) == DIR then onPc = onPc + s end
+      if dirOf(p) == DIR then onPc = onPc + s end
     end
   end
   return total, onPc, files
@@ -558,7 +589,7 @@ end
 -- forget everything (e.g. scans made with wrong coordinates)
 function MAP.clear()
   MAP.version = MAP.version + 1
-  for _, p in pairs(MAP.where) do if fs.exists(p) then pcall(fs.delete, p) end end
+  for _, p in pairs(MAP.where) do if mExists(p) then mDelete(p) end end
   MAP.ch, MAP.order, MAP.ov, MAP.where, MAP.dirty = {}, {}, {}, {}, {}
   MAP.names, MAP.nameIdx = {}, {}
   MAP.scans, MAP.tick, MAP.ovN = 0, 0, 0
@@ -604,8 +635,32 @@ end
 -- read every map file (computer and data floppies); convert an old map.dat;
 -- build the overview of chunks that have none yet
 function MAP.load()
+  -- the storage helpers first (their list is needed for places())
+  if STORE and next(STORE.known) then pcall(STORE.find, true) end   -- only helpers seen before (fast)
   for _, p in ipairs(places()) do
-    if fs.exists(p.dir) and fs.isDir(p.dir) then
+    if p.remote then
+      -- a storage helper: list its map files, read them in a few big requests
+      local okL, list = pcall(STORE.list, p.remote, DIR)
+      local want = {}
+      for f, size in pairs(okL and list or {}) do
+        local k = f:match("^(o?%-?%d+_%-?%d+)%.dat$")
+        if k and not MAP.where[k] then
+          want[#want + 1] = f
+          MAP.where[k] = p.dir .. "/" .. f
+          MAP.rsize[k] = size
+        end
+      end
+      local i = 1
+      while i <= #want do
+        local batch = {}
+        for j = i, math.min(#want, i + 19) do batch[#batch + 1] = DIR .. "/" .. want[j] end
+        local okR, files = pcall(STORE.readMany, p.remote, batch)
+        local got = 0
+        for name, text in pairs(okR and files or {}) do pcall(readText, text) got = got + 1 end
+        if got == 0 then break end                 -- helper gone: the rest stays unread this time
+        i = i + got
+      end
+    elseif fs.exists(p.dir) and fs.isDir(p.dir) then
       for _, f in ipairs(fs.list(p.dir)) do
         local k = f:match("^(o?%-?%d+_%-?%d+)%.dat$")
         if k and not MAP.where[k] then              -- a file twice: the first one counts
