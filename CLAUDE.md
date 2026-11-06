@@ -126,6 +126,14 @@ PneumaticCraft drone rides, turtle mapping/surveys, and an AE2 ME network view.
   sends ONE low-fuel idle turtle at a time ("fuelup", TT.fuelTrip; others wait
   instead of going home); the turtle parks on top (else beside, facing it),
   takes fuel from THAT chest only (fuelStation(side)), then goes home.
+- Avoid players (TT.avoidTick, comms worker; TT.threats / TT.nearThreat): the
+  Player Detector's positions (refreshed every 10 s on every page while turtles
+  exist and avoidRange > 0) vs turtle positions. A turtle doing MAP work (task
+  "survey..." / "scanning...") with a player within CONFIG.turtles.avoidRange
+  (100, 0 = off) gets STOP with again=true (no hold), t.avoidHome -> "home" once
+  idle; its batch is reclaimed as usual. nextBatch puts spots near a player into
+  q.redo (later). avoidWho "strangers" (default: not owner, not allow list) or
+  "everyone" (not owner). Overworld players only.
 - Permanent rescuer: t.rescuerRole (RESCUER button, saved in turtles.dat;
   base only). TT.patrolTick (comms worker) sends it to: no fuel (<20 for
   60 s), stuck (60 s idle), lost (silent CONFIG.turtles.rescueAfter, default

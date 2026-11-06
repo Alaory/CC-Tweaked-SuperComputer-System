@@ -989,6 +989,65 @@ function TT.setDig(on)
   return n
 end
 
+-- ===== keep away from other players =====
+-- The Player Detector knows where every online player is; turtles that have
+-- a player to avoid within CONFIG.turtles.avoidRange blocks (default 100,
+-- 0 = off) stop their job and go home; survey spots near them wait.
+-- Who: "strangers" (default: not you, not on the allow list) or "everyone"
+-- (everyone but you). Overworld only (where the turtles are).
+function TT.threats()
+  local range = tonumber(CONFIG.turtles.avoidRange or 100) or 0
+  if range <= 0 then return {}, 0 end
+  local who = CONFIG.turtles.avoidWho or "strangers"
+  local list = {}
+  for _, e in ipairs(state.players or {}) do
+    local friend = e.isOwner or (who ~= "everyone" and state.access and state.access.allowed
+                                 and state.access.allowed[tostring(e.name):lower()])
+    local here = e.p and e.p.x and not e.dimOther and (not e.dim or e.dim == (DRONE_DIM or "minecraft:overworld"))
+    if not friend and here then list[#list + 1] = { name = e.name, x = e.p.x, z = e.p.z } end
+  end
+  return list, range
+end
+-- the nearest player to avoid from x z: name, distance (nil if none in range)
+function TT.nearThreat(x, z, list, range)
+  local best, bd
+  for _, p in ipairs(list) do
+    local d = math.sqrt((p.x - x) ^ 2 + (p.z - z) ^ 2)
+    if d <= range and (not bd or d < bd) then best, bd = p.name, d end
+  end
+  return best, bd
+end
+-- comms worker: surveying turtles near a player stop and go home
+function TT.avoidTick()
+  local list, range = TT.threats()
+  if #list == 0 then return end
+  local now = os.clock()
+  for id, t in pairs(state.turtles) do
+    if TT.online(t) and t.pos and t.pos.x and not t.anchor and not t.held then
+      local name, d = TT.nearThreat(t.pos.x, t.pos.z, list, range)
+      -- only map work is given up (survey / scans); trips home, refuelling and rescues go on
+      local task = tostring(t.task or "")
+      local work = task:find("^survey") or task:find("^scanning")
+      local recently = t.avoidAt and now - t.avoidAt < 60
+      if name and work and not recently then
+        t.avoidAt, t.avoidHome = now, true
+        TT.send(id, "stop", {}, true, true)                    -- not a STOP by you: no hold
+        TT.log(t, "Player " .. name .. " " .. math.floor(d) .. " blocks away - stopping, going home")
+        if not t.avoidSaid or now - t.avoidSaid > 600 then
+          t.avoidSaid = now
+          setPopup("PLAYER NEAR A TURTLE", (t.label or ("Turtle " .. id)) .. ": " .. name .. " is " .. math.floor(d) ..
+                   " blocks away (" .. math.floor(t.pos.x) .. " " .. math.floor(t.pos.z) .. ") - it went home", C.warn)
+        end
+      end
+    end
+    -- stopped because of a player: home as soon as it is idle
+    if t.avoidHome and TT.online(t) and (t.task == nil or t.task == "idle") then
+      t.avoidHome = nil
+      if t.home then TT.send(id, "home", {}, true) end
+    end
+  end
+end
+
 -- ===== homes and idle turtles =====
 -- A turtle without a home is offered one: next to another turtle's home (one
 -- block along X or Z, same height), never a spot that is already a home, an

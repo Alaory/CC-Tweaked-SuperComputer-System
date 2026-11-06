@@ -990,10 +990,20 @@ end
 local function nextBatch(q)
   local total = q.cols * q.rows
   local out, checked = {}, 0
-  -- first the spots a turtle gave back unscanned (see MAP.reclaim)
-  while q.redo and #q.redo > 0 and #out < BATCH do
+  -- spots near a player to avoid wait (back into q.redo, tried again later)
+  local threats, range = {}, 0
+  if TT and TT.threats then threats, range = TT.threats() end
+  local function nearPlayer(x, z) return #threats > 0 and TT.nearThreat(x, z, threats, range) ~= nil end
+  q.redo = q.redo or {}
+  -- first the spots a turtle gave back unscanned (see MAP.reclaim) - each looked at once
+  local n0 = #q.redo
+  for _ = 1, n0 do
+    if #out >= BATCH then break end
     local p = table.remove(q.redo, 1)
-    if not MAP.spotDone(p[1], p[2]) then out[#out + 1] = p end
+    if MAP.spotDone(p[1], p[2]) then
+      -- done meanwhile
+    elseif nearPlayer(p[1], p[2]) then q.redo[#q.redo + 1] = p
+    else out[#out + 1] = p end
   end
   if #out >= BATCH then return out end
   while #out < BATCH and q.cursor < total and checked < 3000 do
@@ -1015,6 +1025,7 @@ local function nextBatch(q)
     if math.abs(x) > border or math.abs(z) > border then
       -- outside the world border: nothing to do
     elseif MAP.spotDone(x, z) then q.skipped = q.skipped + 1
+    elseif nearPlayer(x, z) then q.redo[#q.redo + 1] = { x, z }       -- later
     else out[#out + 1] = { x, z } end
   end
   return out

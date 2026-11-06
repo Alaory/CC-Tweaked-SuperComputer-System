@@ -159,6 +159,7 @@ The settings you will most likely touch:
 | `turtles.lowFuel` | Below this much fuel a turtle goes refuelling (default 2000) |
 | `turtles.idleHome` | Seconds idle before a turtle goes home (default 120, `0` = off) |
 | `turtles.rescueAfter` | Seconds silent before the rescuer goes to wake a turtle up (default 180) |
+| `turtles.avoidRange` / `turtles.avoidWho` | Keep away from players this close (default 100, 0 = off) / `"strangers"` (not you, not the allow list) or `"everyone"` |
 | `drone.home` / `drone.charger` | Base drop-off point / Charging Station |
 | `drone.travel` | `"teleport"` (best for underground bases) or `"fly"` |
 | `me.curiosChest` | An **empty** barrel used only for curios moves (see below) |
@@ -214,6 +215,9 @@ base) through the base.
 - 🔄 **Updates:** copy a new `node.lua` into the program folder. The base updates
   the turtles one at a time; a busy turtle installs it after its job. Type
   `update` to see the versions.
+- 🙈 **Keeping away from players:** a surveying turtle with another player within
+  100 blocks (Player Detector) stops and goes home; survey spots near that player
+  wait until they leave. You and your allow list are ignored (SETTINGS > TURTLES).
 
 ### 🩺 When a turtle misbehaves
 

@@ -259,6 +259,13 @@ function pageWorker()
       end
     end
 
+    -- turtles avoid other players: their positions are needed on every page
+    if det and next(state.turtles) and (tonumber(CONFIG.turtles.avoidRange or 100) or 0) > 0
+       and not fresh("players", 10) then
+      safe({ "players", "owner" }, refreshPlayers, true)
+      did = true
+    end
+
     -- where is this computer? (for the anchor check; needs the turtle modem
     -- and GPS; asked here, not in the comms worker, so no message is missed)
     if state.tModem and not state.basePosTried then
@@ -450,6 +457,7 @@ function commsWorker()
       pcall(TT.stopTick)                 -- STOP again until the turtle answers
       pcall(TT.patrolTick)               -- the rescue turtle: send it where it is needed
       pcall(TT.homeTick)                 -- homes for new turtles; idle turtles go home
+      pcall(TT.avoidTick)                -- turtles keep away from other players
       pcall(MAP.autoTick)                -- auto-map: a survey always running (from the base outward)
       if TT.listDirty and codeTick % 15 == 0 then pcall(TT.saveList) end
       codeTick = codeTick + 1
