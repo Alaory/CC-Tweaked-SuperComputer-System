@@ -363,7 +363,10 @@ target refused at once is not hopped to straight away: one teleport into the
 air above it (map top + 8, or hopY when unknown) tells loaded (spot was just
 blocked -> carry on from there) from not loaded (-> hops). Everything refused
 and the spot is UNDER GROUND (map top > y): the drone lands on the surface
-right above it. Teleports only into loaded chunks (players and the
+right above it. Wrong passenger guard (pickupSteps): no Entity Import while another
+player is within 4 blocks of the rider; after the import the drone must be WITH the rider,
+else letGoHere (Entity Export where it is) + fail; lift mode lets go before the next try.
+Teleports only into loaded chunks (players and the
 anchor turtle keep chunks loaded). Charging station + parking in base_drones.lua.
 
 ## Rules for changes

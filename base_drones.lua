@@ -764,6 +764,32 @@ function stepGoto(dr, text, getPos, yOff, loaded)
   end }
 end
 
+-- other overworld players within r blocks of x y z (not `name`): { {name, d}, ... }
+function playersNear(name, x, y, z, r)
+  local out = {}
+  if not det or not det.getOnlinePlayers then return out end
+  local ok, list = pcall(det.getOnlinePlayers)
+  if not ok or type(list) ~= "table" then return out end
+  for _, n in pairs(list) do
+    if type(n) == "string" and n:lower() ~= tostring(name):lower() then
+      local px, py, pz = playerPos(n)
+      if type(px) == "number" then
+        local d = math.max(math.abs(px - x), math.abs(pz - z), math.abs(py - y))
+        if d <= r then out[#out + 1] = { n, d } end
+      end
+    end
+  end
+  return out
+end
+-- the drone may have grabbed someone else: let go of whatever it carries,
+-- right where it is (they are put down where they were picked up)
+function letGoHere(dr, why)
+  local x, y, z = droneXYZ(dr)
+  if not x then return end
+  droneLog(dr, why .. " - letting go of everything here")
+  pcall(releaseAt, dr, fl(x), fl(y), fl(z))
+end
+
 -- Pick a player up (matches PneumaticCraft's own code):
 --   clearArea(); addArea(player x, y, z)
 --   filter = "Name" IN QUOTES - without quotes PneumaticCraft matches the
@@ -800,6 +826,12 @@ function pickupSteps(dr, name)
         if not x then return false, y end
       end
 
+      -- another player right next to them: the drone could take the wrong one
+      local close = playersNear(name, x, y, z, 4)
+      if #close > 0 then
+        return false, close[1][1] .. " is right next to " .. name .. " - the drone could take the wrong player. " ..
+                      "Step a few blocks apart, then ask again."
+      end
       droneLog(dr, "Attempt " .. attempt .. ": Entity Import at " .. fmtPos(x, y, z))
       local ok, err = droneDo(dr, "pneumaticcraft:entity_import", function()
         areaPoint(dr, x, y, z)
@@ -812,6 +844,29 @@ function pickupSteps(dr, name)
         if err == "stopped" or err == "the drone disconnected" then return false, err end
         lastErr = err
         droneLog(dr, "Entity Import: " .. tostring(err))
+      end
+      -- did it take the RIGHT player? (the drone must be with them now)
+      local wrong
+      if ok then
+        local dx, dy, dz = droneXYZ(dr)
+        local qx, qy, qz = playerPos(name)
+        if dx and type(qx) == "number" and
+           (math.abs(qx - dx) > 5 or math.abs(qz - dz) > 5 or math.abs(qy - dy) > 6) then
+          local who = playersNear(name, dx, dy, dz, 3)
+          wrong = who[1] and who[1][1] or "nobody"
+          letGoHere(dr, "Took " .. wrong .. " instead of " .. name)
+          if wrong ~= "nobody" then
+            setPopup(dr.label .. " TOOK THE WRONG PLAYER", "It was sent for " .. name .. " but took " .. wrong ..
+                     " - it let go of them again at once. See the drone's log.", C.bad)
+            return false, "the drone took " .. wrong .. " instead of " .. name .. " (let go again at once). " ..
+                          "Its name filter did not work - tell the base owner"
+          end
+          ok, err = false, name .. " was not picked up"
+          lastErr = err
+        end
+      end
+      if not ok then
+        -- (nothing more to do this attempt)
       elseif CONFIG.drone.travel ~= "fly" and not CONFIG.drone.liftCheck then
         -- no lift: whether the passenger really came along is checked at the
         -- destination, before anything is released
@@ -832,6 +887,8 @@ function pickupSteps(dr, name)
         end
         lastErr = name .. " did not come along"
         droneLog(dr, "Attempt " .. attempt .. ": " .. lastErr)
+        -- someone else may be on board: never carry them along to the next try
+        letGoHere(dr, "Not the right passenger on board")
       end
       if dr.abort then return false, "stopped" end
     end
