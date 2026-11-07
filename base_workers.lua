@@ -453,6 +453,7 @@ function commsWorker()
       local m = TT.findModem()
       if m and pcall(rednet.open, m) then
         pcall(rednet.host, CONFIG.turtles.protocol, CONFIG.turtles.hostname)
+        pcall(rednet.host, POCKET.PROTO, CONFIG.turtles.hostname)       -- the pocket remote finds the base
         opened = m
         state.tModem = m
         os.queueEvent("inv_update")
@@ -464,9 +465,15 @@ function commsWorker()
       local o = table.remove(state.tOut, 1)
       pcall(rednet.send, o.id, o.msg, CONFIG.turtles.protocol)
     end
+    while opened and #POCKET.out > 0 do                         -- answers / messages for the pocket remote
+      local o = table.remove(POCKET.out, 1)
+      pcall(rednet.send, o.id, o.msg, POCKET.PROTO)
+    end
     local ev, a, b, c = os.pullEventRaw()
     if ev == "rednet_message" and c == CONFIG.turtles.protocol then
       pcall(TT.receive, a, b)
+    elseif ev == "rednet_message" and c == POCKET.PROTO then
+      pcall(POCKET.receive, a, b)
     elseif ev == "disk" and a == TT.installDrive() then
       pcall(TT.codeLoad)
       pcall(TT.prepareInstallFloppy)                -- a floppy in the install drive

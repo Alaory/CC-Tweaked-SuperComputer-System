@@ -287,7 +287,7 @@ PneumaticCraft drone rides, turtle mapping/surveys, and an AE2 ME network view.
   false, not nil - use an if (fixed; the mining cfg was never sent before).
 - TURTLE FACTORY (base_factory.lua FACTORY, comms tick FACTORY.tick every 10 s,
   factory.dat): keeps the fleet (turtles not MISSING) at CONFIG.factory.target
-  (SETTINGS > TURTLES, 0 = off). Steps (j.step): parts (ME getItem count /
+  (SETTINGS > FACTORY, 0 = off). Steps (j.step): parts (ME getItem count /
   isItemCraftable; no stock + no pattern -> FACTORY.lastMissing, warning once
   an hour; this program cannot read recipes - AE2 patterns do) -> crafting
   (craftME, wait <= 30 min) -> export (EXACT counts into FACTORY.chest, a chest
@@ -324,6 +324,22 @@ PneumaticCraft drone rides, turtle mapping/surveys, and an AE2 ME network view.
   not belong -> back into AE2, place what is missing; daily rotation per site at
   an hour), stage 3 structure "spawning" at flat spots from the map. Litematica /
   WorldEdit files are refused with a hint. tools/tests/fixtures (make_fixtures.py).
+- POCKET REMOTE (pocket.lua on the owner's Advanced Pocket Computer with a
+  wireless / ender modem; base_pocket.lua POCKET; rednet protocol "basepocket",
+  rednet.host'ed by the comms worker; POCKET.out sent there). Pairing: pocket
+  "pairreq" -> monitor box with a 6-digit code (2 min) -> pocket "pair" with
+  proof = sign(code, "pair", id) -> base makes a per-pocket key (pockets.dat),
+  sends it scrambled with the code (POCKET.scramble: + a hash stream mod 256).
+  Then every pocket message is signed with that key + numbered (lastN: no
+  replays); base answers are signed too. "req" -> POCKET.status (turtles,
+  needs, mining, factory, survey, area, drones, places); "act" -> POCKET.act:
+  ride base / place / back, ridestop, turtle stop|home|locate|ping, allstop,
+  allhome, mine start|pause|unload, corner 1|2 (pocket GPS, else the Player
+  Detector), wholeworld, surveyhere, factoryretry. pushNote WARNING / ERROR /
+  DONE -> "note" to every paired pocket. Pocket tabs HOME RIDE BOTS MINE MSG +,
+  tap only, risky buttons two taps. Console `pocket [unpair <id>]`.
+  tools/tests/test_pocket.lua runs the real pocket.lua against the base (DUMP=1
+  prints the screens).
 - Permanent rescuer: t.rescuerRole (RESCUER button, saved in turtles.dat;
   base only). TT.patrolTick (comms worker) sends it to: no fuel (<20 for
   60 s), stuck (60 s idle), lost (silent CONFIG.turtles.rescueAfter, default
@@ -421,6 +437,7 @@ PneumaticCraft drone rides, turtle mapping/surveys, and an AE2 ME network view.
 | base_away.lua | away mode: uses the time you are offline, WHILE YOU WERE AWAY report |
 | base_factory.lua | turtle factory: keeps the fleet size, AE2 parts, the builder turtle builds new ones |
 | base_schem.lua | schematics: Create .nbt files dropped on the screen, unpacked + read, materials list |
+| base_pocket.lua / pocket.lua | the pocket remote: base side (pairing, status, actions, messages) / the program on the pocket computer |
 
 ## The owner's setup (found out the hard way)
 Peripherals (from the `report` command): `me_bridge_4`, `inventory_manager_3`,

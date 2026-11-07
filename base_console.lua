@@ -53,6 +53,7 @@ HELP = {
   " mine [drop|forget] <id>   mining turtles: drop = a lost miner out of its team",
   " factory [chest <name>|builder <id>|build|stop]   build turtles from AE2 parts",
   " schem [<name>|delete <name>]   Create schematics (drag a .nbt onto this screen)",
+  " pocket [unpair <id>]   the paired pocket computers (run pocket.lua on one to pair)",
   " turtle <id> warps / warp <name> / warpsave <name>   End Automata Core teleports",
   " turtle <id> setting <name> <value>   e.g. turtle 7 setting dig true",
 }
@@ -595,7 +596,7 @@ function handleCommand(line)
     elseif sub == "stop" then
       FACTORY.job, FACTORY.waitUntil = nil, os.clock() + 3600
       FACTORY.save()
-      say("Factory stopped for an hour (set the fleet size to 0 in SETTINGS > TURTLES to switch it off).")
+      say("Factory stopped for an hour (set the fleet size to 0 in SETTINGS > FACTORY to switch it off).")
     else
       local line = FACTORY.statusLine()
       say("Factory: " .. line .. "   (fleet " .. FACTORY.fleet() .. ", target " .. tostring(FACTORY.cfg("target", 0)) .. ")")
@@ -649,6 +650,19 @@ function handleCommand(line)
       end
       for _, n in ipairs(names) do say("  " .. n) end
       say("schem <name> = size and materials,  schem delete <name>")
+    end
+
+  elseif cmd == "pocket" then
+    if words[2] == "unpair" and tonumber(words[3]) then
+      say(POCKET.unpair(tonumber(words[3])) and ("Pocket #" .. words[3] .. " unpaired.") or "No such pocket.")
+    else
+      local any = false
+      for id, p in pairs(POCKET.pockets) do
+        any = true
+        say(string.format("  #%-4d %-16s last seen %s", id, tostring(p.name), p.seen and TT.ago(p.seen) or "never"))
+      end
+      if not any then say("No pocket paired. Copy pocket.lua onto your pocket computer (with a modem), run  pocket  on it.") end
+      say("pocket unpair <id> = it can no longer control the base")
     end
 
   elseif cmd == "mine" then

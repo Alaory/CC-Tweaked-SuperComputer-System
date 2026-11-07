@@ -1,7 +1,7 @@
 -- base_factory.lua  -  part of the base-control program (started by inventory.lua).
 -- All base_*.lua files share one namespace and are loaded in a fixed order.
 --
---   TURTLE FACTORY: keeps the fleet at a size you choose (SETTINGS > TURTLES,
+--   TURTLE FACTORY: keeps the fleet at a size you choose (SETTINGS > FACTORY,
 --   factory.target; 0 = off). When there are fewer turtles (MISSING ones do
 --   not count - a crash took them), the base:
 --     1. checks the parts in the ME network (an Advanced Turtle, an Ender
@@ -184,7 +184,7 @@ end
 -- why no turtle is built now (nil = it can build)
 function FACTORY.blocked()
   local target = tonumber(cfg("target", 0)) or 0
-  if target <= 0 then return "off (SETTINGS > TURTLES: keep this many turtles)" end
+  if target <= 0 then return "off (SETTINGS > FACTORY: keep this many turtles)" end
   if FACTORY.fleet() >= target then return "fleet complete (" .. FACTORY.fleet() .. "/" .. target .. ")" end
   if not bridge then return "no ME Bridge" end
   if not FACTORY.chest then return "no factory chest set - type  factory chest" end
