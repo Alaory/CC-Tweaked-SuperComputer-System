@@ -374,7 +374,12 @@ dr.dest / dr.passenger. Wrong passenger guard (pickupSteps): no Entity Import wh
 player is within 4 blocks of the rider; after the import the drone must be WITH the rider,
 else letGoHere (Entity Export where it is) + fail; lift mode lets go before the next try.
 Teleports only into loaded chunks (players and the
-anchor turtle keep chunks loaded). Charging station + parking in base_drones.lua.
+anchor turtle keep chunks loaded). Charging station + parking in base_drones.lua. After ANY failure: resetDrone
+(abortAction, clear filters/area), home at once (once per failure; dr.failedAt), a
+passenger still on board (dr.rider) is kept through the home mission and let out at
+home (releaseRider). parkCheck (every 10 s) sends idle drones away from their spot
+home - the charger spot, or homePos at Base when there is no charger - at once after
+a failure, else after 20 s; retried every 60 s.
 
 ## Rules for changes
 - ComputerCraft Lua (Cobalt, Lua 5.2 based): no `goto`, no `//`, no bit ops

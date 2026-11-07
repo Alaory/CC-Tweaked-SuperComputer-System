@@ -357,6 +357,9 @@ function droneWorker()
       if not ok then
         dr.mission = { title = "error", steps = {}, state = "failed", err = cleanErr(err) }
         droneLog(dr, "Error: " .. cleanErr(err))
+        -- a program error mid-mission: stop its action, the park check brings it home
+        pcall(resetDrone, dr)
+        dr.failedAt = os.clock()
       end
       dr.busy = false
     end

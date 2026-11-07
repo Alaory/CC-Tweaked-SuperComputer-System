@@ -1145,29 +1145,67 @@ function parkCheck()
       local lastP = dr.pressure
       pcall(refreshDrone, dr)
       dr.lastP = lastP
-      local x, y, z = parkSpot(dr)
+      -- its parking spot at the charger, or its place at Base when there is no charger
+      local x, y, z, onCharger = parkSpot(dr)
+      local tol = 1.5                  -- parking spots are only 2 blocks apart
+      if not x then x, y, z = homePos(dr) tol = 4 end
       if dr.conn and x and dr.pos and dr.pos.x then
         local d = math.abs(dr.pos.x - (x + 0.5)) + math.abs(dr.pos.y - (y + 0.5)) + math.abs(dr.pos.z - (z + 0.5))
-        if d > 1.5 then                -- parking spots are only 2 blocks apart
+        if d > tol then
           dr.awaySince = dr.awaySince or os.clock()
-          if os.clock() - dr.awaySince > 20 and (not dr.lastPark or os.clock() - dr.lastPark > 60) then
+          local wait = (dr.failedAt or dr.rider) and 0 or 20      -- after a failure: at once
+          if os.clock() - dr.awaySince >= wait and (not dr.lastPark or os.clock() - dr.lastPark > 60) then
             dr.awaySince, dr.lastPark = nil, os.clock()
             droneLog(dr, "Idle away from my parking spot - going back")
             submitDrone(dr, { kind = "home" })
           end
         else
-          dr.awaySince = nil
+          dr.awaySince, dr.failedAt = nil, nil
+          -- home with someone still on board: let them out (as a mission, in the drone worker)
+          if dr.rider and (not dr.lastPark or os.clock() - dr.lastPark > 60) then
+            dr.lastPark = os.clock()
+            submitDrone(dr, { kind = "home" })
+          end
         end
       end
     end
   end
 end
 
+-- after a failure: stop whatever PneumaticCraft action is still running (a
+-- teleport it keeps retrying, an import) and clear the filters / area, so the
+-- drone takes the next order cleanly
+function resetDrone(dr)
+  local d = dr and dr.periph
+  if not d then return end
+  pcall(d.abortAction)
+  pcall(d.clearWhitelistText)
+  pcall(d.clearBlacklistText)
+  pcall(d.clearArea)
+end
+
+-- someone still on board after a failure (dr.rider): let them out where the
+-- drone stands (it is at home / its parking spot then)
+function releaseRider(dr)
+  if not dr.rider then return true end
+  local x, y, z = droneXYZ(dr)
+  if dr.lastSpot then x, y, z = dr.lastSpot.x, dr.lastSpot.y, dr.lastSpot.z end
+  if not x then return false end
+  local who = dr.rider
+  local ok = releaseAt(dr, fl(x), fl(y), fl(z))
+  droneLog(dr, ok and (who .. " let out after the failed ride") or ("Could not let " .. who .. " out - try RELEASE"))
+  return ok
+end
+
 -- title + steps for a command (home, fly, pickup, drop, ferry)
 function buildMission(dr, cmd)
   local who = canonPlayer(cmd.passenger or dr.passenger or state.owner or "")
   if cmd.kind == "home" then
-    return "Return to base", { homeStep(dr) }
+    local steps = { homeStep(dr) }
+    if dr.rider then
+      steps[2] = { text = "Let " .. dr.rider .. " out", fn = function() return releaseRider(dr) end }
+    end
+    return "Return to base", steps
   elseif cmd.kind == "fly" then
     return "Fly to " .. destShort(dr),
            { stepGoto(dr, "Fly to " .. destShort(dr), function() return resolveDest(dr) end, 0) }
@@ -1259,8 +1297,11 @@ function runMission(dr, cmd)
   end
 
   dr.abort = false
-  dr.checkAboard, dr.notAboard = nil, nil
-  dr.rider, dr.riderFar, dr.riderCheck = nil, 0, nil
+  dr.failedAt = nil
+  if cmd.kind ~= "home" then                     -- (going home keeps who is on board)
+    dr.checkAboard, dr.notAboard = nil, nil
+    dr.rider, dr.riderFar, dr.riderCheck = nil, 0, nil
+  end
   local title, steps = buildMission(dr, cmd)
   dr.mission = { title = title, state = "running", steps = {} }
   for i, st in ipairs(steps) do dr.mission.steps[i] = { text = st.text, status = "pending" } end
@@ -1281,9 +1322,13 @@ function runMission(dr, cmd)
       dr.mission.err = cleanErr(err or "failed")
       droneLog(dr, (dr.mission.state == "stopped" and "Stopped: " or "Failed: ") ..
                    st.text .. " - " .. cleanErr(err))
+      resetDrone(dr)
+      dr.failedAt = os.clock()                   -- the park check sends it home if all below fails
+      local wentHome = false
       -- a failed pickup leaves nobody on board: safe to go home
-      if dr.mission.state == "failed" and st.text:find("^Pick up") and CONFIG.drone.returnHome then
+      if dr.mission.state == "failed" and st.text:find("^Pick up") and CONFIG.drone.returnHome and cmd.kind ~= "home" then
         local okH = pcall(homeStep(dr).fn)
+        wentHome = true
         droneLog(dr, okH and "Returned to base" or "Could not return to base")
       end
       -- failed AFTER a pickup (or a drop mission): someone is still on board.
@@ -1298,13 +1343,16 @@ function runMission(dr, cmd)
       end
       if dr.notAboard then
         aboard = false
+        dr.rider = nil
         droneLog(dr, "Nobody on board - nothing released")
-        if CONFIG.drone.returnHome then
+        if CONFIG.drone.returnHome and not wentHome then
+          wentHome = true
           local okH = pcall(homeStep(dr).fn)
           droneLog(dr, okH and "Back at base" or "Could not return to the charger")
         end
       end
-      if dr.mission.state == "failed" and aboard and not st.text:find("^Pick up") then
+      if dr.mission.state == "failed" and aboard and not st.text:find("^Pick up") and cmd.kind ~= "home" then
+        wentHome = true
         droneLog(dr, "Passenger still on board - bringing them back to Base")
         local okR, r1, r2 = pcall(rescueToBase, dr)
         local good = okR and r1
@@ -1316,6 +1364,12 @@ function runMission(dr, cmd)
           droneLog(dr, okH and "Back at base" or "Could not return to the charger")
         end
       end
+      -- any other failure (a fly mission, a failed trip home ...): home now
+      if dr.mission.state == "failed" and not wentHome and CONFIG.drone.returnHome and cmd.kind ~= "home" then
+        local okH = pcall(homeStep(dr).fn)
+        droneLog(dr, okH and "Back at base after the failure" or "Could not return to base - trying again later")
+      end
+      if dr.rider and not aboard then pcall(releaseRider, dr) end
       return
     end
   end
