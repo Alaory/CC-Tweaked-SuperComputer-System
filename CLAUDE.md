@@ -54,7 +54,12 @@ PneumaticCraft drone rides, turtle mapping/surveys, and an AE2 ME network view.
   (MAP.queueSurvey / feedSurvey, 64 spots per idle turtle). Every batch
   handed out is kept (q.out[id]); when the turtle answers with a failure, or
   is idle 30 s while it still has one, its UNSCANNED spots go to q.redo and are
-  handed out first (MAP.reclaim). SURVEY: ALL for small areas also goes through
+  handed out first (MAP.reclaim). Queued surveys are clamped to the
+  world border and go in a SPIRAL (q.spiral + q.rect) from the area's point
+  nearest to the base (CONFIG.drone.home) - never row by row from the far corner
+  (that sent turtles 28,000 blocks away when zoomed out); spiral spots outside
+  the area are skipped cheaply. Old saved row-by-row queues are converted once in
+  feedSurvey. The queue file is written only when it changed (or once a minute). SURVEY: ALL for small areas also goes through
   the queue (MAP.addSurvey); SURVEY: THIS ONE is a direct order. A spot is
   done when MAP.spotDone (its own column in detail, or its chunk fully in the
   overview) - NOT MAP.scanned alone (17-block spots vs 16-block chunks).

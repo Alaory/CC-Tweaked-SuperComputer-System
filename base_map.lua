@@ -903,13 +903,32 @@ function MAP.queueSurvey(x1, z1, x2, z2, r, ids)
   local step = 2 * r + 1
   local old = MAP.queue
   if old and old.auto then MAP.auto.cursor = old.cursor MAP.saveAuto() end     -- auto-map goes on later from here
+  -- never past the world border (a zoomed-out view shows far more than the world)
+  local border = tonumber(CONFIG.map.border) or 20000
+  x1, z1 = math.max(x1, -border), math.max(z1, -border)
+  x2, z2 = math.min(x2, border), math.min(z2, border)
+  if x2 < x1 then x2 = x1 end
+  if z2 < z1 then z2 = z1 end
+  -- a SPIRAL from the point of the area nearest to the base (or the turtles):
+  -- the turtles start close to home and work outward - not at the far corner
+  local c = CONFIG.drone.home or state.basePos
+  if not (c and c.x) then
+    for _, id in ipairs(ids or TT.available()) do
+      local t = state.turtles[id]
+      if t and t.pos and t.pos.x then c = t.pos break end
+    end
+  end
+  local cx = (c and c.x) and math.floor(c.x) or math.floor((x1 + x2) / 2)
+  local cz = (c and c.z) and math.floor(c.z) or math.floor((z1 + z2) / 2)
+  cx, cz = math.max(x1, math.min(x2, cx)), math.max(z1, math.min(z2, cz))
+  local rad = math.ceil(math.max(cx - x1, x2 - cx, cz - z1, z2 - cz) / step)
   MAP.queue = { x1 = x1, z1 = z1, x2 = x2, z2 = z2, r = r, step = step,
-                cols = math.max(1, math.floor((x2 - x1) / step) + 1),
-                rows = math.max(1, math.floor((z2 - z1) / step) + 1),
+                spiral = true, rect = true, cx = cx, cz = cz,
+                cols = 2 * rad + 1, rows = 2 * rad + 1,
                 cursor = 0, sent = 0, skipped = 0, ids = ids }
   if old then MAP.queue.redo, MAP.queue.out = old.redo, old.out end   -- nothing handed out is lost
   saveQueue()
-  return MAP.queue.cols * MAP.queue.rows
+  return (math.floor((x2 - x1) / step) + 1) * (math.floor((z2 - z1) / step) + 1)     -- spots in the area
 end
 
 -- is a survey spot done? Its own scan arrived (the spot's column is in the
@@ -1027,15 +1046,21 @@ local function nextBatch(q)
     else out[#out + 1] = p end
   end
   if #out >= BATCH then return out end
-  while #out < BATCH and q.cursor < total and checked < 3000 do
+  local outside = 0
+  while #out < BATCH and q.cursor < total and checked < 3000 and outside < 40000 do
     local i = q.cursor
     q.cursor = q.cursor + 1
     checked = checked + 1
     local x, z
     if q.spiral then
-      -- auto-map: a spiral from the base outward
+      -- a spiral from the base (or the area's nearest point) outward
       local dx, dz = spiral(i)
       x, z = q.cx + dx * q.step, q.cz + dz * q.step
+      -- a survey of an area: the spiral's spots outside it are skipped (cheap -
+      -- no map lookup, not counted against the 3000)
+      if q.rect and (x < q.x1 or x > q.x2 or z < q.z1 or z > q.z2) then
+        checked, outside, x = checked - 1, outside + 1, nil
+      end
     else
       -- snake order: every other row backwards, so a turtle never jumps back
       local row, col = math.floor(i / q.cols), i % q.cols
@@ -1043,7 +1068,9 @@ local function nextBatch(q)
       x, z = q.x1 + q.r + col * q.step, q.z1 + q.r + row * q.step
     end
     local border = tonumber(CONFIG.map.border) or 20000
-    if math.abs(x) > border or math.abs(z) > border then
+    if not x then
+      -- outside the surveyed area
+    elseif math.abs(x) > border or math.abs(z) > border then
       -- outside the world border: nothing to do
     elseif MAP.spotDone(x, z) then q.skipped = q.skipped + 1 why.done = why.done + 1
     elseif nearPlayer(x, z) then q.redo[#q.redo + 1] = { x, z }       -- later
@@ -1107,6 +1134,19 @@ end
 function MAP.feedSurvey()
   local q = MAP.queue
   if not q then return end
+  -- a survey saved by an older version (row by row from the far corner):
+  -- once into the spiral from the base (done spots are skipped anyway)
+  if not q.spiral and not q.auto and q.x1 then
+    local keepRedo, keepOut, sent, skipped, ids, excl = q.redo, q.out, q.sent, q.skipped, q.ids, q.excluded
+    local held = {}
+    for id, t in pairs(state.turtles) do held[id] = t.held end
+    MAP.queue = nil
+    MAP.queueSurvey(q.x1, q.z1, q.x2, q.z2, q.r, ids)
+    for id, t in pairs(state.turtles) do t.held = held[id] end         -- (no release: you did not start it now)
+    q = MAP.queue
+    q.redo, q.out, q.sent, q.skipped, q.excluded = keepRedo, keepOut, sent or 0, skipped or 0, excl
+    q.changed = true
+  end
   if q.auto and MAP.full then return end           -- auto-map waits for room on the floppies
   local total = q.cols * q.rows
   local minFuel = tonumber(CONFIG.map.surveyMinFuel) or 500
@@ -1148,6 +1188,7 @@ function MAP.feedSurvey()
         t.queueAt = os.clock()
         q.sent = q.sent + #spots
         busy = true
+        q.changed = true
       end
     end
   end
@@ -1175,7 +1216,12 @@ function MAP.feedSurvey()
     setToast("Survey finished: " .. q.sent .. " scans, " .. q.skipped .. " spots were already mapped", C.good)
     MAP.queue = nil
   end
-  saveQueue()
+  -- written when something changed (or once a minute for the cursor), not every 2 s
+  if not MAP.queue or q.changed or os.clock() - (MAP.queueSavedAt or 0) > 60 then
+    q.changed = nil
+    MAP.queueSavedAt = os.clock()
+    saveQueue()
+  end
 end
 
 -- progress for the screen: done fraction, spots total
@@ -1183,6 +1229,19 @@ function MAP.surveyProgress()
   local q = MAP.queue
   if not q then return nil end
   local total = q.cols * q.rows
+  if q.rect then
+    -- spots of the area only (the spiral square is bigger): done = how far the
+    -- spiral got, as a share of the area's spots it has passed
+    local inArea = math.max(1, (math.floor((q.x2 - q.x1) / q.step) + 1) * (math.floor((q.z2 - q.z1) / q.step) + 1))
+    local k = math.max(0, math.ceil((math.sqrt(q.cursor + 1) - 1) / 2))     -- the ring it is on
+    local half = k * q.step
+    local w = math.min(q.x2, q.cx + half) - math.max(q.x1, q.cx - half)
+    local h = math.min(q.z2, q.cz + half) - math.max(q.z1, q.cz - half)
+    local passed = (math.floor(math.max(0, w) / q.step) + 1) * (math.floor(math.max(0, h) / q.step) + 1)
+    if q.cursor >= total then passed = inArea end
+    local again = q.redo and #q.redo or 0
+    return math.min(1, passed / inArea), inArea, q.sent, q.skipped, again
+  end
   local again = q.redo and #q.redo or 0
   return q.cursor / total, total, q.sent, q.skipped, again
 end
