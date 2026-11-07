@@ -278,6 +278,24 @@ PneumaticCraft drone rides, turtle mapping/surveys, and an AE2 ME network view.
   the owner is seen again -> one box saying the base was off (chunk unloaded).
   NOTE cfg helpers (MINE.cfg / AWAY.cfg): `type(t)=="table" and t[k]` gives
   false, not nil - use an if (fixed; the mining cfg was never sent before).
+- TURTLE FACTORY (base_factory.lua FACTORY, comms tick FACTORY.tick every 10 s,
+  factory.dat): keeps the fleet (turtles not MISSING) at CONFIG.factory.target
+  (SETTINGS > TURTLES, 0 = off). Steps (j.step): parts (ME getItem count /
+  isItemCraftable; no stock + no pattern -> FACTORY.lastMissing, warning once
+  an hour; this program cannot read recipes - AE2 patterns do) -> crafting
+  (craftME, wait <= 30 min) -> export (EXACT counts into FACTORY.chest, a chest
+  on the cable next to the builder; j.exported; on any failure exactly those go
+  back with importItem) -> building (TT.send builder "build"; result via
+  TT.receive -> FACTORY.result, "built turtle <id>"). Builder = FACTORY.builder
+  or the rescuer; needs Disk Drive + install floppy + pickaxe. node.lua build():
+  turns until the chest holding a turtle item is in front, sucks it empty (only
+  the delta vs invSnapshot goes on), places the turtle on the OPPOSITE side,
+  drops the parts into it, puts its drive + floppy ABOVE the new turtle, turns
+  it on (it installs node.lua, equips modem/Chunky itself, refuels), takes the
+  drive back. Before the turtle is placed every failure gives the parts back to
+  the chest. Parts: CONFIG.factory.turtle/modem/geo/chunky/pick/fuel(+fuelCount
+  16). 3 failures in a row -> stops until `factory build`. Console `factory
+  [chest <name>|builder <id>|build|stop]`; FLEET card line "Factory".
 - Permanent rescuer: t.rescuerRole (RESCUER button, saved in turtles.dat;
   base only). TT.patrolTick (comms worker) sends it to: no fuel (<20 for
   60 s), stuck (60 s idle), lost (silent CONFIG.turtles.rescueAfter, default
@@ -373,6 +391,7 @@ PneumaticCraft drone rides, turtle mapping/surveys, and an AE2 ME network view.
 | miner.lua | mining-dimension team program (MINER + LOADER roles; installed by hand, not OTA) |
 | base_mining.lua / base_ui_mining.lua | mining teams on the base (MINE) / MINING tab |
 | base_away.lua | away mode: uses the time you are offline, WHILE YOU WERE AWAY report |
+| base_factory.lua | turtle factory: keeps the fleet size, AE2 parts, the builder turtle builds new ones |
 
 ## The owner's setup (found out the hard way)
 Peripherals (from the `report` command): `me_bridge_4`, `inventory_manager_3`,

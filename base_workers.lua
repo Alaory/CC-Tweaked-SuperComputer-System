@@ -485,6 +485,7 @@ function commsWorker()
       pcall(TT.stallTick)                -- a turtle hung in its job is stopped
       pcall(MAP.autoTick)                -- auto-map: a survey always running (from the base outward)
       pcall(AWAY.tick)                   -- you are offline: use the time / report when you are back
+      pcall(FACTORY.tick)                -- fewer turtles than you want: build one (AE2 parts)
       if TT.listDirty and codeTick % 15 == 0 then pcall(TT.saveList) end
       codeTick = codeTick + 1
       if codeTick % 15 == 7 then pcall(baseAliveTick) end    -- every 30 s: "still running"

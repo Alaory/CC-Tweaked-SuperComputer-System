@@ -87,6 +87,8 @@ SETTING_GROUPS = {
     num("turtles.idleHome", "Idle turtles go home after", "a turtle with nothing to do goes home (0 = never)",
         120, 0, 3600, 30, secs),
     num("turtles.rescueAfter", "Rescue a silent turtle after", "the RESCUER goes to wake it up", 180, 60, 3600, 30, secs),
+    num("factory.target", "Keep this many turtles", "fewer: the factory builds one from AE2 parts (0 = off; type  factory)",
+        0, 0, 32, 1, plain),
     num("turtles.rescueAfterCrash", "Many offline at once: rescue after", "a server crash - they may come back by themselves first",
         600, 120, 7200, 60, secs),
     num("turtles.avoidRange", "Keep away from players within", "a turtle stops and goes home when one comes this close (0 = off)",

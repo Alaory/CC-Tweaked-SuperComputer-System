@@ -2441,6 +2441,114 @@ end
 ---------------------------------------------------------------------
 -- commands
 ---------------------------------------------------------------------
+-- BUILD a new turtle (the base's factory). Layout at my home:
+--   the parts chest next to me (the one holding a turtle item - found by
+--   turning round), the spot on the OTHER side of me free (the new turtle
+--   goes there), the block above me and the one above the new turtle free.
+-- I carry a Disk Drive + the install floppy + a pickaxe (the rescue kit).
+-- The new turtle gets everything that came out of the chest (gear, fuel); it
+-- boots from my drive above it, installs node.lua and reports to the base.
+function invSnapshot()
+  local s = {}
+  for i = 1, 16 do
+    local d = turtle.getItemDetail(i)
+    s[i] = d and { name = d.name, count = d.count } or nil
+  end
+  return s
+end
+function isTurtleItem(n) return n:find("computercraft:turtle", 1, true) ~= nil end
+function chestHasTurtle()
+  local okI, inv = pcall(peripheral.hasType, "front", "inventory")
+  local okT, isT = pcall(peripheral.hasType, "front", "turtle")
+  if not (okI and inv) or (okT and isT) then return false end
+  local okL, list = pcall(peripheral.call, "front", "list")
+  for _, it in pairs(okL and list or {}) do if isTurtleItem(it.name) then return true end end
+  return false
+end
+function build()
+  task = "building a turtle"
+  if not (slotOf(isDrive) and slotOf(isFloppy)) then return false, "I need a Disk Drive and the install floppy" end
+  if not slotOf(isPick) then return false, "I need a pickaxe (to take my Disk Drive back)" end
+  -- the parts chest: turn until it is in front
+  local found = false
+  for _ = 1, 4 do
+    if chestHasTurtle() then found = true break end
+    right()
+  end
+  if not found then return false, "no chest with a turtle in it next to me (the base puts the parts there)" end
+  -- take everything out of it; only what came from the chest goes into the new turtle
+  local before = invSnapshot()
+  for i = 1, 16 do
+    if turtle.getItemCount(i) == 0 then
+      turtle.select(i)
+      if not turtle.suck() then break end
+    end
+  end
+  turtle.select(1)
+  local after = invSnapshot()
+  local added = {}
+  for i = 1, 16 do
+    local a, b = after[i], before[i]
+    local n = a and (a.count - ((b and b.name == a.name) and b.count or 0)) or 0
+    if n > 0 then added[i] = n end
+  end
+  local function giveBack(why)
+    -- (before the new turtle is placed: the parts back into the chest)
+    for i, n in pairs(added) do
+      if turtle.getItemCount(i) > 0 then turtle.select(i) turtle.drop(math.min(n, turtle.getItemCount(i))) end
+    end
+    turtle.select(1)
+    return false, why .. " - the parts are back in the chest"
+  end
+  local ts
+  for i in pairs(added) do
+    local d = turtle.getItemDetail(i)
+    if d and isTurtleItem(d.name) then ts = i end
+  end
+  if not ts then return giveBack("no turtle came out of the chest") end
+  -- the build spot: the other side of me
+  right() right()
+  if turtle.detect() then left() left() return giveBack("the spot for the new turtle (opposite the chest) is not free") end
+  if turtle.detectUp() then left() left() return giveBack("the block above me is not free") end
+  turtle.select(ts)
+  if not turtle.place() then turtle.select(1) left() left() return giveBack("could not place the new turtle") end
+  added[ts] = added[ts] - 1
+  -- its gear and fuel: into it
+  for i, n in pairs(added) do
+    if n > 0 and turtle.getItemCount(i) > 0 then
+      turtle.select(i)
+      turtle.drop(math.min(n, turtle.getItemCount(i)))
+    end
+  end
+  turtle.select(1)
+  local okId, newId = pcall(peripheral.call, "front", "getID")
+  -- my Disk Drive above it, with the install floppy
+  if not up() then return false, "could not go up to place the Disk Drive (new turtle " .. tostring(newId) .. " is placed)" end
+  if turtle.detect() then down() return false, "the block above the new turtle is not free (it is placed, not started)" end
+  turtle.select(slotOf(isDrive))
+  if not turtle.place() then turtle.select(1) down() return false, "could not place the Disk Drive" end
+  turtle.select(slotOf(isFloppy))
+  turtle.drop(1)
+  turtle.select(1)
+  down()
+  -- switch it on: it boots from the floppy, installs node.lua and starts it
+  task = "starting the new turtle " .. tostring(newId)
+  local okOn, on = pcall(peripheral.call, "front", "isOn")
+  if okOn and on then pcall(peripheral.call, "front", "reboot") else pcall(peripheral.call, "front", "turnOn") end
+  sleep(12)
+  -- my drive and floppy back
+  local msg = "built turtle " .. tostring(newId)
+  if up() then
+    turtle.suck()                                      -- the floppy
+    if not withEquipped("_pickaxe", turtle.dig) then msg = msg .. " (could not take my Disk Drive back)" end
+    down()
+  else
+    msg = msg .. " (could not get back up to my Disk Drive)"
+  end
+  turtle.select(1)
+  return true, msg
+end
+
 function runJob(j)
   local a = j.args
   -- rescue trips dig their way through natural blocks (with a pickaxe)
@@ -2514,6 +2622,10 @@ function runJob(j)
     if not known() then return false, "position/facing unknown - use GPS LOCATE" end
     if type(j.left) == "table" and #j.left > 0 then pts = j.left end     -- continuing after a restart
     return surveyPoints(orderNearest(pts), r)
+  end
+  if j.cmd == "build" then
+    if S.anchor then return false, "I am the ANCHOR - send another turtle" end
+    return build()
   end
   if j.cmd == "core" then
     task = "checking the End Automata Core"

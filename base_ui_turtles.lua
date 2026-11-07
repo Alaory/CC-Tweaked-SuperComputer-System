@@ -53,8 +53,13 @@ function drawFleet(x, y, w, h, list)
   else
     kv(ix, ry + 3, iw, "Survey", (MAP.auto and MAP.auto.on) and "auto-map waits for a free turtle" or "none running", C.dim)
   end
+  -- the turtle factory (AE2 parts)
+  if FACTORY then
+    local fl, fc = FACTORY.statusLine()
+    kv(ix, ry + 5, iw, "Factory", trunc(fl, iw - 12), fc)
+  end
   -- mining teams
-  local my = ry + 6
+  local my = ry + 7
   if MINE and next(MINE.units) then
     text(ix, my, "MINING TEAMS", C.label, C.panel)
     my = my + 1

@@ -51,6 +51,7 @@ HELP = {
   " findlost [radius]    search around the base for lost turtles and reinstall them",
   " turtle <id> forget   take a turtle that is gone (server crash) off the list",
   " mine [drop|forget] <id>   mining turtles: drop = a lost miner out of its team",
+  " factory [chest <name>|builder <id>|build|stop]   build turtles from AE2 parts",
   " turtle <id> warps / warp <name> / warpsave <name>   End Automata Core teleports",
   " turtle <id> setting <name> <value>   e.g. turtle 7 setting dig true",
 }
@@ -546,6 +547,76 @@ function handleCommand(line)
     else
       local free = STORE.space()
       say("Together: " .. math.floor(free / 1024) .. " KB free for the map (used after the data floppies).")
+    end
+
+  elseif cmd == "factory" then
+    -- the turtle factory: setup, part check, status
+    local sub = (words[2] or ""):lower()
+    if sub == "chest" then
+      if words[3] then
+        if not peripheral.isPresent(words[3]) then
+          say("No '" .. words[3] .. "' on the cable. Type  factory chest  to see the chests.")
+        else
+          FACTORY.chest = words[3]
+          FACTORY.save()
+          say("Factory chest: " .. words[3] .. ". It must stay EMPTY - only the factory uses it - and be next to the builder.")
+        end
+      else
+        say("Chests on the cable (the factory chest must be EMPTY and next to the builder turtle):")
+        local n = 0
+        for _, name in ipairs(peripheral.getNames()) do
+          local okI, isI = pcall(peripheral.hasType, name, "inventory")
+          if okI and isI and name:find("_") and not name:find("drive", 1, true) then
+            local okL, list = pcall(peripheral.call, name, "list")
+            local items = 0
+            for _ in pairs(okL and list or {}) do items = items + 1 end
+            say("  " .. name .. (items == 0 and "   (empty)" or ("   " .. items .. " stacks")))
+            n = n + 1
+          end
+        end
+        if n == 0 then say("  none - put a chest on the cable (a wired modem on it, right-clicked)") end
+        say("Then:  factory chest <name>")
+      end
+    elseif sub == "builder" then
+      local t = words[3] and TT.find(words[3])
+      if not t then say("Usage: factory builder <turtle id>   (it needs a Disk Drive, the install floppy and a pickaxe)")
+      else
+        FACTORY.builder = t.id
+        FACTORY.save()
+        say(t.label .. " is the builder. Its HOME must be next to the factory chest, with the block on the other side")
+        say("of it, the block above it and the block above the build spot free.")
+      end
+    elseif sub == "build" then
+      FACTORY.fails, FACTORY.waitUntil = 0, nil
+      FACTORY.save()
+      local why = FACTORY.blocked()
+      say(why and ("Not now: " .. why) or "Building one as soon as the parts are there (checked every 10 s).")
+    elseif sub == "stop" then
+      FACTORY.job, FACTORY.waitUntil = nil, os.clock() + 3600
+      FACTORY.save()
+      say("Factory stopped for an hour (set the fleet size to 0 in SETTINGS > TURTLES to switch it off).")
+    else
+      local line = FACTORY.statusLine()
+      say("Factory: " .. line .. "   (fleet " .. FACTORY.fleet() .. ", target " .. tostring(FACTORY.cfg("target", 0)) .. ")")
+      local b = FACTORY.builderTurtle()
+      say("  builder: " .. (b and (b.label .. " #" .. b.id) or "none") .. "   chest: " .. tostring(FACTORY.chest or "none") ..
+          "   built so far: " .. tostring(FACTORY.built or 0))
+      if FACTORY.last then say("  last: " .. tostring(FACTORY.last.msg)) end
+      if bridge then
+        say("Parts per turtle (in the ME network / AE2 can craft it):")
+        local rows = FACTORY.check()
+        for _, r in ipairs(rows) do
+          local st = r.have >= r.part.count and "in stock" or (r.craftable and "AE2 crafts it" or "MISSING - no pattern")
+          say(string.format("  %-28s %3d x  have %-5d %s", r.part.what, r.part.count, r.have, st))
+          if not r.ok then
+            local hint = FACTORY.hint(r.part.name)
+            say("      " .. r.part.name .. (hint and ("  - recipe: " .. hint) or "  - recipe: see JEI"))
+          end
+        end
+        say("AE2 works out the sub-parts itself (e.g. the computer inside the turtle) - if it has patterns for them.")
+      else
+        say("No ME Bridge - the factory needs AE2.")
+      end
     end
 
   elseif cmd == "mine" then
