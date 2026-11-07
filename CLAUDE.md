@@ -157,67 +157,48 @@ PneumaticCraft drone rides, turtle mapping/surveys, and an AE2 ME network view.
   turn), opposite 0.8 (HD[k] = last sideways direction); h weighted 1.001
   (tie-break). tools/navsim/world.lua: turns cost time and are counted; maze /
   maze2 (TX=44) and "astar" (planner alone on 6 random mazes) scenarios.
-- Mining teams (miner.lua, base_mining.lua MINE, base_ui_mining.lua; TURTLES >
-  MINING): two turtles per mining dimension (S.dim overworld/nether/end), same
-  signed protocol with m.mine = true -> TT.receive hands them to MINE.receive
-  (never in state.turtles: no map/survey/home/rescue). LOADER = Chunky + Ender
-  Modem, never digs, follows the miner's corridor (team proto "basemine":
-  loaderhere/paired pairing by dim, follow {ref, pts} / arrived). MINER = End
-  Automata Core fixed + pickaxe; modem / Geo Scanner swapped in on the free side
-  (report every CONFIG.checkIn 30 s, base commands queue in u.queue until
-  m.lastCmd shows them). Works with the DEFAULT chunkyTurtleRadius 0 (owner
-  cannot change server configs): the loader parks in X1up (above the first
-  tunnel block of the miner's chunk) for the whole chunk. Crossing (crossTo):
-  at the edge E the miner digs X1 + X1up, sends follow (trail + Eup + X1up),
-  waits for "got", then steps into X1 FIRST (the game may pause / shut it
-  down there - it restarts and continues from the saved plan); the loader comes
-  through E and Eup into X1up. waitLoader before the next crossing. The start
-  chunk (ci 0) is only left; loader + miner must start in the same chunk.
-  calibrate() before a new plan: Geo Scanner scan r 1 finds the loader behind
-  -> the miner's facing is corrected; the loader gets "setpos" (its real
-  position + facing = towards the miner, it turns until inspect sees a turtle)
-  and answers "posok". START resets the unload timer; an unload trip with
-  nothing to unload is skipped. MYVER shown on the turtle and the MINING tab.
-  GPS (the owner has a GPS system in the mining dimension): gpsCheck at start,
-  at every miner report (modem on anyway) and every 30 s on an idle loader -
-  the tracked position is corrected; setup / miner here offer the GPS spot.
-  geoScan(r): the Geo Scanner's scan function is looked up by name (it is NOT
-  "scan" on the owner's version; the error lists the methods). Items in the
-  miner at START (not tools / coal) are the owner's (S.own): never unloaded;
-  more than 4 such slots -> START refused; full of only those -> HALT.
-  Ctrl+T (Terminated) is passed on, not saved as an error. Endless fuel
-  (CONFIG.fuelItems "*mining_dim_core*", or learned S.reuse): burnCoal uses
-  it first (refuel(1) keeps the item), both roles (loader before every step);
-  counts as a tool (never unloaded). Loader following: before each walk
-  gpsCheck + gpsFacing (one step forward/back, GPS delta = real facing),
-  GPS check after every leg (5 misses -> STUCK); the miner waits for
-  "arrived" at the START of each new chunk ("go") and before crossing, max
-  5 min, then stops with "the loader did not follow". Works with 1-chunk AND
-  3x3 Chunky loading (minesim default = 1 chunk, scenario r1 = 3x3). MINING tab: per
-  team unitBox (status, why wrapped, fuel bar from m.fuelMax, position),
-  FIELD map (one cell per chunk index, rowLength per row), layer bar, ores/hour
-  (u.runT0/u.ores0 on the base), unload countdown, item lists with totals,
-  START/PAUSE, UNLOAD NOW, NEW FIELD (actButton kind "minecmd", two taps),
-  TO DO hint, wrapped LOG. Plan:
-  rows of rowLength chunks forward from the start facing, next row to the right;
-  per chunk: tunnel to the centre at the start Y, layers every 17 down to minY
-  (Geo Scanner r 8, ores + CONFIG.mining.want inside the chunk), exit to the
-  chunk edge, handoff. Per layer (m7): the scan becomes KNOWN/KBOX (a 3D
-  picture; air inside KBOX = cave), targets ordered by orderTour (nearest +
-  2-opt), planTo = A* inside the chunk to a cell NEXT TO the ore (cellCost:
-  air 1, ore 1.2, water 1.5, stone 2.5, lava 8, protected/turtle never; turns
-  0.4/0.8), walkPath (ores passed through count), mineAround digs every
-  listed ore around it in place (up, down, ahead, sides). After a restart:
-  rescan from where it is. Simulator (ores in veins): +35% ores/hour.
-  Tried and REVERTED: alternating the tunnel between top and bottom (no
-  climb back up) - no gain, the loader then has to climb the shaft and the
-  miner waits for it (1-chunk loading). Junk thrown away; full -> shulker in front with air
-  above (stash). Every dumpEvery s (or full shulker): savePoint "work", warp
-  "station", unload (empty block in front = shulker there for an Import Bus;
-  inventory in front = drop + shulker ABOVE and suckUp), warp back. noMine /
-  noDig around the station. Base sends cfg (dumpEvery, rowLength, noMine,
-  want, keep) when it changes. tools/navsim/minesim.lua runs the real
-  miner.lua x2 + base_mining.lua in a voxel world (plain/reboot/want/full/direct).
+- Mining teams (miner.lua m8, base_mining.lua MINE, base_ui_mining.lua; TURTLES >
+  MINING): per mining dimension ONE LOADER + up to CONFIG.maxMiners (5) MINERS.
+  Same signed protocol with m.mine = true -> TT.receive -> MINE.receive (never
+  in state.turtles). Team proto "basemine": loaderhere / minerhere (join, by
+  dim; only while no plan runs), team {team, plan} (the plan, every 30 s),
+  hello (every miner report - liveness), needlayer {ci, done} / layer {ci, li},
+  ready {ci} / go {ci} / stepped {ci}, unloadreq / unloadok / unloadwait /
+  unloaded, unloadnow. LOADER = leader (modem always on): S.plan {id, sx, sz, f,
+  yt = loader.y-1, x0, z0, ci, phase work|cross, ready, queue, assigned};
+  START / PAUSE / NEW FIELD / UNLOAD go to the loader (base buttons). Every
+  turtle computes the same geometry: chunkAt (rows of rowLength), chunkCols ->
+  entry column, exit column (straight on to the far edge; at a row turn the
+  entry is already on that edge -> exit shifted one block), dir. Miner k
+  (1..n by ID): own SHAFT column (SHAFTS offsets), own LANE at the exit column,
+  height yt-(k-1). Miner 1 first digs the 2-high main tunnel entry -> exit
+  (TUNNEL2; the loader moves at yt+1) and at its lane also X1up. Layers come
+  from the loader one at a time, DEEPEST FIRST (fillLayers / needlayer): a
+  miner goes down once and works up, nobody waits for a slow one. Per layer:
+  own shaft -> centre at that Y -> scan (KNOWN/KBOX) -> orderTour -> planTo /
+  walkPath / mineAround (in place) -> back to own shaft. Crossing: all at
+  their lanes "ready" (X1 dug) -> loader GPS-checks position + facing, goes to
+  Eup, "go" -> each miner saves the NEXT job first, modem on, steps into the
+  next chunk, "stepped" -> loader steps after (waits <= 15 s). CHUNK_LOCK: a
+  working miner never steps out of its chunk (would = position/facing off ->
+  GPS re-check, retried up to 5x). A miner silent 20 min -> the TEAM PAUSES
+  (never left behind). Unloading: one miner at the station at a time
+  (S.stationUse, 6 min max); each miner needs its own `miner station` (the
+  point lives in its core). Ores (isOreBlock): tags (:ores, _ores, /ores, not
+  ores_in_ground), names _ore / ore_ / _ore_ (not _block), CONFIG.ores +
+  mining.ores (extraOres), never mining.skipOres. Turtles start on the
+  SURFACE (loader; miners next to it, same chunk). GPS: gpsCheck at start /
+  reports, gpsFacing (canDig) after a restart and on a new plan. Endless fuel
+  (CONFIG.fuelItems "*mining_dim_core*", S.reuse) first in burnCoal, kept as a
+  tool. Owner's items in a miner at START (S.own) never unloaded (> 4 slots ->
+  refused). geoScan looks the scan function up by name. MINING tab: team card
+  per dim (unitRow per turtle, FIELD map from the loader's ci, MINE.totals,
+  items, START/PAUSE TEAM, UNLOAD NOW, NEW FIELD two taps, TO DO, merged LOG).
+  tools/navsim/minesim.lua: 1 chunk loading (r1 = 3x3), freeze + shutdown,
+  ores in veins, caves; scenarios plain/teamN/caves/reboot/full/direct/core/
+  loaderdrift/wrongface/gpsfix/r1/nofuel/ownfull/geoname/corein/modemon (and
+  combinations like team3reboot, team5caves). 1 miner ~1,400 ores/h, 3 ~2,750,
+  5 ~3,700 in the simulator. Tried and reverted: alternating tunnel heights.
 - AWAY MODE (base_away.lua AWAY, comms tick AWAY.tick): owner offline (Player
   Detector; players refreshed every 30 s on any page) for CONFIG.away.after
   (300 s) -> AWAY.start: snapshot (MINE got/ores/ci per dim, MAP.ovN, turtles

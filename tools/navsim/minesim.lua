@@ -156,11 +156,16 @@ local function turtleApi(u)
     if (b and not b:find("water") and not b:find("lava")) or occupied(x, y, z) or u.fuel < 1 then return false, "Movement obstructed" end
     if not loaded(x, z, 1) then return false, "Cannot leave loaded world" end
     local oc = chunk(u.pos.x) .. "," .. chunk(u.pos.z)
+    if os.getenv("TRACE") and u.role == "loader" and chunk(x) .. "," .. chunk(z) ~= oc then
+      local t = {}
+      for _, mm in ipairs(MS) do t[#t + 1] = mm.id .. "@" .. mm.pos.x .. "," .. mm.pos.y .. "," .. mm.pos.z .. "(" .. tostring(ENVS[mm.id].task):sub(1, 22) .. ")" end
+      io.write(string.format("[%5.0f] loader crosses %s -> %d,%d,%d   miners: %s\n", T, oc, x, y, z, table.concat(t, "  ")))
+    end
     u.pos.x, u.pos.y, u.pos.z = x, y, z
     u.fuel = u.fuel - 1
     if u.role == "miner" then
       MOVES = (MOVES or 0) + 1
-      local tk = tostring(ENVS and ENVS.miner and ENVS.miner.task or "?"):match("^(%a+ ?%a*)") or "?"
+      local tk = tostring(ENVS and ENVS[u.id] and ENVS[u.id].task or "?"):match("^(%a+ ?%a*)") or "?"
       BYTASK = BYTASK or {}
       BYTASK[tk] = (BYTASK[tk] or 0) + 1
     end
@@ -512,30 +517,41 @@ textutils.unserialize = function(s)
   return ok and v or nil
 end
 
----------------------------------------------------------------- the two turtles
-local MINER, LOADER = 11, 12
-local MX, MY, MZ, MF, LX, LZ = 100, 40, 0, 1, 99, 0
-if SCEN == "owner" or SCEN == "wrongface" or SCEN == "gpsfix" then MX, MY, MZ, MF, LX, LZ = -5271, 69, 10851, 2, -5271, 10850 end
+---------------------------------------------------------------- the team: 1 loader + N miners
+-- scenario teamN = N miners (default 1). They stand on the surface (Y 65, the
+-- stone ends at 64) next to the loader, in its chunk; the loader faces east.
+local NMIN = tonumber(SCEN:match("team(%d)")) or 1
+local LOADER = 10
+local LX, LY, LZ, LF = 100, 65, 8, 1
+if SCEN == "owner" or SCEN == "wrongface" or SCEN == "gpsfix" then LX, LY, LZ, LF = -5271, 70, 10850, 2 end
 local KEY = "test-key"
-local m = newTurtle(MINER, "miner", MX, MY, MZ, MF, {
-  [1] = { name = "computercraft:wireless_modem_advanced", count = 1 },
-  [2] = { name = "advancedperipherals:geo_scanner", count = 1 },
-  [3] = { name = "sophisticatedstorage:netherite_shulker_box", count = 1, contents = {} },
-  [4] = { name = "minecraft:coal", count = 32 },
-}, "advancedperipherals:end_automata_core", "minecraft:netherite_pickaxe")
+MINERS, MS = {}, {}
+for i = 1, NMIN do
+  local id = 10 + i
+  local mx, mz = LX - 1, LZ - 6 + i * 2
+  if SCEN == "owner" or SCEN == "wrongface" or SCEN == "gpsfix" then mx, mz = LX - 6 + i * 2, LZ - 1 end
+  local m = newTurtle(id, "miner", mx, LY, mz, LF, {
+    [1] = { name = "computercraft:wireless_modem_advanced", count = 1 },
+    [2] = { name = "advancedperipherals:geo_scanner", count = 1 },
+    [3] = { name = "sophisticatedstorage:netherite_shulker_box", count = 1, contents = {} },
+    [4] = { name = "minecraft:coal", count = 32 },
+  }, "advancedperipherals:end_automata_core", "minecraft:netherite_pickaxe")
+  m.points.station = { x = STATION.x, y = STATION.y, z = STATION.z }
+  MINERS[#MINERS + 1] = id
+  MS[#MS + 1] = m
+end
+local m = MS[1]
 if SCEN == "corein" then
-  -- the core in the inventory, not equipped (seen in game)
   m.left = nil
   m.inv[6] = { name = "advancedperipherals:end_automata_core", count = 1 }
 end
 if SCEN == "modemon" then
-  -- the modem already equipped at start (closed, like after any restart)
   m.left, m.right = "computercraft:wireless_modem_advanced", "advancedperipherals:end_automata_core"
   m.inv[1] = { name = "minecraft:netherite_pickaxe", count = 1 }
 end
 if SCEN == "nofuel" then m.fuel = 0 m.inv[4] = nil end
 if SCEN == "core" then
-  m.inv[4] = { name = "jamd:mining_dim_core", count = 1 }      -- no coal, only the endless core
+  m.inv[4] = { name = "jamd:mining_dim_core", count = 1 }
   m.fuel = 300
 end
 if SCEN == "geoname" then m.inv[7] = { name = "jamd:mining_dim_core", count = 1 } end
@@ -546,38 +562,32 @@ if SCEN == "direct" then
   setBlock(DUMP.x, DUMP.y, DUMP.z, "ae2:interface")
   SHULKERS[key(DUMP.x, DUMP.y, DUMP.z)] = {}
 end
-local l = newTurtle(LOADER, "loader", LX, MY, LZ, MF,
+local l = newTurtle(LOADER, "loader", LX, LY, LZ, LF,
   (SCEN == "core") and { [1] = { name = "jamd:mining_dim_core", count = 1 } } or {},
   "advancedperipherals:chunk_controller", "computercraft:wireless_modem_advanced")
 if SCEN == "core" then l.fuel = 300 end
--- the station: miner was set up there (point saved, station known)
-m.points.station = { x = STATION.x, y = STATION.y, z = STATION.z }
 setBlock(STATION.x, STATION.y, STATION.z, nil)
-setBlock(DUMP.x, DUMP.y, DUMP.z, nil)
-m.files.miner_state = textutils.serialize({ role = "miner", key = KEY, dim = "overworld",
-  pos = { x = MX, y = MY, z = MZ, f = MF }, station = { x = STATION.x, y = STATION.y, z = STATION.z, f = 1 } })
+if SCEN ~= "direct" then setBlock(DUMP.x, DUMP.y, DUMP.z, nil) end
+for _, mm in ipairs(MS) do
+  local f = (SCEN == "wrongface") and ((LF + 1) % 4) or LF
+  local dx = (SCEN == "gpsfix") and 3 or 0
+  mm.files.miner_state = textutils.serialize({ role = "miner", key = KEY, dim = "overworld",
+    pos = { x = mm.pos.x + dx, y = mm.pos.y, z = mm.pos.z, f = f },
+    station = { x = STATION.x, y = STATION.y, z = STATION.z, f = 1 } })
+end
 l.files.miner_state = textutils.serialize({ role = "loader", key = KEY, dim = "overworld",
-  pos = { x = LX, y = MY, z = LZ, f = MF } })
-
-if SCEN == "gpsfix" then
-  -- typed positions 3 blocks off (and the loader's too)
-  local ms = textutils.unserialize(m.files.miner_state) ms.pos.x = ms.pos.x + 3 m.files.miner_state = textutils.serialize(ms)
-  local ls = textutils.unserialize(l.files.miner_state) ls.pos.z = ls.pos.z - 2 l.files.miner_state = textutils.serialize(ls)
-end
-if SCEN == "wrongface" then
-  -- typed facings were wrong: miner says east (really south), loader says west
-  local ms = textutils.unserialize(m.files.miner_state) ms.pos.f = 1 m.files.miner_state = textutils.serialize(ms)
-  local ls = textutils.unserialize(l.files.miner_state) ls.pos.f = 3 l.files.miner_state = textutils.serialize(ls)
-end
+  pos = { x = LX, y = LY, z = LZ + ((SCEN == "gpsfix") and -2 or 0), f = (SCEN == "wrongface") and 3 or LF } })
 local SRC = io.open(ROOT .. "miner.lua"):read("a")
 local cos = {}
 ENVS = {}
-for _, u in ipairs({ m, l }) do
+for _, u in ipairs({ l, table.unpack(MS) }) do
   local env = envFor(u)
-  ENVS[u.role] = env
+  ENVS[u.id] = env
+  if u.role == "loader" then ENVS.loader = env end
   local fn = assert(load(SRC, "miner.lua", "t", env))
   cos[#cos + 1] = { co = coroutine.create(fn), wake = 0, u = u }
 end
+local MINER = MINERS[1]
 
 ---------------------------------------------------------------- the base (real base_mining.lua)
 CONFIG = { turtles = { key = KEY }, mining = { rowLength = 3, dumpEvery = 900, noMine = 64,
@@ -615,9 +625,10 @@ while T < maxT do
     local o = table.remove(state.tOut, 1)
     deliver(BASE_ID, o.id, o.msg, "basectl")
   end
-  if not started and MINE.units[MINER] and MINE.units[MINER].partner then
+  local lu = MINE.units[LOADER]
+  if not started and lu and type(lu.team) == "table" and #lu.team == NMIN then
     started = true
-    MINE.cmd(MINER, "start", {})
+    MINE.cmd(LOADER, "start", {})
   end
   -- the Import Bus drains the shulker in front of the station
   local sh = SHULKERS[key(DUMP.x, DUMP.y, DUMP.z)]
@@ -631,7 +642,7 @@ while T < maxT do
     end
   end
   -- scenario reboot: the miner's program restarts (server restart / chunk unload)
-  if SCEN == "reboot" and not REBOOTED and T > 2400 then
+  if SCEN:find("reboot") and not REBOOTED and T > 2400 then
     REBOOTED = true
     for _, c in ipairs(cos) do
       if c.u.role == "miner" then
@@ -644,7 +655,7 @@ while T < maxT do
   end
   if SCEN == "full" and not FILLED and T > 120 then
     FILLED = true
-    for i = 5, 13 do if not m.inv[i] then m.inv[i] = { name = "minecraft:raw_copper", count = 64 } end end
+    for i = 5, 13 do if not MS[1].inv[i] then MS[1].inv[i] = { name = "minecraft:raw_copper", count = 64 } end end
   end
   -- the loader's remembered facing goes wrong in the middle of the run
   if SCEN == "loaderdrift" and not DRIFTED and T > 1500 and ENVS.loader.S and ENVS.loader.S.pos then
@@ -667,6 +678,11 @@ while T < maxT do
   end
   if not ok then fail(c.u.role .. " CRASHED: " .. tostring(w)) break end
   c.wake = tonumber(w) or T
+  if c.u.role == "miner" and ENVS[c.u.id] then
+    local tk = tostring(ENVS[c.u.id].task or "?"):match("^(%a+ ?%a*)") or "?"
+    TIMEBY = TIMEBY or {}
+    TIMEBY[tk] = (TIMEBY[tk] or 0) + math.max(0, c.wake - T)
+  end
   do
     local mu0 = MINE.units[MINER]
     if c.u.role == "miner" and mu0 and tostring(mu0.task):find("waiting for the loader", 1, true) then
@@ -684,31 +700,56 @@ end
 
 local mu = MINE.units[MINER]
 print("---")
-print("miner pos", m.pos.x, m.pos.y, m.pos.z, "fuel", m.fuel, "warps", m.warps or 0)
-print("loader pos", l.pos.x, l.pos.y, l.pos.z, "fuel", l.fuel)
-print("miner paused (unloaded) " .. (m.frozen or 0) .. " times, shut down " .. (m.shutdowns or 0) .. " times")
-print("chunk index", mu and mu.ci, "stats", mu and mu.stats and textutils.serialize(mu.stats))
-if mu and mu.stats then
-  local st = mu.stats
-  print(string.format("SPEED: %.0f ores/hour  %.1f blocks dug per ore  %d moves  in %.0f min",
-    (st.ores or 0) / (T / 3600), (st.dug or 0) / math.max(1, st.ores or 1), MOVES or 0, T / 60))
+local tot, dug, frozen, shut = 0, 0, 0, 0
+local carry, got = {}, {}
+for _, id in ipairs(MINERS) do
+  local u = MINE.units[id]
+  if u and u.stats then tot, dug = tot + (u.stats.ores or 0), dug + (u.stats.dug or 0) end
+  for k, v in pairs(u and u.got or {}) do got[k] = (got[k] or 0) + v end
+  for k, v in pairs(u and u.carry or {}) do carry[k] = (carry[k] or 0) + v end
 end
+for _, mm in ipairs(MS) do frozen, shut = frozen + (mm.frozen or 0), shut + (mm.shutdowns or 0) end
+print("team: " .. NMIN .. " miner(s); loader at", l.pos.x, l.pos.y, l.pos.z, "fuel", l.fuel, "task", tostring(ENVS.loader.task))
+if os.getenv("TRACE") then
+  for _, c in ipairs(cos) do if c.u.role == "loader" then print(debug.traceback(c.co)) end end
+  local LS = ENVS.loader.S
+  print("  loader plan phase", LS.plan and LS.plan.phase, "ci", LS.plan and LS.plan.ci, "T", T,
+        "ready", textutils.serialize(LS.plan and LS.plan.ready or {}), "STEPPED", textutils.serialize(ENVS.loader.STEPPED or {}), "NOTES", textutils.serialize(ENVS.loader.NOTES or {}), "lastprint", tostring(l.lastPrint))
+  for _, mm in ipairs(MS) do print("  miner", mm.id, mm.pos.x, mm.pos.y, mm.pos.z, "f", mm.f, tostring(ENVS[mm.id].task)) end
+  print("  loader facing", l.f, "believes", ENVS.loader.S.pos.x, ENVS.loader.S.pos.y, ENVS.loader.S.pos.z, ENVS.loader.S.pos.f)
+end
+print("miners paused (unloaded) " .. frozen .. " times, shut down " .. shut .. " times")
+print("chunk index", MINE.units[LOADER] and MINE.units[LOADER].ci, "miner 1 stats", mu and mu.stats and textutils.serialize(mu.stats))
+print(string.format("SPEED: %.0f ores/hour (team)  %.1f blocks dug per ore  %d moves  in %.0f min",
+  tot / (T / 3600), dug / math.max(1, tot), MOVES or 0, T / 60))
 print("delivered by the bus:", textutils.serialize(delivered))
-print("base says delivered:", mu and textutils.serialize(mu.got))
-print("in shulker:", mu and textutils.serialize(mu.carry))
+print("base says delivered:", textutils.serialize(got))
+print("in shulkers:", textutils.serialize(carry))
+-- what the base counted must match what really arrived
+for k, v in pairs(got) do if (delivered[k] or 0) < v then fail("base counted more " .. k .. " than arrived") end end
 print("shulker used in the field:", FIELD or 0)
 local bt = {}
 for k, v in pairs(BYTASK or {}) do bt[#bt + 1] = { k, v } end
 table.sort(bt, function(a, b) return a[2] > b[2] end)
 for i = 1, math.min(8, #bt) do print(string.format("  moves while '%s': %d", bt[i][1], bt[i][2])) end
-print(string.format("miner waited for the loader: about %.0f s", WAITED or 0))
+local tb, tsum = {}, 0
+for k, v in pairs(TIMEBY or {}) do tb[#tb + 1] = { k, v } tsum = tsum + v end
+table.sort(tb, function(a, b) return a[2] > b[2] end)
+for i = 1, math.min(9, #tb) do print(string.format("  miner time '%s': %d%%", tb[i][1], math.floor(tb[i][2] / tsum * 100 + 0.5))) end
 for _, n in ipairs(NOTES) do print("NOTE", n) end
 if delivered["jamd:mining_dim_core"] then fail("the OWNER'S item was unloaded") end
-if mu then
-  print("base shows:", MINE.status(mu))
-  if MINE.status(mu) == "STOPPED" and SCEN ~= "nofuel" and SCEN ~= "ownfull" then fail("miner STOPPED: " .. tostring(mu.err)) end
+for _, id in ipairs(MINERS) do
+  local u = MINE.units[id]
+  if u then
+    local lab = MINE.status(u)
+    print("miner " .. id .. ":", lab, tostring(u.task))
+    if lab == "STOPPED" and SCEN ~= "nofuel" and SCEN ~= "ownfull" then fail("miner " .. id .. " STOPPED: " .. tostring(u.err)) end
+  else
+    fail("miner " .. id .. " never reported")
+  end
 end
 for _, e in ipairs(mu and mu.log or {}) do print("LOG", e.msg) end
+if os.getenv("LOGOF") then for _, e in ipairs(MINE.units[tonumber(os.getenv("LOGOF"))].log or {}) do print("LOG" .. os.getenv("LOGOF"), e.t, e.msg) end end
 for _, e in ipairs(MINE.units[LOADER] and MINE.units[LOADER].log or {}) do print("LOADERLOG", e.msg) end
 if #FAIL > 0 then
   print("FAILURES:")

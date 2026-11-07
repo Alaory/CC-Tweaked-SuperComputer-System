@@ -278,39 +278,44 @@ Type `away` on the computer to see it again. Settings: SETTINGS > AWAY.
 
 ## ⛏️ Mining dimension teams
 
-Two turtles per mining dimension (e.g. *Just Another Mining Dimension*), both
-running `miner.lua`. They show up on **TURTLES > MINING**, never on the map.
+One **loader** and up to **5 miners** per mining dimension (e.g. *Just Another Mining
+Dimension*), all running `miner.lua`. They show up on **TURTLES > MINING**, never on the map.
 
 | Turtle | Equipped | Carries |
 |---|---|---|
-| ⛏️ **MINER** | End Automata Core (stays on) + pickaxe | Ender Modem, Geo Scanner, shulker box, some coal |
-| 📦 **LOADER** | Chunky upgrade + Ender Modem | nothing |
+| 📦 **LOADER** (team leader) | Chunky upgrade + Ender Modem | a Mining Dim Core (endless fuel) |
+| ⛏️ **MINER** (1-5) | End Automata Core (stays on) + pickaxe | Ender Modem, Geo Scanner, shulker box, a Mining Dim Core |
 
-- Mines **ores only** (plus the blocks in `CONFIG.mining.want`), chunk by chunk in rows
-  forward from where it starts; stone/dirt are thrown away. Burns the coal it mines.
-- Full -> everything goes into the shulker (put down with air above it, filled, picked up).
-- Every few minutes (SETTINGS > MINING) it **teleports to the unload station**, empties
-  itself and the shulker into the ME, and teleports back.
-- Never mines near the station (SETTINGS > MINING), never digs right next to it.
+- Works with the normal Chunky upgrade (only its own chunk loaded) - no server config.
+- Each chunk: every miner gets its own shaft; the loader hands out the layers one at a time
+  (deepest first). In a layer the Geo Scanner shows the ores; the miner plans its way through
+  caves and around lava, stops **next to** the ores and digs the whole vein from there.
+- **Ores:** vanilla and **modded** (by their ore tags and names). Extra / unwanted ores:
+  `mining.ores` / `mining.skipOres` in `base_config.lua`.
+- Then all miners line up at the chunk edge, step over together, and the loader follows.
+- Full -> the shulker. Every few minutes (SETTINGS > MINING) a miner teleports to the
+  unload station, empties itself and the shulker, and comes back - **one miner at a time**.
+- Your own items in a miner when you press START are never unloaded.
 
 **Setup**
-1. No server config needed: the loader keeps the miner's chunk loaded and follows it into the
-   next one (the miner may pause for a moment at each chunk edge - normal).
-2. The unload station's chunk must stay loaded (a chunk loader there). The miner stands on it facing
-   **either** an empty block with air above it and an **AE2 Import Bus** touching it,
+1. The unload station's chunk must stay loaded (a chunk loader there). The station: a block
+   facing **either** an empty block with air above it and an **AE2 Import Bus** touching it,
    **or** an ME Interface / linked chest (then keep 2 blocks of air above the station).
-3. Put the miner on the station, copy `miner.lua` onto it, run `miner`, answer the questions
-   (say **y** to "standing on the unload station").
-4. Pick it up, put it where mining starts (facing the way to mine, away from your base),
-   run `miner here` and type the new position. Put the loader right **behind** it (same height),
-   copy `miner.lua` onto it and run `miner`.
-5. They pair by themselves. Press **START** on TURTLES > MINING.
+2. **Each miner once:** put it on the station facing the storage, copy `miner.lua` onto it, run
+   `miner`, answer the questions (**y** = standing on the unload station). Pick it up.
+3. Put the **loader on the surface** where mining starts, facing the way to mine (away from your
+   base). Copy `miner.lua`, run `miner` (role **l**).
+4. Put the **miners on the surface next to the loader, in the same chunk** and run `miner here`
+   on each (with GPS in the dimension just press Enter).
+5. They join the loader by themselves. Press **START TEAM** on TURTLES > MINING.
 
 Optional lines in `base_config.lua`:
 ```lua
 mining = {
-  want = { "minecraft:tuff", "minecraft:calcite" },   -- stone types to go and dig too
-  keep = { "minecraft:deepslate" },                    -- keep these when dug (normally thrown away)
+  want = { "minecraft:tuff" },                 -- stone types to go and dig too
+  keep = { "minecraft:deepslate" },            -- keep these when dug (normally thrown away)
+  ores = { "somemod:strange_rock" },           -- more blocks that count as ores
+  skipOres = { "create:zinc_ore" },            -- ores you do not want
 },
 ```
 

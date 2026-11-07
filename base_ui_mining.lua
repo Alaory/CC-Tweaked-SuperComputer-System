@@ -54,38 +54,28 @@ local function itemList(x, y, w, rows, t, empty)
   end
 end
 
--- one turtle: name, status pill, why (2 lines), fuel bar, position
-local function unitBox(x, y, w, u, role)
+-- one turtle in two lines: name + pill + fuel bar, then what it does
+local function unitRow(x, y, w, u, role)
   local lab, col, why = MINE.status(u)
-  text(x, y, role, C.dim, C.panel)
-  local name = u and ((u.label or "?") .. " #" .. u.id .. (u.ver and ("  " .. u.ver) or "")) or "-"
-  text(x + #role + 1, y, trunc(name, w - #role - #lab - 5), C.text, C.panel)
+  local tag = role .. (u and u.idx and (" " .. u.idx) or "")
+  text(x, y, tag, C.dim, C.panel)
+  local name = u and ((u.label or "?") .. " #" .. u.id .. (u.ver and (" " .. u.ver) or "")) or "-"
+  local fw = 12
+  text(x + 9, y, trunc(name, w - 9 - #lab - fw - 4), C.text, C.panel)
   pill(x + w - #lab - 2, y, lab, C.ink, col)
-  local bad = (col == C.bad or col == C.warn)
-  for i, line in ipairs(wrap(why, w, 2)) do text(x, y + i, line, bad and col or C.dim, C.panel) end
-  if not u then return end
-  local fuel = tonumber(u.fuel)
-  local fmax = tonumber(u.fuelMax) or 20000
+  local fuel = u and tonumber(u.fuel)
   if fuel then
-    local f = math.max(0, math.min(1, fuel / fmax))
-    local fc = (fuel < 500 and C.bad) or (fuel < 2000 and C.warn) or C.good
-    local lbl = "fuel " .. commas(fuel)
-    text(x, y + 3, lbl, C.dim, C.panel)
-    barW(x + #lbl + 1, y + 3, w - #lbl - 1, f * (w - #lbl - 1), fc)
-  else
-    text(x, y + 3, "fuel " .. tostring(u.fuel or "?"), C.dim, C.panel)
+    local fx = x + w - #lab - fw - 4
+    local f = math.max(0, math.min(1, fuel / (tonumber(u.fuelMax) or 20000)))
+    barW(fx, y, fw, f * fw, (fuel < 500 and C.bad) or (fuel < 2000 and C.warn) or C.good)
   end
-  local p = u.pos
-  local where = (p and p.x) and fmtPos(p.x, p.y, p.z) or "position unknown"
-  text(x, y + 4, trunc(where .. (p and p.f and ("  facing " .. p.f) or "") ..
-       (u.free and ("   " .. u.free .. " free slots") or ""), w), C.dim, C.panel)
+  local bad = (col == C.bad or col == C.warn)
+  text(x + 2, y + 1, trunc(why, w - 2), bad and col or C.dim, C.panel)
 end
 
 -- the field: one cell per chunk in the order they are mined (rows go to the
 -- right); done green, current yellow, still to do dark. Newest rows only.
-local function fieldMap(x, y, w, h, m)
-  local L = tonumber(m.rowLength) or tonumber(MINE.cfg("rowLength", 16)) or 16
-  local ci = tonumber(m.ci) or 0
+local function fieldMap(x, y, w, h, ci, L)
   local cellW = 2
   local cols = math.max(1, math.floor((w + 1) / (cellW + 1)))
   local rows = math.floor(ci / L) + 1
@@ -101,101 +91,97 @@ local function fieldMap(x, y, w, h, m)
 end
 
 local function teamCard(x, y, w, h, dim, team)
-  card(x, y, w, h, dim:upper() .. " MINING DIMENSION")
-  local m, l = team.miner, team.loader
+  local l, miners = team.loader, team.miners
+  card(x, y, w, h, dim:upper() .. " MINING DIMENSION   (1 loader + " .. #miners .. " miner" .. (#miners == 1 and "" or "s") .. ")")
   local ix, iw = x + 2, w - 4
   local leftW = math.floor(iw * 0.64)
   local bx, bw = ix + leftW + 2, iw - leftW - 2
-  local half = math.floor((leftW - 2) / 2)
   local bottom = y + h - 2
-  unitBox(ix, y + 3, half, m, "MINER")
-  unitBox(ix + half + 2, y + 3, leftW - half - 2, l, "LOADER")
-
-  -- progress: field map on the left, numbers + bars on the right
-  local py = y + 9
-  if m and py + 4 <= bottom then
-    text(ix, py, "FIELD", C.label, C.panel)
-    local mapW = math.min(half, 3 * (tonumber(m.rowLength) or tonumber(MINE.cfg("rowLength", 16)) or 16))
-    fieldMap(ix, py + 1, mapW, 3, m)
-    local nx, nw = ix + half + 2, leftW - half - 2
-    local st = m.stats or {}
-    local ci = tonumber(m.ci) or 0
-    text(nx, py, trunc("chunk " .. ci .. "   " .. math.max(0, ci - 1) .. " done   " .. commas(st.ores or 0) .. " ores", nw),
-         C.text, C.panel)
-    if m.phase == "layers" and m.li and m.nl then
-      local lbl = "layer " .. math.min(m.li, m.nl) .. "/" .. m.nl
-      text(nx, py + 1, lbl, C.dim, C.panel)
-      barW(nx + #lbl + 1, py + 1, nw - #lbl - 1, (math.min(m.li, m.nl) - 1) / m.nl * (nw - #lbl - 1), C.accent)
-    else
-      text(nx, py + 1, trunc(m.phase == "exit" and "on to the next chunk" or (m.phase == "go" and "tunnel to the chunk centre") or "", nw),
-           C.dim, C.panel)
+  local half = math.floor((leftW - 2) * 0.55)
+  local T = MINE.totals(team)
+  -- the turtles
+  local ry = y + 3
+  unitRow(ix, ry, half, l, "LOADER")
+  ry = ry + 2
+  for _, m in ipairs(miners) do
+    if ry + 1 > bottom - 4 then
+      text(ix, ry, trunc("+ " .. (#miners - _ + 1) .. " more miners", half), C.dim, C.panel)
+      ry = ry + 1
+      break
     end
-    local rate = ""
-    if m.runT0 and os.clock() - m.runT0 > 300 then
-      local per = ((tonumber(st.ores) or 0) - (m.ores0 or 0)) / ((os.clock() - m.runT0) / 3600)
-      rate = commas(math.floor(per)) .. " ores/hour   "
-    end
-    text(nx, py + 2, trunc(rate .. (st.dumps or 0) .. " unloads", nw), C.dim, C.panel)
-    if m.nextDump and m.running then
-      local left = math.max(0, m.nextDump - os.clock())
-      local every = tonumber(MINE.cfg("dumpEvery", 600)) or 600
-      local lbl = "unload in " .. mmss(left)
-      text(nx, py + 3, lbl, C.dim, C.panel)
-      barW(nx + #lbl + 1, py + 3, nw - #lbl - 1, (1 - left / every) * (nw - #lbl - 1), C.purple)
-    elseif m.station == false then
-      text(nx, py + 3, trunc("no unload station (miner station)", nw), C.warn, C.panel)
-    end
+    unitRow(ix, ry, half, m, "MINER")
+    ry = ry + 2
   end
-
+  if #miners == 0 then text(ix, ry, "No miner yet: run miner.lua on one (role m)", C.warn, C.panel) ry = ry + 1 end
+  -- progress (next to the turtles)
+  local nx, nw = ix + half + 2, leftW - half - 2
+  local ci = tonumber(T.ci) or 0
+  local L = (l and tonumber(l.rowLength)) or tonumber(MINE.cfg("rowLength", 16)) or 16
+  text(nx, y + 3, "FIELD", C.label, C.panel)
+  fieldMap(nx, y + 4, math.min(nw, 3 * L), 3, ci, L)
+  text(nx, y + 8, trunc("chunk " .. ci .. "   " .. math.max(0, ci - 1) .. " done", nw), C.text, C.panel)
+  text(nx, y + 9, trunc(commas(T.ores) .. " ores" .. (T.rate > 0 and ("   " .. commas(math.floor(T.rate)) .. "/hour") or ""),
+       nw), C.text, C.panel)
+  text(nx, y + 10, trunc(T.dumps .. " unloads   " .. ((l and l.phase == "cross") and "crossing now" or
+       ((l and l.ready and #miners > 0) and (l.ready .. "/" .. #miners .. " at their lanes") or "")), nw), C.dim, C.panel)
   -- items
-  local listY = py + 6
+  local listY = math.max(ry + 1, y + 12)
   if listY + 1 <= bottom then
     local rows = math.max(1, bottom - listY)
-    text(ix, listY, trunc("IN THE SHULKER  " .. commas(total(m and m.carry)), half), C.label, C.panel)
-    text(ix + half + 2, listY, trunc("DELIVERED  " .. commas(total(m and m.got)), leftW - half - 2), C.label, C.panel)
-    itemList(ix, listY + 1, half, rows, m and m.carry, "nothing yet")
-    itemList(ix + half + 2, listY + 1, leftW - half - 2, rows, m and m.got, "nothing yet")
+    local lw = math.floor((leftW - 2) / 2)
+    text(ix, listY, trunc("IN THE SHULKERS  " .. commas(total(T.carry)), lw), C.label, C.panel)
+    text(ix + lw + 2, listY, trunc("DELIVERED  " .. commas(total(T.got)), leftW - lw - 2), C.label, C.panel)
+    itemList(ix, listY + 1, lw, rows, T.carry, "nothing yet")
+    itemList(ix + lw + 2, listY + 1, leftW - lw - 2, rows, T.got, "nothing yet")
   end
-
-  -- right: buttons, hint, log
+  -- right: buttons (to the loader = the whole team), hint, log
   local by = y + 3
-  if m then
-    if m.running then
-      drawButton(bx, by, bw, 3, "PAUSE", C.warn, C.ink, "minecmd", { m.id, "pause" })
+  if l then
+    if l.running or (miners[1] and miners[1].running) then
+      drawButton(bx, by, bw, 3, "PAUSE TEAM", C.warn, C.ink, "minecmd", { l.id, "pause" })
     else
-      drawButton(bx, by, bw, 3, "START", C.good, C.ink, "minecmd", { m.id, "start" })
+      drawButton(bx, by, bw, 3, "START TEAM", C.good, C.ink, "minecmd", { l.id, "start" })
     end
     local hw = math.floor((bw - 1) / 2)
-    drawButton(bx, by + 4, hw, 1, "UNLOAD NOW", C.empty, C.text, "minecmd", { m.id, "unload" })
+    drawButton(bx, by + 4, hw, 1, "UNLOAD NOW", C.empty, C.text, "minecmd", { l.id, "unload" })
     actButton(bx + hw + 1, by + 4, bw - hw - 1, 1, "NEW FIELD",
-              { kind = "minecmd", name = m.id .. ":newfield", count = 0 })
+              { kind = "minecmd", name = l.id .. ":newfield", count = 0 })
     by = by + 6
   end
-  -- what to do (the first problem found)
   local hint
   local function fuelLow(u, lim) return u and tonumber(u.fuel) and tonumber(u.fuel) < (lim or 500) end
-  if not m then hint = "Run miner.lua on the miner turtle (role m)."
-  elseif not l then hint = "Run miner.lua on the loader turtle (role l), right behind the miner."
-  elseif not MINE.online(m) then hint = "The miner does not report: is its chunk loaded? Look at its screen (bottom line)."
-  elseif fuelLow(m) then hint = "Miner: put a Mining Dim Core (endless fuel) or coal in it."
-  elseif fuelLow(l, 2000) then hint = "Loader: put a Mining Dim Core in it (endless fuel) - it refuels by itself then."
-  elseif not m.partner then hint = "Not paired yet: both turtles need the same dimension and key; restart both."
-  elseif m.err and not m.running then hint = "Fix the problem above, then press START."
-  elseif m.station == false then hint = "No unload station: put the miner on it (facing the storage) and type  miner station."
+  if not l then hint = "Run miner.lua on the loader turtle (role l), standing on the surface."
+  elseif #miners == 0 then hint = "Run miner.lua on the miners (role m), next to the loader in its chunk."
+  elseif fuelLow(l, 2000) then hint = "Loader: put a Mining Dim Core in it (endless fuel)."
+  elseif l.err and not l.running then hint = tostring(l.err) .. " - then START TEAM."
+  else
+    for _, m in ipairs(miners) do
+      if not MINE.online(m) then hint = (m.label or ("#" .. m.id)) .. " does not report: chunk loaded? look at its screen." break end
+      if fuelLow(m) then hint = (m.label or ("#" .. m.id)) .. ": put a Mining Dim Core or coal in it." break end
+      if m.station == false then hint = (m.label or ("#" .. m.id)) .. " has no unload station: put it on the station, type  miner station." break end
+      if m.err and not m.running then hint = (m.label or ("#" .. m.id)) .. ": " .. tostring(m.err) break end
+    end
   end
   if hint and by + 2 <= bottom then
     for i, line in ipairs(wrap("TO DO: " .. hint, bw, 3)) do text(bx, by + i - 1, line, C.warn, C.panel) end
     by = by + 4
   end
-  if m and by + 1 <= bottom then
-    text(bx, by, "LOG", C.label, C.panel)
+  if by + 1 <= bottom then
+    text(bx, by, "LOG (whole team)", C.label, C.panel)
+    -- newest first from every turtle of the team
+    local all = {}
+    local function add(u, tag)
+      for i, e in ipairs(u and u.log or {}) do all[#all + 1] = { t = e.t, msg = tag .. e.msg, o = i } end
+    end
+    add(l, "L: ")
+    for _, m in ipairs(miners) do add(m, (m.idx or "?") .. ": ") end
+    table.sort(all, function(a, b2) if a.t ~= b2.t then return a.t > b2.t end return a.o < b2.o end)
     local yy = by + 1
-    for _, e in ipairs(m.log or {}) do
+    for _, e in ipairs(all) do
       if yy > bottom then break end
-      local lines = wrap(e.msg, bw - 7, 2)
-      for i, line in ipairs(lines) do
+      for i, line in ipairs(wrap(e.msg, bw - 7, 2)) do
         if yy > bottom then break end
-        text(bx, yy, (i == 1 and e.t or "") , C.dim, C.panel)
+        text(bx, yy, (i == 1 and e.t or ""), C.dim, C.panel)
         text(bx + 7, yy, line, C.dim, C.panel)
         yy = yy + 1
       end
@@ -216,16 +202,16 @@ function drawMiningPage(G)
   if #shown == 0 then
     card(2, y0, W - 2, 22, "MINING TEAMS")
     local lines = {
-      "Two turtles per mining dimension, both running miner.lua:",
-      "  MINER   End Automata Core (stays on) + pickaxe; carries an Ender Modem, a Geo Scanner and a shulker box",
-      "  LOADER  Chunky upgrade + Ender Modem - keeps the miner's chunk loaded and follows it",
+      "A team per mining dimension: ONE loader + up to 5 miners, all running miner.lua:",
+      "  LOADER  Chunky upgrade + Ender Modem - the team leader; keeps the miners' chunk loaded",
+      "  MINER   End Automata Core + pickaxe; carries an Ender Modem, a Geo Scanner, a shulker box, a Mining Dim Core",
       "",
       "1. The unload station's chunk must stay loaded (a chunk loader, or a player there).",
-      "2. Put the MINER on its unload station (facing an empty block with an AE2 Import Bus next to it,",
-      "   or facing an ME Interface), copy miner.lua onto it, run  miner  and answer the questions.",
-      "3. Pick it up, put it where mining should start (facing the way to mine, away from your base),",
-      "   type  miner here  and its new position. Put the LOADER right BEHIND it and run  miner  there.",
-      "4. They pair by themselves. Then press START here.",
+      "2. EACH miner once: put it on the unload station (facing the storage), run  miner , answer the questions",
+      "   (y = standing on the station). Then pick it up.",
+      "3. Put the LOADER on the SURFACE where mining starts, facing the way to mine; run  miner  (role l).",
+      "4. Put the miners on the surface next to the loader - in the SAME chunk; type  miner here  on each.",
+      "5. They join the loader by themselves. Then press START TEAM here.",
     }
     for i, s in ipairs(lines) do text(4, y0 + 2 + i, trunc(s, W - 6), i == 1 and C.text or C.dim, C.panel) end
     return

@@ -56,6 +56,7 @@ CONFIG = {
   -- endless fuel items (refuelling does not use them up): kept, never unloaded
   fuelItems  = { "*mining_dim_core*" },
   wantMax    = 64,            -- max blocks of a CONFIG.want type per layer
+  maxMiners  = 5,             -- miners per loader (team)
   -- items thrown away (exact names; "*x" = ends in x)
   junk = { "minecraft:cobblestone", "minecraft:cobbled_deepslate", "minecraft:stone", "minecraft:deepslate",
            "minecraft:dirt", "minecraft:gravel", "minecraft:sand", "minecraft:red_sand", "minecraft:andesite",
@@ -73,7 +74,7 @@ CONFIG = {
 }
 
 STATE_FILE = "miner_state"
-MYVER = "m7"            -- shown on the screen and the base (MINING tab)
+MYVER = "m8"            -- shown on the screen and the base (MINING tab)
 DX = { [0] = 0, 1, 0, -1 }
 DZ = { [0] = -1, 0, 1, 0 }
 FNAME = { [0] = "north", "east", "south", "west" }
@@ -229,15 +230,27 @@ function sendBase(t, extra)
   m.rowLength = CONFIG.rowLength
   m.free = freeSlots()
   m.pos = S.pos and { x = S.pos.x, y = S.pos.y, z = S.pos.z, f = FNAME[S.pos.f or 0] } or nil
-  m.partner = S.partner
+  m.partner = (S.role == "miner") and S.leader or (S.team and S.team[1]) or nil
   m.lastCmd = S.lastCmd
   m.running = S.running
   m.err = S.err
+  m.team = S.team
+  m.leader = S.leader
+  if S.role == "loader" and S.plan then
+    m.ci, m.phase = S.plan.ci, S.plan.phase
+    local n = 0
+    for _ in pairs(S.plan.ready or {}) do n = n + 1 end
+    m.ready = n
+    m.rowLength = CONFIG.rowLength
+  end
   if S.role == "miner" then
-    local P = S.plan
-    m.ci = P and P.ci or nil
-    m.li, m.nl = P and P.li or nil, P and #layers(P.yt) or nil
-    m.phase = P and P.phase or nil
+    local J, tp = S.job, S.tp
+    m.ci = J and J.ci or nil
+    m.li = J and J.li or nil
+    m.nl = tp and #layers(tp.yt) or nil
+    m.li = J and J.cur or nil
+    m.phase = J and J.phase or nil
+    m.idx = myIndex()
     m.station = S.station and true or false
     m.nextDump = S.lastDump and math.max(0, CONFIG.dumpEvery - (now() - S.lastDump)) or nil
     m.carry = topN(S.carry, 12)
@@ -246,6 +259,9 @@ function sendBase(t, extra)
   end
   if #NOTES > 0 then m.notes = NOTES NOTES = {} end
   local okS, errS = pcall(rednet.send, id, m, CONFIG.protocol)
+  -- a miner also tells its loader it is alive (the loader never leaves a
+  -- chunk while a working miner is in it)
+  if S.role == "miner" and S.leader then pcall(sendTeam, S.leader, "hello") end
   showLink(okS and ("reported to base #" .. id .. " at " .. textutils.formatTime(os.time(), true) ..
                     " (key " .. tostring(S.key) .. ")")
                or ("SEND FAILED: " .. tostring(errS)))
@@ -275,78 +291,114 @@ function handle(id, m, proto)
   elseif proto == CONFIG.team then
     if type(m.n) ~= "number" or m.sig ~= sign(S.key or "change-me", m.t, m.n) then return end
     if m.dim ~= S.dim then return end
-    if m.t == "loaderhere" and S.role == "miner" and (not S.partner or S.partner == id) then
-      -- (again when the loader did not hear the first "paired")
-      if S.partner ~= id then
-        S.partner = id
+    if S.role == "loader" then
+      S.seen = S.seen or {}
+      S.seen[id] = os.clock()
+      if S.lost then S.lost[id] = nil end
+      if m.t == "minerhere" then
+        S.team = S.team or {}
+        local inTeam = false
+        for _, t in ipairs(S.team) do if t == id then inTeam = true end end
+        if not inTeam and not (S.plan and S.running) and #S.team < CONFIG.maxMiners then
+          S.team[#S.team + 1] = id
+          table.sort(S.team)
+          save()
+          note("Miner " .. id .. " joined the team (" .. #S.team .. ")")
+          inTeam = true
+        end
+        if inTeam then sendPlan() end
+      elseif m.t == "ready" and S.plan and m.ci == S.plan.ci then
+        S.plan.ready[id] = m.ci
         save()
-        note("Paired with loader " .. id)
-      end
-      sendTeam(id, "paired")
-    elseif m.t == "paired" and S.role == "loader" and (not S.partner or S.partner == id) then
-      S.partner = id
-      save()
-      note("Paired with miner " .. id)
-    elseif m.t == "follow" and S.role == "loader" and (id == S.partner or not S.partner) then
-      if not S.partner then S.partner = id note("Paired with miner " .. id) end
-      if not (S.follow and S.follow.ref == m.ref) then
-        S.follow = { ref = m.ref, pts = m.pts, i = 1 }
+      elseif m.t == "needlayer" and S.plan and m.ci == S.plan.ci then
+        local P = S.plan
+        P.assigned = P.assigned or {}
+        if m.done and P.assigned[id] == m.done then P.assigned[id] = nil end
+        if not P.assigned[id] then
+          P.queue = P.queue or {}
+          P.assigned[id] = table.remove(P.queue, 1)      -- nil = none left
+        end
         save()
+        sendTeam(id, "layer", { ci = P.ci, li = P.assigned[id] })
+      elseif m.t == "stepped" then
+        STEPPED = STEPPED or {}
+        STEPPED[id] = true
+      elseif m.t == "unloadreq" then
+        -- one miner at the station at a time (6 min max)
+        local st = S.stationUse
+        if not st or st.id == id or os.clock() - st.t > 360 then
+          S.stationUse = { id = id, t = os.clock() }
+          sendTeam(id, "unloadok")
+        else
+          sendTeam(id, "unloadwait", { who = st.id })
+        end
+      elseif m.t == "unloaded" then
+        if S.stationUse and S.stationUse.id == id then S.stationUse = nil end
       end
-      if S.follow.done then
-        sendTeam(id, "arrived", { ref = m.ref })
-      else
-        sendTeam(id, "got", { ref = m.ref })
+    elseif S.role == "miner" then
+      if m.t == "loaderhere" and not S.leader then
+        sendTeam(id, "minerhere")
+      elseif m.t == "team" and (not S.leader or S.leader == id) then
+        local mine = false
+        for _, t in ipairs(m.team or {}) do if t == os.getComputerID() then mine = true end end
+        if mine then
+          if S.leader ~= id then note("In the team of loader " .. id) end
+          S.leader, S.team = id, m.team
+          local newPlan = m.plan and (not S.tp or S.tp.id ~= m.plan.id)
+          S.tp = m.plan or nil
+          if not m.plan then S.job = nil end
+          if m.plan then S.running = m.plan.running and true or false end
+          if newPlan then S.err = nil end
+          save()
+        end
+      elseif m.t == "go" and id == S.leader then
+        GO = m.ci
+      elseif m.t == "layer" and id == S.leader then
+        LAYER = { ci = m.ci, li = m.li }
+      elseif m.t == "unloadok" and id == S.leader then
+        UNLOAD_OK = true
+      elseif m.t == "unloadwait" and id == S.leader then
+        UNLOAD_OK = false
+      elseif m.t == "unloadnow" and id == S.leader then
+        DUMP_NOW = true
       end
-    elseif m.t == "arrived" and S.role == "miner" and id == S.partner then
-      ARRIVED = m.ref
-      GOT = m.ref
-    elseif m.t == "got" and S.role == "miner" and id == S.partner then
-      GOT = m.ref
-    elseif m.t == "posok" and S.role == "miner" and id == S.partner then
-      POSOK = m.ref
-    elseif m.t == "setpos" and S.role == "loader" and id == S.partner then
-      -- the miner saw us with its Geo Scanner: this is our real position; our
-      -- facing = the side where the miner is (turn until we see a turtle)
-      S.pos = S.pos or {}
-      S.pos.x, S.pos.y, S.pos.z = m.x, m.y, m.z
-      local found
-      for _ = 1, 4 do
-        local okI, b = turtle.inspect()
-        if okI and tostring(b.name):find("computercraft:turtle", 1, true) then found = true break end
-        turtle.turnRight()
-      end
-      if found then
-        local was = S.pos.f
-        S.pos.f = m.f
-        if was ~= m.f then note("Facing corrected: " .. FNAME[m.f]) end
-      end
-      S.follow = nil
-      save()
-      sendTeam(id, "posok", { ref = m.ref, ok = found and true or false })
     end
   end
 end
 function doCmd(cmd, args)
+  -- START / PAUSE / NEW FIELD go to the LOADER (the team leader); it tells the miners
   if cmd == "start" then
-    if S.role == "miner" then
-      S.running, S.err = true, nil
-      if not S.plan then S.lastDump = now() end       -- a new field: the unload timer starts now
-      note("START")
+    S.err = nil
+    if S.role == "loader" then
+      local ok, err = true, nil
+      if not S.plan then ok, err = newTeamPlan() end
+      if ok then
+        S.running, S.plan.running = true, true
+        note("START (" .. #S.team .. " miners)")
+      else
+        note("Cannot start: " .. tostring(err))
+      end
+      save()
+      sendPlan()
     end
   elseif cmd == "pause" then
     S.running = false
+    if S.role == "loader" and S.plan then S.plan.running = false sendPlan() end
     note("PAUSED")
   elseif cmd == "unload" then
-    DUMP_NOW = true
+    if S.role == "loader" then teamMsg("unloadnow") else DUMP_NOW = true end
     note("Unload asked")
   elseif cmd == "newfield" then
-    S.plan = nil
     S.running = false
-    note("New mining field: starts here (the way it faces) on the next START")
+    if S.role == "loader" then
+      S.plan = nil
+      teamMsg("team", { team = S.team, plan = false })
+    end
+    S.job = nil
+    note("New field: it starts where the loader stands (the way it faces) on the next START")
   elseif cmd == "unpair" then
-    S.partner = nil
-    note("Unpaired")
+    S.partner, S.leader, S.team, S.tp = nil, nil, nil, nil
+    note("Left the team")
   elseif cmd == "cfg" then
     -- "key=value" strings; lists as a,b,c
     S.cfg = S.cfg or {}
@@ -354,7 +406,7 @@ function doCmd(cmd, args)
       local k, v = tostring(a):match("^([%w_]+)=(.*)$")
       if k then
         local val
-        if k == "want" or k == "keep" then
+        if k == "want" or k == "keep" or k == "extraOres" or k == "skipOres" then
           val = {}
           for w in v:gmatch("[^,]+") do val[#val + 1] = w end
         else
@@ -560,25 +612,50 @@ function digDir(d)
   return true
 end
 -- one step ("f", "u", "d"), digging when allowed (miner) or waiting (loader)
+-- CHUNK_LOCK = { cx, cz }: a miner at work never leaves this chunk (only its
+-- chunk is surely loaded). A step that would leave it means the position or
+-- facing is off: GPS check instead.
 function step(d)
   if S.role ~= "miner" then burnCoal() end
+  if CHUNK_LOCK and S.role == "miner" then
+    local x, _, z = cellFor(d)
+    if math.floor(x / 16) ~= CHUNK_LOCK[1] or math.floor(z / 16) ~= CHUNK_LOCK[2] then
+      gpsCheck()
+      local f = gpsFacing(true)
+      if f then S.pos.f = f end
+      gpsCheck()
+      return false, "would leave chunk " .. CHUNK_LOCK[1] .. "," .. CHUNK_LOCK[2] .. " (position re-checked - next try)"
+    end
+  end
   local mv = (d == "u" and turtle.up) or (d == "d" and turtle.down) or turtle.forward
   local det = (d == "u" and turtle.detectUp) or (d == "d" and turtle.detectDown) or turtle.detect
   local att = (d == "u" and turtle.attackUp) or (d == "d" and turtle.attackDown) or turtle.attack
+  local insp = (d == "u" and turtle.inspectUp) or (d == "d" and turtle.inspectDown) or turtle.inspect
   for try = 1, 60 do
     if mv() then
       local x, y, z = cellFor(d)
       S.pos.x, S.pos.y, S.pos.z = x, y, z
+      if TUNNEL2 and d == "f" and S.role == "miner" then
+        for _ = 1, 8 do                                  -- (falling gravel)
+          if not turtle.detectUp() or not digDir("u") then break end
+        end
+      end
       afterMove()
       return true
     end
     if turtle.getFuelLevel() == 0 then return false, "out of fuel" end
-    if det() then
+    local okI, bI = insp()
+    if okI and tostring(bI.name):find("computercraft:turtle", 1, true) then
+      -- a team mate in the way: wait (never dig a turtle)
+      if try >= 50 then return false, "a turtle is in the way at " .. fmtPos() end
+      if try % 10 == 1 then setTask("a team mate is in the way - waiting") end
+      sleep(1)
+    elseif det() then
       if S.role == "miner" then
         local ok, err = digDir(d)
         if not ok then return false, err end
       else
-        -- the loader never digs: wait (a mob, the miner, fallen gravel)
+        -- the loader never digs: wait (a mob, fallen gravel)
         if try % 10 == 0 then setTask("blocked at " .. fmtPos() .. " - waiting") sendBase("status") end
         sleep(1)
       end
@@ -893,48 +970,6 @@ function chunkAt(P, i)
   return cx, cz
 end
 function center(cx, cz) return cx * 16 + 8, cz * 16 + 8 end
--- before a new field: check our FACING with the Geo Scanner - the loader
--- must be right behind us (a typed facing can be wrong). Then the loader gets
--- its real position and finds its own facing by turning to us.
-function calibrate()
-  local res, err = geoScan(1)
-  if not res then return false, err end
-  local ok
-  local ox, oz
-  for _, b in ipairs(res) do
-    if b.y == 0 and math.abs(b.x) + math.abs(b.z) == 1 and tostring(b.name):find("computercraft:turtle", 1, true) then
-      ox, oz = b.x, b.z
-    end
-  end
-  if not ox then
-    return false, "no loader right behind the miner (same height, touching it) - place it there, then START"
-  end
-  -- behind = (ox, oz) -> forward is the other way
-  local f
-  for i = 0, 3 do if DX[i] == -ox and DZ[i] == -oz then f = i end end
-  if f ~= S.pos.f then
-    note("Facing corrected: " .. FNAME[S.pos.f or 0] .. " -> " .. FNAME[f] .. " (the loader is behind me)")
-    S.pos.f = f
-    save()
-  end
-  -- the loader: its real position and facing (it faces towards us)
-  ok = equipTool("modem")
-  local ref = os.epoch("utc")
-  local lf
-  for i = 0, 3 do if DX[i] == -ox and DZ[i] == -oz then lf = i end end
-  POSOK = nil
-  local t0, sent = os.clock(), -1000
-  while POSOK ~= ref do
-    if os.clock() - t0 > 60 then return false, "the loader does not answer" end
-    if os.clock() - sent > 5 then
-      sendTeam(S.partner, "setpos", { ref = ref, x = S.pos.x + ox, y = S.pos.y, z = S.pos.z + oz, f = lf })
-      sent = os.clock()
-    end
-    setTask("checking positions with the loader")
-    listen(1)
-  end
-  return true
-end
 -- what is in the miner at START (not tools, not coal) belongs to you: never unloaded
 function rememberOwn()
   S.own = {}
@@ -943,33 +978,6 @@ function rememberOwn()
     if d and not isTool(d.name) and not isCoal(d.name) then S.own[d.name] = (S.own[d.name] or 0) + d.count end
   end
   if next(S.own) then note("Items in me at START are kept (not unloaded)") end
-end
-function newPlan()
-  local p = S.pos
-  -- the loader stands right behind: it must be in the SAME chunk (it keeps
-  -- only its own chunk loaded)
-  local bx, bz = p.x - DX[p.f], p.z - DZ[p.f]
-  if math.floor(bx / 16) ~= math.floor(p.x / 16) or math.floor(bz / 16) ~= math.floor(p.z / 16) then
-    return false, "the loader behind the miner is in another chunk - move both one block forward, " ..
-                  "type  miner here  on both, then START"
-  end
-  -- chunk 0 = the start chunk: only left (towards chunk 1, straight ahead)
-  S.plan = { sx = math.floor(p.x / 16), sz = math.floor(p.z / 16), f = p.f, yt = p.y, ci = 0, phase = "exit",
-             done = 0, x0 = p.x, z0 = p.z }
-  S.trail = { { x = p.x, y = p.y, z = p.z } }    -- the loader starts right behind this spot
-  rememberOwn()
-  local used = 0
-  for i = 1, 16 do
-    local d = turtle.getItemDetail(i)
-    if d and not isTool(d.name) and not isCoal(d.name) then used = used + 1 end
-  end
-  if used > 4 then
-    S.plan = nil
-    return false, used .. " slots hold your own items - the miner needs the room for what it mines. Take them out, then START"
-  end
-  S.lastDump = S.lastDump or now()
-  save()
-  return true
 end
 -- GPS (a GPS system in this dimension): our real position, or nil
 function gpsHere(timeout)
@@ -992,9 +1000,13 @@ function gpsCheck()
 end
 -- which way do we really face? one step forward (or back) and GPS before/after.
 -- nil when there is no GPS or no room to step
-function gpsFacing()
+function gpsFacing(canDig)
   local x0, _, z0 = gpsHere(2)
   if not x0 then return nil end
+  if canDig and S.role == "miner" and turtle.detect() then
+    local okI, b = turtle.inspect()
+    if okI and not isProtected(b.name) then digDir("f") end
+  end
   local function dirOf(dx, dz)
     for i = 0, 3 do if DX[i] == dx and DZ[i] == dz then return i end end
   end
@@ -1040,6 +1052,26 @@ function checkpoint()
     if not any then
       DUMP_NOW = false
       S.lastDump = now()
+    elseif S.job and S.job.phase == "ready" then
+      -- waiting at the lane for the crossing: not now
+    elseif S.leader then
+      -- one miner at the station at a time: ask the loader
+      if os.clock() - (UNLOAD_ASKED or -100) > 20 then
+        UNLOAD_ASKED, UNLOAD_OK = os.clock(), nil
+        if equipTool("modem") then
+          sendTeam(S.leader, "unloadreq")
+          local t0 = os.clock()
+          while UNLOAD_OK == nil and os.clock() - t0 < 2 do listen(0.5) end
+        end
+        if UNLOAD_OK then
+          local ok, err = doDump()
+          equipTool("modem")
+          sendTeam(S.leader, "unloaded")
+          if not ok then return false, err end
+        else
+          setTask("unload: another miner is at the station - later")
+        end
+      end
     else
       local ok, err = doDump()
       if not ok then return false, err end
@@ -1094,14 +1126,7 @@ function scanLayer(cx, cz)
   for _, b in ipairs(res) do
     local ax, ay, az = S.pos.x + b.x, S.pos.y + b.y, S.pos.z + b.z
     if ax >= x0 and ax <= x0 + 15 and az >= z0 and az <= z0 + 15 and not isProtected(b.name) then
-      local ore = match(b.name, CONFIG.ores)
-      if not ore and type(b.tags) == "table" then
-        for k, v in pairs(b.tags) do
-          local tg = (type(k) == "string" and k) or tostring(v)
-          if tg:find("ores", 1, true) and not tg:find("ores_in_ground", 1, true) then ore = true break end
-        end
-      end
-      if ore then
+      if isOreBlock(b) then
         out[#out + 1] = { x = ax, y = ay, z = az }
       elseif match(b.name, CONFIG.want) and (wantN[b.name] or 0) < CONFIG.wantMax then
         wantN[b.name] = (wantN[b.name] or 0) + 1
@@ -1110,6 +1135,29 @@ function scanLayer(cx, cz)
     end
   end
   return orderTour(out)
+end
+-- is this block an ORE? Vanilla and modded:
+--   * the block's tags (most mods): c:ores, c:ores/tin, forge:ores, minecraft:iron_ores ...
+--   * names: ..._ore, ore_..., ..._ore_..., and CONFIG.ores / CONFIG.extraOres
+--   * never what is in CONFIG.skipOres (ores you do not want)
+function isOreBlock(b)
+  local n = tostring(b.name or "")
+  if match(n, CONFIG.skipOres or {}) then return false end
+  if match(n, CONFIG.ores) or match(n, CONFIG.extraOres or {}) then return true end
+  local short = n:match(":(.+)$") or n
+  if short:match("_ore$") or short:match("^ore_") or short:find("_ore_", 1, true) or short == "ore" then
+    return not short:find("_block", 1, true)            -- (not a storage block)
+  end
+  if type(b.tags) == "table" then
+    for k, v in pairs(b.tags) do
+      local tg = (type(k) == "string" and k) or tostring(v)
+      if (tg:find(":ores", 1, true) or tg:find("_ores", 1, true) or tg:find("/ores", 1, true))
+         and not tg:find("ores_in_ground", 1, true) then
+        return true
+      end
+    end
+  end
+  return false
 end
 -- the order to dig them: nearest next, then untangled (2-opt) - a shorter tour
 function orderTour(list)
@@ -1306,184 +1354,348 @@ function nearest(list)
   end
   return bi
 end
--- Crossing into the next chunk. The loader keeps ONLY its own chunk loaded,
--- so the miner goes first: it digs the first block of the next chunk (X1)
--- and the one above it (X1up) from the edge (E), steps into X1, and the
--- loader comes after it - through E and up - into X1up. Until the loader is
--- there the miner may be paused by the game (or restarted - it continues).
--- The loader then stays in X1up (above the tunnel) for the whole chunk.
-function crossTo(P, ref, dir)
-  turnTo(dir)
-  local ok, err = digDir("f")                     -- X1
-  if not ok then return false, err end
-  ok, err = step("u")                             -- Eup
-  if not ok then return false, err end
-  local up = { x = S.pos.x, y = S.pos.y, z = S.pos.z }
-  ok, err = digDir("f")                           -- X1up
-  local okD, errD = step("d")
-  if not ok then return false, err end
-  if not okD then return false, errD end
-  local x1 = { x = S.pos.x + DX[dir], y = S.pos.y, z = S.pos.z + DZ[dir] }
-  local pts = {}
-  for _, p in ipairs(S.trail or {}) do pts[#pts + 1] = p end
-  pts[#pts + 1] = up
-  pts[#pts + 1] = { x = x1.x, y = x1.y + 1, z = x1.z }
-  P.crossing = { ref = ref, pts = pts }
-  save()
-  -- the loader must have its way BEFORE we step over: once over there we may
-  -- be paused until it arrives (and could not tell it anything)
-  GOT = nil
-  local t0, sent = os.clock(), -1000
-  while GOT ~= ref do
-    if not S.running then return false, "paused" end
-    if os.clock() - t0 > 600 then return false, "the loader does not answer" end
-    if os.clock() - sent > 5 then callLoader(P) sent = os.clock() end
-    setTask("telling the loader the way")
-    listen(1)
-  end
-  -- next: the new chunk; the loader's next trail starts below its spot
-  P.ci, P.phase = P.ci + 1, "go"
-  S.trail = { x1 }
-  save()
-  ok, err = step("f")                             -- into the next chunk (the loader follows)
-  if not ok then
-    P.ci, P.phase = P.ci - 1, "exit"
-    S.trail = pts
-    table.remove(S.trail) table.remove(S.trail)
-    save()
-    return false, err
-  end
-  return true
+----------------------------------------------------------------------- the TEAM
+-- One LOADER (the leader: its modem is always on) and up to CONFIG.maxMiners
+-- MINERS. The loader holds the plan (S.plan) and sends it to the miners
+-- ("team" {team, plan}); every turtle works out the same geometry from it:
+--   chunk i, its ENTRY column (where the team comes in) and EXIT column (on
+--   the far edge, straight on from the entry), the tunnel height yt (the
+--   block under the loader at the start; the loader moves at yt + 1).
+-- Miner k (1..n, by turtle ID) works layers k, k+n, k+2n ... of each chunk
+-- from its own SHAFT column, and waits at its own LANE at the exit edge
+-- (height yt - (k-1), one above the other) - nobody gets in anybody's way.
+-- Miner 1 also digs the 2-high main tunnel (entry -> exit) the loader uses.
+-- Crossing: all miners at their lanes ("ready") -> the loader goes to the
+-- exit, says "go" -> every miner steps into the next chunk at once -> the
+-- loader follows (only its own chunk is loaded: the miners may be paused
+-- for a moment over there - they continue / restart by themselves).
+-- Unloading: one miner at a time (the loader gives turns: "unloadreq").
+SHAFTS = { { 4, 4 }, { 11, 11 }, { 4, 11 }, { 11, 4 }, { 2, 8 }, { 13, 8 } }
+function dirTo(tp, i)
+  local cx, cz = chunkAt(tp, i)
+  local nx, nz = chunkAt(tp, i + 1)
+  return (nx > cx and 1) or (nx < cx and 3) or (nz > cz and 2) or 0
 end
--- send the loader its way (again); true once it has arrived
-function callLoader(P)
-  local c = P.crossing
-  if not c or c.done then return true end
-  if equipTool("modem") then sendTeam(S.partner, "follow", { ref = c.ref, pts = c.pts }) end
-  return false
-end
--- before the next crossing: the loader must have finished the last one
-function waitLoader(P)
-  local c = P.crossing
-  if not c or c.done then return true end
-  ARRIVED = nil
-  local t0, sent = os.clock(), -1000
-  while ARRIVED ~= c.ref do
-    if not S.running then return false, "paused" end
-    if os.clock() - t0 > 300 then
-      return false, "the loader did not follow (5 min) - look at the loader's line, then START"
+-- the entry and exit columns of chunk i: x, z, ex, ez, dir
+function chunkCols(tp, i)
+  local x, z = tp.x0, tp.z0
+  for k = 0, i do
+    local cx, cz = chunkAt(tp, k)
+    local d = dirTo(tp, k)
+    local ex, ez = x, z
+    if d == 1 then ex = cx * 16 + 15 elseif d == 3 then ex = cx * 16 end
+    if d == 2 then ez = cz * 16 + 15 elseif d == 0 then ez = cz * 16 end
+    -- the turning chunk at the end of a row: the entry is already on the exit
+    -- edge - move the exit one block along the edge (the loader parks on the entry)
+    if ex == x and ez == z then
+      if d == 1 or d == 3 then ez = (z < cz * 16 + 15) and z + 1 or z - 1
+      else ex = (x < cx * 16 + 15) and x + 1 or x - 1 end
     end
-    if os.clock() - sent > 30 then callLoader(P) sent = os.clock() end
-    setTask("waiting for the loader (" .. math.floor(os.clock() - t0) .. " s)")
-    if os.clock() - LAST_STATUS > 15 then sendBase("status") end
-    listen(2)
+    if k == i then return x, z, ex, ez, d end
+    x, z = ex + DX[d], ez + DZ[d]                -- next chunk's entry: one step on
   end
-  c.done = true
-  save()
-  return true
 end
--- one piece of work; false, why = stop (paused or a problem)
-function workStep()
+function myIndex()
+  for k, id in ipairs(S.team or {}) do if id == os.getComputerID() then return k, #S.team end end
+  return 1, math.max(1, #(S.team or {}))
+end
+function myLayers(tp)
+  local L = layers(tp.yt)
+  local k, n = myIndex()
+  local out = {}
+  for i = k, #L, n do out[#out + 1] = L[i] end
+  return out
+end
+-- go: up/down first (in this column), then sideways at that height
+function goVH(x, y, z)
+  local ok, err = goTo(S.pos.x, y, S.pos.z)
+  if not ok then return false, err end
+  return goTo(x, y, z)
+end
+-- sideways first (at this height), then up/down in the target column
+function goHV(x, y, z)
+  local ok, err = goTo(x, S.pos.y, z)
+  if not ok then return false, err end
+  return goTo(x, y, z)
+end
+-- the main tunnel, 2 high (the loader moves in the upper half)
+function tunnel2(x, z)
+  local ok, err = goTo(x, S.pos.y, S.pos.z)
+  if ok then ok, err = goTo(x, S.pos.y, z) end
+  return ok, err
+end
+TUNNEL2 = false
+
+-- a new job when the team enters chunk ci
+function newJob(tp, ci)
+  local k = myIndex()
+  local cx, cz = chunkAt(tp, ci)
+  local mx, mz = center(cx, cz)
+  local mine = ci > 0 and not (S.station and nearStation(mx, mz, CONFIG.noMine))
+  S.job = { ci = ci, phase = (k == 1) and "tunnel" or (mine and "layers" or "lane"), li = 1, mine = mine,
+            plan = tp.id }
+  save()
+end
+-- one piece of the miner's work; false, why = stop
+function teamStep()
   local okC, errC = checkpoint()
   if not okC then return false, errC end
-  local P = S.plan
-  local cx, cz = chunkAt(P, P.ci)
+  local tp, J = S.tp, S.job
+  if not J or J.plan ~= tp.id then newJob(tp, tp.ci) J = S.job end
+  local ci = J.ci
+  local k, n = myIndex()
+  local cx, cz = chunkAt(tp, ci)
   local mx, mz = center(cx, cz)
-  if P.phase == "go" then
-    -- the loader comes after us into this chunk: wait until it is here
-    local okL, errL = waitLoader(P)
-    if not okL then return false, errL end
-    setTask("tunnel to chunk " .. P.ci .. " (" .. mx .. " " .. mz .. ")")
-    local ok, err = goTo(mx, P.yt, mz, S.trail)
+  local x1, z1, ex, ez, dir = chunkCols(tp, ci)
+  local sx, sz = cx * 16 + SHAFTS[(k - 1) % #SHAFTS + 1][1], cz * 16 + SHAFTS[(k - 1) % #SHAFTS + 1][2]
+  local lane = tp.yt - (k - 1)
+  -- at work: stay inside this chunk (crossing: the step over is allowed)
+  CHUNK_LOCK = (J.phase ~= "ready") and { cx, cz } or nil
+  -- the start chunk: the miners may stand next to it at the start
+  if ci == 0 and (math.floor(S.pos.x / 16) ~= cx or math.floor(S.pos.z / 16) ~= cz) then CHUNK_LOCK = nil end
+  if J.phase == "tunnel" then
+    -- miner 1: the main tunnel at yt (+ the block above it for the loader)
+    setTask("main tunnel through chunk " .. ci)
+    local ok, err = goVH(x1, tp.yt, z1)
     if not ok then return false, err end
-    if S.station and nearStation(mx, mz, CONFIG.noMine) then
-      P.phase = "exit"                     -- near the station: only passing through
-    else
-      P.phase, P.li, P.targets = "layers", 1, nil
-    end
+    TUNNEL2 = true
+    ok, err = tunnel2(ex, ez)
+    TUNNEL2 = false
+    if not ok then return false, err end
+    J.phase = J.mine and "layers" or "lane"
     save()
     return true
-  elseif P.phase == "layers" then
-    local L = layers(P.yt)
-    if P.li > #L then
-      setTask("back up the shaft")
-      local ok, err = goTo(mx, P.yt, mz)
-      if not ok then return false, err end
-      P.phase, P.done = "exit", (P.done or 0) + 1
+  elseif J.phase == "layers" then
+    -- the next layer from the loader (deepest first; whoever is free takes it)
+    local L = layers(tp.yt)
+    if not J.cur then
+      LAYER = nil
+      local t0, sent = os.clock(), -100
+      while not LAYER or LAYER.ci ~= ci do
+        if not S.running then return false, "paused" end
+        if os.clock() - t0 > 120 then return false, "the loader does not hand out layers" end
+        if os.clock() - sent > 4 then
+          equipTool("modem")
+          sendTeam(S.leader, "needlayer", { ci = ci, done = J.lastDone })
+          sent = os.clock()
+        end
+        setTask("asking the loader for a layer")
+        listen(0.5)
+      end
+      if not LAYER.li then J.phase = "lane" save() return true end      -- none left
+      J.cur, J.li = LAYER.li, LAYER.li
       save()
-      return true
     end
-    local ly = L[P.li]
-    if not P.targets then
-      setTask("shaft to layer " .. P.li .. "/" .. #L .. " (Y " .. ly .. ")")
-      local ok, err = goTo(mx, ly, mz)
+    local ly = L[J.cur]
+    if not J.targets then
+      setTask("my shaft to layer " .. J.cur .. "/" .. #L .. " (Y " .. ly .. ")")
+      local ok, err = goHV(sx, ly, sz)                 -- own shaft column
       if not ok then return false, err end
-      setTask("scanning layer " .. P.li .. "/" .. #L)
+      ok, err = goTo(mx, ly, mz)                       -- the centre at this layer: scan from there
+      if not ok then return false, err end
+      setTask("scanning layer " .. J.cur .. "/" .. #L)
       local list, e2 = scanLayer(cx, cz)
       if not list then return false, e2 end
-      P.targets = list
+      J.targets = list
       save()
     end
-    -- after a restart the scan picture is gone: look again (from here)
-    if not KNOWN and #P.targets > 0 then
+    if not KNOWN and #J.targets > 0 then
       local res = geoScan(CONFIG.scanR)
       if res then learnScan(res) end
     end
-    TARGETS_AT, P_NOW = {}, P
-    for _, t in ipairs(P.targets) do TARGETS_AT[kkey(t.x, t.y, t.z)] = true end
-    mineAround(P)
-    while #P.targets > 0 do
-      local okC, errC = checkpoint()
-      if not okC then return false, errC end
-      local t = P.targets[1]                 -- the next one on the planned tour
-      setTask("chunk " .. P.ci .. " layer " .. P.li .. "/" .. #L .. ": " .. #P.targets .. " ores left")
-      -- a planned way (through caves, around lava) to the block next to it
+    TARGETS_AT, P_NOW = {}, J
+    for _, t in ipairs(J.targets) do TARGETS_AT[kkey(t.x, t.y, t.z)] = true end
+    mineAround(J)
+    while #J.targets > 0 do
+      local okC2, errC2 = checkpoint()
+      if not okC2 then return false, errC2 end
+      local t = J.targets[1]
+      setTask("chunk " .. ci .. " layer " .. J.cur .. "/" .. #L .. ": " .. #J.targets .. " ores left")
       local path = KNOWN and planTo(t, cx, cz)
       local ok
       if path then ok = walkPath(path)
       else ok = goTo(t.x, t.y, t.z) if ok then S.stats.ores = S.stats.ores + 1 end end
-      mineAround(P)                          -- it, and every other ore next to us
-      -- not reached (bedrock, a turtle in the way ...): skip it
-      if P.targets[1] == t then
-        table.remove(P.targets, 1)
+      mineAround(J)
+      if J.targets[1] == t then
+        table.remove(J.targets, 1)
         TARGETS_AT[kkey(t.x, t.y, t.z)] = nil
       end
       save()
     end
+    -- back to the centre, then to my own shaft (at this height)
     local ok, err = goTo(mx, ly, mz)
     if not ok then return false, err end
-    P.li, P.targets = P.li + 1, nil
+    ok, err = goTo(sx, ly, sz)
+    if not ok then return false, err end
+    J.lastDone, J.cur, J.targets = J.cur, nil, nil
     save()
     return true
-  elseif P.phase == "exit" then
-    local ok, err = waitLoader(P)
+  elseif J.phase == "lane" then
+    -- my lane: height yt-(k-1) at the exit column, facing the next chunk
+    setTask("to my lane at the edge of chunk " .. ci)
+    local ok, err
+    if S.pos.y ~= lane then
+      if J.mine or (math.floor(S.pos.x / 16) == cx and math.floor(S.pos.z / 16) == cz and k > 1 and ci > 0) then
+        ok, err = goHV(sx, lane, sz)                   -- in my shaft column
+      else
+        ok, err = goVH(S.pos.x, lane, S.pos.z)         -- start chunk: straight down where I stand
+      end
+      if not ok then return false, err end
+    end
+    ok, err = goTo(ex, lane, ez)
     if not ok then return false, err end
-    local nx, nz = chunkAt(P, P.ci + 1)
-    local dir = (nx > cx and 1) or (nx < cx and 3) or (nz > cz and 2) or 0
-    -- the edge cell of this chunk on the line towards the next one: from the
-    -- centre (a mined chunk) or straight ahead from the start spot (chunk 0)
-    local fx, fz = mx, mz
-    if P.ci == 0 then fx, fz = P.x0 or mx, P.z0 or mz end    -- (an older plan has no x0)
-    local bx, bz = fx, fz
-    if dir == 1 then bx = cx * 16 + 15 elseif dir == 3 then bx = cx * 16 end
-    if dir == 2 then bz = cz * 16 + 15 elseif dir == 0 then bz = cz * 16 end
-    setTask("tunnel to the edge of chunk " .. P.ci)
-    ok, err = goTo(fx, P.yt, fz, S.trail)
+    turnTo(dir)
+    for _ = 1, 12 do                                   -- the first block of the next chunk
+      ok, err = digDir("f")
+      if not ok or not turtle.detect() then break end
+      sleep(0.4)
+    end
     if not ok then return false, err end
-    ok, err = goTo(bx, P.yt, bz, S.trail)
-    if not ok then return false, err end
-    setTask("into chunk " .. (P.ci + 1) .. " (the loader follows)")
-    ok, err = crossTo(P, P.ci, dir)
-    if not ok then return false, err end
+    if k == 1 then
+      -- the loader's way over: the block above the next chunk's first block
+      ok, err = step("u")
+      if not ok then return false, err end
+      ok, err = digDir("f")
+      local okD, eD = step("d")
+      if not ok then return false, err end
+      if not okD then return false, eD end
+      turnTo(dir)
+    end
+    J.phase = "ready"
+    save()
+    return true
+  elseif J.phase == "ready" then
+    -- wait for the loader's "go" (everybody is ready), then step over
+    GO = nil
+    local t0, sent = os.clock(), -1000
+    while GO ~= ci do
+      if not S.running then return false, "paused" end
+      if os.clock() - sent > 10 then
+        equipTool("modem")
+        sendTeam(S.leader, "ready", { ci = ci })
+        sent = os.clock()
+      end
+      setTask("ready at my lane - waiting for the others (" .. math.floor(os.clock() - t0) .. " s)")
+      if os.clock() - LAST_STATUS > 15 then sendBase("status") end
+      listen(1)
+    end
+    turnTo(dir)
+    for _ = 1, 8 do
+      if not turtle.detect() then break end
+      digDir("f")
+    end
+    -- the modem ON before stepping (over there we may be paused at once), and
+    -- the NEXT job saved first: a restart over there must not wait for this "go"
+    equipTool("modem")
+    newJob(tp, ci + 1)
+    CHUNK_LOCK = nil
+    LAST_CHECK = os.clock()                          -- no report swap right after the step
+    local ok, err = step("f")
+    if not ok then
+      S.job = J
+      save()
+      return false, "could not step into the next chunk: " .. tostring(err)
+    end
+    pcall(sendTeam, S.leader, "stepped", { ci = ci })
     return true
   end
-  P.phase = "go"
+  J.phase = "lane"
   return true
 end
 
----------------------------------------------------------------------- roles
--- the End Automata Core in the inventory but not equipped: put it on a side
--- (whatever was on that side goes into its slot - the tools take turns anyway)
+-- ===== the LOADER: leader of the team =====
+function teamMsg(t, extra)
+  for _, id in ipairs(S.team or {}) do sendTeam(id, t, extra) end
+end
+function sendPlan()
+  teamMsg("team", { team = S.team, plan = S.plan })
+end
+function newTeamPlan()
+  if #(S.team or {}) == 0 then return false, "no miners in the team yet" end
+  gpsCheck()
+  local f = gpsFacing()
+  if f then S.pos.f = f end
+  local p = S.pos
+  S.plan = { id = os.epoch("utc"), sx = math.floor(p.x / 16), sz = math.floor(p.z / 16), f = p.f,
+             yt = p.y - 1, x0 = p.x, z0 = p.z, ci = 0, phase = "work", ready = {}, running = true }
+  fillLayers(S.plan)
+  save()
+  note("New field: " .. #S.team .. " miner(s), facing " .. FNAME[p.f] .. ", tunnel at Y " .. (p.y - 1))
+  return true
+end
+-- the layers of the current chunk, deepest first (each miner goes down once
+-- and works its way up - ending near its lane)
+function fillLayers(P)
+  P.queue, P.assigned = {}, {}
+  local cx, cz = chunkAt(P, P.ci)
+  local mx, mz = center(cx, cz)
+  if P.ci == 0 or (S.station and nearStation(mx, mz, CONFIG.noMine)) then return end
+  for i = #layers(P.yt), 1, -1 do P.queue[#P.queue + 1] = i end
+end
+-- one turn of the loader's work
+function leaderStep()
+  local P = S.plan
+  if not P or not S.running then return end
+  if P.phase == "work" then
+    local missing = 0
+    for _, id in ipairs(S.team) do
+      if P.ready[id] ~= P.ci and not (S.lost and S.lost[id]) then missing = missing + 1 end
+      -- a miner silent for 10 min is not waited for any more
+      -- a miner silent for 20 min: never left behind - the team stops and says so
+      if P.ready[id] ~= P.ci and S.seen and S.seen[id] and os.clock() - S.seen[id] > 1200 then
+        S.running, P.running = false, false
+        S.err = "miner " .. id .. " is silent for 20 min - team paused (is it stuck? its chunk unloaded?)"
+        note(S.err)
+        save()
+        sendPlan()
+        return
+      end
+    end
+    setTask("chunk " .. P.ci .. ": " .. (#S.team - missing) .. "/" .. #S.team .. " miners ready")
+    if missing == 0 and #S.team > 0 then P.phase = "cross" save() end
+  elseif P.phase == "cross" then
+    local x1, z1, ex, ez, dir = chunkCols(P, P.ci)
+    setTask("crossing to chunk " .. (P.ci + 1))
+    -- where am I really, which way do I face? (GPS; the test step goes into the tunnel ahead)
+    if P.checked ~= P.ci then
+      gpsCheck()
+      local f = gpsFacing()
+      if f and f ~= S.pos.f then note("Facing corrected by GPS: " .. FNAME[S.pos.f] .. " -> " .. FNAME[f]) end
+      if f then S.pos.f = f end
+      gpsCheck()
+      P.checked = P.ci
+      save()
+    end
+    local ok, err = goTo(ex, P.yt + 1, ez)
+    if ok then
+      gpsCheck()
+      if S.pos.x ~= ex or S.pos.y ~= P.yt + 1 or S.pos.z ~= ez then return end     -- off: walk again from the right spot
+    end
+    if not ok then setTask("STUCK at the chunk edge: " .. tostring(err)) note("Loader: " .. tostring(err)) sleep(5) return end
+    -- go!
+    STEPPED = {}
+    local t0, sent = os.clock(), -1000
+    while os.clock() - t0 < 15 do
+      local all = true
+      for _, id in ipairs(S.team) do
+        if not STEPPED[id] and P.ready[id] == P.ci then all = false end
+      end
+      if all then break end
+      if os.clock() - sent > 3 then teamMsg("go", { ci = P.ci }) sent = os.clock() end
+      listen(0.5)
+    end
+    turnTo(dir)
+    ok, err = step("f")
+    if not ok then setTask("STUCK crossing: " .. tostring(err)) note("Loader: " .. tostring(err)) sleep(5) return end
+    for _, id in ipairs(S.team) do
+      if P.ready[id] == P.ci and not STEPPED[id] then note("Miner " .. id .. " did not answer the crossing - maybe left behind") end
+    end
+    P.ci, P.phase, P.ready = P.ci + 1, "work", {}
+    fillLayers(P)
+    save()
+    sendPlan()
+  end
+end
 function equipCore()
   if coreSide() then return true end
   local slot = findSlot(function(n) return match(n, { "*automata*" }) end)
@@ -1499,7 +1711,16 @@ function equipCore()
 end
 function minerRun()
   local okE, errE = equipCore()
-  if equipTool("modem") then gpsCheck() end
+  if equipTool("modem") then
+    gpsCheck()
+    -- a restart can come in the middle of a turn: which way do I really face?
+    if S.running and S.job then
+      local f = gpsFacing(true)
+      if f and f ~= S.pos.f then note("Facing corrected by GPS after the restart: " .. FNAME[S.pos.f] .. " -> " .. FNAME[f]) end
+      if f then S.pos.f = f end
+      gpsCheck()
+    end
+  end
   if okE then
     note("End Automata Core equipped on the " .. coreSide() .. " side")
   else
@@ -1530,33 +1751,56 @@ function minerRun()
     note("Restarted - continuing in 6 s")
     sleep(6)
   end
+  local lastHello = -1000
   while true do
-    if not S.running or not S.partner then
+    -- not in a team yet: say so (the loader answers with "team")
+    if not S.leader and os.clock() - lastHello > 5 then
+      lastHello = os.clock()
       equipTool("modem")
-      if not S.partner then setTask("waiting for a loader turtle (same dimension)")
+      sendTeam(nil, "minerhere")
+    end
+    if not S.running or not S.leader or not S.tp then
+      equipTool("modem")
+      if not S.leader then setTask("waiting for a loader turtle (same dimension)")
       elseif S.err then setTask("PAUSED: " .. S.err)
-      else setTask(S.plan and "paused" or "ready - press START on the base") end
+      else setTask(S.tp and "paused" or "in the team - press START on the base") end
       if os.clock() - LAST_STATUS > 10 then sendBase("status") end
       listen(3)
     else
-      if not S.plan then
-        local okC, errC = calibrate()
-        local okP, errP = okC, errC
-        if okC then okP, errP = newPlan() end
-        if not okP then S.running, S.err = false, errP note("Cannot start: " .. errP) save() end
+      -- a new field from the loader: check where I really am / which way I face
+      if not S.job or S.job.plan ~= S.tp.id then
+        gpsCheck()
+        local f = gpsFacing()
+        if f then S.pos.f = f end
+        gpsCheck()
+        rememberOwn()
+        local used = 0
+        for i = 1, 16 do
+          local d = turtle.getItemDetail(i)
+          if d and not isTool(d.name) and not isCoal(d.name) then used = used + 1 end
+        end
+        if used > 4 then
+          S.running, S.err = false, used .. " slots hold your own items - the miner needs the room. Take them out, then START"
+          note(S.err)
+        end
+        S.lastDump = now()
       end
       burnCoal()
       if turtle.getFuelLevel() ~= "unlimited" and turtle.getFuelLevel() < 100 then
-        S.running, S.err = false, "NO FUEL - put coal (or other fuel) in it and type  refuel all"
+        S.running, S.err = false, "NO FUEL - put a Mining Dim Core or coal in it"
         note(S.err)
         save()
       end
-      local okR, ok, err = pcall(workStep)
+      local okR, ok, err = true, false, "paused"
+      if S.running then okR, ok, err = pcall(teamStep) end
       if not okR then
         if tostring(ok):find("Terminated", 1, true) then error("Terminated", 0) end
         ok, err = false, "error: " .. tostring(ok)
       end
-      if not ok then
+      if not ok and tostring(err):find("next try", 1, true) and (RETRIES or 0) < 5 then
+        RETRIES = (RETRIES or 0) + 1                   -- position re-checked: just go on
+        note(tostring(err))
+      elseif not ok then
         if err ~= "paused" then
           S.running, S.err = false, tostring(err)
           note("STOPPED: " .. tostring(err))
@@ -1564,6 +1808,8 @@ function minerRun()
         save()
         equipTool("modem")
         sendBase("status")
+      else
+        RETRIES = 0
       end
     end
   end
@@ -1572,59 +1818,27 @@ function loaderRun()
   local side = modemSide()
   if side then pcall(rednet.open, side) else note("No modem on the loader!") end
   gpsCheck()
-  local lastGps = os.clock()
-  local lastHello = -1000
+  local lastGps, lastHello, lastPlan = os.clock(), -1000, -1000
   while true do
-    if not S.partner and os.clock() - lastHello > 5 then
+    -- miners find us
+    if os.clock() - lastHello > 10 then
       lastHello = os.clock()
       sendTeam(nil, "loaderhere")
     end
-    local F = S.follow
-    if F and not F.done then
-      -- before walking: where am I really, and which way do I face? (GPS)
-      if not F.checked then
-        gpsCheck()
-        local f = gpsFacing()
-        if f and f ~= S.pos.f then note("Facing corrected by GPS: " .. FNAME[S.pos.f] .. " -> " .. FNAME[f]) end
-        if f then S.pos.f = f end
-        gpsCheck()                                   -- (the test step could not go back: right spot again)
-        F.checked = true
-        save()
-      end
-      while F.i <= #F.pts do
-        local p = F.pts[F.i]
-        setTask("following the miner (" .. F.i .. "/" .. #F.pts .. ")")
-        local ok, err = goTo(p.x, p.y, p.z)
-        if ok then
-          -- really there? (GPS) - if not, the next round walks from the right spot
-          gpsCheck()
-          if S.pos.x ~= p.x or S.pos.y ~= p.y or S.pos.z ~= p.z then
-            F.miss = (F.miss or 0) + 1
-            ok, err = false, "not where it should be after walking (" .. F.miss .. "x)"
-            if F.miss < 5 then ok = nil end
-          end
-        end
-        if ok == false then
-          setTask("STUCK following the miner: " .. tostring(err))
-          note("Loader: " .. tostring(err))
-          sendBase("status")
-          sleep(5)
-          break
-        elseif ok then
-          F.i, F.miss = F.i + 1, nil
-          save()
-        end
-      end
-      if F.i > #F.pts then
-        F.done = true
-        save()
-        sendTeam(S.partner, "arrived", { ref = F.ref })
-        setTask("keeping the miner's area loaded")
+    -- the plan to every miner now and then (a restarted miner gets it again)
+    if os.clock() - lastPlan > 30 then lastPlan = os.clock() sendPlan() end
+    if S.running and S.plan then
+      local okR, err = pcall(leaderStep)
+      if not okR then
+        if tostring(err):find("Terminated", 1, true) then error("Terminated", 0) end
+        note("Loader error: " .. tostring(err))
+        sleep(2)
       end
     else
-      setTask(S.partner and "keeping the miner's area loaded" or "waiting for a miner (same dimension)")
+      setTask(#(S.team or {}) == 0 and "waiting for miners (same dimension)"
+              or (#S.team .. " miner(s) in the team - press START on the base"))
     end
-    if os.clock() - lastGps > 30 and not (S.follow and not S.follow.done) then lastGps = os.clock() gpsCheck() end
+    if os.clock() - lastGps > 30 and not (S.plan and S.plan.phase == "cross") then lastGps = os.clock() gpsCheck() end
     if os.clock() - LAST_STATUS > 10 then sendBase("status") end
     listen(2)
   end
@@ -1710,7 +1924,7 @@ if args[1] == "setup" or not S.role or not S.pos then setup() end
 if args[1] == "here" then
   askPos()
   -- moved by hand: the old plan and the loader's trail no longer fit
-  S.plan, S.trail, S.follow, S.running = nil, nil, nil, false
+  S.plan, S.job, S.trail, S.follow, S.running = nil, nil, nil, nil, false
   save()
   print("Old mining plan cleared - press START on the base when both turtles are placed.")
   if S.role == "miner" and S.station then

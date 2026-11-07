@@ -31,7 +31,9 @@ function MINE.cfgArgs()
            "rowLength=" .. tostring(MINE.cfg("rowLength", 16)),
            "noMine=" .. tostring(MINE.cfg("noMine", 64)),
            "want=" .. list(MINE.cfg("want", {})),
-           "keep=" .. list(MINE.cfg("keep", {})) }
+           "keep=" .. list(MINE.cfg("keep", {})),
+           "extraOres=" .. list(MINE.cfg("ores", {})),
+           "skipOres=" .. list(MINE.cfg("skipOres", {})) }
 end
 
 function MINE.load()
@@ -97,7 +99,8 @@ function MINE.receive(id, m)
   u.lastN = m.n
   u.lastSeen, u.seenEpoch = os.clock(), os.epoch("utc")
   for _, k in ipairs({ "label", "role", "dim", "task", "fuel", "fuelMax", "free", "pos", "partner", "running", "err",
-                       "ci", "li", "nl", "phase", "station", "carry", "got", "stats", "ver", "rowLength" }) do
+                       "ci", "li", "nl", "phase", "station", "carry", "got", "stats", "ver", "rowLength",
+                       "team", "leader", "ready", "idx" }) do
     u[k] = m[k]
   end
   -- ores per hour: counted from when it was first seen running
@@ -138,19 +141,38 @@ function MINE.receive(id, m)
   if os.clock() - MINE.saved > 60 then pcall(MINE.save) end
 end
 
--- teams: { [dim] = { miner = u, loader = u } }
+-- teams per dimension: { loader = u, miners = { u, ... } (by ID), miner = miners[1] }
 function MINE.teams()
   local t = {}
   for _, u in pairs(MINE.units) do
     local d = u.dim or "?"
-    t[d] = t[d] or {}
-    if u.role == "miner" or u.role == "loader" then
-      local cur = t[d][u.role]
-      -- two of one kind: the one seen last
-      if not cur or (u.seenEpoch or 0) > (cur.seenEpoch or 0) then t[d][u.role] = u end
+    t[d] = t[d] or { miners = {} }
+    if u.role == "loader" then
+      local cur = t[d].loader
+      if not cur or (u.seenEpoch or 0) > (cur.seenEpoch or 0) then t[d].loader = u end
+    elseif u.role == "miner" then
+      t[d].miners[#t[d].miners + 1] = u
     end
   end
+  for _, team in pairs(t) do
+    table.sort(team.miners, function(a, b) return a.id < b.id end)
+    team.miner = team.miners[1]
+  end
   return t
+end
+-- the whole team together: ores, unloads, delivered / carried items, ores per hour
+function MINE.totals(team)
+  local T = { ores = 0, dumps = 0, got = {}, carry = {}, rate = 0, ci = team.loader and team.loader.ci }
+  for _, m in ipairs(team.miners or {}) do
+    local st = type(m.stats) == "table" and m.stats or {}
+    T.ores, T.dumps = T.ores + (tonumber(st.ores) or 0), T.dumps + (tonumber(st.dumps) or 0)
+    for k, v in pairs(m.got or {}) do T.got[k] = (T.got[k] or 0) + v end
+    for k, v in pairs(m.carry or {}) do T.carry[k] = (T.carry[k] or 0) + v end
+    if m.runT0 and os.clock() - m.runT0 > 300 then
+      T.rate = T.rate + ((tonumber(st.ores) or 0) - (m.ores0 or 0)) / ((os.clock() - m.runT0) / 3600)
+    end
+  end
+  return T
 end
 
 -- what is the miner / loader doing: LABEL, colour, line
@@ -179,6 +201,9 @@ function MINE.status(u)
   if task:find("teleport", 1, true) or task:find("unload", 1, true) or task:find("Import", 1, true) then
     return "UNLOADING", C.purple, task
   end
-  if task:find("waiting for the loader", 1, true) then return "WAITING", C.label, task end
+  if task:find("waiting for the loader", 1, true) or task:find("ready at my lane", 1, true)
+     or task:find("team mate", 1, true) or task:find("asking the loader", 1, true) then
+    return "WAITING", C.label, task
+  end
   return "MINING", C.good, task
 end

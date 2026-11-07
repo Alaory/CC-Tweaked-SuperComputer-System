@@ -59,10 +59,15 @@ function drawFleet(x, y, w, h, list)
     text(ix, my, "MINING TEAMS", C.label, C.panel)
     my = my + 1
     for dim, team in pairs(MINE.teams()) do
-      local lm = team.miner and MINE.status(team.miner) or "MISSING"
       local ll = team.loader and MINE.status(team.loader) or "MISSING"
-      text(ix, my, trunc(dim .. ":  miner " .. lm .. "   loader " .. ll, iw),
-           (lm == "MINING" and ll ~= "BLOCKED") and C.dim or C.warn, C.panel)
+      local working, bad = 0, 0
+      for _, m in ipairs(team.miners) do
+        local lab = MINE.status(m)
+        if lab == "MINING" or lab == "UNLOADING" or lab == "WAITING" then working = working + 1
+        elseif lab ~= "PAUSED" then bad = bad + 1 end
+      end
+      text(ix, my, trunc(dim .. ":  " .. working .. "/" .. #team.miners .. " miners working   loader " .. ll ..
+           (bad > 0 and ("   " .. bad .. " need a look") or ""), iw), bad > 0 and C.warn or C.dim, C.panel)
       my = my + 1
     end
     my = my + 1

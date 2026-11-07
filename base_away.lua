@@ -61,10 +61,9 @@ end
 local function snapshot()
   local s = { mine = {}, ovN = MAP.ovN or 0, up = 0, all = 0, offs = #((BASE_ALIVE or {}).offs or {}) }
   for dim, team in pairs(MINE and MINE.teams() or {}) do
-    local m = team.miner
-    if m then
-      s.mine[dim] = { ores = type(m.stats) == "table" and tonumber(m.stats.ores) or 0, ci = tonumber(m.ci) or 0,
-                      got = copy(m.got) }
+    if #team.miners > 0 then
+      local T = MINE.totals(team)
+      s.mine[dim] = { ores = T.ores, ci = tonumber(T.ci) or 0, got = copy(T.got) }
     end
   end
   for _, t in pairs(state.turtles) do
@@ -93,13 +92,13 @@ function AWAY.report()
       grew > 0 and C.good or C.dim)
   -- mining
   for dim, team in pairs(MINE and MINE.teams() or {}) do
-    local m = team.miner
-    if m then
+    if #team.miners > 0 then
+      local T = MINE.totals(team)
       local was = (s.mine or {})[dim] or { ores = 0, ci = 0, got = {} }
-      local ores = (type(m.stats) == "table" and tonumber(m.stats.ores) or 0) - (was.ores or 0)
-      local chunks = (tonumber(m.ci) or 0) - (was.ci or 0)
+      local ores = T.ores - (was.ores or 0)
+      local chunks = (tonumber(T.ci) or 0) - (was.ci or 0)
       local diff = {}
-      for k, v in pairs(m.got or {}) do
+      for k, v in pairs(T.got or {}) do
         local d = v - ((was.got or {})[k] or 0)
         if d > 0 then diff[#diff + 1] = { k, d } end
       end
@@ -140,7 +139,9 @@ function AWAY.report()
     if key == "stuck" or key == "nofuel" or key == "still" then need[#need + 1] = (t.label or ("#" .. t.id)) .. " " .. lab end
   end
   for dim, team in pairs(MINE and MINE.teams() or {}) do
-    for _, u in pairs(team) do
+    local all = { team.loader }
+    for _, m in ipairs(team.miners) do all[#all + 1] = m end
+    for _, u in pairs(all) do
       local lab = MINE.status(u)
       if lab == "STOPPED" or lab == "NO FUEL" or lab == "LOW FUEL" or lab == "BLOCKED" then
         need[#need + 1] = (u.label or ("#" .. u.id)) .. " " .. lab

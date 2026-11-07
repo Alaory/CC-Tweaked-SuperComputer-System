@@ -280,15 +280,19 @@ function handleTouch(tx, ty)
       elseif h[5] == "tcmd" then
         TT.send(h[6][1], h[6][2], h[6][3])
       elseif h[5] == "minecmd" then
-        -- a new field starts where the miner stands: the loader must be right next to it
-        local mu = MINE.units[h[6][1]]
-        local lu = mu and mu.partner and MINE.units[mu.partner]
-        if h[6][2] == "start" and mu and mu.ci == nil and lu and mu.pos and lu.pos and mu.pos.x and lu.pos.x then
-          local d = math.abs(mu.pos.x - lu.pos.x) + math.abs(mu.pos.y - lu.pos.y) + math.abs(mu.pos.z - lu.pos.z)
-          if d ~= 1 then
-            setPopup("LOADER NOT NEXT TO THE MINER", "The loader (" .. fmtPos(lu.pos.x, lu.pos.y, lu.pos.z) ..
-                     ") must be right behind the miner (" .. fmtPos(mu.pos.x, mu.pos.y, mu.pos.z) .. "), same height, " ..
-                     "touching it. Wrong position typed? Run  miner here  on the turtle again.", C.warn)
+        -- a new field starts where the LOADER stands: every miner must be in its chunk
+        local lu = MINE.units[h[6][1]]
+        if h[6][2] == "start" and lu and lu.role == "loader" and lu.ci == nil and lu.pos and lu.pos.x then
+          local away = {}
+          for _, mu in pairs(MINE.units) do
+            if mu.role == "miner" and mu.leader == lu.id and mu.pos and mu.pos.x and
+               (math.floor(mu.pos.x / 16) ~= math.floor(lu.pos.x / 16) or math.floor(mu.pos.z / 16) ~= math.floor(lu.pos.z / 16)) then
+              away[#away + 1] = (mu.label or ("#" .. mu.id))
+            end
+          end
+          if #away > 0 then
+            setPopup("MINERS NOT IN THE LOADER'S CHUNK", table.concat(away, ", ") .. " must stand in the same chunk as " ..
+                     "the loader (" .. fmtPos(lu.pos.x, lu.pos.y, lu.pos.z) .. ") - only that chunk is loaded at the start.", C.warn)
           end
         end
         MINE.cmd(h[6][1], h[6][2], {})
