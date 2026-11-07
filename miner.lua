@@ -74,7 +74,7 @@ CONFIG = {
 }
 
 STATE_FILE = "miner_state"
-MYVER = "m8"            -- shown on the screen and the base (MINING tab)
+MYVER = "m10"            -- shown on the screen and the base (MINING tab)
 DX = { [0] = 0, 1, 0, -1 }
 DZ = { [0] = -1, 0, 1, 0 }
 FNAME = { [0] = "north", "east", "south", "west" }
@@ -151,7 +151,9 @@ function isEndless(name) return match(name, CONFIG.fuelItems) or (S.reuse and S.
 function isCoal(name) return name == "minecraft:coal" or name == "minecraft:charcoal" or name == "minecraft:coal_block" end
 function isJunk(name)
   if match(name, CONFIG.want) or match(name, CONFIG.keep or {}) then return false end
-  return match(name, CONFIG.junk)
+  if match(name, CONFIG.junk) then return true end
+  -- learned: only ever came out of blocks dug through, never out of an ore
+  return S.junkDrops and S.junkDrops[name] and not (S.oreDrops and S.oreDrops[name]) and not isCoal(name) or false
 end
 function isLoot(name) return not isTool(name) and not isJunk(name) end
 
@@ -347,7 +349,7 @@ function handle(id, m, proto)
           local newPlan = m.plan and (not S.tp or S.tp.id ~= m.plan.id)
           S.tp = m.plan or nil
           if not m.plan then S.job = nil end
-          if m.plan then S.running = m.plan.running and true or false end
+          S.running = (m.plan and m.plan.running) and true or false
           if newPlan then S.err = nil end
           save()
         end
@@ -390,6 +392,12 @@ function doCmd(cmd, args)
     note("Unload asked")
   elseif cmd == "newfield" then
     S.running = false
+    if S.role == "loader" and S.plan and S.plan.goSent == S.plan.ci then
+      NEWFIELD_LATER = true
+      note("New field after this crossing (the miners are on their way over)")
+      sendBase("status")
+      return
+    end
     if S.role == "loader" then
       S.plan = nil
       teamMsg("team", { team = S.team, plan = false })
@@ -635,10 +643,28 @@ function digDir(d)
   local okP, errP = ensurePick()
   if not okP then return false, errP end
   local dig = (d == "u" and turtle.digUp) or (d == "d" and turtle.digDown) or turtle.dig
+  local before = {}
+  for i = 1, 16 do before[i] = turtle.getItemCount(i) end
   local okD, err = dig()
   if not okD then return false, tostring(err or "cannot dig") end
   S.stats.dug = S.stats.dug + 1
+  learnDrops(before, DIG_TARGET or isOreBlock(b) or match(b.name, CONFIG.want))
   return true
+end
+-- What a dig gave: from an ore (a target) = ore drops, kept. From a block only
+-- dug THROUGH (stone, clay, modded stones ...) = junk - unless the same item
+-- also comes from ores. So modded stones need no list.
+function learnDrops(before, fromOre)
+  S.oreDrops, S.junkDrops = S.oreDrops or {}, S.junkDrops or {}
+  for i = 1, 16 do
+    if turtle.getItemCount(i) > before[i] then
+      local dd = turtle.getItemDetail(i)
+      if dd and not isTool(dd.name) then
+        if fromOre then S.oreDrops[dd.name] = true
+        elseif not S.oreDrops[dd.name] and not S.junkDrops[dd.name] then S.junkDrops[dd.name] = true end
+      end
+    end
+  end
 end
 -- one step ("f", "u", "d"), digging when allowed (miner) or waiting (loader)
 -- CHUNK_LOCK = { cx, cz }: a miner at work never leaves this chunk (only its
@@ -650,9 +676,8 @@ function step(d)
     local x, _, z = cellFor(d)
     if math.floor(x / 16) ~= CHUNK_LOCK[1] or math.floor(z / 16) ~= CHUNK_LOCK[2] then
       gpsCheck()
-      local f = gpsFacing(true)
+      local f = checkFacing()
       if f then S.pos.f = f end
-      gpsCheck()
       return false, "would leave chunk " .. CHUNK_LOCK[1] .. "," .. CHUNK_LOCK[2] .. " (position re-checked - next try)"
     end
   end
@@ -1010,6 +1035,7 @@ function rememberOwn()
 end
 -- GPS (a GPS system in this dimension): our real position, or nil
 function gpsHere(timeout)
+  if S.role == "miner" and not modemSide() then equipTool("modem") end
   if not gps or not modemSide() then return nil end
   local ok, x, y, z = pcall(gps.locate, timeout or 1)
   if not ok or not x then return nil end
@@ -1054,6 +1080,60 @@ function gpsFacing(canDig)
     S.pos.f = (S.pos.f + 1) % 4
   end
   return nil
+end
+-- MINERS: which way do I face - WITHOUT moving (a test step at a chunk edge
+-- could end in an unloaded chunk). The Geo Scanner sees the 4 blocks around
+-- (world directions), turning and inspecting sees them in my order; the one
+-- rotation where both agree is my facing. nil = no scanner / cannot tell.
+function scanFacing()
+  if S.role ~= "miner" then return nil end
+  local res = geoScan(1)
+  if not res then return nil end
+  local nb = {}
+  for _, b in ipairs(res) do
+    if b.y == 0 and math.abs(b.x) + math.abs(b.z) == 1 then
+      for i = 0, 3 do if DX[i] == b.x and DZ[i] == b.z then nb[i] = b.name end end
+    end
+  end
+  local seen = {}
+  for k = 0, 3 do
+    local okI, bI = turtle.inspect()
+    seen[k] = okI and bI.name or nil
+    turtle.turnRight()                         -- 4 turns: back to where we were
+  end
+  local found
+  for f = 0, 3 do
+    local all = true
+    for k = 0, 3 do
+      local a, b = seen[k], nb[(f + k) % 4]
+      -- (turtles: the scan may name them differently - any turtle matches any turtle)
+      local same = (a == b) or (a and b and a:find("computercraft:turtle", 1, true) and b:find("computercraft:turtle", 1, true))
+      if not same then all = false break end
+    end
+    if all then
+      if found then return nil end             -- more than one fits: cannot tell
+      found = f
+    end
+  end
+  return found
+end
+-- my facing, the safe way for my role
+function checkFacing()
+  if S.role == "miner" then
+    local f = scanFacing()
+    if f then return f end
+    -- all around looks the same (open air): a test step is safe only when
+    -- one block in any direction stays inside this chunk
+    local lx, lz = S.pos.x % 16, S.pos.z % 16
+    if lx >= 1 and lx <= 14 and lz >= 1 and lz <= 14 then
+      equipTool("modem")                       -- (the scan put the Geo Scanner on: GPS needs the modem)
+      return gpsFacing(true)
+    end
+    return nil
+  end
+  -- the loader: the test step (its own Chunky goes with it; if the step left
+  -- the chunk, it is right back)
+  return gpsFacing()
 end
 -- a safe point: report, fuel, unload when it is time
 function checkpoint()
@@ -1327,7 +1407,9 @@ function walkPath(path)
       turnTo((c[1] > S.pos.x and 1) or (c[1] < S.pos.x and 3) or (c[3] > S.pos.z and 2) or 0)
       d = "f"
     end
+    DIG_TARGET = TARGETS_AT[kkey(c[1], c[2], c[3])] and true or false
     local ok, err = step(d)
+    DIG_TARGET = false
     if not ok then return false, err end
     local key = kkey(S.pos.x, S.pos.y, S.pos.z)
     if KNOWN then KNOWN[key] = nil end
@@ -1358,7 +1440,9 @@ function mineAround(P)
     local key = kkey(x, y, z)
     if TARGETS_AT[key] then
       if o[5] then turnTo(o[5]) end
+      DIG_TARGET = true
       local ok = digDir(o[4])
+      DIG_TARGET = false
       TARGETS_AT[key] = nil
       for i = #P.targets, 1, -1 do
         local t = P.targets[i]
@@ -1664,8 +1748,10 @@ end
 -- one turn of the loader's work
 function leaderStep()
   local P = S.plan
-  if not P or not S.running then return end
-  if P.phase == "work" then
+  -- (paused: but a crossing whose "go" is out is always finished - the miners
+  -- are over there already, they must not be left in an unloaded chunk)
+  if not P or (not S.running and P.goSent ~= P.ci) then return end
+  if P.phase == "work" and S.running then
     local missing = 0
     for _, id in ipairs(S.team) do
       if P.ready[id] ~= P.ci and not (S.lost and S.lost[id]) then missing = missing + 1 end
@@ -1710,7 +1796,11 @@ function leaderStep()
         if not STEPPED[id] and P.ready[id] == P.ci then all = false end
       end
       if all then break end
-      if os.clock() - sent > 3 then teamMsg("go", { ci = P.ci }) sent = os.clock() end
+      if os.clock() - sent > 3 then
+        if P.goSent ~= P.ci then P.goSent = P.ci save() end
+        teamMsg("go", { ci = P.ci })
+        sent = os.clock()
+      end
       listen(0.5)
     end
     turnTo(dir)
@@ -1719,9 +1809,17 @@ function leaderStep()
     for _, id in ipairs(S.team) do
       if P.ready[id] == P.ci and not STEPPED[id] then note("Miner " .. id .. " did not answer the crossing - maybe left behind") end
     end
-    P.ci, P.phase, P.ready = P.ci + 1, "work", {}
+    P.ci, P.phase, P.ready, P.goSent = P.ci + 1, "work", {}, nil
     fillLayers(P)
     save()
+    -- a NEW FIELD asked during the crossing: now
+    if NEWFIELD_LATER then
+      NEWFIELD_LATER = nil
+      S.plan, S.running = nil, false
+      teamMsg("team", { team = S.team, plan = false })
+      note("New field: it starts here on the next START")
+      return
+    end
     sendPlan()
   end
 end
@@ -1744,7 +1842,7 @@ function minerRun()
     gpsCheck()
     -- a restart can come in the middle of a turn: which way do I really face?
     if S.running and S.job then
-      local f = gpsFacing(true)
+      local f = checkFacing()
       if f and f ~= S.pos.f then note("Facing corrected by GPS after the restart: " .. FNAME[S.pos.f] .. " -> " .. FNAME[f]) end
       if f then S.pos.f = f end
       gpsCheck()
@@ -1799,7 +1897,7 @@ function minerRun()
       -- a new field from the loader: check where I really am / which way I face
       if not S.job or S.job.plan ~= S.tp.id then
         gpsCheck()
-        local f = gpsFacing()
+        local f = checkFacing()
         if f then S.pos.f = f end
         gpsCheck()
         rememberOwn()
@@ -1856,7 +1954,7 @@ function loaderRun()
     end
     -- the plan to every miner now and then (a restarted miner gets it again)
     if os.clock() - lastPlan > 30 then lastPlan = os.clock() sendPlan() end
-    if S.running and S.plan then
+    if S.plan and (S.running or S.plan.goSent == S.plan.ci) then
       local okR, err = pcall(leaderStep)
       if not okR then
         if tostring(err):find("Terminated", 1, true) then error("Terminated", 0) end

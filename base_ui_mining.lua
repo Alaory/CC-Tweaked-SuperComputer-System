@@ -137,7 +137,7 @@ local function teamCard(x, y, w, h, dim, team)
   -- right: buttons (to the loader = the whole team), hint, log
   local by = y + 3
   if l then
-    if l.running or (miners[1] and miners[1].running) then
+    if l.running then
       drawButton(bx, by, bw, 3, "PAUSE TEAM", C.warn, C.ink, "minecmd", { l.id, "pause" })
     else
       drawButton(bx, by, bw, 3, "START TEAM", C.good, C.ink, "minecmd", { l.id, "start" })
@@ -171,11 +171,12 @@ local function teamCard(x, y, w, h, dim, team)
     -- newest first from every turtle of the team
     local all = {}
     local function add(u, tag)
-      for i, e in ipairs(u and u.log or {}) do all[#all + 1] = { t = e.t, msg = tag .. e.msg, o = i } end
+      -- (older entries have no real time: they keep their order, after the new ones)
+      for i, e in ipairs(u and u.log or {}) do all[#all + 1] = { t = e.t, e = e.e or 0, msg = tag .. e.msg, o = i } end
     end
     add(l, "L: ")
     for _, m in ipairs(miners) do add(m, (m.idx or "?") .. ": ") end
-    table.sort(all, function(a, b2) if a.t ~= b2.t then return a.t > b2.t end return a.o < b2.o end)
+    table.sort(all, function(a, b2) if a.e ~= b2.e then return a.e > b2.e end return a.o < b2.o end)
     local yy = by + 1
     for _, e in ipairs(all) do
       if yy > bottom then break end

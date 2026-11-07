@@ -193,7 +193,20 @@ PneumaticCraft drone rides, turtle mapping/surveys, and an AE2 ME network view.
   items first (CONFIG.fuelItems / mining.fuelItems from the base, S.reuse),
   then coal, then - still low - any other fuel item it carries (refuel(0)):
   one that keeps name + count after refuel(1) is LEARNED as endless (S.reuse,
-  kept as a tool, never unloaded); others are simply burned. Owner's items in a miner at START (S.own) never unloaded (> 4 slots ->
+  kept as a tool, never unloaded); others are simply burned. Junk is also
+  LEARNED (m9): digDir records what each dig dropped (learnDrops) - from an
+  ore / wanted block (DIG_TARGET, isOreBlock on the inspected block) =
+  S.oreDrops, from a block only dug through = S.junkDrops; isJunk = vanilla
+  list or junkDrops-but-never-oreDrops (modded stones, clay ...). Facing
+  (m10): MINERS never take a test step (at a chunk edge it can end in an
+  unloaded chunk): scanFacing = Geo Scanner r 1 vs inspecting the 4 sides;
+  only if that is ambiguous (open air) AND not on a chunk-edge block, the GPS
+  test step (modem put back on first - gpsHere does that for miners). The
+  loader keeps gpsFacing (its Chunky goes with it). A crossing whose "go" is
+  out is always finished (P.goSent), even when PAUSE / NEW FIELD come in
+  (NEWFIELD_LATER). Miners: no plan / plan not running -> S.running false
+  (the base button follows the LOADER's running only). Log entries carry e
+  (epoch): the merged team log sorts by it. Owner's items in a miner at START (S.own) never unloaded (> 4 slots ->
   refused). geoScan looks the scan function up by name. MINING tab: team card
   per dim (unitRow per turtle, FIELD map from the loader's ci, MINE.totals,
   items, START/PAUSE TEAM, UNLOAD NOW, NEW FIELD two taps, TO DO, merged LOG).

@@ -45,6 +45,7 @@ local function natural(x, y, z)
     end
   end
   if h < 2600 then return "minecraft:gravel" end
+  if h < 2900 then return "arsnouveau:sourcestone" end            -- a modded stone (not in the junk list)
   if h < 3200 then return "minecraft:tuff" end
   return y < 0 and "minecraft:deepslate" or "minecraft:stone"
 end
@@ -636,6 +637,28 @@ while T < maxT do
     started = true
     MINE.cmd(LOADER, "start", {})
   end
+  -- NEW FIELD in the middle, then START TEAM (what the owner did)
+  if SCEN:find("newfield") and lu then
+    if not NF1 and T > 1800 then
+      NF1 = true
+      MINE.cmd(LOADER, "pause", {})
+      if os.getenv("TRACE") then
+        local LS = ENVS.loader.S
+        io.write(string.format("[%5.0f] PAUSE: loader %d,%d,%d phase %s ci %s goSent %s\n", T, l.pos.x, l.pos.y, l.pos.z,
+          tostring(LS.plan and LS.plan.phase), tostring(LS.plan and LS.plan.ci), tostring(LS.plan and LS.plan.goSent)))
+        for _, mm in ipairs(MS) do io.write("   miner " .. mm.id .. " " .. mm.pos.x .. "," .. mm.pos.y .. "," .. mm.pos.z .. " " .. tostring(ENVS[mm.id].task) .. "\n") end
+      end
+    end
+    if not NF2 and T > 1830 then NF2 = true MINE.cmd(LOADER, "newfield", {}) end
+    if not NF3 and T > 1900 then
+      NF3 = true
+      ORES_AT_NF = 0
+      for _, id in ipairs(MINERS) do local u = MINE.units[id] ORES_AT_NF = ORES_AT_NF + ((u and u.stats and u.stats.ores) or 0) end
+      -- the button the owner sees must say START now (not PAUSE)
+      if lu.running then fail("after NEW FIELD the loader still says running - the button would show PAUSE") end
+      MINE.cmd(LOADER, "start", {})
+    end
+  end
   -- the Import Bus drains the shulker in front of the station
   local sh = SHULKERS[key(DUMP.x, DUMP.y, DUMP.z)]
   if sh then
@@ -734,6 +757,10 @@ print("base says delivered:", textutils.serialize(got))
 print("in shulkers:", textutils.serialize(carry))
 -- what the base counted must match what really arrived
 for k, v in pairs(got) do if (delivered[k] or 0) < v then fail("base counted more " .. k .. " than arrived") end end
+if (delivered["arsnouveau:sourcestone"] or 0) > 64 then fail("modded STONE delivered as loot: " .. delivered["arsnouveau:sourcestone"]) end
+for _, ore in ipairs((SCEN == "nofuel" or SCEN == "ownfull") and {} or { "minecraft:raw_iron", "minecraft:diamond", "minecraft:raw_copper" }) do
+  if T > 3000 and (delivered[ore] or 0) == 0 and (carry[ore] or 0) == 0 then fail("no " .. ore .. " at all - thrown away as junk?") end
+end
 print("shulker used in the field:", FIELD or 0)
 local bt = {}
 for k, v in pairs(BYTASK or {}) do bt[#bt + 1] = { k, v } end
@@ -744,6 +771,12 @@ for k, v in pairs(TIMEBY or {}) do tb[#tb + 1] = { k, v } tsum = tsum + v end
 table.sort(tb, function(a, b) return a[2] > b[2] end)
 for i = 1, math.min(9, #tb) do print(string.format("  miner time '%s': %d%%", tb[i][1], math.floor(tb[i][2] / tsum * 100 + 0.5))) end
 for _, n in ipairs(NOTES) do print("NOTE", n) end
+if ORES_AT_NF then
+  local now = 0
+  for _, id in ipairs(MINERS) do local u = MINE.units[id] now = now + ((u and u.stats and u.stats.ores) or 0) end
+  print("ores after the new field: " .. (now - ORES_AT_NF))
+  if now - ORES_AT_NF < 50 then fail("the team did not mine after NEW FIELD + START") end
+end
 if delivered["jamd:mining_dim_core"] or delivered["somemod:eternal_flame"] then fail("the OWNER'S item was unloaded") end
 for _, id in ipairs(MINERS) do
   local u = MINE.units[id]

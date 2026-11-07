@@ -62,7 +62,7 @@ MINE.load()
 
 function MINE.log(u, msg)
   local okD, t = pcall(os.date, "%H:%M")
-  table.insert(u.log, 1, { t = okD and t or "", msg = msg })
+  table.insert(u.log, 1, { t = okD and t or "", e = os.epoch("utc"), msg = msg })
   while #u.log > 30 do table.remove(u.log) end
 end
 
