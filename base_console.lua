@@ -512,6 +512,12 @@ function handleCommand(line)
       end
       say("Looking for storage helpers (2 s) ...")
       pcall(STORE.find)
+      local okK, nK, klist = pcall(STORE.kickSilent)
+      if okK and nK > 0 then
+        say("Restarted " .. nK .. " helper(s) that were on but not answering (" .. table.concat(klist, ", ") .. ") - waiting 5 s ...")
+        sleep(5)
+        pcall(STORE.find)
+      end
     end
     if words[2] == "update" then
       local okU, n = pcall(STORE.updateAll)

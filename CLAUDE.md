@@ -336,7 +336,11 @@ PneumaticCraft drone rides, turtle mapping/surveys, and an AE2 ME network view.
   computer. `store [find|update]` on the base computer. Helpers left OFF by a server
   restart: STORE.wakeAll turns them on over the cable (computer peripheral isOn /
   turnOn; only known ids or label "Store <id>") - at mapWorker start (then 4 s
-  before the map is read), every 5 min, and in `store`. Updates: a store.lua next to
+  before the map is read), every 5 min, and in `store`. Helpers ON but not
+  answering (store.lua not running) -> STORE.kickSilent reboots them over the cable
+  (known ids only, once per 10 min). store.lua on start: moves a plain `startup`
+  file away (CraftOS runs it INSTEAD of startup.lua), allow_startup on,
+  allow_disk_startup off. Updates: a store.lua next to
   inventory.lua (STORE.code, must compile) goes to every helper whose version
   (hello -> ver = checksum of its startup.lua) differs (op "upd": checksum +
   compile check, then startup.lua + reboot) - STORE.updateAll in the mapWorker.

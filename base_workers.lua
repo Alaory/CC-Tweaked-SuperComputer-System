@@ -410,6 +410,11 @@ function mapWorker()
   -- storage helpers left OFF by a server restart: on again (and a moment to start) before the map is read
   local okW, nWoke = pcall(STORE.wakeAll)
   if okW and (nWoke or 0) > 0 then sleep(4) end
+  if next(STORE.known) then
+    pcall(STORE.find, true)                 -- (only the helpers used before - quick)
+    local okK, nK = pcall(STORE.kickSilent) -- on, but store.lua not running: restart it first
+    if okK and (nK or 0) > 0 then sleep(5) end
+  end
   pcall(MAP.loadNow)                        -- read the map now, in the background (the screen is up)
   pcall(TT.codeLoad)                        -- node.lua for the turtles (compiled + checked: a moment)
   local lastFind = os.clock() - 280         -- first look for new helpers ~20 s after the start
@@ -430,6 +435,9 @@ function mapWorker()
       lastFind = os.clock()
       local okW2, n2 = pcall(STORE.wakeAll)       -- one switched off meanwhile: on again
       if okW2 and (n2 or 0) > 0 then sleep(4) end
+      pcall(STORE.find)
+      local okK, nK = pcall(STORE.kickSilent)     -- on, but store.lua not running: restart it
+      if okK and (nK or 0) > 0 then sleep(5) end
       pcall(STORE.find)
       pcall(STORE.updateAll)
     end

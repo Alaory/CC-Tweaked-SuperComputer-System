@@ -40,6 +40,22 @@ if me ~= "startup.lua" then
   fs.copy(me, "startup.lua")
   print("Installed as startup.lua - starts by itself from now on.")
 end
+-- things that stop startup.lua from running after a reboot:
+--  * a file called just "startup" (no .lua) - CraftOS runs THAT one instead
+--  * a floppy with its own startup in a Disk Drive next to this computer
+--  * startup switched off in the settings
+if fs.exists("startup") and not fs.isDir("startup") then
+  local to = "startup_noext.old"
+  if fs.exists(to) then fs.delete(to) end
+  fs.move("startup", to)
+  print("Moved an old 'startup' file away (it ran instead of this program): " .. to)
+end
+if settings then
+  local changed = false
+  if settings.get("shell.allow_startup") == false then settings.set("shell.allow_startup", true) changed = true end
+  if settings.get("shell.allow_disk_startup") ~= false then settings.set("shell.allow_disk_startup", false) changed = true end
+  if changed then pcall(settings.save) end
+end
 if not os.getComputerLabel() then os.setComputerLabel("Store " .. os.getComputerID()) end
 
 -- this program's version: a checksum of its text (the base compares it)

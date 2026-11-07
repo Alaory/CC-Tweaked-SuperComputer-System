@@ -87,6 +87,32 @@ function STORE.wakeAll()
   return #woke, woke
 end
 
+-- helpers that are ON but do not answer (store.lua not running: stopped, or
+-- sitting at the prompt): restart them over the cable - startup.lua starts
+-- store.lua again. At most once every 10 min per computer.
+local kicked = {}
+function STORE.kickSilent()
+  local list = {}
+  for _, name in ipairs(peripheral.getNames()) do
+    local okT, isC = pcall(peripheral.hasType, name, "computer")
+    if okT and isC then
+      local okI, id = pcall(peripheral.call, name, "getID")
+      if okI and (STORE.known[id] or STORE.known[tostring(id)]) and not STORE.helpers[id]
+         and (not kicked[id] or os.clock() - kicked[id] > 600) then
+        local okO, on = pcall(peripheral.call, name, "isOn")
+        if okO and on and pcall(peripheral.call, name, "reboot") then
+          kicked[id] = os.clock()
+          list[#list + 1] = "#" .. id
+        end
+      end
+    end
+  end
+  if #list > 0 and sysLog then
+    sysLog("Storage helper(s) on but not answering - restarted: " .. table.concat(list, ", "), "INFO")
+  end
+  return #list, list
+end
+
 -- find the helpers: { [id] = { id, free, cap, files } }. quick = only the
 -- ones seen before (no 2-second lookup)
 function STORE.find(quick)
