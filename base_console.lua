@@ -505,6 +505,11 @@ function handleCommand(line)
   elseif cmd == "store" then
     -- storage helpers (store.lua on other computers on the wired network)
     if words[2] == "find" or words[2] == "update" or not next(STORE.helpers) then
+      local okW, nW, list = pcall(STORE.wakeAll)
+      if okW and nW > 0 then
+        say("Turned on " .. nW .. " helper computer(s) that were OFF (" .. table.concat(list, ", ") .. ") - waiting 4 s ...")
+        sleep(4)
+      end
       say("Looking for storage helpers (2 s) ...")
       pcall(STORE.find)
     end
@@ -520,6 +525,14 @@ function handleCommand(line)
       else say(string.format("  computer %d %s: %d KB free of %d KB, %d files, %s", id, h.label and ("(" .. h.label .. ")") or "",
                              math.floor((h.free or 0) / 1024), math.floor((h.cap or 0) / 1024), h.files or 0,
                              (code and h.ver == code.ver) and "up to date" or (h.ver and "OLDER store.lua" or "old store.lua (copy by hand once)"))) end
+    end
+    -- helpers used before that do not answer now
+    for id in pairs(STORE.known) do
+      local nid = tonumber(id)
+      if nid and not STORE.helpers[nid] then
+        say("  computer " .. nid .. ": NO ANSWER - is it on? The base turns its helpers on over the cable, but only if")
+        say("    the wired modem ON that computer is connected (right-click it: it shows red). Else turn it on by hand.")
+      end
     end
     if n == 0 then
       say("No storage helpers. Put store.lua on another computer with a WIRED modem on the base's cable,")

@@ -407,6 +407,9 @@ end
 function mapWorker()
   MAP.canYield = true
   TT.yieldCo = coroutine.running()          -- long work here lets the others run (TT.workYield)
+  -- storage helpers left OFF by a server restart: on again (and a moment to start) before the map is read
+  local okW, nWoke = pcall(STORE.wakeAll)
+  if okW and (nWoke or 0) > 0 then sleep(4) end
   pcall(MAP.loadNow)                        -- read the map now, in the background (the screen is up)
   pcall(TT.codeLoad)                        -- node.lua for the turtles (compiled + checked: a moment)
   local lastFind = os.clock() - 280         -- first look for new helpers ~20 s after the start
@@ -425,6 +428,8 @@ function mapWorker()
     if os.clock() - lastCode > 30 then lastCode = os.clock() pcall(TT.codeLoad) end   -- node.lua changed?
     if os.clock() - lastFind > 300 then  -- storage helpers added / gone, and their updates
       lastFind = os.clock()
+      local okW2, n2 = pcall(STORE.wakeAll)       -- one switched off meanwhile: on again
+      if okW2 and (n2 or 0) > 0 then sleep(4) end
       pcall(STORE.find)
       pcall(STORE.updateAll)
     end

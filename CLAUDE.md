@@ -333,7 +333,10 @@ PneumaticCraft drone rides, turtle mapping/surveys, and an AE2 ME network view.
   Calls wait for answers, so map saving runs in its own mapWorker (also finds new
   helpers ~20 s after start, then every 5 min); at start only helpers seen before
   are asked (store_helpers.dat, no 2-s lookup). Helper gone -> files go to the
-  computer. `store [find|update]` on the base computer. Updates: a store.lua next to
+  computer. `store [find|update]` on the base computer. Helpers left OFF by a server
+  restart: STORE.wakeAll turns them on over the cable (computer peripheral isOn /
+  turnOn; only known ids or label "Store <id>") - at mapWorker start (then 4 s
+  before the map is read), every 5 min, and in `store`. Updates: a store.lua next to
   inventory.lua (STORE.code, must compile) goes to every helper whose version
   (hello -> ver = checksum of its startup.lua) differs (op "upd": checksum +
   compile check, then startup.lua + reboot) - STORE.updateAll in the mapWorker.

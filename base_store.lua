@@ -59,6 +59,34 @@ function STORE.call(id, req, timeout)
   return nil, "no answer"
 end
 
+-- helper computers that are OFF (a server crash / restart leaves computers off
+-- until someone switches them on): the base turns them on over the cable -
+-- they are peripherals there (isOn / turnOn). Only OUR helpers: ones used
+-- before (store_helpers.dat) or labelled "Store <id>" (store.lua names itself so).
+function STORE.wakeAll()
+  local woke = {}
+  for _, name in ipairs(peripheral.getNames()) do
+    local okT, isC = pcall(peripheral.hasType, name, "computer")
+    if okT and isC then
+      local okO, on = pcall(peripheral.call, name, "isOn")
+      if okO and on == false then
+        local okI, id = pcall(peripheral.call, name, "getID")
+        local okL, label = pcall(peripheral.call, name, "getLabel")
+        local mine = (okI and (STORE.known[id] or STORE.known[tostring(id)]))
+                     or (okL and type(label) == "string" and label:match("^Store %d+$"))
+        if mine and pcall(peripheral.call, name, "turnOn") then
+          woke[#woke + 1] = "#" .. tostring(okI and id or name)
+        end
+      end
+    end
+  end
+  if #woke > 0 then
+    if sysLog then sysLog("Storage helper(s) were OFF - turned on: " .. table.concat(woke, ", "), "INFO") end
+    if setToast then setToast("Turned on " .. #woke .. " storage helper computer(s) that were off", C.label, 6) end
+  end
+  return #woke, woke
+end
+
 -- find the helpers: { [id] = { id, free, cap, files } }. quick = only the
 -- ones seen before (no 2-second lookup)
 function STORE.find(quick)
