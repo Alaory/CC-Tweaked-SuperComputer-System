@@ -621,6 +621,12 @@ function uiLoop()
         requestDraw()
       end
 
+    elseif ev == "file_transfer" then
+      -- a file dragged onto the computer's screen: a Create schematic (.nbt)
+      local okT, errT = pcall(SCHEM.onTransfer, a)
+      if not okT then setToast("Could not take the file: " .. tostring(errT), C.bad, 8) end
+      requestDraw()
+
     elseif ev == "monitor_resize" and a == monName then
       buildWindow()
       drawNow()

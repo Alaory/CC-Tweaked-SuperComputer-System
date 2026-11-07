@@ -94,7 +94,7 @@ function fs.list(d)
   return out
 end
 function fs.open(p, mode)
-  if mode == "r" then
+  if mode == "r" or mode == "rb" then
     local text = FILES[p]
     if not text then local f = io.open(SRC .. "/" .. p, "r") if not f then return nil end text = f:read("a") f:close() end
     local pos = 1
@@ -109,7 +109,7 @@ function fs.open(p, mode)
            close = function()
              local t = table.concat(buf)
              if #t > fs.getFreeSpace(p) + #(FILES[p] or "") then error("Out of space") end
-             if mode == "a" then t = (FILES[p] or "") .. t end      -- append
+             if mode == "a" or mode == "ab" then t = (FILES[p] or "") .. t end      -- append
              FILES[p] = t
            end }
 end

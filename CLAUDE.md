@@ -300,6 +300,20 @@ PneumaticCraft drone rides, turtle mapping/surveys, and an AE2 ME network view.
   fingerprint. The builder must be AT HOME (else sent home first); a builder whose
   inventory is too full gives everything back (parts left in the chest). 3 failures in a row -> stops until `factory build`. Console `factory
   [chest <name>|builder <id>|build|stop]`; FLEET card line "Factory".
+- SCHEMATICS (base_schem.lua SCHEM, stage 1 of the builder turtles): Create's
+  Schematic and Quill `.nbt` (= vanilla structure format, also Minecraft's own
+  structure pieces) dragged onto the base computer's screen -> uiLoop
+  "file_transfer" -> SCHEM.onTransfer (only .nbt, must parse) -> SCHEM.store
+  (data floppy schematics/ first, else computer schematics/ leaving 96 KB; binary
+  "wb"). Own gzip/zlib inflate (stored/fixed/dynamic, arithmetic only) + NBT
+  reader + structure parser: { size, palette {name, props}, blocks {x,y,z,p} };
+  AIR = must be air, a position missing from the file = leave as is.
+  SCHEM.materials -> items (wall torch -> torch, door/bed: one half, double
+  slab = 2, air/fluids/fire skipped). Console `schem [<name>|delete <name>]`.
+  Plan: stage 2 builder turtles (several, strips; scan + diff: break what does
+  not belong -> back into AE2, place what is missing; daily rotation per site at
+  an hour), stage 3 structure "spawning" at flat spots from the map. Litematica /
+  WorldEdit files are refused with a hint. tools/tests/fixtures (make_fixtures.py).
 - Permanent rescuer: t.rescuerRole (RESCUER button, saved in turtles.dat;
   base only). TT.patrolTick (comms worker) sends it to: no fuel (<20 for
   60 s), stuck (60 s idle), lost (silent CONFIG.turtles.rescueAfter, default
@@ -396,6 +410,7 @@ PneumaticCraft drone rides, turtle mapping/surveys, and an AE2 ME network view.
 | base_mining.lua / base_ui_mining.lua | mining teams on the base (MINE) / MINING tab |
 | base_away.lua | away mode: uses the time you are offline, WHILE YOU WERE AWAY report |
 | base_factory.lua | turtle factory: keeps the fleet size, AE2 parts, the builder turtle builds new ones |
+| base_schem.lua | schematics: Create .nbt files dropped on the screen, unpacked + read, materials list |
 
 ## The owner's setup (found out the hard way)
 Peripherals (from the `report` command): `me_bridge_4`, `inventory_manager_3`,

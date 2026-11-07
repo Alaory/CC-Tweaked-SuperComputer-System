@@ -52,6 +52,7 @@ HELP = {
   " turtle <id> forget   take a turtle that is gone (server crash) off the list",
   " mine [drop|forget] <id>   mining turtles: drop = a lost miner out of its team",
   " factory [chest <name>|builder <id>|build|stop]   build turtles from AE2 parts",
+  " schem [<name>|delete <name>]   Create schematics (drag a .nbt onto this screen)",
   " turtle <id> warps / warp <name> / warpsave <name>   End Automata Core teleports",
   " turtle <id> setting <name> <value>   e.g. turtle 7 setting dig true",
 }
@@ -617,6 +618,37 @@ function handleCommand(line)
       else
         say("No ME Bridge - the factory needs AE2.")
       end
+    end
+
+  elseif cmd == "schem" or cmd == "schematics" then
+    local sub = words[2]
+    if sub == "delete" and words[3] then
+      say(SCHEM.delete(words[3]) and ("Deleted " .. words[3]) or ("No schematic '" .. words[3] .. "'"))
+    elseif sub then
+      local s, err = SCHEM.load(sub)
+      if not s then say(err)
+      else
+        local need, place, air = SCHEM.materials(s)
+        say(sub .. ": " .. s.size.x .. " x " .. s.size.y .. " x " .. s.size.z .. " (x y z), " .. place .. " blocks to place, " ..
+            air .. " air (cleared), " .. #s.palette .. " kinds of block")
+        local list = {}
+        for it, n in pairs(need) do list[#list + 1] = { it, n } end
+        table.sort(list, function(a, b) return a[2] > b[2] end)
+        for i, e in ipairs(list) do
+          if i > 24 then say("  ... " .. (#list - 24) .. " more") break end
+          say(string.format("  %5d  %s", e[2], e[1]))
+        end
+      end
+    else
+      local names = {}
+      for name, path in pairs(SCHEM.list()) do names[#names + 1] = name .. "  (" .. path .. ")" end
+      table.sort(names)
+      if #names == 0 then
+        say("No schematics yet. Save one with Create's Schematic and Quill, then drag the .nbt file")
+        say("(from .minecraft/schematics on your PC) onto this computer's screen.")
+      end
+      for _, n in ipairs(names) do say("  " .. n) end
+      say("schem <name> = size and materials,  schem delete <name>")
     end
 
   elseif cmd == "mine" then
