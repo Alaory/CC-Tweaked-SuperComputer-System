@@ -306,7 +306,9 @@ function handle(id, m, proto)
         S.team = S.team or {}
         local inTeam = false
         for _, t in ipairs(S.team) do if t == id then inTeam = true end end
-        if not inTeam and not (S.plan and S.running) and #S.team < CONFIG.maxMiners then
+        -- (one taken out with  mine drop  only joins again on a NEW FIELD)
+        if not inTeam and not (S.plan and S.running) and #S.team < CONFIG.maxMiners
+           and not (S.plan and S.dropped and S.dropped[id]) then
           S.team[#S.team + 1] = id
           table.sort(S.team)
           save()
@@ -442,6 +444,8 @@ function doCmd(cmd, args)
       if S.seen then S.seen[id] = nil end
       if S.lost then S.lost[id] = nil end
       if S.stationUse and S.stationUse.id == id then S.stationUse = nil end
+      S.dropped = S.dropped or {}
+      S.dropped[id] = true
       if found then S.err = nil end
       save()
       sendPlan()
@@ -1789,6 +1793,7 @@ function newTeamPlan()
   local f = gpsFacing()
   if f then S.pos.f = f end
   local p = S.pos
+  S.dropped = nil                                   -- a new field: everybody may join again
   S.plan = { id = os.epoch("utc"), sx = math.floor(p.x / 16), sz = math.floor(p.z / 16), f = p.f,
              yt = p.y - 1, x0 = p.x, z0 = p.z, ci = 0, phase = "work", ready = {}, running = true }
   fillLayers(S.plan)

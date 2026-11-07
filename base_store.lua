@@ -59,6 +59,7 @@ function STORE.call(id, req, timeout)
   return nil, "no answer"
 end
 
+STORE.kicked = STORE.kicked or {}   -- [id] = when the base last turned it on / restarted it
 -- helper computers that are OFF (a server crash / restart leaves computers off
 -- until someone switches them on): the base turns them on over the cable -
 -- they are peripherals there (isOn / turnOn). Only OUR helpers: ones used
@@ -76,6 +77,7 @@ function STORE.wakeAll()
                      or (okL and type(label) == "string" and label:match("^Store %d+$"))
         if mine and pcall(peripheral.call, name, "turnOn") then
           woke[#woke + 1] = "#" .. tostring(okI and id or name)
+          if okI then STORE.kicked[id] = os.clock() end      -- (just started: not "silent" yet)
         end
       end
     end
@@ -90,8 +92,9 @@ end
 -- helpers that are ON but do not answer (store.lua not running: stopped, or
 -- sitting at the prompt): restart them over the cable - startup.lua starts
 -- store.lua again. At most once every 10 min per computer.
-local kicked = {}
+STORE.kicked = {}
 function STORE.kickSilent()
+  local kicked = STORE.kicked
   local list = {}
   for _, name in ipairs(peripheral.getNames()) do
     local okT, isC = pcall(peripheral.hasType, name, "computer")

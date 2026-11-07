@@ -224,7 +224,8 @@ PneumaticCraft drone rides, turtle mapping/surveys, and an AE2 ME network view.
   alive gets a team list without itself -> leaves (S.leader nil). minesim
   team2drop/team3drop/team5drop/team3dropalive (DROPIDX = which miner). The loader
   answers ready/needlayer/unloadreq from a non-member (isMember) with the team list,
-  and sends it to a dropped miner directly - an alive dropped miner leaves. Unloading: one miner at the station at a time
+  and sends it to a dropped miner directly - an alive dropped miner leaves. S.dropped
+  keeps it from joining again until a NEW FIELD (newTeamPlan clears it). Unloading: one miner at the station at a time
   (S.stationUse, 6 min max); each miner needs its own `miner station` (the
   point lives in its core). Ores (isOreBlock): tags (:ores, _ores, /ores, not
   ores_in_ground), names _ore / ore_ / _ore_ (not _block), CONFIG.ores +
@@ -342,7 +343,8 @@ PneumaticCraft drone rides, turtle mapping/surveys, and an AE2 ME network view.
   turnOn; only known ids or label "Store <id>") - at mapWorker start (then 4 s
   before the map is read), every 5 min, and in `store`. Helpers ON but not
   answering (store.lua not running) -> STORE.kickSilent reboots them over the cable
-  (known ids only, once per 10 min). store.lua on start: moves a plain `startup`
+  (known ids only, once per 10 min; one wakeAll just turned on counts as kicked -
+  STORE.kicked - so a slow boot is not restarted). store.lua on start: moves a plain `startup`
   file away (CraftOS runs it INSTEAD of startup.lua), allow_startup on,
   allow_disk_startup off. Updates: a store.lua next to
   inventory.lua (STORE.code, must compile) goes to every helper whose version
@@ -435,7 +437,10 @@ passenger still on board (dr.rider) is kept through the home mission and let out
 home (releaseRider). parkCheck (every 10 s) sends idle drones away from their spot
 home - the charger spot, or homePos at Base when there is no charger - at once after
 a failure, else after 20 s; retried every 60 s. A rider on board ON PURPOSE
-(PICKUP done, no failure: dr.rider and not dr.failedAt) is left alone - the owner DROPs.
+(PICKUP done, no failure: dr.rider and not dr.failedAt) is left alone - the owner DROPs. A STOP by the
+owner is not a failure (no failedAt). A failed HOME trip never lets a rider out where the
+drone is (it may be in the air) - parkCheck retries; letGoHere after a lift puts a wrong
+rider down at the pickup spot.
 
 ## Rules for changes
 - ComputerCraft Lua (Cobalt, Lua 5.2 based): no `goto`, no `//`, no bit ops

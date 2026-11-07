@@ -783,8 +783,9 @@ function playersNear(name, x, y, z, r)
 end
 -- the drone may have grabbed someone else: let go of whatever it carries,
 -- right where it is (they are put down where they were picked up)
-function letGoHere(dr, why)
+function letGoHere(dr, why, gx, gy, gz)
   local x, y, z = droneXYZ(dr)
+  if gx then x, y, z = gx, gy, gz end            -- (lifted: put them down where they were picked up)
   if not x then return end
   droneLog(dr, why .. " - letting go of everything here")
   pcall(releaseAt, dr, fl(x), fl(y), fl(z))
@@ -888,7 +889,7 @@ function pickupSteps(dr, name)
         lastErr = name .. " did not come along"
         droneLog(dr, "Attempt " .. attempt .. ": " .. lastErr)
         -- someone else may be on board: never carry them along to the next try
-        letGoHere(dr, "Not the right passenger on board")
+        letGoHere(dr, "Not the right passenger on board", x, y, z)
       end
       if dr.abort then return false, "stopped" end
     end
@@ -1329,7 +1330,8 @@ function runMission(dr, cmd)
       droneLog(dr, (dr.mission.state == "stopped" and "Stopped: " or "Failed: ") ..
                    st.text .. " - " .. cleanErr(err))
       resetDrone(dr)
-      dr.failedAt = os.clock()                   -- the park check sends it home if all below fails
+      -- (a STOP by you is not a failure: the drone stays where you stopped it)
+      if dr.mission.state == "failed" then dr.failedAt = os.clock() end   -- the park check sends it home if all below fails
       local wentHome = false
       -- a failed pickup leaves nobody on board: safe to go home
       if dr.mission.state == "failed" and st.text:find("^Pick up") and CONFIG.drone.returnHome and cmd.kind ~= "home" then
@@ -1375,7 +1377,8 @@ function runMission(dr, cmd)
         local okH = pcall(homeStep(dr).fn)
         droneLog(dr, okH and "Back at base after the failure" or "Could not return to base - trying again later")
       end
-      if dr.rider and not aboard then pcall(releaseRider, dr) end
+      -- (someone still on board and home not reached: NOT let out here - it may
+      -- be up in the air. The park check tries home again; RELEASE is yours.)
       return
     end
   end
