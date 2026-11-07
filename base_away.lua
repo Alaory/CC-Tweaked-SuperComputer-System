@@ -231,7 +231,12 @@ function AWAY.followMap()
     zoom = z
     if mw * z >= spanX and mh * z * 1.5 >= spanZ and mw * z >= spanZ and mh * z * 1.5 >= spanX then break end
   end
-  V.cx, V.cz, V.zoom = math.floor((x1 + x2) / 2), math.floor((z1 + z2) / 2), zoom
+  -- move the view only when it must (a new view = the whole map drawn again):
+  -- another zoom, or the middle off by more than a quarter of the screen
+  local cx, cz = math.floor((x1 + x2) / 2), math.floor((z1 + z2) / 2)
+  if V.zoom ~= zoom or math.abs(cx - (V.cx or 0)) > mw * zoom / 4 or math.abs(cz - (V.cz or 0)) > mh * zoom * 1.5 / 4 then
+    V.cx, V.cz, V.zoom = cx, cz, zoom
+  end
 end
 
 local lastSave = 0

@@ -56,10 +56,12 @@ function drawMapPage(G)
   local fgGrid = blitc(C.head)
   -- the map image is rebuilt only when the map data or the view changed;
   -- otherwise the rows from last time are put on the screen again
-  local key = table.concat({ MAP.version, V.cx, V.cz, V.zoom, V.rot or 0, g.mx0, g.my0, g.mw, g.mh }, ",")
+  -- (new scans alone: at most every 5 s - with many turtles scanning the map
+  -- changes all the time; moving / zooming the map redraws at once)
+  local key = table.concat({ V.cx, V.cz, V.zoom, V.rot or 0, g.mx0, g.my0, g.mw, g.mh }, ",")
   local cache = state.mapImage
-  if not cache or cache.key ~= key then
-    cache = { key = key, rows = {} }
+  if not cache or cache.key ~= key or (cache.ver ~= MAP.version and os.clock() - cache.t >= 5) then
+    cache = { key = key, rows = {}, ver = MAP.version, t = os.clock() }
     local B = MAP.basis()
     local zx, zy = V.zoom, V.zoom * 1.5
     local cxs, czs = V.cx, V.cz

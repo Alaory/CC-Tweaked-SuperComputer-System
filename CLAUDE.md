@@ -24,6 +24,11 @@ PneumaticCraft drone rides, turtle mapping/surveys, and an AE2 ME network view.
   code.** Drawing reads `state.*` only.
 - Drawing: everything is drawn into an off-screen window `win`; `flushWindow()`
   copies only changed rows to the monitor (big performance win - keep it).
+  The MAP image (state.mapImage) is rebuilt at once when the VIEW changes, but
+  for new map data (MAP.version - every scan) at most every 5 s: with many
+  turtles scanning, rebuilding it on every draw made the base lag. okey() is
+  cached by number (text building is slow in Cobalt). AWAY.followMap moves the
+  view only on a zoom change or when the middle is off by > 1/4 screen.
 - Buttons: `actButton(x, y, w, h, label, action)`; a second tap confirms; the
   action is queued and run by `runAction(a)` (base_me.lua) in the action worker.
 - Data files are written with `saveFileSafe(path, text)` (base_theme.lua):

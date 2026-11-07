@@ -99,7 +99,19 @@ end
 local function ckey(cx, cz) return (cx + 2097152) * 4194304 + (cz + 2097152) end
 -- file keys: detail "rx_rz", overview "o" .. "ox_oz"
 local function rkey(cx, cz) return floor(cx / REGION) .. "_" .. floor(cz / REGION) end
-local function okey(cx, cz) return "o" .. floor(cx / OVR) .. "_" .. floor(cz / OVR) end
+-- (cached by number: the map draws look this up thousands of times, and
+-- building the text every time is slow in the game's Lua)
+local OKEYS = {}
+local function okey(cx, cz)
+  local ox, oz = floor(cx / OVR), floor(cz / OVR)
+  local nk = (ox + 65536) * 131072 + (oz + 65536)
+  local k = OKEYS[nk]
+  if not k then
+    k = "o" .. ox .. "_" .. oz
+    OKEYS[nk] = k
+  end
+  return k
+end
 
 -- the detail chunk at cx, cz (made if `make`)
 local function chunkAt(cx, cz, make)
