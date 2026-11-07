@@ -467,8 +467,14 @@ rider down at the pickup spot.
 - Never block the UI; no sleeps in drawing code.
 - Never move or delete the owner's items/fluids except exact amounts the
   program itself put somewhere.
-- After changing files, run `luac -p` on them, then tell the owner exactly which
-  files to copy and what to test in game. Keep explanations short and plain.
+- After changing files, run `python3 tools/run_tests.py` (`--quick` ~6 s, full
+  ~40 s; `-k <word>` for some): syntax, undefined globals (tools/check_globals.py),
+  local limits, the base tests in tools/tests/test_*.lua (real base files on the
+  tools/preview stand-in; CHECK(cond, msg) in a test, TESTMODE=1 -> exit 1 on a
+  failed check), every page draws, node.lua builder / route / STOP tests, the
+  mining simulator. New feature -> add CHECKs to a test (and make sure a broken
+  version FAILS it). Then tell the owner exactly which files to copy and what to
+  test in game. Keep explanations short and plain.
 - When an in-game API is unclear, ask the owner to run `report` (uploads all
   peripherals + functions to pastebin) or `tanks` / `me check` / `curios check`.
 

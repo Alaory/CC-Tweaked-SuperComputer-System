@@ -1,6 +1,7 @@
 -- usage: lua run.lua <srcdir> <out.txt> <page> [scenario]
 SRC_DIR, OUT, PAGE, SCEN = arg[1], arg[2], arg[3] or "inventory", arg[4]
 local getenv, popen = os.getenv, io.popen
+local REALEXIT = os.exit
 REALCLOCK, LABEL, GETENV = os.clock, getenv("LABEL") or "", getenv
 local here = arg[0]:match("^(.*)/") or "."
 dofile(here .. "/world.lua")
@@ -39,8 +40,25 @@ state.page = PAGE
 -- sample turtles
 state.turtles[7] = { id = 7, label = "Scout1", log = {}, lastN = 0, fuel = 4210, pos = { x = -5280, y = 60, z = 10830, f = "north" }, task = "idle", lastSeen = CLOCK - 2 }
 state.turtles[9] = { id = 9, label = "Miner2", log = {}, lastN = 0, fuel = 120, pos = { x = -5100, y = 12, z = 10700, f = "east" }, task = "survey", lastSeen = CLOCK - 90 }
-if SCEN and SCEN ~= "" then dofile(SCEN) end
-draw()
+-- tests (tools/tests/*.lua): CHECK(condition, what) records a failure; the run
+-- ends with exit code 1 and the list when any check failed or the test errored
+FAILS, CHECKS = {}, 0
+function CHECK(cond, msg)
+  CHECKS = CHECKS + 1
+  if not cond then FAILS[#FAILS + 1] = tostring(msg) end
+  return cond
+end
+if SCEN and SCEN ~= "" then
+  local okS, errS = pcall(dofile, SCEN)
+  if not okS then FAILS[#FAILS + 1] = "ERROR: " .. tostring(errS) end
+end
+local okD, errD = pcall(draw)
+if not okD then FAILS[#FAILS + 1] = "DRAW ERROR: " .. tostring(errD) end
+if #FAILS > 0 then
+  for _, f in ipairs(FAILS) do io.stderr:write("FAIL: " .. f .. "\n") end
+  REALEXIT(1)
+end
+if getenv("TESTMODE") then io.stderr:write("PASS (" .. CHECKS .. " checks)\n") end
 local f = io.open(OUT, "w")
 for y = 1, H do local t, fg, bg = MONITOR.getLine(y) f:write(t, "\n", fg, "\n", bg, "\n") end
 f:close()
