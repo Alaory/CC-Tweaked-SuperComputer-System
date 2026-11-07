@@ -334,7 +334,7 @@ do
   end
 end
 function saveNotifySubs()
-  saveFileSafe(NOTIFY_FILE, textutils.serialize(state.notifySubs))
+  saveFileSafe(NOTIFY_FILE, serialSmall(state.notifySubs))
 end
 
 local sentAt, skipped = {}, {}       -- [player] = times of the last messages / messages not sent

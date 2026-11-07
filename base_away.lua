@@ -26,7 +26,7 @@ function AWAY.cfg(k, default)
 end
 
 local function save()
-  saveFileSafe(FILE, textutils.serialize({ on = AWAY.on, since = AWAY.since, lastSeen = AWAY.lastSeen,
+  saveFileSafe(FILE, serialSmall({ on = AWAY.on, since = AWAY.since, lastSeen = AWAY.lastSeen,
                                            snap = AWAY.snap, last = AWAY.last, page = AWAY.page,
                                            autoOn = AWAY.autoOn }))
 end

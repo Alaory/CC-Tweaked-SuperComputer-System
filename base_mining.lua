@@ -55,7 +55,7 @@ function MINE.save()
     out[id] = { id = u.id, label = u.label, role = u.role, dim = u.dim, got = u.got, stats = u.stats,
                 seenEpoch = u.seenEpoch, pos = u.pos, log = u.log }
   end
-  saveFileSafe(FILE, textutils.serialize(out))
+  saveFileSafe(FILE, serialSmall(out))
   MINE.dirty, MINE.saved = false, os.clock()
 end
 MINE.load()

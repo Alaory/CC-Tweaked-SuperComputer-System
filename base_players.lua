@@ -56,7 +56,7 @@ end
 
 -- write the known dimensions to player_dims.dat
 local function saveDims()
-  saveFileSafe(DIM_FILE, textutils.serialize(dimCache))
+  saveFileSafe(DIM_FILE, serialSmall(dimCache))
 end
 
 -- remember (and save) which dimension a player is in

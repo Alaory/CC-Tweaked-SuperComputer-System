@@ -84,7 +84,7 @@ do
   end
   BASE_ALIVE.offs = BASE_ALIVE.offs or {}
 end
-local function aliveSave() saveFileSafe(ALIVE_FILE, textutils.serialize(BASE_ALIVE)) end
+local function aliveSave() saveFileSafe(ALIVE_FILE, serialSmall(BASE_ALIVE)) end
 function baseAliveTick()
   BASE_ALIVE.t = os.epoch("utc")
   aliveSave()

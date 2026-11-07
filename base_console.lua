@@ -408,6 +408,30 @@ function handleCommand(line)
         say(string.format(" %-7s %-10s %4d KB free  %s", d.mount, role, math.floor(d.free / 1024), tostring(d.label or "")))
       end
       say("This computer: " .. math.floor(fs.getFreeSpace("/") / 1024) .. " KB free.   'disks data' = use empty floppies for data")
+      -- storage helpers (store.lua on computers on the cable): the map goes there after the floppies
+      local nh = 0
+      for id, h in pairs(STORE and STORE.helpers or {}) do
+        nh = nh + 1
+        say(string.format(" helper #%-4d %s", id, h.refused and ("NOT USED: " .. tostring(h.refused))
+            or (math.floor((h.free or 0) / 1024) .. " KB free, " .. tostring(h.files or 0) .. " files")))
+      end
+      if nh == 0 then say(" No storage helper computers found (store.lua on a computer on the wired cable).") end
+      -- what fills this computer: the biggest files (floppies / rom not counted)
+      local files = {}
+      local function walk(dir)
+        for _, n in ipairs(fs.list(dir)) do
+          local p = fs.combine(dir, n)
+          if fs.getDrive(p) == "hdd" then
+            if fs.isDir(p) then walk(p) else files[#files + 1] = { p, fs.getSize(p) } end
+          end
+        end
+      end
+      pcall(walk, "")
+      table.sort(files, function(a, b) return a[2] > b[2] end)
+      local parts = {}
+      for i = 1, math.min(10, #files) do parts[#parts + 1] = files[i][1] .. " " .. math.ceil(files[i][2] / 1024) .. "K" end
+      say("Biggest files here: " .. table.concat(parts, ", "))
+      if state.diskLow then say("Last warning: " .. state.diskLow) end
     end
 
   elseif cmd == "update" then

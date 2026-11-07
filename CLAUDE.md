@@ -29,7 +29,12 @@ PneumaticCraft drone rides, turtle mapping/surveys, and an AE2 ME network view.
 - Data files are written with `saveFileSafe(path, text)` (base_theme.lua):
   only if they fit, through a temp file, never half-written. Big files go
   through `dataFile(path)` so they can live on data floppies (`disks data`).
-- The computer has only **1 MB of disk** - keep data files small.
+- The computer has only **1 MB of disk** - keep data files small. The program
+  files alone are ~800 KB (miner.lua is NOT needed on the base). Small data files
+  use serialSmall (compact textutils.serialize); survey_queue.dat goes through
+  dataFile (floppy first). The map leaves CONFIG.map.keepFreeKB (96) free on the
+  computer. turtles.dat goes through saveFileSafe. `disks` lists floppies,
+  storage helpers and the biggest files on the computer.
 - The MAP has two layers (base_map.lua): DETAIL (every column, newest
   `maxChunks` chunks) and OVERVIEW (1 value per chunk, never dropped; used at
   zoom >= 16 and where detail is gone). Files in `map/`: detail `<rx>_<rz>.dat`

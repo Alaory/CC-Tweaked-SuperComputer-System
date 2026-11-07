@@ -598,7 +598,7 @@ function TT.codeLoad(force)
   if not TT.versions.byHash[CODE.ver] then
     TT.versions.byHash[CODE.ver] = TT.versions.next
     TT.versions.next = TT.versions.next + 1
-    saveFileSafe(VER_FILE, textutils.serialize(TT.versions))
+    saveFileSafe(VER_FILE, serialSmall(TT.versions))
     if next(state.turtles) then
       setToast("New turtle program " .. TT.verName(CODE.ver) .. " - updating the turtles one by one", C.label)
     end
@@ -818,8 +818,7 @@ function TT.saveList()
                       task = t.task, ver = t.ver, gear = t.gear, anchor = t.anchor, rescuerRole = t.rescuerRole,
                       held = t.held }
   end
-  local h = fs.open(CONFIG.turtles.listFile, "w")
-  if h then h.write(textutils.serialize(out)) h.close() end
+  saveFileSafe(CONFIG.turtles.listFile, serialSmall(out))
   TT.listDirty = false
 end
 -- read the saved turtle list

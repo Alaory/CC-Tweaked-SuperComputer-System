@@ -125,11 +125,18 @@ win, W, H = nil
 -- Write a whole data file safely: only if it fits on the disk, and through a
 -- temporary file - a failed write never destroys the old file. Returns
 -- true, or false + the reason (also shown in the footer as a warning).
+-- textutils.serialize without the spaces and line breaks (a third of the size)
+function serialSmall(t)
+  local ok, s = pcall(textutils.serialize, t, { compact = true })
+  if ok and type(s) == "string" then return s end
+  return textutils.serialize(t)
+end
+
 function saveFileSafe(path, text)
   local dir = fs.getDir(path)
   local okF, free = pcall(fs.getFreeSpace, dir == "" and "/" or dir)
   if okF and type(free) == "number" and free < #text + 4096 then
-    state.diskLow = string.format("DISK ALMOST FULL: %s not saved (%d KB free, needs %d KB)",
+    state.diskLow = string.format("DISK ALMOST FULL: %s not saved (%d KB free, needs %d KB) - type disks",
                                   path, math.floor(free / 1024), math.ceil(#text / 1024))
     return false, state.diskLow
   end

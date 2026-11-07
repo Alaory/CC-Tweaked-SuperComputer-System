@@ -249,7 +249,9 @@ local function places()
     if dirOf(p) == DIR and fs.exists(p) then onPc = onPc + fs.getSize(p) end
   end
   local cap = (tonumber(CONFIG.map.computerKB) or 200) * 1024 - onPc
-  out[#out + 1] = { dir = DIR, free = math.max(0, math.min(free, cap)), floppy = false }
+  -- never the last KB: the other data files (turtles, survey queue, logs ...) need them
+  local keep = (tonumber(CONFIG.map.keepFreeKB) or 96) * 1024
+  out[#out + 1] = { dir = DIR, free = math.max(0, math.min(free - keep, cap)), floppy = false }
   -- storage helpers (after the floppies, before this computer)
   for id, h in pairs(STORE and STORE.helpers or {}) do
     if not h.refused then out[#out + 1] = { dir = "store:" .. id .. "/" .. DIR, free = h.free or 0, remote = id } end
@@ -820,7 +822,7 @@ end
 -- remember rotation, zoom and position (MAP tab) for the next start
 function MAP.saveView()
   local V = MAP.view()
-  saveFileSafe(VIEW_FILE, textutils.serialize({ rot = V.rot, zoom = V.zoom, cx = V.cx, cz = V.cz }))
+  saveFileSafe(VIEW_FILE, serialSmall({ rot = V.rot, zoom = V.zoom, cx = V.cx, cz = V.cz }))
 end
 
 -- the world area the map currently shows (x1, z1, x2, z2)
@@ -866,13 +868,25 @@ local QUEUE_FILE = "survey_queue.dat"
 local BATCH = 64
 MAP.queue = nil      -- { x1, z1, x2, z2, r, cols, rows, cursor, sent, skipped, ids = {...} }
 
+-- kept on a data floppy when there is one (it can get big: the handed-out
+-- spots); the computer's copy only when no floppy takes it
 local function saveQueue()
-  if MAP.queue then saveFileSafe(QUEUE_FILE, textutils.serialize(MAP.queue))
-  elseif fs.exists(QUEUE_FILE) then pcall(fs.delete, QUEUE_FILE) end
+  local p = dataFile(QUEUE_FILE, true)
+  if MAP.queue then
+    local text = serialSmall(MAP.queue)
+    local ok = saveFileSafe(p, text)
+    if not ok and p ~= QUEUE_FILE then ok = saveFileSafe(QUEUE_FILE, text) p = QUEUE_FILE end
+    if ok and p ~= QUEUE_FILE and fs.exists(QUEUE_FILE) then pcall(fs.delete, QUEUE_FILE) end
+  else
+    if fs.exists(p) then pcall(fs.delete, p) end
+    if fs.exists(QUEUE_FILE) then pcall(fs.delete, QUEUE_FILE) end
+  end
 end
 do
-  if fs.exists(QUEUE_FILE) then
-    local h = fs.open(QUEUE_FILE, "r")
+  local qf = dataFile(QUEUE_FILE)
+  if not fs.exists(qf) then qf = QUEUE_FILE end
+  if fs.exists(qf) then
+    local h = fs.open(qf, "r")
     local t = h and textutils.unserialize(h.readAll() or "")
     if h then h.close() end
     if type(t) == "table" and t.cols then MAP.queue = t end
@@ -939,7 +953,7 @@ do
     if type(t) == "table" then MAP.auto = t end
   end
 end
-function MAP.saveAuto() saveFileSafe(AUTO_FILE, textutils.serialize(MAP.auto)) end
+function MAP.saveAuto() saveFileSafe(AUTO_FILE, serialSmall(MAP.auto)) end
 function MAP.setAuto(on)
   MAP.auto.on = on and true or false
   MAP.auto.done = nil
