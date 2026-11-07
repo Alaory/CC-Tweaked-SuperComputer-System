@@ -45,9 +45,14 @@ end
 -- is the owner online? true / false, or nil when we cannot tell
 function AWAY.ownerOnline()
   if not det or not state.owner then return nil end
+  -- the server's list of online players (getOnlinePlayers, read with the players)
+  if state.online and state.onlineT and os.clock() - state.onlineT < 120 then
+    return state.online[tostring(state.owner):lower()] == true
+  end
   if not fresh("players", 120) then return nil end
+  -- no online list: the owner counts as online only when the detector FOUND them
   for _, e in ipairs(state.players or {}) do
-    if e.isOwner or tostring(e.name):lower() == tostring(state.owner):lower() then return true end
+    if (e.isOwner or tostring(e.name):lower() == tostring(state.owner):lower()) and e.p then return true end
   end
   return false
 end
@@ -236,10 +241,26 @@ function AWAY.tick()
   local online = AWAY.ownerOnline()
   local now = os.epoch("utc")
   if online == true then
+    -- the base was OFF while you were away (its chunk unloads when you leave):
+    -- away mode could not run - say so once, so you know why there is no report
+    if not AWAY.on and not AWAY.startChecked then
+      AWAY.startChecked = true
+      local o = ((BASE_ALIVE or {}).offs or {})[1]
+      local after = (tonumber(AWAY.cfg("after", 300)) or 300) * 1000
+      if o and o.to and o.from and now - o.to < 600000 and o.to - o.from > after then
+        local was = USER_ACTION
+        USER_ACTION = true
+        pcall(pushNote, "WHILE YOU WERE AWAY", "The base was OFF for " .. fmtSpan((o.to - o.from) / 1000) ..
+              " - nothing could run (" .. tostring(o.why or "unloaded") .. "). If its chunk unloads when you log off, " ..
+              "keep it loaded (a chunk loader at the base) so away mode can work.", C.warn, 300)
+        USER_ACTION = was
+      end
+    end
     AWAY.lastSeen = now
     if AWAY.on then AWAY.back() end
     return
   end
+  AWAY.startChecked = true
   if online == nil then return end                      -- cannot tell: change nothing
   AWAY.lastSeen = AWAY.lastSeen or now
   if not AWAY.on and (now - AWAY.lastSeen) / 1000 > (tonumber(AWAY.cfg("after", 300)) or 300) then

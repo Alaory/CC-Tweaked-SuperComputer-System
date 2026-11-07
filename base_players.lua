@@ -119,9 +119,13 @@ function refreshPlayers(full)
   if full and det.getOnlinePlayers then
     local ok, r = pcall(det.getOnlinePlayers)
     if ok and type(r) == "table" then
+      -- who is REALLY online (the owner is added to the list below even when
+      -- offline - away mode must not count that)
+      local on = {}
       for _, n in pairs(r) do
-        if type(n) == "string" then names[#names + 1] = n end
+        if type(n) == "string" then names[#names + 1] = n on[n:lower()] = true end
       end
+      state.online, state.onlineT = on, os.clock()
     end
   end
   if not full then names = owner and { owner } or {} end

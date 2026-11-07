@@ -233,7 +233,11 @@ PneumaticCraft drone rides, turtle mapping/surveys, and an AE2 ME network view.
   warnings since "away mode on", "Needs you" list) -> box (USER_ACTION), chat
   to the owner (up to 6 lines), SYSTEM tab card WHILE YOU WERE AWAY, sysLog,
   `away` console command. away.dat keeps it over restarts. SETTINGS > AWAY.
-  Unknown owner state (no detector / old data) -> nothing changes.
+  Unknown owner state (no detector / old data) -> nothing changes. Online = the
+  owner is in getOnlinePlayers (state.online from refreshPlayers(full)) - NOT just
+  an entry in state.players (the owner is always added there, even offline: that
+  kept away mode from ever starting). Base OFF longer than `after` right before
+  the owner is seen again -> one box saying the base was off (chunk unloaded).
   NOTE cfg helpers (MINE.cfg / AWAY.cfg): `type(t)=="table" and t[k]` gives
   false, not nil - use an if (fixed; the mining cfg was never sent before).
 - Permanent rescuer: t.rescuerRole (RESCUER button, saved in turtles.dat;
