@@ -405,7 +405,12 @@ end
 -- wait for an answer, so they get a worker of their own: the turtles' messages
 -- and the monitor never wait for them) and finding the storage helpers
 function mapWorker()
+  MAP.canYield = true
+  TT.yieldCo = coroutine.running()          -- long work here lets the others run (TT.workYield)
+  pcall(MAP.loadNow)                        -- read the map now, in the background (the screen is up)
+  pcall(TT.codeLoad)                        -- node.lua for the turtles (compiled + checked: a moment)
   local lastFind = os.clock() - 280         -- first look for new helpers ~20 s after the start
+  local lastCode = os.clock()
   while state.running do
     waitFor(5, "map_save")
     if MAP.saveNow then
@@ -417,6 +422,7 @@ function mapWorker()
     else
       pcall(MAP.autoSave)                -- changed map regions, at most once a minute
     end
+    if os.clock() - lastCode > 30 then lastCode = os.clock() pcall(TT.codeLoad) end   -- node.lua changed?
     if os.clock() - lastFind > 300 then  -- storage helpers added / gone, and their updates
       lastFind = os.clock()
       pcall(STORE.find)
@@ -471,7 +477,7 @@ function commsWorker()
       codeTick = codeTick + 1
       if codeTick % 15 == 7 then pcall(baseAliveTick) end    -- every 30 s: "still running"
       if codeTick % 5 == 3 then pcall(sysRefresh) end        -- SYSTEM tab numbers (every 10 s)
-      if codeTick % 15 == 1 then pcall(TT.codeLoad) end     -- every 30 s
+      -- (node.lua changed? - checked by the map worker every 30 s, it may take a moment)
       os.queueEvent("inv_update")       -- online/offline can change with time
     end
   end

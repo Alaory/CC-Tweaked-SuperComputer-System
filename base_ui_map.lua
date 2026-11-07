@@ -113,9 +113,10 @@ function drawMapPage(G)
   end
   addHit(g.mx0, g.my0, g.mw, g.mh, "mapcell")
   -- nothing mapped at all yet: say how to start
-  if (MAP.ovN or 0) == 0 and #MAP.order == 0 then
-    local m1 = "Nothing mapped yet."
-    local m2 = "Select a turtle with a Geo Scanner, then SURVEY (right)."
+  if not MAP.loaded or ((MAP.ovN or 0) == 0 and #MAP.order == 0) then
+    local m1 = MAP.loaded and "Nothing mapped yet." or "Loading the map ..."
+    local m2 = MAP.loaded and "Select a turtle with a Geo Scanner, then SURVEY (right)."
+               or "(from the floppies and helper computers - everything else works meanwhile)"
     local cy = g.my0 + math.floor(g.mh / 2) - 3
     text(g.mx0 + math.floor((g.mw - #m1) / 2), cy, m1, C.text, C.bg)
     text(g.mx0 + math.max(0, math.floor((g.mw - #m2) / 2)), cy + 1, trunc(m2, g.mw), C.dim, C.bg)

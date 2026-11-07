@@ -29,6 +29,7 @@ for _, name in ipairs(MODULES) do
   if not fn then error(err) end
   fn()
 end
+if MAP and MAP.loadNow and not GETENV("MAPLOADING") then MAP.loadNow() end   -- (the base does this in the map worker)
 buildWindow()
 refreshInventory()
 refreshPlayers(true)

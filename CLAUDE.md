@@ -54,6 +54,14 @@ PneumaticCraft drone rides, turtle mapping/surveys, and an AE2 ME network view.
   MAP.scanned (overview and not partial). The MAP draws 2x2 chunks per cell
   from zoom 32. No ores (owner
   does not want them). An old `map.dat` is converted once on start-up.
+  The map is READ IN THE BACKGROUND (MAP.loadNow, first thing in mapWorker;
+  loadYield after every file, only in that coroutine - TT.yieldCo): before
+  MAP.loaded, scans wait in MAP.pendingScans (added after), MAP.save refuses
+  (a half-read map must never overwrite the files), feedSurvey / autoTick wait,
+  the MAP tab says "Loading the map". Reading it at start-up froze the base
+  ~10 s. node.lua (TT.codeLoad: compile, shrink, hash) is also checked in the
+  mapWorker (start + every 30 s) with TT.workYield pauses, not in the comms
+  worker (the install-floppy "disk" event still loads it at once).
   World border is -20000..20000 (CONFIG.map.border); zoom goes to 512 so the
   whole world fits. Big surveys (> 400x400 blocks) go through a queue
   (MAP.queueSurvey / feedSurvey, 64 spots per idle turtle). Every batch

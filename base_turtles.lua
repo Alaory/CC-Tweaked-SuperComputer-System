@@ -516,9 +516,18 @@ function TT.verName(hash)
 end
 
 -- checksum of node.lua (the turtles' version number)
+-- long work in the map worker: let the screen and the other workers run now
+-- and then (only there - other workers must not swallow their own events)
+function TT.workYield()
+  if TT.yieldCo and coroutine.running() == TT.yieldCo then
+    os.queueEvent("base_working")
+    os.pullEvent("base_working")
+  end
+end
 local function codeHash(str)
   local h1, h2 = 5381, 52711
   for i = 1, #str do
+    if i % 16384 == 0 then TT.workYield() end
     local c = str:byte(i)
     h1 = (h1 * 33 + c) % 4294967296
     h2 = (h2 * 131 + c * 7 + i) % 4294967296
@@ -574,6 +583,7 @@ function TT.shrinkCode(text)
       t = ""
     end
     out[#out + 1] = t
+    if #out % 500 == 0 then TT.workYield() end
   end
   if out[#out] == "" then out[#out] = nil end
   return table.concat(out, "\n") .. "\n"
@@ -594,8 +604,10 @@ function TT.codeLoad(force)
   text = setStr(text, "key", CONFIG.turtles.key)
   -- the base runs the same Lua as the turtles: if it does not compile here,
   -- it would not compile there either - keep the version the turtles have
+  TT.workYield()
   local okC, errC = load(text, "node", "t", {})
   TT.codeError = (not okC) and (path .. ": " .. tostring(errC)) or nil
+  TT.workYield()
   if okC then
     -- send / install the small version (same code, no comments) if it compiles too
     local okS, small = pcall(TT.shrinkCode, text)

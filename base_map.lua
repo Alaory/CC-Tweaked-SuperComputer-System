@@ -404,6 +404,15 @@ local function readFile(path)
   local t = h.readAll()
   h.close()
   readText(t)
+  return t
+end
+-- loading in the background (map worker): let the screen and the other
+-- workers run between files (no sleep - an event comes back at once)
+local function loadYield()
+  if MAP.loading and MAP.canYield and TT and TT.yieldCo == coroutine.running() then   -- (only in the map worker)
+    os.queueEvent("map_loading")
+    os.pullEvent("map_loading")
+  end
 end
 
 -- write one file where it fits: a data floppy first (the one it is on, else
@@ -448,6 +457,7 @@ end
 -- detail does not fit, its oldest quarter is dropped (up to four times - the
 -- overview keeps those chunks). noTrim = never drop anything.
 function MAP.save(toDisks, noTrim)
+  if not MAP.loaded then return false end          -- half-read map: never written over the files
   if toDisks then
     for k, p in pairs(MAP.where) do if dirOf(p) == DIR then MAP.dirty[k] = true end end
   end
@@ -671,6 +681,7 @@ function MAP.load()
         local okR, files = pcall(STORE.readMany, p.remote, batch)
         local got = 0
         for name, text in pairs(okR and files or {}) do pcall(readText, text) got = got + 1 end
+        loadYield()
         if got == 0 then break end                 -- helper gone: the rest stays unread this time
         i = i + got
       end
@@ -679,14 +690,10 @@ function MAP.load()
         local k = f:match("^(o?%-?%d+_%-?%d+)%.dat$")
         if k and not MAP.where[k] then              -- a file twice: the first one counts
           MAP.where[k] = fs.combine(p.dir, f)
-          pcall(readFile, MAP.where[k])
+          local okR, t = pcall(readFile, MAP.where[k])
           -- an old detail file with ore lines: write it again without them
-          if k:sub(1, 1) ~= "o" then
-            local h = fs.open(MAP.where[k], "r")
-            local t = h and h.readAll() or ""
-            if h then h.close() end
-            if t:find("\nO ", 1, true) then MAP.dirty[k] = true end
-          end
+          if okR and type(t) == "string" and k:sub(1, 1) ~= "o" and t:find("\nO ", 1, true) then MAP.dirty[k] = true end
+          loadYield()
         end
       end
     end
@@ -712,6 +719,7 @@ function MAP.load()
   if next(oldFiles) then
     -- the old file goes once everything is saved; if the map does not fit next
     -- to it, it goes first (everything is in memory) and the map gets its room
+    MAP.loaded = true
     local ok = MAP.save(false, true)
     for f in pairs(oldFiles) do pcall(fs.delete, f) end
     if not ok then MAP.save() end
@@ -719,10 +727,33 @@ function MAP.load()
   MAP.version = MAP.version + 1
 end
 
+-- the map is read in the background after the start (map worker); until then
+-- scans wait here, nothing is saved and no survey is handed out
+MAP.loaded = false
+MAP.pendingScans = {}
+function MAP.loadNow()
+  if MAP.loaded then return end
+  MAP.loading = true
+  local ok, err = pcall(MAP.load)
+  MAP.loading = false
+  MAP.loaded = true
+  if not ok and setToast then setToast("Map loading error: " .. tostring(err), C.bad) end
+  local list = MAP.pendingScans
+  MAP.pendingScans = {}
+  for _, m in ipairs(list) do pcall(MAP.addScan, m) end
+  MAP.version = MAP.version + 1
+  os.queueEvent("inv_update")
+end
+
 -- a scan summary from a turtle (node.lua): absolute centre + relative data
 -- (the ores it also sends are not kept)
 function MAP.addScan(m)
   if type(m.cols) ~= "table" or type(m.names) ~= "table" then return end
+  if not MAP.loaded then
+    -- the map is still being read: this scan is added afterwards
+    if #MAP.pendingScans < 300 then MAP.pendingScans[#MAP.pendingScans + 1] = m end
+    return
+  end
   local x0, y0, z0 = tonumber(m.x), tonumber(m.y), tonumber(m.z)
   if not (x0 and y0 and z0) then return end
   local r = floor(tonumber(m.r) or 8)
@@ -999,7 +1030,7 @@ end
 -- comms worker: start / continue auto-map when nothing else runs
 function MAP.autoTick()
   local a = MAP.auto
-  if not a.on or a.done or MAP.queue or MAP.full then return end
+  if not a.on or a.done or MAP.queue or MAP.full or not MAP.loaded then return end
   local c = CONFIG.drone.home or state.basePos
   if not (c and c.x) or #TT.available() == 0 then return end
   local r = CONFIG.map.scanRadius or 8
@@ -1152,7 +1183,7 @@ end
 -- hand batches to idle turtles (comms worker, every few seconds)
 function MAP.feedSurvey()
   local q = MAP.queue
-  if not q then return end
+  if not q or not MAP.loaded then return end      -- (map still loading: done spots unknown)
   -- a survey saved by an older version (row by row from the far corner):
   -- once into the spiral from the base (done spots are skipped anyway)
   if not q.spiral and not q.auto and q.x1 then
@@ -1368,4 +1399,4 @@ function MAP.compass()
   return DIRL[r], DIRL[(r + 1) % 4], DIRL[(r + 2) % 4], DIRL[(r + 3) % 4], DIRN[r]
 end
 
-MAP.load()
+-- (MAP.load runs in the map worker: MAP.loadNow)
