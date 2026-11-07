@@ -1032,7 +1032,8 @@ function MAP.stopSurvey()
 end
 
 -- the next batch of spots not yet in the map (checks a limited number per call)
-local function nextBatch(q)
+local function nextBatch(q, want)
+  local BATCH = want or BATCH
   local total = q.cols * q.rows
   local out, checked = {}, 0
   -- spots near a player to avoid wait (back into q.redo, tried again later)
@@ -1114,6 +1115,12 @@ end
 function MAP.batchResult(id, ok)
   local q = MAP.queue
   if not (q and q.out and q.out[id]) then return end
+  -- how fast is this turtle (spots per second)? the pack shares out by it
+  local t = state.turtles[id]
+  if ok and t and t.queueAt and os.clock() - t.queueAt > 1 then
+    local r = #q.out[id] / (os.clock() - t.queueAt)
+    t.packRate = t.packRate and (t.packRate * 0.5 + r * 0.5) or r
+  end
   local n = MAP.reclaim(id)
   if n > 0 then
     local t = state.turtles[id]
@@ -1175,12 +1182,17 @@ function MAP.feedSurvey()
   local minFuel = tonumber(CONFIG.map.surveyMinFuel) or 500
   local busy, why, anyFree = false, {}, false
   local list = q.ids or TT.available()
+  -- PACK: the turtles work close together (neighbouring spots), so when one is
+  -- unloaded the others are near it - one visit wakes them all
+  local pack = CONFIG.map.pack ~= false
+  local packFree = {}
   for _, id in ipairs(list) do
     local t = state.turtles[id]
     local free = t and TT.online(t) and t.pos and t.pos.x and (t.task == nil or t.task == "idle") and not t.anchor
                  and not (q.excluded and q.excluded[id])      -- stopped by the owner
                  and not t.rescuerRole and not t.held         -- the rescuer stays free; STOPPED stays stopped
     local fuel = t and tonumber(t.fuel)
+    if t then t.packWait = nil end                -- (set again below while it waits for its pack)
     if free and t.queueAt and os.clock() - t.queueAt < 15 then free = false busy = true end
     if free and fuel and fuel < minFuel then free = false end
     if t and not free and t.task and t.task ~= "idle" then busy = true end
@@ -1202,7 +1214,9 @@ function MAP.feedSurvey()
        and (not t.queueAt or os.clock() - t.queueAt > 30) then
       MAP.reclaim(id)
     end
-    if free and (q.cursor < total or (q.redo and #q.redo > 0)) then
+    if free and pack then
+      packFree[#packFree + 1] = id                -- handed out together below
+    elseif free and (q.cursor < total or (q.redo and #q.redo > 0)) then
       local spots = nextBatch(q)
       if #spots > 0 then
         TT.sendSpots(id, spots, q.r)
@@ -1212,6 +1226,58 @@ function MAP.feedSurvey()
         q.sent = q.sent + #spots
         busy = true
         q.changed = true
+      end
+    end
+  end
+  -- the pack: a new round only when the whole pack is done with the last one
+  -- (or after packWait s - one hung turtle does not hold up the others)
+  if pack and #packFree > 0 and (q.cursor < total or (q.redo and #q.redo > 0)) then
+    local open = false
+    if q.wave then
+      for _, wid in ipairs(q.wave.ids or {}) do if q.out and q.out[wid] then open = true end end
+      if open and os.clock() - (q.wave.t or 0) > (tonumber(CONFIG.map.packWait) or 300) then open = false end
+    end
+    if open then
+      busy = true                                 -- (waiting for the others is not a problem)
+      for _, id in ipairs(packFree) do state.turtles[id].packWait = true end
+    else
+      table.sort(packFree)
+      local n = math.min(#packFree, tonumber(CONFIG.map.packSize) or 8)
+      local k = tonumber(CONFIG.map.packSpots) or 3
+      local spots = nextBatch(q, n * k)
+      n = math.min(n, #spots)
+      local ids = {}
+      -- spots in turn, side by side along the way - a faster turtle (measured:
+      -- t.packRate, spots per second) gets more, so the pack finishes together
+      local lists, cnt = {}, {}
+      for i = 1, n do lists[i], cnt[i] = {}, 0 end
+      for _, p in ipairs(spots) do
+        local best, bestV
+        for i = 1, n do
+          local rate = tonumber(state.turtles[packFree[i]].packRate) or 0.01
+          local v = (cnt[i] + 1) / rate
+          if not best or v < bestV then best, bestV = i, v end
+        end
+        cnt[best] = cnt[best] + 1
+        lists[best][#lists[best] + 1] = p
+      end
+      for i = 1, n do
+        local mine = lists[i]
+        local id = packFree[i]
+        local t = state.turtles[id]
+        if #mine == 0 then mine = nil end
+        if mine then
+        TT.sendSpots(id, mine, q.r)
+        q.out = q.out or {}
+        q.out[id] = mine
+        t.queueAt, t.packWait = os.clock(), nil
+        q.sent = q.sent + #mine
+        ids[#ids + 1] = id
+        end
+      end
+      if n > 0 then
+        q.wave = { t = os.clock(), ids = ids }
+        busy, q.changed = true, true
       end
     end
   end

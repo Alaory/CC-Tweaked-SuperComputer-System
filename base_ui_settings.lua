@@ -87,6 +87,8 @@ SETTING_GROUPS = {
     num("turtles.idleHome", "Idle turtles go home after", "a turtle with nothing to do goes home (0 = never)",
         120, 0, 3600, 30, secs),
     num("turtles.rescueAfter", "Rescue a silent turtle after", "the RESCUER goes to wake it up", 180, 60, 3600, 30, secs),
+    num("turtles.rescueAfterCrash", "Many offline at once: rescue after", "a server crash - they may come back by themselves first",
+        600, 120, 7200, 60, secs),
     num("turtles.avoidRange", "Keep away from players within", "a turtle stops and goes home when one comes this close (0 = off)",
         100, 0, 300, 25, function(v) return (tonumber(v) or 0) == 0 and "off" or (v .. " blocks") end),
     cyc("turtles.avoidWho", "Players to avoid", "strangers = everyone but you and your allow list", "strangers",
@@ -109,6 +111,8 @@ SETTING_GROUPS = {
     num("map.computerKB", "Map on the computer, at most", "when no floppy has room (the computer has 1 MB)",
         200, 50, 600, 25, function(v) return v .. " KB" end),
     num("map.border", "World border", "nothing is surveyed beyond +-this", 20000, 1000, 60000, 1000, plain),
+    bool("map.pack", "Turtles survey as a pack", "side by side: one visit wakes them all after a server crash", true),
+    num("map.packSpots", "Pack: spots per turtle per round", "more = a bit faster, but further apart", 3, 1, 8, 1, plain),
   } },
   { name = "DRONES", list = {
     place("drone.home", "Base (drop-off point)", "where riders are dropped off - stand there", "feet"),

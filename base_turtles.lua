@@ -91,6 +91,9 @@ function TT.idleWhy(t)
     if q.excluded and q.excluded[t.id] then return "taken off the survey by STOP - any button gives it back", C.warn end
     if q.auto and MAP.full then return "auto-map paused - the map floppies are full", C.warn end
     if t.queueAt and os.clock() - t.queueAt < 30 then return "just got survey spots - starting", C.good end
+    if t.packWait and q.wave then
+      return "waiting for the rest of the pack (they survey together, so one visit wakes them all)", C.label
+    end
     local idle = t.idleSince and os.clock() - t.idleSince or 0
     -- why the last hand-out found nothing (MAP.feedSurvey / nextBatch)
     local w = q.lastWhy
@@ -1104,13 +1107,37 @@ function TT.patrolTick()
     local free = TT.online(r) and (r.task == nil or r.task == "idle") and not r.stopAsk and not r.held
     if free then
       -- the turtle with the oldest problem first
-      local pick, pickKind
+      local pick, pickKind, pickScore
       for _, t in pairs(state.turtles) do
         if not t.rescuerRole and not t.rescuer and (t.rescueTries or 0) < MAX_TRIES
            and (not t.rescueAt or now - t.rescueAt > RETRY_AFTER) then
           local kind = problems[t.id]
-          if kind == "lost" and (warmingUp or massOffline) then kind = nil end
-          if kind and not pick then pick, pickKind = t, kind end
+          -- many offline at once (a server restart / crash): first wait - they may
+          -- come back by themselves; still silent after rescueAfterCrash: go
+          local silent = t.seenEpoch and (os.epoch("utc") - t.seenEpoch) / 1000 or 0
+          if kind == "lost" and (warmingUp or (massOffline and silent < (tonumber(CONFIG.turtles.rescueAfterCrash) or 600))) then
+            kind = nil
+          end
+          -- one already on its way to a turtle close by: arriving there wakes this one too
+          if kind == "lost" then
+            for _, o in pairs(state.turtles) do
+              if o.rescuer and o.rescueKind == "lost" and o.pos and o.pos.x and t.pos and t.pos.x
+                 and math.abs(o.pos.x - t.pos.x) <= 48 and math.abs(o.pos.z - t.pos.z) <= 48 then kind = nil end
+            end
+          end
+          if kind then
+            -- lost turtles: the biggest group first (one trip wakes the whole pack)
+            local score = 0
+            if kind == "lost" then
+              for oid, o in pairs(state.turtles) do
+                if problems[oid] == "lost" and o.pos and o.pos.x and t.pos and t.pos.x
+                   and math.abs(o.pos.x - t.pos.x) <= 48 and math.abs(o.pos.z - t.pos.z) <= 48 then score = score + 1 end
+              end
+            else
+              score = 1000                          -- no fuel / stuck (online): first
+            end
+            if not pick or score > pickScore then pick, pickKind, pickScore = t, kind, score end
+          end
         end
       end
       if pick then
@@ -1118,6 +1145,9 @@ function TT.patrolTick()
         pick.rescueAt, pick.rescueTries = now, (pick.rescueTries or 0) + 1
         if ok then
           pick.rescueKind = pickKind
+          if pickKind == "lost" and (pickScore or 0) > 1 then
+            TT.log(r, "Going to " .. pick.label .. " - " .. pickScore .. " offline turtles are there together")
+          end
           setToast("Rescuer " .. r.label .. " sent to " .. pick.label .. " (" ..
                    (pickKind == "lost" and "offline - going there wakes it up" or pickKind == "fuel" and "no fuel" or "stuck") .. ")",
                    C.label)

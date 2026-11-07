@@ -66,7 +66,14 @@ PneumaticCraft drone rides, turtle mapping/surveys, and an AE2 ME network view.
   the area are skipped cheaply. Old saved row-by-row queues are converted once in
   feedSurvey: their old far batches / redo spots are DROPPED and the turtles that
   had one get t.recall (saved in turtles.dat) - TT.receive stops their survey job
-  (also when they resume it after being offline), then sends them home. The queue file is written only when it changed (or once a minute). SURVEY: ALL for small areas also goes through
+  (also when they resume it after being offline), then sends them home. The queue file is written only when it changed (or once a minute). PACK mode
+  (CONFIG.map.pack, default on; SETTINGS > MAP): the free turtles get spots in
+  ROUNDS (q.wave): n*packSpots (3) consecutive spiral spots shared out in turn
+  (side by side, 17 blocks apart), by measured speed (t.packRate from
+  batchResult) so they finish together; the next round only when the whole
+  pack is done (or after packWait 300 s). Keeps them ~20 blocks apart (sim:
+  83% of free-running speed) so one wake-up (rescuer / player) reaches all.
+  t.packWait -> TT.idleWhy "waiting for the rest of the pack". SURVEY: ALL for small areas also goes through
   the queue (MAP.addSurvey); SURVEY: THIS ONE is a direct order. A spot is
   done when MAP.spotDone (its own column in detail, or its chunk fully in the
   overview) - NOT MAP.scanned alone (17-block spots vs 16-block chunks).
@@ -255,8 +262,10 @@ PneumaticCraft drone rides, turtle mapping/surveys, and an AE2 ME network view.
 - Permanent rescuer: t.rescuerRole (RESCUER button, saved in turtles.dat;
   base only). TT.patrolTick (comms worker) sends it to: no fuel (<20 for
   60 s), stuck (60 s idle), lost (silent CONFIG.turtles.rescueAfter, default
-  180 s; no reinstall gear needed - arriving loads the area and wakes it). Never in the first 5 min after the base starts, never when half
-  or more turtles are offline (server trouble); called off when the turtle
+  180 s; no reinstall gear needed - arriving loads the area and wakes it). Never in the first 5 min after the base starts; when half or
+  more are offline (a server crash) only after CONFIG.turtles.rescueAfterCrash
+  (600 s) of silence; lost turtles: the biggest group first (lost ones within 48
+  blocks), none sent to a turtle within 48 blocks of one already being rescued; called off when the turtle
   is fine again; max 3 tries, 30 min apart (tries reset once the turtle is fine again). Rescuer goes home after each
   rescue, gets no big-survey batches.
 - Themes (base_theme.lua): THEMES = 6 dark palettes, same JOB per colour slot.
