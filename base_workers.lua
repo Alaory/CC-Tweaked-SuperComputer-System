@@ -353,6 +353,7 @@ function droneWorker()
       dr.requester = nil
     end
     if dr then
+      dr.mdest = nil                  -- the mission's own destination is over
       if not ok then
         dr.mission = { title = "error", steps = {}, state = "failed", err = cleanErr(err) }
         droneLog(dr, "Error: " .. cleanErr(err))

@@ -342,7 +342,7 @@ end
 
 -- where a drone's destination is right now (players are looked up live)
 function resolveDest(dr)
-  local d = dr and dr.dest
+  local d = dr and (dr.mdest or dr.dest)
   if not d then return nil, "no destination chosen" end
   if d.kind == "player" then return playerPos(d.name) end
   return d.x, d.y, d.z
@@ -359,7 +359,7 @@ end
 
 -- short form for titles: "200, 70, 200" / "Home" / "@Zed"
 function destShort(dr)
-  local d = dr and dr.dest
+  local d = dr and (dr.mdest or dr.dest)
   if not d then return "?" end
   if d.kind == "player" then return "@" .. d.name end
   if d.kind == "waypoint" then return d.name end
@@ -904,7 +904,8 @@ end
 function dropTarget(dr)
   local x, y, z = resolveDest(dr)
   if not x then return nil, y end
-  if dr.dest and dr.dest.kind == "player" then x = x + 2 end
+  local md = dr.mdest or dr.dest
+  if md and md.kind == "player" then x = x + 2 end
   return x, y, z
 end
 
@@ -953,7 +954,7 @@ end
 -- the mission steps to fly to the destination and let the passenger go
 function dropSteps(dr, who)
   local fly = stepGoto(dr, "Fly to destination", function() return dropTarget(dr) end, 0,
-                       function() return dr.dest and dr.dest.kind == "player" end)
+                       function() local md = dr.mdest or dr.dest return md and md.kind == "player" end)
   local flyFn = fly.fn
   fly.fn = function()
     local ok, err = flyFn()
@@ -1227,7 +1228,10 @@ function runMission(dr, cmd)
     droneLog(dr, string.format("Cannot start: pressure %.1f bar", pr))
     return
   end
-  if (cmd.kind == "fly" or cmd.kind == "ferry" or cmd.kind == "drop") and not dr.dest then
+  -- this mission's own destination: a chat ride brings its own (cmd.dest) and
+  -- never uses or changes what is chosen on the monitor
+  dr.mdest = cmd.dest or dr.dest
+  if (cmd.kind == "fly" or cmd.kind == "ferry" or cmd.kind == "drop") and not dr.mdest then
     dr.mission = { title = cmd.kind, steps = {}, state = "failed", err = "No destination chosen" }
     droneLog(dr, "Cannot start: no destination chosen")
     return
@@ -1240,8 +1244,8 @@ function runMission(dr, cmd)
     check[#check + 1] = canonPlayer(cmd.passenger or dr.passenger or state.owner or "")
   end
   if (cmd.kind == "fly" or cmd.kind == "drop" or cmd.kind == "ferry")
-     and dr.dest and dr.dest.kind == "player" then
-    check[#check + 1] = dr.dest.name
+     and dr.mdest and dr.mdest.kind == "player" then
+    check[#check + 1] = dr.mdest.name
   end
   for _, pn in ipairs(check) do
     local px, why = playerPos(pn)

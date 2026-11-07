@@ -363,7 +363,9 @@ target refused at once is not hopped to straight away: one teleport into the
 air above it (map top + 8, or hopY when unknown) tells loaded (spot was just
 blocked -> carry on from there) from not loaded (-> hops). Everything refused
 and the spot is UNDER GROUND (map top > y): the drone lands on the surface
-right above it. Wrong passenger guard (pickupSteps): no Entity Import while another
+right above it. A mission's own destination is dr.mdest (cmd.dest, e.g. a chat ride or
+the fly-to-turtle button, else the DRONES page choice dr.dest); chat rides never change
+dr.dest / dr.passenger. Wrong passenger guard (pickupSteps): no Entity Import while another
 player is within 4 blocks of the rider; after the import the drone must be WITH the rider,
 else letGoHere (Entity Export where it is) + fail; lift mode lets go before the next try.
 Teleports only into loaded chunks (players and the

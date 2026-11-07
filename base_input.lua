@@ -102,9 +102,9 @@ function handleTouch(tx, ty)
             elseif not state.owner then
               setToast("Owner unknown (memory card)", C.warn, 4)
             else
-              dr.dest = { kind = "coords", x = t.pos.x, y = t.pos.y + 1, z = t.pos.z }
-              dr.passenger = state.owner
-              if submitDrone(dr, { kind = "ferry", passenger = state.owner }) then
+              -- its own destination (the DRONES page choice stays as it is)
+              local tdest = { kind = "coords", name = t.label, x = t.pos.x, y = t.pos.y + 1, z = t.pos.z }
+              if submitDrone(dr, { kind = "ferry", passenger = state.owner, dest = tdest }) then
                 setToast(dr.label .. " is coming to take you to " .. t.label, C.good, 6)
               end
             end
