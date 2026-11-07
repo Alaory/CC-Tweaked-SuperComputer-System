@@ -13,7 +13,8 @@ CHECK(#list > 20, "the help lists the commands (" .. #list .. ")")
 -- plus some with arguments
 local extra = { "turtles", "turtle 7 log", "turtle 7 forget", "mine", "mine forget 99", "factory", "factory chest",
                 "factory builder 7", "factory build", "factory stop", "disks", "map", "survey", "events 5", "uptime",
-                "away", "store", "theme", "drones", "charger", "dest 10 70 10", "tanks", "me check", "curios check" }
+                "away", "store", "theme", "drones", "charger", "dest 10 70 10", "tanks", "me check", "curios check",
+                "pocket", "pocket unpair 99", "schem", "schem nothere", "schem delete nothere", "mine drop 99" }
 for _, e in ipairs(extra) do list[#list + 1] = e end
 local sleep0 = sleep
 sleep = function() end                               -- (store waits a few seconds after waking helpers)

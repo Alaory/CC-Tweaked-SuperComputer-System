@@ -194,6 +194,7 @@ function pageHome(d, y)
   end
   for _, m in ipairs(d.mining or {}) do
     put(1, y, cut("Mine " .. m.dim .. ": " .. m.label, W), m.running and C.good or C.dim) y = y + 1
+    if #(m.gone or {}) > 0 then put(1, y, cut("  " .. #m.gone .. " miner(s) gone - MINE tab", W), C.warn) y = y + 1 end
     put(1, y, cut("  chunk " .. m.ci .. "  " .. m.rate .. "/h  " .. m.miners .. " miners", W), C.dim) y = y + 1
   end
   if d.factory then put(1, y, cut("Factory: " .. d.factory, W), C.dim) y = y + 1 end
@@ -234,7 +235,13 @@ function pageBots(d, y)
     button(1, y, hw, "STOP", C.bad, function() act("turtle", { t.id, "stop" }) end)
     button(hw + 2, y, W - hw - 1, "HOME", C.acc, function() act("turtle", { t.id, "home" }) end) y = y + 2
     button(1, y, hw, "GPS", C.btn, function() act("turtle", { t.id, "locate" }) end)
-    button(hw + 2, y, W - hw - 1, "PING", C.btn, function() act("turtle", { t.id, "ping" }) end) y = y + 2
+    if t.key == "offline" or t.key == "missing" then
+      -- gone (a server crash can delete turtles): off the list - two taps
+      button(hw + 2, y, W - hw - 1, "FORGET", C.bad, function() act("forget", { t.id }) P.sel = nil end, true)
+    else
+      button(hw + 2, y, W - hw - 1, "PING", C.btn, function() act("turtle", { t.id, "ping" }) end)
+    end
+    y = y + 2
     button(1, y, W, "< ALL TURTLES", C.head, function() P.sel = nil end)
     return
   end
@@ -265,6 +272,12 @@ function pageMine(d, y)
       if m.running then button(1, y, hw, "PAUSE", C.warn, function() act("mine", { m.loader, "pause" }) end)
       else button(1, y, hw, "START", C.good, function() act("mine", { m.loader, "start" }) end) end
       button(hw + 2, y, W - hw - 1, "UNLOAD", C.btn, function() act("mine", { m.loader, "unload" }) end)
+      y = y + 2
+    end
+    -- a miner gone 20+ min (server crash?): out of the team - two taps
+    for _, g in ipairs(m.gone or {}) do
+      if y > H - 2 then break end
+      button(1, y, W, cut("DROP " .. g.label .. " (gone)", W), C.bad, function() act("minedrop", { g.id }) end, true)
       y = y + 2
     end
     y = y + 1

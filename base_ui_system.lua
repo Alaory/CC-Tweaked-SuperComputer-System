@@ -23,7 +23,7 @@ function drawSystemPage(G)
   local now = os.epoch("utc")
 
   ------------------------------------------------ status
-  local sh = 14
+  local sh = 18
   card(lx, y0, leftW, sh, "STATUS")
   local r = y0 + 3
   kv(ix, r, iw, "Running for", fmtSpan((now - (A.since or now)) / 1000) .. "   (start #" .. tostring(A.starts or "?") .. ")")
@@ -49,6 +49,18 @@ function drawSystemPage(G)
   kv(ix, r + 8, iw, "Theme", tostring(THEME_NAME) .. ((THEME_MODE == "random") and " (random each start)" or ""))
   kv(ix, r + 9, iw, "Storage helpers", (s.helpers and s.helpers > 0) and (s.helpers .. " (" .. kb(s.helperFree) .. " free)")
      or "none (store.lua on a computer on the cable)", (s.helpers and s.helpers > 0) and C.text or C.dim)
+  -- the newer parts, at a glance
+  local ax1, az1, ax2, az2 = MAP.area()
+  kv(ix, r + 10, iw, "Work area", ax1 and ((ax2 - ax1 + 1) .. " x " .. (az2 - az1 + 1) .. " blocks (SETTINGS > MAP)")
+     or "whole world", ax1 and C.text or C.dim)
+  local fl, fc = FACTORY.statusLine()
+  kv(ix, r + 11, iw, "Turtle factory", fl, fc)
+  local np, lastP = 0, nil
+  for _, p in pairs(POCKET.pockets) do np = np + 1 if p.seen and (not lastP or p.seen > lastP) then lastP = p.seen end end
+  kv(ix, r + 12, iw, "Pocket remote", np == 0 and "none paired (pocket.lua on a pocket computer)"
+     or (np .. " paired" .. (lastP and ("   last used " .. TT.ago(lastP)) or "")), np > 0 and C.text or C.dim)
+  kv(ix, r + 13, iw, "Schematics", (s.schematics or 0) .. " stored" .. ((s.schematics or 0) == 0
+     and "   (drag a Create .nbt onto the computer's screen)" or "   (type  schem)"), (s.schematics or 0) > 0 and C.text or C.dim)
 
   ------------------------------------------------ system log (kept apart from EVENTS)
   local ly = y0 + sh + 1

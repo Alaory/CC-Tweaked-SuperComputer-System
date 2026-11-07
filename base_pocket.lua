@@ -90,9 +90,15 @@ function POCKET.status()
   for dim, team in pairs(MINE and MINE.teams() or {}) do
     local l = team.loader
     local T = MINE.totals(team)
+    local gone = {}
+    for _, m in ipairs(team.miners) do
+      if not MINE.online(m) and m.seenEpoch and os.epoch("utc") - m.seenEpoch > 1200000 then
+        gone[#gone + 1] = { id = m.id, label = short(m.label or ("#" .. m.id), 12) }
+      end
+    end
     d.mining[#d.mining + 1] = { dim = dim, loader = l and l.id, label = l and MINE.status(l) or "MISSING",
                                 running = l and l.running and true or false, miners = #team.miners,
-                                ci = tonumber(T.ci) or 0, rate = math.floor(T.rate or 0), ores = T.ores }
+                                ci = tonumber(T.ci) or 0, rate = math.floor(T.rate or 0), ores = T.ores, gone = gone }
   end
   -- factory, survey, away
   if FACTORY then d.factory = FACTORY.statusLine() end
@@ -117,6 +123,13 @@ end
 
 ----------------------------------------------------------------- what the pocket can do
 local TCMDS = { stop = true, home = true, locate = true, ping = true }
+-- the owner is in another dimension (the Player Detector knows): positions from
+-- the pocket's GPS there are not overworld places
+local function elsewhere()
+  local d = state.playerDim
+  if d and d ~= (DRONE_DIM or "minecraft:overworld") then return "you are in " .. (dimName and dimName(d) or tostring(d)) ..
+    " - corners / surveys are for the overworld" end
+end
 local function ownerPos()
   for _, e in ipairs(state.players or {}) do
     if e.name == state.owner and e.p and e.p.x then return math.floor(e.p.x), math.floor(e.p.y), math.floor(e.p.z) end
@@ -161,6 +174,16 @@ function POCKET.act(a, args, pos)
     if not TCMDS[c] then return false, "not allowed from the pocket: " .. c end
     TT.send(t.id, c, {})
     return true, c .. " sent to " .. t.label
+  elseif a == "forget" then
+    -- a turtle that is gone (deleted by a server crash): off the list - only while offline
+    local t = state.turtles[tonumber(args[1]) or -1]
+    if not t then return false, "no such turtle" end
+    if TT.online(t) then return false, t.label .. " is online - not forgotten" end
+    local label = t.label
+    TT.forget(t.id)
+    return true, label .. " forgotten (its survey spots go to the others)"
+  elseif a == "minedrop" then
+    return MINE.drop(tonumber(args[1]))
   elseif a == "allstop" or a == "allhome" then
     local n = 0
     for id, t in pairs(state.turtles) do
@@ -175,6 +198,8 @@ function POCKET.act(a, args, pos)
     return true, c:upper() .. " sent to the loader"
   elseif a == "corner" then
     -- a work-area corner where you stand (the pocket's GPS, else the Player Detector)
+    local why = elsewhere()
+    if why then return false, why end
     local x, y, z = tonumber(pos and pos.x), tonumber(pos and pos.y), tonumber(pos and pos.z)
     if not x then x, y, z = ownerPos() end
     if not x then return false, "your position is unknown (no GPS on the pocket, no Player Detector)" end
@@ -186,6 +211,8 @@ function POCKET.act(a, args, pos)
     resetSetting("map.areaB")
     return true, "work area: the whole world again"
   elseif a == "surveyhere" then
+    local why = elsewhere()
+    if why then return false, why end
     local x, y, z = tonumber(pos and pos.x), tonumber(pos and pos.y), tonumber(pos and pos.z)
     if not x then x, y, z = ownerPos() end
     if not x then return false, "your position is unknown" end
@@ -240,6 +267,9 @@ function POCKET.receive(id, m)
   local p = POCKET.pockets[id]
   if not p then return send(id, "unpaired", {}, "") end
   if type(m.n) ~= "number" or m.n <= (p.lastN or 0) then return end
+  -- older than a minute (the numbers are the server clock): a recorded message
+  -- sent again - also after a base restart, when lastN starts from the file
+  if m.n / 100 < os.epoch("utc") - 60000 then return end
   if m.sig ~= sign(p.key, m.t, m.n, m.a, m.args) then return end
   p.lastN, p.seen = m.n, os.epoch("utc")
   if m.t == "req" then

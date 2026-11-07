@@ -102,6 +102,12 @@ penv.act("corner", { 1 }, true)
 pump()
 local a = CONFIG.map.areaA
 CHECK(a and a.x == 120 and a.z == -40, "corner 1 where the pocket is (GPS)")
+state.playerDim = "jamd:mining"
+GPSPOS = { 999, 10, 999 }
+penv.act("corner", { 2 }, true)
+pump()
+CHECK(not CONFIG.map.areaB and P.toast:find("overworld", 1, true), "in another dimension: no corner from the GPS (" .. tostring(P.toast) .. ")")
+state.playerDim = nil
 -- a ride: the base starts a drone ride for the owner to the base
 local rode
 local start0, problem0 = startRide, rideProblem
@@ -118,6 +124,36 @@ penv.act("mine", { 10, "start" })
 pump()
 CHECK(MINE.units[10].queue[1] and MINE.units[10].queue[1].cmd == "start", "MINE: START to the loader")
 
+-- FORGET from the pocket: refused while the turtle is online, works when it is gone
+state.turtles[7].lastSeen = os.clock()
+penv.act("forget", { 7 })
+pump()
+CHECK(state.turtles[7] and P.toast:find("online", 1, true), "FORGET refused for an online turtle")
+state.turtles[9].lastSeen = os.clock() - 9999
+penv.act("forget", { 9 })
+pump()
+CHECK(state.turtles[9] == nil, "FORGET removes an offline turtle: " .. tostring(P.toast))
+-- DROP a gone miner from the pocket; the MINE tab shows it as gone first
+MINE.units[11] = { id = 11, role = "miner", dim = "overworld", label = "Digger", leader = 10, log = {}, queue = {},
+                   lastSeen = os.clock() - 9999, seenEpoch = os.epoch("utc") - 3600000 }
+penv.refresh()
+pump()
+local gone = P.data.mining[1] and P.data.mining[1].gone
+CHECK(gone and gone[1] and gone[1].id == 11, "status: the gone miner is listed")
+P.tab = "mine"
+CHECK(pcall(penv.draw), "MINE tab with a gone miner draws")
+penv.act("minedrop", { 11 })
+pump()
+CHECK(MINE.units[11] == nil, "DROP from the pocket: " .. tostring(P.toast))
+-- the WELCOME BACK report reaches the pocket
+POCKET.out = {}
+AWAY.on, AWAY.since, AWAY.snap = true, os.epoch("utc") - 3600000, {}
+pcall(AWAY.back)
+pump()
+local wb = false
+for _, n in ipairs(P.notes) do if n.title == "WELCOME BACK" then wb = true end end
+CHECK(wb, "the WELCOME BACK report reaches the pocket")
+
 -- security: a forged message, a replay, and an unpaired pocket do nothing
 local before = POCKET.pockets[PID].lastN
 POCKET.receive(PID, { t = "act", n = os.epoch("utc") * 100 + 99, a = "allstop", sig = "0000000000000000" })
@@ -127,6 +163,13 @@ old.sig = penv.sign(P.key, old.t, old.n, old.a, old.args)
 local n0 = #POCKET.out
 POCKET.receive(PID, old)
 CHECK(#POCKET.out == n0, "a replayed (old number) message is ignored")
+-- after a base restart (lastN from the file is older): a message recorded 5 minutes ago is still refused
+POCKET.pockets[PID].lastN = 0
+local recorded = { t = "act", n = (os.epoch("utc") - 300000) * 100, a = "allhome", args = {} }
+recorded.sig = penv.sign(P.key, recorded.t, recorded.n, recorded.a, recorded.args)
+n0 = #POCKET.out
+POCKET.receive(PID, recorded)
+CHECK(#POCKET.out == n0, "a recorded old message is refused even after a restart")
 POCKET.receive(77, { t = "act", n = os.epoch("utc") * 100, a = "allstop", sig = "x" })
 local last = POCKET.out[#POCKET.out]
 CHECK(last and last.id == 77 and last.msg.t == "unpaired", "an unknown pocket is told it is not paired")

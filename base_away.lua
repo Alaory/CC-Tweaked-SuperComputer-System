@@ -154,6 +154,9 @@ function AWAY.report()
     end
   end
   if MAP.full then need[#need + 1] = "map floppies full" end
+  if FACTORY and FACTORY.lastMissing and #FACTORY.lastMissing > 0 then
+    need[#need + 1] = "the turtle factory needs AE2 patterns (" .. FACTORY.lastMissing[1].what .. "...)"
+  end
   if #need > 0 then add("Needs you: " .. table.concat(need, ", "), C.bad)
   else add("Nothing needs you.", C.good) end
   return lines
@@ -192,6 +195,8 @@ function AWAY.back()
   local was = USER_ACTION
   USER_ACTION = true
   pcall(pushNote, "WELCOME BACK", table.concat(texts, "  /  "), C.label, 300)
+  -- and on the pocket remote (it shows info messages only when sent on purpose)
+  if POCKET and POCKET.note then pcall(POCKET.note, "WELCOME BACK", table.concat(texts, "  /  "), C.good) end
   USER_ACTION = was
   if state.owner and AWAY.cfg("chat", true) then
     chatTell(state.owner, "While you were away: " .. texts[1])

@@ -20,6 +20,9 @@ mapping turtles and a map of the world.
 - [📦 ME / Curios](#-me--curios)
 - [🗺️ The map](#️-the-map)
 - [⛏️ Mining dimension teams](#️-mining-dimension-teams)
+- [🏭 Turtle factory](#-turtle-factory)
+- [📱 Pocket remote](#-pocket-remote)
+- [🏗️ Schematics (builder turtles)](#️-schematics-builder-turtles)
 - [💬 Chat commands](#-chat-commands)
 - [⌨️ Console commands](#️-console-commands)
 - [🎨 Themes & the message log](#-themes--the-message-log)
@@ -272,9 +275,37 @@ again …)", "after an update" or "after an ERROR: …".
 - 🗺️ the monitor shows the **map**, zoomed out by itself, following the turtles; **auto-map** runs even if you switched it off (off again when you are back)
 - 💾 the map is saved every 30 minutes
 
-When you come back: a **WELCOME BACK** box, a private chat message and the SYSTEM tab tell you
+When you come back: a **WELCOME BACK** box, a private chat message, your pocket remote and the SYSTEM tab tell you
 how long you were away, what was mined and mapped, what went wrong and what needs you now.
 Type `away` on the computer to see it again. Settings: SETTINGS > AWAY.
+
+## 🏭 Turtle factory
+
+The base keeps your fleet at the size you choose (**SETTINGS > FACTORY**, "Keep this many
+turtles"; 0 = off). Turtles that went **MISSING** (deleted by a server crash) are replaced.
+- It checks AE2 for an Advanced Turtle, Ender Modem, Geo Scanner, Chunky upgrade, diamond
+  pickaxe and 16 coal blocks; what is missing is **crafted by AE2** (if you have a pattern -
+  `factory` lists what has none). It never takes your own enchanted / renamed / used items.
+- The parts go into the **factory chest** (an empty chest on the cable, next to the builder);
+  the **builder** (your rescuer, or the turtle you choose) places the new turtle, gives it the
+  parts and starts it from the install floppy. Everything is chosen by tapping in SETTINGS > FACTORY.
+
+## 📱 Pocket remote
+
+Copy `pocket.lua` onto an **Advanced Pocket Computer with a modem** (an **Ender** modem
+reaches the base from anywhere) and run `pocket`. The monitor shows a 6-digit code; type it
+on the pocket - paired. Then, by tapping:
+**HOME** (turtles, mining, factory, survey) · **RIDE** (a drone takes you to the base, a place,
+or back where you died) · **BOTS** (STOP / HOME / GPS / FORGET; STOP ALL, ALL HOME) ·
+**MINE** (START / PAUSE / UNLOAD / DROP) · **MSG** (the base's warnings, live) ·
+**+** (work-area corners where you stand, survey around you, factory).
+`pocket` on the base lists paired pockets, `pocket unpair <id>` locks one out.
+
+## 🏗️ Schematics (builder turtles)
+
+Save a build with Create's **Schematic and Quill**, then drag the `.nbt` file (from
+`.minecraft/schematics` on your PC) onto the base computer's screen. `schem` lists them,
+`schem <name>` shows the size and the materials. (Building them with turtles comes next.)
 
 ## ⛏️ Mining dimension teams
 
@@ -334,6 +365,10 @@ mining = {
 - **SURVEY: ALL TURTLES** maps the area on screen. Big areas are handed out in
   batches of 64 spots per turtle. `survey` on the computer shows the progress, and
   what each turtle is waiting for.
+- **Work area** (SETTINGS > MAP, two corners - or SET CORNER on the pocket): turtles survey
+  only inside it (auto-map too); its edge is drawn on the map with `+`. Tap "Work area" for
+  the whole world again.
+- Turtles survey as a **pack** (side by side), so after a server crash one visit wakes them all.
 - The letters on the map: **B** base · **@** you · **D** drone · **T** turtle.
 
 ---
@@ -365,7 +400,11 @@ Type these on the base computer. `help` lists them all.
 | Area | Commands |
 |---|---|
 | 🐢 Turtles | `turtles` · `turtle <id> <cmd>` (`log`, `diag`, `goto x y z`, `home`, `stop`, `setting …`) · `update` · `rescue <id>` · `findlost` · `exit [clear]` |
-| 🗺️ Map | `map [clear]` · `survey` · `disks [data\|move]` |
+| 🗺️ Map | `map [clear]` · `survey` · `disks [data\|move]` · work area: SETTINGS > MAP corners |
+| 🏭 Factory | `factory [chest <name>\|builder <id>\|build\|stop]` (or SETTINGS > FACTORY) |
+| ⛏️ Mining | `mine [drop\|forget] <id>` |
+| 📱 Pocket | `pocket [unpair <id>]` |
+| 🏗️ Schematics | `schem [<name>\|delete <name>]` |
 | 🚁 Drones | `drones` · `drone <n>` · `dest …` · `save <name>` · `list` · `fly` · `pickup` · `drop` · `ferry` · `home` · `stop` · `charger [x y z]` |
 | 💬 Chat | `allow <name>` · `deny <name>` · `allowed` |
 | 📦 ME | `mesetup` · `me check` · `me add <id>` · `tanks` · `curios check` · `curios probe` |

@@ -338,8 +338,13 @@ PneumaticCraft drone rides, turtle mapping/surveys, and an AE2 ME network view.
   Detector), wholeworld, surveyhere, factoryretry. pushNote WARNING / ERROR /
   DONE -> "note" to every paired pocket. Pocket tabs HOME RIDE BOTS MINE MSG +,
   tap only, risky buttons two taps. Console `pocket [unpair <id>]`.
-  tools/tests/test_pocket.lua runs the real pocket.lua against the base (DUMP=1
-  prints the screens).
+  Also: forget (offline turtle only) and minedrop (MINE.drop) from the pocket
+  (two taps); status lists gone miners (20+ min). Messages older than 60 s are
+  refused (m.n is the server clock * 100) - replays also after a base restart.
+  corner / surveyhere refused when the Player Detector says the owner is not in
+  the overworld (the pocket's GPS there is not an overworld place). WELCOME BACK
+  goes to the pocket too. tools/tests/test_pocket.lua runs the real pocket.lua
+  against the base (DUMP=1 prints the screens).
 - Permanent rescuer: t.rescuerRole (RESCUER button, saved in turtles.dat;
   base only). TT.patrolTick (comms worker) sends it to: no fuel (<20 for
   60 s), stuck (60 s idle), lost (silent CONFIG.turtles.rescueAfter, default
@@ -519,7 +524,9 @@ rider down at the pickup spot.
   local limits, the base tests in tools/tests/test_*.lua (real base files on the
   tools/preview stand-in; CHECK(cond, msg) in a test, TESTMODE=1 -> exit 1 on a
   failed check), every page draws, node.lua builder / route / STOP tests, the
-  mining simulator. New feature -> add CHECKs to a test (and make sure a broken
+  mining simulator. test_ticks.lua runs EVERY background job (the ones the
+  workers pcall - an error there is swallowed in the game) 40 times in a messy
+  world without pcall; test_settings.lua taps every setting. New feature -> add CHECKs to a test (and make sure a broken
   version FAILS it). Then tell the owner exactly which files to copy and what to
   test in game. Keep explanations short and plain.
 - When an in-game API is unclear, ask the owner to run `report` (uploads all

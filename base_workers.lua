@@ -65,6 +65,11 @@ function sysRefresh()
   s.turtlesUp, s.turtlesAll = up, all
   s.eventsLog = fs.exists("events.log") and fs.getSize("events.log") or 0
   if STORE then s.helperFree, s.helpers = STORE.space() end
+  if SCHEM then
+    local n = 0
+    for _ in pairs(SCHEM.list()) do n = n + 1 end
+    s.schematics = n
+  end
   state.sys = s
 end
 
