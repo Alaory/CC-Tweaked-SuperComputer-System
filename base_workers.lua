@@ -421,7 +421,7 @@ function mapWorker()
   local lastCode = os.clock()
   while state.running do
     waitFor(5, "map_save")
-    if MAP.saveNow then
+    if MAP.saveNow and MAP.loaded then            -- (still loading: saved once it is read)
       MAP.saveNow = false
       local okS = pcall(MAP.save)
       pcall(MAP.checkSpace)
@@ -437,8 +437,7 @@ function mapWorker()
       if okW2 and (n2 or 0) > 0 then sleep(4) end
       pcall(STORE.find)
       local okK, nK = pcall(STORE.kickSilent)     -- on, but store.lua not running: restart it
-      if okK and (nK or 0) > 0 then sleep(5) end
-      pcall(STORE.find)
+      if okK and (nK or 0) > 0 then sleep(5) pcall(STORE.find) end
       pcall(STORE.updateAll)
     end
   end

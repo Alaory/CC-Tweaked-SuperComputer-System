@@ -684,8 +684,10 @@ while T < maxT do
   if SCEN:find("drop") and not DROPPED and lu and ENVS.loader.S and ENVS.loader.S.plan and ENVS.loader.S.plan.ci >= 2 and T > 1200 then
     DROPPED = MS[tonumber(os.getenv("DROPIDX") or 1)].id
     CI_DROP = ENVS.loader.S.plan.ci
-    for i = #cos, 1, -1 do if cos[i].u.id == DROPPED then table.remove(cos, i) end end
-    for k, u in pairs(turtles) do if u.id == DROPPED then turtles[k] = nil end end
+    if not SCEN:find("alive") then           -- "dropalive": dropped, but it still runs
+      for i = #cos, 1, -1 do if cos[i].u.id == DROPPED then table.remove(cos, i) end end
+      for k, u in pairs(turtles) do if u.id == DROPPED then turtles[k] = nil end end
+    end
     MINE.cmd(LOADER, "drop", { DROPPED })
     MINE.units[DROPPED] = nil
     io.write(string.format("** miner %d DELETED at %.0f s (chunk %d) - mine drop sent\n", DROPPED, T, CI_DROP))
@@ -815,6 +817,12 @@ if DROPPED then
            table.concat(ENVS.loader.S.team or {}, ",") .. "\n")
   if not P or P.ci < CI_DROP + 3 then fail("the team did not go on after  mine drop  (chunk " .. tostring(P and P.ci) .. ")") end
   for _, tid in ipairs(ENVS.loader.S.team or {}) do if tid == DROPPED then fail("the dropped miner is still in the team") end end
+  if SCEN:find("alive") then
+    local DS = ENVS[DROPPED].S
+    io.write("** the dropped (alive) miner: leader " .. tostring(DS.leader) .. ", running " .. tostring(DS.running) ..
+             ", task " .. tostring(ENVS[DROPPED].task) .. "\n")
+    if DS.leader then fail("the dropped miner still thinks it is in the team") end
+  end
 end
 for _, id in ipairs(MINERS) do
   local u = MINE.units[id]

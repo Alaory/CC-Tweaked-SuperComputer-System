@@ -81,7 +81,9 @@ PneumaticCraft drone rides, turtle mapping/surveys, and an AE2 ME network view.
   batchResult) so they finish together; the next round only when the whole
   pack is done (or after packWait 300 s). Keeps them ~20 blocks apart (sim:
   83% of free-running speed) so one wake-up (rescuer / player) reaches all.
-  t.packWait -> TT.idleWhy "waiting for the rest of the pack". SURVEY: ALL for small areas also goes through
+  t.packWait -> TT.idleWhy "waiting for the rest of the pack". A turtle still holding
+  a batch (q.out[id]) is never free (its batch is reclaimed after 30 s idle first -
+  overwriting it lost the unscanned spots). SURVEY: ALL for small areas also goes through
   the queue (MAP.addSurvey); SURVEY: THIS ONE is a direct order. A spot is
   done when MAP.spotDone (its own column in detail, or its chunk fully in the
   overview) - NOT MAP.scanned alone (17-block spots vs 16-block chunks).
@@ -189,7 +191,7 @@ PneumaticCraft drone rides, turtle mapping/surveys, and an AE2 ME network view.
   turn), opposite 0.8 (HD[k] = last sideways direction); h weighted 1.001
   (tie-break). tools/navsim/world.lua: turns cost time and are counted; maze /
   maze2 (TX=44) and "astar" (planner alone on 6 random mazes) scenarios.
-- Mining teams (miner.lua m8, base_mining.lua MINE, base_ui_mining.lua; TURTLES >
+- Mining teams (miner.lua m13, base_mining.lua MINE, base_ui_mining.lua; TURTLES >
   MINING): per mining dimension ONE LOADER + up to CONFIG.maxMiners (5) MINERS.
   Same signed protocol with m.mine = true -> TT.receive -> MINE.receive (never
   in state.turtles). Team proto "basemine": loaderhere / minerhere (join, by
@@ -220,7 +222,9 @@ PneumaticCraft drone rides, turtle mapping/surveys, and an AE2 ME network view.
   leave the ready wait when myIndex() changes; a new miner 1 digs the main
   tunnel of the current chunk first (J.tunnelDone); a dropped miner that is
   alive gets a team list without itself -> leaves (S.leader nil). minesim
-  team2drop/team3drop/team5drop (DROPIDX = which miner). Unloading: one miner at the station at a time
+  team2drop/team3drop/team5drop/team3dropalive (DROPIDX = which miner). The loader
+  answers ready/needlayer/unloadreq from a non-member (isMember) with the team list,
+  and sends it to a dropped miner directly - an alive dropped miner leaves. Unloading: one miner at the station at a time
   (S.stationUse, 6 min max); each miner needs its own `miner station` (the
   point lives in its core). Ores (isOreBlock): tags (:ores, _ores, /ores, not
   ores_in_ground), names _ore / ore_ / _ore_ (not _block), CONFIG.ores +
@@ -430,7 +434,8 @@ anchor turtle keep chunks loaded). Charging station + parking in base_drones.lua
 passenger still on board (dr.rider) is kept through the home mission and let out at
 home (releaseRider). parkCheck (every 10 s) sends idle drones away from their spot
 home - the charger spot, or homePos at Base when there is no charger - at once after
-a failure, else after 20 s; retried every 60 s.
+a failure, else after 20 s; retried every 60 s. A rider on board ON PURPOSE
+(PICKUP done, no failure: dr.rider and not dr.failedAt) is left alone - the owner DROPs.
 
 ## Rules for changes
 - ComputerCraft Lua (Cobalt, Lua 5.2 based): no `goto`, no `//`, no bit ops

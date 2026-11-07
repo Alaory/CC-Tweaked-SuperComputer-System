@@ -74,7 +74,7 @@ CONFIG = {
 }
 
 STATE_FILE = "miner_state"
-MYVER = "m12"            -- shown on the screen and the base (MINING tab)
+MYVER = "m13"            -- shown on the screen and the base (MINING tab)
 DX = { [0] = 0, 1, 0, -1 }
 DZ = { [0] = -1, 0, 1, 0 }
 FNAME = { [0] = "north", "east", "south", "west" }
@@ -280,6 +280,11 @@ function sendTeam(to, t, extra)
   if to then pcall(rednet.send, to, m, CONFIG.team) else pcall(rednet.broadcast, m, CONFIG.team) end
 end
 
+-- is this turtle in my team (the loader's list)?
+function isMember(id)
+  for _, t in ipairs(S.team or {}) do if t == id then return true end end
+  return false
+end
 -- a message arrived (base command or the team partner)
 function handle(id, m, proto)
   if type(m) ~= "table" then return end
@@ -309,6 +314,9 @@ function handle(id, m, proto)
           inTeam = true
         end
         if inTeam then sendPlan() end
+      elseif (m.t == "ready" or m.t == "needlayer" or m.t == "unloadreq") and not isMember(id) then
+        -- not (or no longer) in my team: it gets the team list - and stops
+        sendTeam(id, "team", { team = S.team, plan = S.plan })
       elseif m.t == "ready" and S.plan and m.ci == S.plan.ci then
         S.plan.ready[id] = m.ci
         save()
@@ -437,6 +445,7 @@ function doCmd(cmd, args)
       if found then S.err = nil end
       save()
       sendPlan()
+      sendTeam(id, "team", { team = S.team, plan = S.plan })    -- (alive after all? it sees it is out and stops)
       note(found and ("Miner " .. id .. " taken out of the team (" .. #S.team .. " left)") or ("Miner " .. id .. " is not in the team"))
     end
   elseif cmd == "unpair" then

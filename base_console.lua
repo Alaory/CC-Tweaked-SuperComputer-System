@@ -674,8 +674,8 @@ function handleCommand(line)
 
   elseif cmd == "map" then
     if words[2] == "clear" then
-      MAP.clear()
-      say("Map cleared (all scans deleted).")
+      if MAP.clear() then say("Map cleared (all scans deleted).")
+      else say("The map is still loading - try again in a moment.") end
     else
       pcall(MAP.save)
       local total, onPc, files = MAP.diskUse()

@@ -265,10 +265,11 @@ function AWAY.tick()
     if AWAY.on then AWAY.back() end
     return
   end
-  AWAY.startChecked = true
-  if online == nil then return end                      -- cannot tell: change nothing
+  if online == nil then return end                      -- cannot tell (yet): change nothing
+  AWAY.startChecked = true                              -- (known offline: no "base was off" box later)
   AWAY.lastSeen = AWAY.lastSeen or now
-  if not AWAY.on and (now - AWAY.lastSeen) / 1000 > (tonumber(AWAY.cfg("after", 300)) or 300) then
+  -- (not before the map is read: the "before" numbers would be 0)
+  if not AWAY.on and MAP.loaded and (now - AWAY.lastSeen) / 1000 > (tonumber(AWAY.cfg("after", 300)) or 300) then
     AWAY.start()
   end
   if AWAY.on then

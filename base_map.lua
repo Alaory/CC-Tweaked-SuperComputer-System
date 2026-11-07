@@ -612,6 +612,7 @@ end
 
 -- forget everything (e.g. scans made with wrong coordinates)
 function MAP.clear()
+  if not MAP.loaded then return false end          -- still reading it: the rest would come back
   MAP.version = MAP.version + 1
   for _, p in pairs(MAP.where) do if mExists(p) then mDelete(p) end end
   MAP.ch, MAP.order, MAP.ov, MAP.where, MAP.dirty = {}, {}, {}, {}, {}
@@ -620,6 +621,7 @@ function MAP.clear()
   for _, p in ipairs({ CONFIG.map.file, dataFile(CONFIG.map.file, true) }) do
     if fs.exists(p) then pcall(fs.delete, p) end
   end
+  return true
 end
 
 -- the old single map file (map.dat, before region files): read it once
@@ -1226,6 +1228,10 @@ function MAP.feedSurvey()
     if t then t.packWait = nil end                -- (set again below while it waits for its pack)
     if free and t.queueAt and os.clock() - t.queueAt < 15 then free = false busy = true end
     if free and fuel and fuel < minFuel then free = false end
+    -- still holding a batch (idle without its result yet): not free - after 30 s
+    -- idle the batch is taken back below, THEN it gets new spots (never overwrite:
+    -- its unscanned spots would be lost)
+    if free and q.out and q.out[id] then free = false busy = true end
     if t and not free and t.task and t.task ~= "idle" then busy = true end
     -- why this turtle gets nothing (told to you when nobody works)
     if t and not free then

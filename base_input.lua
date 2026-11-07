@@ -118,9 +118,12 @@ function handleTouch(tx, ty)
               end
             end
           elseif a.kind == "mapclear" then
-            MAP.clear()
-            state.mapSel = nil
-            setToast("Map cleared", C.label, 4)
+            if MAP.clear() then
+              state.mapSel = nil
+              setToast("Map cleared", C.label, 4)
+            else
+              setToast("The map is still loading - try again in a moment", C.warn, 5)
+            end
           elseif a.kind == "survey" or a.kind == "surveyall" then
             -- the area on screen, minus what is mapped, split between turtles
             local x1, z1, x2, z2 = MAP.viewArea()

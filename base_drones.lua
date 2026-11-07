@@ -1149,20 +1149,26 @@ function parkCheck()
       local x, y, z, onCharger = parkSpot(dr)
       local tol = 1.5                  -- parking spots are only 2 blocks apart
       if not x then x, y, z = homePos(dr) tol = 4 end
-      if dr.conn and x and dr.pos and dr.pos.x then
+      -- someone on board ON PURPOSE (PICKUP done, waiting for you to DROP them):
+      -- the drone stays where it is. Only after a FAILED mission it comes home.
+      local carrying = dr.rider and not dr.failedAt
+      if carrying then
+        dr.awaySince = nil
+      elseif dr.conn and x and dr.pos and dr.pos.x then
         local d = math.abs(dr.pos.x - (x + 0.5)) + math.abs(dr.pos.y - (y + 0.5)) + math.abs(dr.pos.z - (z + 0.5))
         if d > tol then
           dr.awaySince = dr.awaySince or os.clock()
-          local wait = (dr.failedAt or dr.rider) and 0 or 20      -- after a failure: at once
+          local wait = dr.failedAt and 0 or 20                 -- after a failure: at once
           if os.clock() - dr.awaySince >= wait and (not dr.lastPark or os.clock() - dr.lastPark > 60) then
             dr.awaySince, dr.lastPark = nil, os.clock()
             droneLog(dr, "Idle away from my parking spot - going back")
             submitDrone(dr, { kind = "home" })
           end
         else
+          local failed = dr.failedAt
           dr.awaySince, dr.failedAt = nil, nil
-          -- home with someone still on board: let them out (as a mission, in the drone worker)
-          if dr.rider and (not dr.lastPark or os.clock() - dr.lastPark > 60) then
+          -- home after a failure with someone still on board: let them out (as a mission)
+          if dr.rider and failed and (not dr.lastPark or os.clock() - dr.lastPark > 60) then
             dr.lastPark = os.clock()
             submitDrone(dr, { kind = "home" })
           end
