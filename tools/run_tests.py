@@ -53,10 +53,22 @@ def _():
     return not bad, "\n".join(bad)
 
 for label, files in [("base", ["inventory.lua"] + sorted(os.path.basename(f) for f in glob.glob(os.path.join(ROOT, "base_*.lua")))),
-                     ("miner.lua", ["miner.lua"]), ("store.lua", ["store.lua"]), ("startup.lua", ["startup.lua"])]:
+                     ("miner.lua", ["miner.lua"]), ("store.lua", ["store.lua"]), ("startup.lua", ["startup.lua"]),
+                     ("node.lua", ["node.lua"])]:
     @check("globals", label)
     def _(files=files):
         rc, out = run(["python3", "tools/check_globals.py"] + files)
+        return rc == 0, out.strip()
+
+@check("globals", "missing locals (base)")
+def _():
+    files = ["inventory.lua"] + sorted(os.path.basename(f) for f in glob.glob(os.path.join(ROOT, "base_*.lua")))
+    rc, out = run(["python3", "tools/check_globals.py", "--leaks"] + files)
+    return rc == 0, out.strip()
+for f in ["miner.lua", "store.lua", "startup.lua", "node.lua"]:
+    @check("globals", "missing locals (%s)" % f)
+    def _(f=f):
+        rc, out = run(["python3", "tools/check_globals.py", "--leaks", "--upper-ok", f])
         return rc == 0, out.strip()
 
 for f in ["node.lua", "miner.lua"]:

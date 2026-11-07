@@ -2485,6 +2485,10 @@ function build()
     end
   end
   turtle.select(1)
+  -- something left in the chest (my inventory was too full): the new turtle
+  -- would miss parts - all back, nothing built
+  local okL, rest = pcall(peripheral.call, "front", "list")
+  local leftOver = okL and type(rest) == "table" and next(rest) ~= nil
   local after = invSnapshot()
   local added = {}
   for i = 1, 16 do
@@ -2500,6 +2504,7 @@ function build()
     turtle.select(1)
     return false, why .. " - the parts are back in the chest"
   end
+  if leftOver then return giveBack("not enough room in my inventory for all the parts") end
   local ts
   for i in pairs(added) do
     local d = turtle.getItemDetail(i)

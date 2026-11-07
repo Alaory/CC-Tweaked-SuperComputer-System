@@ -13,10 +13,18 @@ local function setup(mode)
   if mode == "missing" then ME["advancedperipherals:chunk_controller"] = 0 end
   bridgeKind = "ME"
   bridge = {
-    getItem = function(f) return { name = f.name, amount = ME[f.name] or 0, isCraftable = CRAFTABLE[f.name] } end,
+    getItem = function(f)
+      local it = { name = f.name, amount = ME[f.name] or 0, isCraftable = CRAFTABLE[f.name], fingerprint = "FP-" .. f.name,
+                   components = { ["minecraft:damage"] = 0, ["minecraft:enchantments"] = { levels = {} } } }   -- plain (defaults)
+      if mode == "own" and f.name == "minecraft:diamond_pickaxe" then
+        it.components["minecraft:enchantments"] = { levels = { ["minecraft:efficiency"] = 5 } }               -- YOUR pickaxe
+      end
+      return it
+    end,
     isItemCraftable = function(f) return CRAFTABLE[f.name] or false end,
     craftItem = function(f) CRAFTS[#CRAFTS + 1] = f.name return true end,
-    exportItem = function(f) local n = math.min(f.count, ME[f.name] or 0) ME[f.name] = ME[f.name] - n
+    exportItem = function(f) FPS = FPS or {} FPS[#FPS + 1] = f.fingerprint
+                             local n = math.min(f.count, ME[f.name] or 0) ME[f.name] = ME[f.name] - n
                              CHEST[f.name] = (CHEST[f.name] or 0) + n return n end,
     importItem = function(f) local n = math.min(f.count, CHEST[f.name] or 0) CHEST[f.name] = CHEST[f.name] - n
                              ME[f.name] = (ME[f.name] or 0) + n return n end,
@@ -34,7 +42,7 @@ local function setup(mode)
   CONFIG.factory = { target = 3 }
   state.turtles = {
     [1] = { id = 1, label = "Builder", log = {}, lastN = 0, fuel = 9000, pos = { x = 0, y = 70, z = 0 }, task = "idle",
-            lastSeen = os.clock(), rescuerRole = true },
+            lastSeen = os.clock(), rescuerRole = true, home = { x = 0, y = 70, z = 0 } },
     [2] = { id = 2, label = "S2", log = {}, lastN = 0, fuel = 9000, pos = { x = 5, y = 70, z = 0 }, task = "idle", lastSeen = os.clock() } }
   FACTORY.job, FACTORY.fails, FACTORY.waitUntil, FACTORY.built, FACTORY.last, FACTORY.lastMissing = nil, 0, nil, 0, nil, nil
   FACTORY.chest, FACTORY.builder = "minecraft:chest_9", nil
@@ -102,3 +110,29 @@ CHECK(FACTORY.blocked() == nil, "a MISSING turtle is replaced")
 -- 3 failures in a row: it stops until  factory build
 FACTORY.fails = 3
 CHECK(FACTORY.blocked() and FACTORY.blocked():find("3 failed"), "stops after 3 failures")
+
+-- plain items with default entries (damage 0, no enchantments) are fine; they are asked for by fingerprint
+FPS = {}
+run("stock", function(chest) for k in pairs(chest) do chest[k] = nil end FACTORY.result(1, true, "built turtle 9") end)
+CHECK(FACTORY.built == 1, "plain items (default damage 0 / empty enchantments) are taken")
+CHECK(#FPS == 6 and FPS[1] == "FP-computercraft:turtle_advanced", "exported by fingerprint (exactly the item looked at)")
+
+-- your OWN enchanted pickaxe in the ME network: not taken, everything back
+ME, CRAFTS, CHEST, sent = run("own", function() end)
+CHECK(not sent:find("build"), "own pickaxe: no build")
+CHECK(FACTORY.last and tostring(FACTORY.last.msg):find("OWN", 1, true), "own pickaxe: told why")
+CHECK(ME["minecraft:diamond_pickaxe"] == 3 and ME["computercraft:turtle_advanced"] == 1, "own pickaxe: every part back in the ME network")
+
+-- the builder is out (not at its home next to the chest): sent home first
+setup("stock")
+state.turtles[1].pos = { x = 40, y = 70, z = 9 }
+local sent2 = {}
+local send0 = TT.send
+TT.send = function(id, c, ...) sent2[#sent2 + 1] = c return send0(id, c, ...) end
+FACTORY.sentHome = nil
+CLOCK = CLOCK + 11
+FACTORY.tick()
+TT.send = send0
+CHECK(FACTORY.job == nil and table.concat(sent2, ","):find("home"), "builder away: sent home, no build yet")
+state.turtles[1].home = nil
+CHECK(FACTORY.blocked() and FACTORY.blocked():find("no home"), "builder without a home: told")

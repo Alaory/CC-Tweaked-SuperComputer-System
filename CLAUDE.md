@@ -294,7 +294,11 @@ PneumaticCraft drone rides, turtle mapping/surveys, and an AE2 ME network view.
   it on (it installs node.lua, equips modem/Chunky itself, refuels), takes the
   drive back. Before the turtle is placed every failure gives the parts back to
   the chest. Parts: CONFIG.factory.turtle/modem/geo/chunky/pick/fuel(+fuelCount
-  16). 3 failures in a row -> stops until `factory build`. Console `factory
+  16). Never your own items: before export the ME item is looked at -
+  enchanted / renamed / damaged / a used computer-turtle (nbt or components with a
+  FILLED value - 1.21 lists defaults like damage 0) -> refused; exported by its
+  fingerprint. The builder must be AT HOME (else sent home first); a builder whose
+  inventory is too full gives everything back (parts left in the chest). 3 failures in a row -> stops until `factory build`. Console `factory
   [chest <name>|builder <id>|build|stop]`; FLEET card line "Factory".
 - Permanent rescuer: t.rescuerRole (RESCUER button, saved in turtles.dat;
   base only). TT.patrolTick (comms worker) sends it to: no fuel (<20 for
@@ -468,7 +472,8 @@ rider down at the pickup spot.
 - Never move or delete the owner's items/fluids except exact amounts the
   program itself put somewhere.
 - After changing files, run `python3 tools/run_tests.py` (`--quick` ~6 s, full
-  ~40 s; `-k <word>` for some): syntax, undefined globals (tools/check_globals.py),
+  ~40 s; `-k <word>` for some): syntax, undefined globals (tools/check_globals.py; --leaks = set inside a function and nowhere
+  else, a missing local; LOADK-keyed names in big files are followed),
   local limits, the base tests in tools/tests/test_*.lua (real base files on the
   tools/preview stand-in; CHECK(cond, msg) in a test, TESTMODE=1 -> exit 1 on a
   failed check), every page draws, node.lua builder / route / STOP tests, the

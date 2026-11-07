@@ -24,6 +24,7 @@ local function runBuild(MODE)
     { name = "advancedperipherals:geo_scanner", count = 1 }, { name = "advancedperipherals:chunk_controller", count = 1 },
     { name = "minecraft:diamond_pickaxe", count = 1 }, { name = "minecraft:coal_block", count = 16 } } }
   if MODE == "blocked" then W[k(-1, 0, 0)] = { kind = "stone" } end
+  if MODE == "full" then for i = 6, 13 do INV[i] = { name = "minecraft:cobblestone", count = 64 } end end   -- 3 slots free
   local sel = 1
   local function front() return P.x + DX[P.f], P.y, P.z + DZ[P.f] end
   local function cellF() return W[k(front())] end
@@ -142,5 +143,10 @@ ok, msg, nt, mine, theirs, chestLeft = runBuild("blocked")
 CHECK(not ok and msg:find("back in the chest"), "blocked: refused - " .. tostring(msg))
 CHECK(chestLeft == 6, "blocked: all 6 parts back in the chest (" .. chestLeft .. ")")
 CHECK(mine["minecraft:coal_block"] == 10, "blocked: the builder keeps exactly its own fuel")
+ok, msg, nt, mine, theirs, chestLeft = runBuild("full")
+CHECK(not ok and msg:find("not enough room"), "full inventory: refused - " .. tostring(msg))
+CHECK(not nt, "full inventory: no turtle built")
+CHECK(chestLeft == 6, "full inventory: all 6 parts back in the chest (" .. chestLeft .. ")")
+CHECK(mine["minecraft:cobblestone"] == 512 and mine["minecraft:coal_block"] == 10, "full inventory: the builder keeps exactly its own items")
 if FAILS > 0 then os.exit(1) end
 print("PASS")

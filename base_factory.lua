@@ -69,6 +69,38 @@ local HINT = {
 
 function FACTORY.hint(name) return HINT[name] end
 
+-- an item that is someone's own: enchanted, renamed, or a computer / turtle
+-- with an ID and files. The factory never takes one of those.
+-- (values, not just names: 1.21 items may list defaults like damage 0 or an
+-- empty enchantment list - those are plain)
+local function filled(v)
+  if type(v) == "table" then
+    for _, x in pairs(v) do if filled(x) then return true end end
+    return false
+  end
+  if type(v) == "number" then return v ~= 0 end
+  if type(v) == "string" then return v ~= "" end
+  return v == true
+end
+local function special(it)
+  if type(it) ~= "table" then return false end
+  if filled(it.enchantments) then return true end
+  for _, key in ipairs({ "nbt", "components" }) do
+    local t = it[key]
+    if type(t) == "table" then
+      for k, v in pairs(t) do
+        local kk = tostring(k):lower()
+        local mine = kk:find("enchant", 1, true) or kk:find("custom_name", 1, true) or kk:find("display", 1, true)
+                     or kk:find("computer", 1, true) or kk:find("upgrade", 1, true) or kk:find("label", 1, true)
+                     or (kk:find("damage", 1, true) and not kk:find("max", 1, true))
+        if mine and filled(v) then return true end
+      end
+    end
+  end
+  return false
+end
+FACTORY.special = special
+
 -- the ME network: how many, can it craft it?
 local function meCount(name)
   if not bridge then return 0 end
@@ -161,6 +193,7 @@ function FACTORY.blocked()
   if not b then return "no builder turtle - type  factory builder <id>  (or give a turtle the RESCUER role)" end
   if not TT.online(b) then return b.label .. " (builder) is offline" end
   if (FACTORY.fails or 0) >= 3 then return "stopped after 3 failed builds - type  factory build  to try again" end
+  if not b.home then return b.label .. " (builder) has no home - its home must be next to the factory chest" end
   return nil
 end
 
@@ -175,6 +208,16 @@ function FACTORY.tick()
     if FACTORY.blocked() then return end
     local b = builderTurtle()
     if b.task and b.task ~= "idle" then return end      -- the builder is busy: later
+    -- the builder works at its home (next to the factory chest): send it there first
+    if not (b.home and b.pos and b.pos.x and b.pos.x == b.home.x and b.pos.y == b.home.y and b.pos.z == b.home.z) then
+      if not b.home then FACTORY.homeless = true return end
+      if not FACTORY.sentHome or os.clock() - FACTORY.sentHome > 120 then
+        FACTORY.sentHome = os.clock()
+        TT.send(b.id, "home", {}, true)
+      end
+      return
+    end
+    FACTORY.homeless = nil
     FACTORY.job = { step = "parts", t = os.epoch("utc"), builder = b.id }
     save()
     j = FACTORY.job
@@ -225,7 +268,17 @@ function FACTORY.tick()
     else
       j.exported = {}
       for _, p in ipairs(FACTORY.parts()) do
-        local ok, r = transfer(bridge, { "exportItem" }, FACTORY.chest, { name = p.name, count = p.count })
+        -- the item AE2 would give: never your own (enchanted / renamed / a used
+        -- turtle); asked for by its fingerprint, so it is exactly the one looked at
+        local okI, it = callx(bridge, "getItem", { name = p.name })
+        if okI and special(it) then
+          save()
+          return fail("the " .. p.what .. " in your ME system looks like your OWN one (enchanted, renamed or used) - " ..
+                      "not taken. Keep a plain one in stock (or let AE2 craft one) and take yours out of the network")
+        end
+        local filter = { name = p.name, count = p.count }
+        if okI and type(it) == "table" and it.fingerprint then filter.fingerprint = it.fingerprint end
+        local ok, r = transfer(bridge, { "exportItem" }, FACTORY.chest, filter)
         local moved = ok and numOf(r) or 0
         j.exported[p.name] = moved
         if moved < p.count then
