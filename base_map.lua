@@ -1260,6 +1260,16 @@ function MAP.feedSurvey()
       end
     end
   end
+  -- a turtle silent for 10 min (unloaded, or deleted by a server crash) still
+  -- holding spots: they go to the others (if it comes back, it just scans twice)
+  local nowE = os.epoch("utc")
+  for id in pairs(q.out or {}) do
+    local t = state.turtles[id]
+    if not t or (not TT.online(t) and t.seenEpoch and nowE - t.seenEpoch > (tonumber(CONFIG.map.reclaimOffline) or 600) * 1000) then
+      MAP.reclaim(id)
+      q.changed = true
+    end
+  end
   -- the pack: a new round only when the whole pack is done with the last one
   -- (or after packWait s - one hung turtle does not hold up the others)
   if pack and #packFree > 0 and (q.cursor < total or (q.redo and #q.redo > 0)) then

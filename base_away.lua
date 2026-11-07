@@ -141,7 +141,7 @@ function AWAY.report()
   local need = {}
   for _, t in pairs(state.turtles) do
     local key, lab = TT.status(t)
-    if key == "stuck" or key == "nofuel" or key == "still" then need[#need + 1] = (t.label or ("#" .. t.id)) .. " " .. lab end
+    if key == "stuck" or key == "nofuel" or key == "still" or key == "missing" then need[#need + 1] = (t.label or ("#" .. t.id)) .. " " .. lab end
   end
   for dim, team in pairs(MINE and MINE.teams() or {}) do
     local all = { team.loader }

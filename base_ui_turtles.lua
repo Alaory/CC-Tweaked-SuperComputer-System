@@ -5,9 +5,9 @@
 
 -- FLEET overview (no turtle selected): counts per status, what needs you
 -- (tap a line to select that turtle), fuel, program, survey, mining teams
-local ORDER = { "busy", "trouble", "still", "stuck", "nofuel", "held", "idle", "offline" }
+local ORDER = { "busy", "trouble", "still", "stuck", "nofuel", "held", "idle", "offline", "missing" }
 local NAMES = { busy = "WORKING", trouble = "FINDING A WAY", still = "NOT MOVING", stuck = "STUCK",
-                nofuel = "NO FUEL", held = "STOPPED", idle = "IDLE", offline = "OFFLINE" }
+                nofuel = "NO FUEL", held = "STOPPED", idle = "IDLE", offline = "OFFLINE", missing = "MISSING" }
 function drawFleet(x, y, w, h, list)
   card(x, y, w, h, "FLEET   (tap a turtle on the left for its controls)")
   local ix, iw = x + 2, w - 4
@@ -18,7 +18,7 @@ function drawFleet(x, y, w, h, list)
     count[key] = (count[key] or 0) + 1
     col[key] = col[key] or c
     -- FINDING A WAY is a turtle already working around something: not listed
-    if key == "stuck" or key == "nofuel" or key == "still" or (key == "idle" and c == C.warn) then
+    if key == "stuck" or key == "nofuel" or key == "still" or key == "missing" or (key == "idle" and c == C.warn) then
       need[#need + 1] = { t = t, lab = lab, c = c, why = why }
     end
     local f = tonumber(t.fuel)
@@ -222,7 +222,12 @@ function drawTurtlesPage(G)
   cmdBtn(rix + bw + 1,       r2, bw, 3, "BACK",       "move", { "back", 1 })
   cmdBtn(rix + 2 * (bw + 1), r2, bw, 3, "TURN RIGHT", "move", { "right", 1 })
   cmdBtn(rix + 3 * (bw + 1), r2, bw, 3, "GO HOME",    "home", {}, C.accent, C.ink)
-  cmdBtn(rix,                r3, bw, 1, "PING",       "ping")
+  if TT.online(t) then
+    cmdBtn(rix,              r3, bw, 1, "PING",       "ping")
+  else
+    -- offline (or MISSING - deleted by a server crash?): take it off the list
+    actButton(rix, r3, bw, 1, "FORGET", { kind = "tforget", name = tostring(t.id), count = 0 })
+  end
   cmdBtn(rix + bw + 1,       r3, bw, 1, "SET HOME",   "sethome")
   cmdBtn(rix + 2 * (bw + 1), r3, bw, 1, "REFUEL",     "refuel")
   cmdBtn(rix + 3 * (bw + 1), r3, bw, 1, "GPS LOCATE", "locate")

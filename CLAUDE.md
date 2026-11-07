@@ -214,7 +214,13 @@ PneumaticCraft drone rides, turtle mapping/surveys, and an AE2 ME network view.
   next chunk, "stepped" -> loader steps after (waits <= 15 s). CHUNK_LOCK: a
   working miner never steps out of its chunk (would = position/facing off ->
   GPS re-check, retried up to 5x). A miner silent 20 min -> the TEAM PAUSES
-  (never left behind). Unloading: one miner at the station at a time
+  (never left behind). A miner deleted by a server crash: base `mine
+  drop <id>` -> loader cmd "drop" (out of S.team, its assigned layer back to the
+  queue, ALL ready flags cleared, a crossing without "go" back to work); miners
+  leave the ready wait when myIndex() changes; a new miner 1 digs the main
+  tunnel of the current chunk first (J.tunnelDone); a dropped miner that is
+  alive gets a team list without itself -> leaves (S.leader nil). minesim
+  team2drop/team3drop/team5drop (DROPIDX = which miner). Unloading: one miner at the station at a time
   (S.stationUse, 6 min max); each miner needs its own `miner station` (the
   point lives in its core). Ores (isOreBlock): tags (:ores, _ores, /ores, not
   ores_in_ground), names _ore / ore_ / _ore_ (not _block), CONFIG.ores +
@@ -275,7 +281,12 @@ PneumaticCraft drone rides, turtle mapping/surveys, and an AE2 ME network view.
   (600 s) of silence; lost turtles: the biggest group first (lost ones within 48
   blocks), none sent to a turtle within 48 blocks of one already being rescued; called off when the turtle
   is fine again; max 3 tries, 30 min apart (tries reset once the turtle is fine again). Rescuer goes home after each
-  rescue, gets no big-survey batches.
+  rescue, gets no big-survey batches. MISSING: a rescue that ends "not found
+  within" while the turtle is offline -> TT.markMissing (t.missing, saved; popup
+  + sysLog with last spot and gear; no more rescues; batch reclaimed; not counted
+  for massOffline); any report clears it. FORGET (two taps, replaces PING while
+  offline) / `turtle <id> forget` -> TT.forget. feedSurvey reclaims the batch of
+  a turtle silent > CONFIG.map.reclaimOffline (600 s).
 - Themes (base_theme.lua): THEMES = 6 dark palettes, same JOB per colour slot.
   The 11 slots the MAP uses (MAP_SLOTS: green lime blue yellow orange white
   brown red cyan purple pink) always keep the midnight colours; a theme only

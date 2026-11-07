@@ -156,7 +156,12 @@ local function teamCard(x, y, w, h, dim, team)
   elseif l.err and not l.running then hint = tostring(l.err) .. " - then START TEAM."
   else
     for _, m in ipairs(miners) do
-      if not MINE.online(m) then hint = (m.label or ("#" .. m.id)) .. " does not report: chunk loaded? look at its screen." break end
+      if not MINE.online(m) then
+        local long = m.seenEpoch and os.epoch("utc") - m.seenEpoch > 1200000
+        hint = (m.label or ("#" .. m.id)) .. " does not report: chunk loaded? look at its screen." ..
+               (long and ("  Gone for good (server crash)? type  mine drop " .. m.id .. "  on the base computer.") or "")
+        break
+      end
       if fuelLow(m) then hint = (m.label or ("#" .. m.id)) .. ": give it fuel (an endless fuel item or coal)." break end
       if m.station == false then hint = (m.label or ("#" .. m.id)) .. " has no unload station: put it on the station, type  miner station." break end
       if m.err and not m.running then hint = (m.label or ("#" .. m.id)) .. ": " .. tostring(m.err) break end

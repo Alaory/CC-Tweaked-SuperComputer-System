@@ -91,6 +91,15 @@ function handleTouch(tx, ty)
           elseif a.kind == "trescue" then
             local ok, msg = TT.rescue(tonumber(a.name))
             setToast(msg, ok and C.good or C.warn, 7)
+          elseif a.kind == "tforget" then
+            local t = state.turtles[tonumber(a.name)]
+            if t and TT.online(t) then
+              setToast(t.label .. " is online - not forgotten", C.warn, 5)
+            elseif t then
+              local label = t.label
+              TT.forget(t.id)
+              setToast(label .. " forgotten (taken off the list; its survey spots go to the others)", C.label, 6)
+            end
           elseif a.kind == "tflyme" then
             -- the selected drone carries the owner to the turtle (lands on top of it)
             local t = state.turtles[tonumber(a.name)]

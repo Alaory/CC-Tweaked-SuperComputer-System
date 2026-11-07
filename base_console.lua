@@ -49,6 +49,8 @@ HELP = {
   "                      'disks move' moves the map, turtle knowledge and logs onto them now",
   " rescue <id> [x y z [radius]]  send a rescue turtle to a lost or stuck turtle",
   " findlost [radius]    search around the base for lost turtles and reinstall them",
+  " turtle <id> forget   take a turtle that is gone (server crash) off the list",
+  " mine [drop|forget] <id>   mining turtles: drop = a lost miner out of its team",
   " turtle <id> warps / warp <name> / warpsave <name>   End Automata Core teleports",
   " turtle <id> setting <name> <value>   e.g. turtle 7 setting dig true",
 }
@@ -527,6 +529,43 @@ function handleCommand(line)
       say("Together: " .. math.floor(free / 1024) .. " KB free for the map (used after the data floppies).")
     end
 
+  elseif cmd == "mine" then
+    -- mining-dimension turtles: list / take a lost one out of its team / forget one
+    local sub, id = (words[2] or ""):lower(), tonumber(words[3])
+    local u = id and MINE.units[id]
+    if (sub == "drop" or sub == "forget") and not u then
+      say("No mining turtle #" .. tostring(words[3]) .. ". Type  mine  to see them.")
+    elseif sub == "drop" then
+      if u.role ~= "miner" then
+        say("#" .. id .. " is not a miner (only miners can be dropped from a team).")
+      else
+        local team = MINE.teams()[u.dim or "?"]
+        local l = team and team.loader
+        if not l then
+          say("No loader for " .. tostring(u.dim) .. " - nothing to drop it from.")
+        else
+          MINE.cmd(l.id, "drop", { id })
+          MINE.units[id] = nil
+          pcall(MINE.save)
+          say("Told the loader #" .. l.id .. " to take miner #" .. id .. " out of the team (its layer goes to the others).")
+          if not MINE.online(l) then say("The loader is offline - it gets this when it reports again.") end
+        end
+      end
+    elseif sub == "forget" then
+      MINE.units[id] = nil
+      pcall(MINE.save)
+      say("#" .. id .. " forgotten on the base (a miner still in a team: use  mine drop " .. id .. "  instead).")
+    else
+      local any = false
+      for uid, x in pairs(MINE.units) do
+        any = true
+        say(string.format(" #%-4d %-7s %-10s %s", uid, tostring(x.role), tostring(x.dim), MINE.online(x) and "online"
+            or ("OFFLINE, last seen " .. (x.seenEpoch and TT.ago(x.seenEpoch) or "never"))))
+      end
+      if not any then say("No mining turtles yet.") end
+      say("mine drop <id> = a lost miner out of its team,  mine forget <id> = off the base's list")
+    end
+
   elseif cmd == "away" then
     -- the last WHILE YOU WERE AWAY report (or the live one while away)
     if AWAY.on then
@@ -644,6 +683,14 @@ function handleCommand(line)
       say("No turtle '" .. words[2] .. "'. Type 'turtles' to see them.")
     elseif not t or not tc then
       say("Usage: turtle <id|name> <command> [args]   (see 'turtles')")
+    elseif tc == "forget" then
+      if TT.online(t) then
+        say(t.label .. " is online - not forgotten.")
+      else
+        local label = t.label
+        TT.forget(t.id)
+        say(label .. " forgotten: off the list, its survey spots go to the other turtles.")
+      end
     elseif tc == "log" then
       -- the turtle's log in full (the monitor cuts long lines), oldest first
       local n = math.min(tonumber(words[4]) or 10, #t.log)

@@ -679,6 +679,17 @@ while T < maxT do
       MINE.cmd(LOADER, "start", {})
     end
   end
+  -- a miner DELETED by a server crash (miner 1 - the one digging the main
+  -- tunnel), then on the base:  mine drop <id>  - the others must go on
+  if SCEN:find("drop") and not DROPPED and lu and ENVS.loader.S and ENVS.loader.S.plan and ENVS.loader.S.plan.ci >= 2 and T > 1200 then
+    DROPPED = MS[tonumber(os.getenv("DROPIDX") or 1)].id
+    CI_DROP = ENVS.loader.S.plan.ci
+    for i = #cos, 1, -1 do if cos[i].u.id == DROPPED then table.remove(cos, i) end end
+    for k, u in pairs(turtles) do if u.id == DROPPED then turtles[k] = nil end end
+    MINE.cmd(LOADER, "drop", { DROPPED })
+    MINE.units[DROPPED] = nil
+    io.write(string.format("** miner %d DELETED at %.0f s (chunk %d) - mine drop sent\n", DROPPED, T, CI_DROP))
+  end
   -- the Import Bus drains the shulker in front of the station
   local sh = SHULKERS[key(DUMP.x, DUMP.y, DUMP.z)]
   if sh then
@@ -798,9 +809,18 @@ if ORES_AT_NF then
   if now - ORES_AT_NF < 50 then fail("the team did not mine after NEW FIELD + START") end
 end
 if delivered["jamd:mining_dim_core"] or delivered["somemod:eternal_flame"] then fail("the OWNER'S item was unloaded") end
+if DROPPED then
+  local P = ENVS.loader.S.plan
+  io.write("** after the drop: loader at chunk " .. tostring(P and P.ci) .. " (was " .. CI_DROP .. "), team " ..
+           table.concat(ENVS.loader.S.team or {}, ",") .. "\n")
+  if not P or P.ci < CI_DROP + 3 then fail("the team did not go on after  mine drop  (chunk " .. tostring(P and P.ci) .. ")") end
+  for _, tid in ipairs(ENVS.loader.S.team or {}) do if tid == DROPPED then fail("the dropped miner is still in the team") end end
+end
 for _, id in ipairs(MINERS) do
   local u = MINE.units[id]
-  if u then
+  if id == DROPPED then
+    -- gone
+  elseif u then
     local lab = MINE.status(u)
     print("miner " .. id .. ":", lab, tostring(u.task))
     if lab == "STOPPED" and SCEN ~= "nofuel" and SCEN ~= "ownfull" then fail("miner " .. id .. " STOPPED: " .. tostring(u.err)) end

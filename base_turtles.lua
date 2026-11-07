@@ -39,6 +39,42 @@ function TT.findModem()
 end
 
 -- a turtle's record (created on first contact)
+-- a turtle that is not where it was last (the rescuer looked): probably deleted
+-- by a server crash. No more rescues; its survey spots go to the others.
+function TT.markMissing(t, by)
+  if t.missing then return end
+  t.missing = os.epoch("utc")
+  TT.listDirty = true
+  pcall(MAP.reclaim, t.id)
+  local gear = {}
+  if type(t.gear) == "string" and t.gear ~= "" then gear[1] = t.gear end
+  local where = t.pos and t.pos.x and fmtPos(t.pos.x, t.pos.y, t.pos.z) or "?"
+  local msg = (t.label or ("Turtle " .. t.id)) .. " is not at its last spot (" .. where .. ")" ..
+              (by and (" - " .. by .. " looked") or "") .. ". Probably deleted by a server crash" ..
+              (#gear > 0 and (". It carried: " .. table.concat(gear, ", ")) or "") ..
+              ". FORGET it on the TURTLES tab when you are sure."
+  TT.log(t, "MISSING: " .. msg)
+  setPopup("TURTLE MISSING", msg, C.bad)
+  if sysLog then sysLog(msg, "WARNING") end
+end
+-- forget a turtle for good (deleted / taken down): off the list, its survey
+-- spots back into the queue
+function TT.forget(id)
+  local t = state.turtles[id]
+  if not t then return false end
+  pcall(MAP.reclaim, id)
+  local q = MAP.queue
+  if q and q.ids then
+    for i = #q.ids, 1, -1 do if q.ids[i] == id then table.remove(q.ids, i) end end
+  end
+  state.turtles[id] = nil
+  if state.tSel == id then state.tSel = nil end
+  TT.listDirty = true
+  pcall(TT.saveList)
+  if sysLog then sysLog((t.label or ("Turtle " .. id)) .. " forgotten (removed from the list)", "INFO") end
+  return true
+end
+
 function TT.get(id)
   local t = state.turtles[id]
   if not t then
@@ -116,6 +152,11 @@ function TT.idleWhy(t)
 end
 function TT.status(t)
   local now = os.clock()
+  if t.missing and not TT.online(t) then
+    return "missing", "MISSING", C.bad,
+           "not at its last spot" .. (t.pos and t.pos.x and (" " .. fmtPos(t.pos.x, t.pos.y, t.pos.z)) or "") ..
+           " - probably deleted (server crash). FORGET removes it"
+  end
   if not TT.online(t) then
     return "offline", "OFFLINE", C.bad,
            ((t.seenEpoch and ("last seen " .. TT.ago(t.seenEpoch)) or "never seen") ..
@@ -205,6 +246,12 @@ function TT.receive(id, m)
   t.lastN = m.n
   local prevSeen = t.lastSeen
   t.lastSeen = os.clock()
+  if t.missing then
+    t.missing = nil
+    TT.listDirty = true
+    TT.log(t, "It is back - it was not deleted after all")
+    if sysLog then sysLog((m.label or t.label or ("Turtle " .. id)) .. " reports again (was MISSING)", "DONE") end
+  end
   if type(m.label) == "string" then t.label = m.label end
   t.fuel, t.fuelMax, t.items = m.fuel, m.fuelMax, m.items
   -- movement / task changes (for TT.status: a busy turtle that does not move)
@@ -303,6 +350,10 @@ function TT.receive(id, m)
       end
       TT.log(target, (m.ok and "Rescued by " or "Rescue by ") .. t.label .. (m.ok and "" or " failed") .. where)
       target.rescuer, target.rescueKind = nil, nil
+      -- the rescuer was there and the turtle is NOT: gone (a server crash can delete turtles)
+      if not m.ok and tostring(m.msg):find("not found within", 1, true) and not TT.online(target) then
+        TT.markMissing(target, t.label)
+      end
       if m.ok then target.rescueTries = nil end
       -- supplies delivered: refuel, allow digging with the new pickaxe, come home
       if m.ok and m.mode == "supply" then
@@ -847,7 +898,7 @@ function TT.saveList()
   for id, t in pairs(state.turtles) do
     out[#out + 1] = { id = id, label = t.label, pos = t.pos, home = t.home, seen = t.seenEpoch,
                       task = t.task, ver = t.ver, gear = t.gear, anchor = t.anchor, rescuerRole = t.rescuerRole,
-                      held = t.held, recall = t.recall }
+                      held = t.held, recall = t.recall, missing = t.missing }
   end
   saveFileSafe(CONFIG.turtles.listFile, serialSmall(out))
   TT.listDirty = false
@@ -868,6 +919,7 @@ function TT.loadList()
       t.rescuerRole = e.rescuerRole
       t.held = e.held
       t.recall = e.recall
+      t.missing = e.missing
     end
   end
 end
@@ -1053,6 +1105,7 @@ end
 -- what is wrong with a turtle (nil = nothing to do): "fuel", "stuck", "lost"
 local function problemOf(t)
   local now = os.clock()
+  if t.missing and not TT.online(t) then return nil end     -- looked for, not there: no more trips
   if TT.online(t) then
     t.offlineNoted = nil
     local idle = (t.task == nil or t.task == "idle")
@@ -1077,7 +1130,7 @@ function TT.patrolTick()
   local now = os.clock()
   local total, offline = 0, 0
   for _, t in pairs(state.turtles) do
-    if not t.rescuerRole then
+    if not t.rescuerRole and not t.missing then
       total = total + 1
       if not TT.online(t) then offline = offline + 1 end
     end

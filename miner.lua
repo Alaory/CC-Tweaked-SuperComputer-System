@@ -74,7 +74,7 @@ CONFIG = {
 }
 
 STATE_FILE = "miner_state"
-MYVER = "m11"            -- shown on the screen and the base (MINING tab)
+MYVER = "m12"            -- shown on the screen and the base (MINING tab)
 DX = { [0] = 0, 1, 0, -1 }
 DZ = { [0] = -1, 0, 1, 0 }
 FNAME = { [0] = "north", "east", "south", "west" }
@@ -353,6 +353,12 @@ function handle(id, m, proto)
           if newPlan or not m.plan then GO = nil end       -- an old crossing's "go" is not for the new field
           if newPlan then S.err = nil end
           save()
+        elseif S.leader == id then
+          -- my loader's team no longer has me (taken out with  mine drop): stop,
+          -- wait for a loader again (I can join when no field is being mined)
+          S.leader, S.team, S.tp, S.job, S.running = nil, nil, nil, nil, false
+          note("Taken out of the team by the loader - waiting to join again")
+          save()
         end
       elseif m.t == "go" and id == S.leader then
         GO = m.ci
@@ -406,6 +412,33 @@ function doCmd(cmd, args)
     end
     S.job = nil
     note("New field: it starts where the loader stands (the way it faces) on the next START")
+  elseif cmd == "drop" then
+    -- a miner that is gone for good (deleted by a server crash ...): out of the
+    -- team; its unfinished layer goes back to the others
+    local id = tonumber(args[1])
+    if S.role == "loader" and id then
+      local found = false
+      for i = #(S.team or {}), 1, -1 do if S.team[i] == id then table.remove(S.team, i) found = true end end
+      if S.plan then
+        local P = S.plan
+        -- everybody says "ready" again (the numbers change: a new miner 1 digs
+        -- the main tunnel first); a crossing not yet under way waits for that
+        P.ready = {}
+        if P.phase == "cross" and P.goSent ~= P.ci then P.phase = "work" end
+        if P.assigned and P.assigned[id] then
+          P.queue = P.queue or {}
+          table.insert(P.queue, 1, P.assigned[id])
+          P.assigned[id] = nil
+        end
+      end
+      if S.seen then S.seen[id] = nil end
+      if S.lost then S.lost[id] = nil end
+      if S.stationUse and S.stationUse.id == id then S.stationUse = nil end
+      if found then S.err = nil end
+      save()
+      sendPlan()
+      note(found and ("Miner " .. id .. " taken out of the team (" .. #S.team .. " left)") or ("Miner " .. id .. " is not in the team"))
+    end
   elseif cmd == "unpair" then
     S.partner, S.leader, S.team, S.tp = nil, nil, nil, nil
     note("Left the team")
@@ -1571,6 +1604,12 @@ function teamStep()
   local x1, z1, ex, ez, dir = chunkCols(tp, ci)
   local sx, sz = cx * 16 + SHAFTS[(k - 1) % #SHAFTS + 1][1], cz * 16 + SHAFTS[(k - 1) % #SHAFTS + 1][2]
   local lane = tp.yt - (k - 1)
+  -- I became miner 1 (a team mate was taken out): the main tunnel of this chunk
+  -- is my job now - dig it first (walking an already dug one is quick)
+  if k == 1 and not J.tunnelDone and J.phase ~= "tunnel" and not crossingDue() then
+    J.phase = "tunnel"
+    save()
+  end
   -- at work: stay inside this chunk (crossing: the step over is allowed)
   CHUNK_LOCK = (J.phase ~= "ready") and { cx, cz } or nil
   -- the start chunk: the miners may stand next to it at the start
@@ -1585,6 +1624,7 @@ function teamStep()
     TUNNEL2 = false
     if not ok then return false, err end
     J.phase = J.mine and "layers" or "lane"
+    J.tunnelDone = true
     save()
     return true
   elseif J.phase == "layers" then
@@ -1691,6 +1731,9 @@ function teamStep()
     local t0, sent = os.clock(), -1000
     while GO ~= ci do
       if not S.running and not crossingDue() then return false, "paused" end
+      -- a team mate was taken out: my number changed (miner 1 digs the tunnel,
+      -- the lanes move) - start my part again with the new number
+      if myIndex() ~= k and not crossingDue() then return true end
       if os.clock() - sent > 10 then
         equipTool("modem")
         sendTeam(S.leader, "ready", { ci = ci })
