@@ -91,6 +91,9 @@ function handleTouch(tx, ty)
           elseif a.kind == "trescue" then
             local ok, msg = TT.rescue(tonumber(a.name))
             setToast(msg, ok and C.good or C.warn, 7)
+          elseif a.kind == "minedrop" then
+            local ok, msg = MINE.drop(tonumber(a.name))
+            setToast(msg, ok and C.label or C.warn, 7)
           elseif a.kind == "tforget" then
             local t = state.turtles[tonumber(a.name)]
             if t and TT.online(t) then
@@ -143,9 +146,13 @@ function handleTouch(tx, ty)
                 setToast("No free turtle (online, idle, position known)", C.warn, 5)
               else
                 local n = MAP.queueSurvey(x1, z1, x2, z2, r, ids)
+                if n == 0 then
+                  setToast("Nothing to survey here - this view is outside your work area (SETTINGS > MAP)", C.warn, 6)
+                else
                 setToast("Big survey started: " .. n .. " spots (" .. math.floor((x2 - x1) / 16) .. " x " ..
                          math.floor((z2 - z1) / 16) .. " chunks), handed out in batches - progress on the MAP tab",
                          C.good)
+                end
               end
             elseif a.kind == "surveyall" then
               -- a smaller area: also through the (saved) queue, so spots a

@@ -87,8 +87,6 @@ SETTING_GROUPS = {
     num("turtles.idleHome", "Idle turtles go home after", "a turtle with nothing to do goes home (0 = never)",
         120, 0, 3600, 30, secs),
     num("turtles.rescueAfter", "Rescue a silent turtle after", "the RESCUER goes to wake it up", 180, 60, 3600, 30, secs),
-    num("factory.target", "Keep this many turtles", "fewer: the factory builds one from AE2 parts (0 = off; type  factory)",
-        0, 0, 32, 1, plain),
     num("turtles.rescueAfterCrash", "Many offline at once: rescue after", "a server crash - they may come back by themselves first",
         600, 120, 7200, 60, secs),
     num("turtles.avoidRange", "Keep away from players within", "a turtle stops and goes home when one comes this close (0 = off)",
@@ -102,6 +100,49 @@ SETTING_GROUPS = {
       get = function() return CONFIG.turtles.dig and "ON" or "OFF" end,
       next = function() TT.setDig(not CONFIG.turtles.dig) end },
   } },
+  { name = "FACTORY", list = {
+    num("factory.target", "Keep this many turtles", "fewer: the factory builds one from AE2 parts (0 = off)",
+        0, 0, 32, 1, plain),
+    { kind = "custom", label = "Factory chest", hint = "tap: the next EMPTY chest on the cable (it must be next to the builder)",
+      get = function() return FACTORY.chest or "not set - tap" end,
+      next = function(dir)
+        -- the chests on the cable that are empty (or the one chosen now)
+        local list = {}
+        for _, name in ipairs(peripheral.getNames()) do
+          local okI, isI = pcall(peripheral.hasType, name, "inventory")
+          -- (only chest-sized ones: reading a big storage controller's contents is slow)
+          local okS, size = pcall(peripheral.call, name, "size")
+          if okI and isI and name:find("_", 1, true) and not name:find("drive", 1, true)
+             and (name == FACTORY.chest or (okS and tonumber(size) and tonumber(size) <= 54)) then
+            local okL, items = pcall(peripheral.call, name, "list")
+            if name == FACTORY.chest or (okL and type(items) == "table" and next(items) == nil) then list[#list + 1] = name end
+          end
+        end
+        table.sort(list)
+        if #list == 0 then setToast("No empty chest on the cable - put one there (wired modem, right-clicked)", C.warn, 6) return end
+        local idx = 0
+        for i, n in ipairs(list) do if n == FACTORY.chest then idx = i end end
+        FACTORY.chest = list[(idx - 1 + (dir or 1)) % #list + 1]
+        FACTORY.save()
+      end },
+    { kind = "custom", label = "Builder turtle", hint = "tap: the next turtle (it needs a Disk Drive, the install floppy and a pickaxe)",
+      get = function()
+        local b = FACTORY.builderTurtle()
+        if FACTORY.builder then return b and (b.label .. " #" .. b.id) or ("#" .. tostring(FACTORY.builder)) end
+        return b and ("the rescuer: " .. b.label) or "the rescuer (none yet) - tap"
+      end,
+      next = function(dir)
+        local ids = { false }                                  -- false = automatic (the rescuer)
+        for _, t in ipairs(TT.list()) do if not t.missing then ids[#ids + 1] = t.id end end
+        local idx = 1
+        for i, v in ipairs(ids) do if v == (FACTORY.builder or false) then idx = i end end
+        FACTORY.builder = ids[(idx - 1 + (dir or 1)) % #ids + 1] or nil
+        FACTORY.save()
+      end },
+    { kind = "custom", label = "Factory", hint = "what it is doing (type  factory  for the parts list)",
+      get = function() return (FACTORY.statusLine()) end,
+      next = function() FACTORY.fails, FACTORY.waitUntil = 0, nil FACTORY.save() setToast("Factory: trying again", C.label, 4) end },
+  } },
   { name = "MAP", list = {
     { kind = "custom", label = "Auto-map", hint = "turtles keep surveying from the base outward, by themselves",
       get = function() return MAP.auto.on and "ON" or "OFF" end,
@@ -113,6 +154,15 @@ SETTING_GROUPS = {
     num("map.computerKB", "Map on the computer, at most", "when no floppy has room (the computer has 1 MB)",
         200, 50, 600, 25, function(v) return v .. " KB" end),
     num("map.border", "World border", "nothing is surveyed beyond +-this", 20000, 1000, 60000, 1000, plain),
+    place("map.areaA", "Work area: corner 1", "turtles survey only inside the box corner 1 - corner 2 (stand there, tap twice)", "feet"),
+    place("map.areaB", "Work area: corner 2", "the opposite corner (height does not matter)", "feet"),
+    { kind = "custom", label = "Work area", hint = "tap = no limit again (the whole world up to the border)",
+      get = function()
+        local x1, z1, x2, z2 = MAP.area()
+        if not x1 then return "whole world" end
+        return (x2 - x1 + 1) .. " x " .. (z2 - z1 + 1) .. " blocks"
+      end,
+      next = function() resetSetting("map.areaA") resetSetting("map.areaB") end },
     bool("map.pack", "Turtles survey as a pack", "side by side: one visit wakes them all after a server crash", true),
     num("map.packSpots", "Pack: spots per turtle per round", "more = a bit faster, but further apart", 3, 1, 8, 1, plain),
   } },

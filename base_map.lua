@@ -896,7 +896,9 @@ function MAP.surveySpots(x1, z1, x2, z2, r)
           if MAP.get(x + dx, z + dz) then known = known + 1 end
         end
       end
-      if known / total >= need or MAP.scanned(x, z) then skipped = skipped + 1
+      if not MAP.inArea(x, z) then
+        -- outside the work area: never
+      elseif known / total >= need or MAP.scanned(x, z) then skipped = skipped + 1
       else spots[#spots + 1] = { x, z } end
     end
   end
@@ -938,6 +940,25 @@ do
   end
 end
 
+-- the WORK AREA (SETTINGS > MAP: corner 1 + corner 2, x / z): turtles never
+-- get survey spots outside it. Not set = the whole world (up to the border).
+function MAP.area()
+  local a, b = CONFIG.map.areaA, CONFIG.map.areaB
+  if type(a) == "table" and a.x and a.z and type(b) == "table" and b.x and b.z then
+    return math.min(a.x, b.x), math.min(a.z, b.z), math.max(a.x, b.x), math.max(a.z, b.z)
+  end
+end
+function MAP.areaKey()
+  local x1, z1, x2, z2 = MAP.area()
+  return x1 and (x1 .. "," .. z1 .. "," .. x2 .. "," .. z2) or "world"
+end
+function MAP.inArea(x, z)
+  local border = tonumber(CONFIG.map.border) or 20000
+  if math.abs(x) > border or math.abs(z) > border then return false end
+  local x1, z1, x2, z2 = MAP.area()
+  return not x1 or (x >= x1 and x <= x2 and z >= z1 and z <= z2)
+end
+
 -- start a queued survey of an area (ids = the turtles to use, nil = all free ones)
 function MAP.queueSurvey(x1, z1, x2, z2, r, ids)
   -- you started it: the turtles it uses are no longer held by an old STOP
@@ -952,8 +973,12 @@ function MAP.queueSurvey(x1, z1, x2, z2, r, ids)
   local border = tonumber(CONFIG.map.border) or 20000
   x1, z1 = math.max(x1, -border), math.max(z1, -border)
   x2, z2 = math.min(x2, border), math.min(z2, border)
-  if x2 < x1 then x2 = x1 end
-  if z2 < z1 then z2 = z1 end
+  -- and to the work area: nothing outside it
+  local ax1, az1, ax2, az2 = MAP.area()
+  if ax1 then
+    x1, z1, x2, z2 = math.max(x1, ax1), math.max(z1, az1), math.min(x2, ax2), math.min(z2, az2)
+  end
+  if x2 < x1 or z2 < z1 then return 0 end              -- nothing of it is in the work area: no survey
   -- a SPIRAL from the point of the area nearest to the base (or the turtles):
   -- the turtles start close to home and work outward - not at the far corner
   local c = CONFIG.drone.home or state.basePos
@@ -1032,14 +1057,27 @@ end
 -- comms worker: start / continue auto-map when nothing else runs
 function MAP.autoTick()
   local a = MAP.auto
+  -- the work area changed since auto-map finished / started: start over in the new one
+  if (a.areaKey or "world") ~= MAP.areaKey() and not MAP.queue then
+    a.done, a.cursor, a.areaKey = nil, 0, MAP.areaKey()
+    MAP.saveAuto()
+  end
   if not a.on or a.done or MAP.queue or MAP.full or not MAP.loaded then return end
   local c = CONFIG.drone.home or state.basePos
   if not (c and c.x) or #TT.available() == 0 then return end
   local r = CONFIG.map.scanRadius or 8
   local step = 2 * r + 1
   local border = tonumber(CONFIG.map.border) or 20000
+  local cx, cz = math.floor(c.x), math.floor(c.z)
   local rad = math.ceil((border + math.max(math.abs(c.x), math.abs(c.z))) / step)
-  MAP.queue = { auto = true, spiral = true, cx = math.floor(c.x), cz = math.floor(c.z), r = r, step = step,
+  local ax1, az1, ax2, az2 = MAP.area()
+  if ax1 then
+    -- a work area: the spiral from the base (or the area's point nearest to it) out to the area's far corner
+    cx, cz = math.max(ax1, math.min(ax2, cx)), math.max(az1, math.min(az2, cz))
+    rad = math.ceil(math.max(cx - ax1, ax2 - cx, cz - az1, az2 - cz) / step) + 1
+  end
+  a.areaKey = MAP.areaKey()
+  MAP.queue = { auto = true, spiral = true, cx = cx, cz = cz, r = r, step = step, areaKey = a.areaKey,
                 cols = 2 * rad + 1, rows = 2 * rad + 1, cursor = a.cursor or 0, sent = 0, skipped = 0 }
   saveQueue()
   setToast("Auto-map: surveying on from the base outward (" ..
@@ -1086,8 +1124,8 @@ local function nextBatch(q, want)
   for _ = 1, n0 do
     if #out >= BATCH then break end
     local p = table.remove(q.redo, 1)
-    if MAP.spotDone(p[1], p[2]) then
-      -- done meanwhile
+    if MAP.spotDone(p[1], p[2]) or not MAP.inArea(p[1], p[2]) then
+      -- done meanwhile / outside the work area now
     elseif nearPlayer(p[1], p[2]) then q.redo[#q.redo + 1] = p
     else out[#out + 1] = p end
   end
@@ -1113,11 +1151,11 @@ local function nextBatch(q, want)
       if row % 2 == 1 then col = q.cols - 1 - col end
       x, z = q.x1 + q.r + col * q.step, q.z1 + q.r + row * q.step
     end
-    local border = tonumber(CONFIG.map.border) or 20000
+    if x and not MAP.inArea(x, z) then
+      checked, outside, x = checked - 1, outside + 1, nil     -- outside the work area / border: cheap skip
+    end
     if not x then
       -- outside the surveyed area
-    elseif math.abs(x) > border or math.abs(z) > border then
-      -- outside the world border: nothing to do
     elseif MAP.spotDone(x, z) then q.skipped = q.skipped + 1 why.done = why.done + 1
     elseif nearPlayer(x, z) then q.redo[#q.redo + 1] = { x, z }       -- later
     else out[#out + 1] = { x, z } end
@@ -1209,6 +1247,14 @@ function MAP.feedSurvey()
       end
     end
     q.changed = true
+  end
+  if q.auto and (q.areaKey or "world") ~= MAP.areaKey() then
+    -- the work area was changed: auto-map starts again inside the new one
+    MAP.auto.cursor, MAP.auto.done = 0, nil
+    MAP.saveAuto()
+    MAP.queue = nil
+    saveQueue()
+    return
   end
   if q.auto and MAP.full then return end           -- auto-map waits for room on the floppies
   local total = q.cols * q.rows

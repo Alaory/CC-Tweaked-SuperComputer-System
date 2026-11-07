@@ -210,3 +210,19 @@ function MINE.status(u)
   end
   return "MINING", C.good, task
 end
+
+-- a miner that is gone for good (deleted by a server crash): out of its team -
+-- the loader hands its work to the others (console  mine drop  / DROP button)
+function MINE.drop(id)
+  local u = MINE.units[id]
+  if not u then return false, "no mining turtle #" .. tostring(id) end
+  if u.role ~= "miner" then return false, "#" .. id .. " is not a miner (only miners can be dropped from a team)" end
+  local team = MINE.teams()[u.dim or "?"]
+  local l = team and team.loader
+  if not l then return false, "no loader for " .. tostring(u.dim) .. " - nothing to drop it from" end
+  MINE.cmd(l.id, "drop", { id })
+  MINE.units[id] = nil
+  pcall(MINE.save)
+  return true, "the loader #" .. l.id .. " takes miner #" .. id .. " out of the team (its layer goes to the others)" ..
+               (MINE.online(l) and "" or " - the loader is offline: it gets this when it reports again")
+end

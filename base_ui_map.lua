@@ -129,6 +129,18 @@ function drawMapPage(G)
   text(g.mx0, midY, cLeft, C.text, C.empty)
   text(g.mx0 + g.mw - 1, midY, cRight, C.text, C.empty)
 
+  -- the WORK AREA (SETTINGS > MAP): its edge, so you see where the turtles may go
+  local ax1, az1, ax2, az2 = MAP.area()
+  if ax1 then
+    local stepA = math.max(1, V.zoom)
+    local function mark(x, z)
+      local sx, sy = toScreen(g, V, x, z)
+      if sx then text(sx, sy, "+", C.warn, C.bg) end
+    end
+    local n = 0
+    for x = ax1, ax2, stepA do mark(x, az1) mark(x, az2) n = n + 1 if n > 4000 then break end end
+    for z = az1, az2, math.max(1, math.floor(stepA * 1.5)) do mark(ax1, z) mark(ax2, z) n = n + 1 if n > 8000 then break end end
+  end
   -- overlays: ores, base, players, drones, turtles, selection
   local h = CONFIG.drone.home
   if h then

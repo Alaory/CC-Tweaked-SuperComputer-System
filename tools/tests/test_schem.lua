@@ -56,11 +56,15 @@ local function transfer(name, bytes)
 end
 local notes = {}
 local push0 = pushNote
-pushNote = function(kind, msg) notes[#notes + 1] = kind .. ": " .. msg end
+pushNote = function(kind, msg) if kind then notes[#notes + 1] = kind .. ": " .. tostring(msg) end end   -- (toasts: no kind)
 SCHEM.onTransfer(transfer("My House.nbt", data))
 SCHEM.onTransfer(transfer("broken.nbt", "\31\139\8\0garbage"))
 SCHEM.onTransfer(transfer("notes.txt", "hello"))
+CHECK(#SCHEM.pending == 2 and #notes == 1, "the drop only takes the files (read later in the map worker)")
+SCHEM.processPending()
 pushNote = push0
+CHECK(#SCHEM.pending == 0, "all read")
+notes = { notes[2], notes[3], notes[1] }        -- (order: stored, broken, not .nbt)
 CHECK(notes[1] and notes[1]:find("^DONE") and notes[1]:find("5 x 4 x 5"), "dropped schematic stored: " .. tostring(notes[1]))
 CHECK(notes[2] and notes[2]:find("^WARNING"), "a broken file is refused: " .. tostring(notes[2]))
 CHECK(notes[3] and notes[3]:find("only Create schematics"), "a non-.nbt file is refused")

@@ -148,7 +148,7 @@ local function teamCard(x, y, w, h, dim, team)
               { kind = "minecmd", name = l.id .. ":newfield", count = 0 })
     by = by + 6
   end
-  local hint
+  local hint, dropMe
   local function fuelLow(u, lim) return u and tonumber(u.fuel) and tonumber(u.fuel) < (lim or 500) end
   if not l then hint = "Run miner.lua on the loader turtle (role l), standing on the surface."
   elseif #miners == 0 then hint = "Run miner.lua on the miners (role m), next to the loader in its chunk."
@@ -159,7 +159,8 @@ local function teamCard(x, y, w, h, dim, team)
       if not MINE.online(m) then
         local long = m.seenEpoch and os.epoch("utc") - m.seenEpoch > 1200000
         hint = (m.label or ("#" .. m.id)) .. " does not report: chunk loaded? look at its screen." ..
-               (long and ("  Gone for good (server crash)? type  mine drop " .. m.id .. "  on the base computer.") or "")
+               (long and "  Gone for good (server crash)? DROP takes it out of the team." or "")
+        if long then dropMe = m end
         break
       end
       if fuelLow(m) then hint = (m.label or ("#" .. m.id)) .. ": give it fuel (an endless fuel item or coal)." break end
@@ -170,6 +171,11 @@ local function teamCard(x, y, w, h, dim, team)
   if hint and by + 2 <= bottom then
     for i, line in ipairs(wrap("TO DO: " .. hint, bw, 3)) do text(bx, by + i - 1, line, C.warn, C.panel) end
     by = by + 4
+    if dropMe and by + 1 <= bottom then
+      actButton(bx, by, bw, 1, "DROP " .. (dropMe.label or ("#" .. dropMe.id)) .. " (gone for good)",
+                { kind = "minedrop", name = tostring(dropMe.id), count = 0 })
+      by = by + 2
+    end
   end
   if by + 1 <= bottom then
     text(bx, by, "LOG (whole team)", C.label, C.panel)

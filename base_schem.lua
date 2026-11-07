@@ -375,9 +375,9 @@ function SCHEM.cleanName(n)
 end
 -- store a schematic (bytes): a data floppy with room first, else this computer
 -- (leaving 96 KB free). Checked first: it must read as a schematic.
-function SCHEM.store(name, data)
+function SCHEM.store(name, data, yield)
   name = SCHEM.cleanName(name)
-  local okP, s = pcall(SCHEM.parse, data)
+  local okP, s = pcall(SCHEM.parse, data, yield)
   if not okP then return false, tostring(s) end
   for _, d in ipairs(dirs()) do
     local room = d.floppy and (d.free - 2048) or (d.free - 96 * 1024)
@@ -424,7 +424,10 @@ function SCHEM.delete(name)
   return true
 end
 
--- a file dropped onto the computer's screen (event "file_transfer")
+-- a file dropped onto the computer's screen (event "file_transfer"): only
+-- taken here (quick); the map worker reads + stores it (SCHEM.processPending),
+-- with pauses - a big schematic does not freeze the screen
+SCHEM.pending = {}
 function SCHEM.onTransfer(transfer)
   local files = {}
   if type(transfer) == "table" and type(transfer.getFiles) == "function" then files = transfer.getFiles() or {} end
@@ -434,7 +437,20 @@ function SCHEM.onTransfer(transfer)
     pcall(f.close)
     name = fs.getName(name)
     if name:lower():match("%.nbt$") then
-      local ok, where, s = SCHEM.store(name, data)
+      SCHEM.pending[#SCHEM.pending + 1] = { name = name, data = data }
+      setToast("Reading schematic " .. name .. " ...", C.label, 4)
+    else
+      pushNote("WARNING", name .. ": only Create schematics (.nbt) can be dropped here", C.warn)
+    end
+  end
+  if #SCHEM.pending > 0 then os.queueEvent("schem_in") end
+end
+function SCHEM.processPending()
+  while #SCHEM.pending > 0 do
+    local f = table.remove(SCHEM.pending, 1)
+    local name, data = f.name, f.data
+    do
+      local ok, where, s = SCHEM.store(name, data, TT and TT.workYield)
       if ok then
         local _, place = SCHEM.materials(s)
         pushNote("DONE", "Schematic '" .. SCHEM.cleanName(name) .. "' stored: " .. s.size.x .. " x " .. s.size.y .. " x " ..
@@ -443,8 +459,7 @@ function SCHEM.onTransfer(transfer)
       else
         pushNote("WARNING", "Schematic " .. name .. " not stored: " .. tostring(where), C.warn)
       end
-    else
-      pushNote("WARNING", name .. ": only Create schematics (.nbt) can be dropped here", C.warn)
     end
   end
+  os.queueEvent("inv_update")
 end

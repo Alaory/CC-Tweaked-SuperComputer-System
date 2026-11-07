@@ -658,21 +658,8 @@ function handleCommand(line)
     if (sub == "drop" or sub == "forget") and not u then
       say("No mining turtle #" .. tostring(words[3]) .. ". Type  mine  to see them.")
     elseif sub == "drop" then
-      if u.role ~= "miner" then
-        say("#" .. id .. " is not a miner (only miners can be dropped from a team).")
-      else
-        local team = MINE.teams()[u.dim or "?"]
-        local l = team and team.loader
-        if not l then
-          say("No loader for " .. tostring(u.dim) .. " - nothing to drop it from.")
-        else
-          MINE.cmd(l.id, "drop", { id })
-          MINE.units[id] = nil
-          pcall(MINE.save)
-          say("Told the loader #" .. l.id .. " to take miner #" .. id .. " out of the team (its layer goes to the others).")
-          if not MINE.online(l) then say("The loader is offline - it gets this when it reports again.") end
-        end
-      end
+      local _, msg = MINE.drop(id)
+      say(msg)
     elseif sub == "forget" then
       MINE.units[id] = nil
       pcall(MINE.save)

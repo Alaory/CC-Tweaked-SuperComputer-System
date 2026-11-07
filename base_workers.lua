@@ -420,7 +420,8 @@ function mapWorker()
   local lastFind = os.clock() - 280         -- first look for new helpers ~20 s after the start
   local lastCode = os.clock()
   while state.running do
-    waitFor(5, "map_save")
+    waitFor(5, "map_save", "schem_in")
+    if #SCHEM.pending > 0 then pcall(SCHEM.processPending) end   -- dropped schematics (read with pauses)
     if MAP.saveNow and MAP.loaded then            -- (still loading: saved once it is read)
       MAP.saveNow = false
       local okS = pcall(MAP.save)

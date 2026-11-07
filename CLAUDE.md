@@ -87,6 +87,12 @@ PneumaticCraft drone rides, turtle mapping/surveys, and an AE2 ME network view.
   the queue (MAP.addSurvey); SURVEY: THIS ONE is a direct order. A spot is
   done when MAP.spotDone (its own column in detail, or its chunk fully in the
   overview) - NOT MAP.scanned alone (17-block spots vs 16-block chunks).
+  WORK AREA (SETTINGS > MAP "Work area: corner 1/2" = CONFIG.map.areaA/B, x z;
+  "Work area" tap = whole world): MAP.area / MAP.inArea (also the border) -
+  queueSurvey clamps to it (returns 0 when the view is outside), nextBatch skips
+  spots outside (cheap) and drops redo spots outside, surveySpots leaves them out,
+  auto-map spirals inside it (q.areaKey; another area -> queue dropped, cursor 0);
+  the MAP draws its edge ("+"). Turtle TRAVEL itself is not limited (goto / home).
   AUTO-MAP (MAP.auto, auto_survey.dat, default on; CONFIG.map.autoSurvey =
   false to start off; MAP tab ON/OFF, `survey auto on|off`): MAP.autoTick
   (comms worker) starts a queue {auto, spiral} around CONFIG.drone.home when
@@ -225,7 +231,8 @@ PneumaticCraft drone rides, turtle mapping/surveys, and an AE2 ME network view.
   team2drop/team3drop/team5drop/team3dropalive (DROPIDX = which miner). The loader
   answers ready/needlayer/unloadreq from a non-member (isMember) with the team list,
   and sends it to a dropped miner directly - an alive dropped miner leaves. S.dropped
-  keeps it from joining again until a NEW FIELD (newTeamPlan clears it). Unloading: one miner at the station at a time
+  keeps it from joining again until a NEW FIELD (newTeamPlan clears it). MINE.drop(id) (console
+  `mine drop` and a DROP button on the MINING tab for a miner gone 20+ min). Unloading: one miner at the station at a time
   (S.stationUse, 6 min max); each miner needs its own `miner station` (the
   point lives in its core). Ores (isOreBlock): tags (:ores, _ores, /ores, not
   ores_in_ground), names _ore / ore_ / _ore_ (not _block), CONFIG.ores +
@@ -298,7 +305,9 @@ PneumaticCraft drone rides, turtle mapping/surveys, and an AE2 ME network view.
   enchanted / renamed / damaged / a used computer-turtle (nbt or components with a
   FILLED value - 1.21 lists defaults like damage 0) -> refused; exported by its
   fingerprint. The builder must be AT HOME (else sent home first); a builder whose
-  inventory is too full gives everything back (parts left in the chest). 3 failures in a row -> stops until `factory build`. Console `factory
+  inventory is too full gives everything back (parts left in the chest). 3 failures in a row -> stops until `factory build`. SETTINGS > FACTORY: fleet size,
+  factory chest (tap = next EMPTY chest <= 54 slots on the cable), builder (tap = next
+  turtle / automatic = the rescuer), status (tap = try again). Console `factory
   [chest <name>|builder <id>|build|stop]`; FLEET card line "Factory".
 - SCHEMATICS (base_schem.lua SCHEM, stage 1 of the builder turtles): Create's
   Schematic and Quill `.nbt` (= vanilla structure format, also Minecraft's own
@@ -309,7 +318,8 @@ PneumaticCraft drone rides, turtle mapping/surveys, and an AE2 ME network view.
   reader + structure parser: { size, palette {name, props}, blocks {x,y,z,p} };
   AIR = must be air, a position missing from the file = leave as is.
   SCHEM.materials -> items (wall torch -> torch, door/bed: one half, double
-  slab = 2, air/fluids/fire skipped). Console `schem [<name>|delete <name>]`.
+  slab = 2, air/fluids/fire skipped). Console `schem [<name>|delete <name>]`. A drop only takes the bytes (SCHEM.pending,
+  event schem_in); the mapWorker reads + stores them with TT.workYield pauses.
   Plan: stage 2 builder turtles (several, strips; scan + diff: break what does
   not belong -> back into AE2, place what is missing; daily rotation per site at
   an hour), stage 3 structure "spawning" at flat spots from the map. Litematica /
