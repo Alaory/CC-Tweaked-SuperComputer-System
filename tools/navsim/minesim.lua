@@ -16,13 +16,34 @@ local function hash(x, y, z)
   local h = (x * 73856093 + y * 19349663 + z * 83492791) % 1000003
   return h
 end
+local CAVES = SCEN:find("cave") ~= nil
 local function natural(x, y, z)
   if y > 64 then return nil end
   if y <= -60 then return "minecraft:bedrock" end
+  -- caves (scenario "caves"): winding tubes of air, some with lava at the bottom
+  if CAVES and y < 56 then
+    local v = math.sin(x / 7.3) + math.sin(y / 4.1 + x / 11) + math.sin(z / 6.7 - y / 9)
+    if v > 1.75 then
+      if y < -40 and math.sin(x / 3.1 + z / 2.9) > 0.6 then return "minecraft:lava" end
+      return nil
+    end
+  end
   local h = hash(x, y, z)
-  if h < 900 then return y < 0 and "minecraft:deepslate_iron_ore" or "minecraft:iron_ore" end
-  if h < 1500 then return "minecraft:coal_ore" end
-  if h < 1700 and y < 16 then return y < 0 and "minecraft:deepslate_diamond_ore" or "minecraft:diamond_ore" end
+  -- ores in VEINS (like the game): a vein in some 4x4x4 cells, 3-8 blocks
+  -- around its centre; diamonds only deep, coal higher up
+  local gx, gy, gz = math.floor(x / 4), math.floor(y / 4), math.floor(z / 4)
+  local gh = hash(gx * 7 + 3, gy * 13 + 1, gz * 5 + 2)
+  if gh % 100 < 9 then
+    local cx, cy, cz = gx * 4 + 1 + gh % 2, gy * 4 + 1 + (gh // 2) % 2, gz * 4 + 1 + (gh // 4) % 2
+    local dd = math.abs(x - cx) + math.abs(y - cy) + math.abs(z - cz)
+    if dd <= 1 or (dd == 2 and h % 3 == 0) then
+      local kind = gh % 7
+      if kind <= 2 then return y < 0 and "minecraft:deepslate_iron_ore" or "minecraft:iron_ore" end
+      if kind <= 4 and y > -20 then return "minecraft:coal_ore" end
+      if kind == 5 and y < 16 then return y < 0 and "minecraft:deepslate_diamond_ore" or "minecraft:diamond_ore" end
+      return y < 0 and "minecraft:deepslate_copper_ore" or "minecraft:copper_ore"
+    end
+  end
   if h < 2600 then return "minecraft:gravel" end
   if h < 3200 then return "minecraft:tuff" end
   return y < 0 and "minecraft:deepslate" or "minecraft:stone"
@@ -40,6 +61,7 @@ local DROPS = {
   ["minecraft:deepslate_diamond_ore"] = { "minecraft:diamond", 4 }, ["minecraft:stone"] = { "minecraft:cobblestone", 1 },
   ["minecraft:deepslate"] = { "minecraft:cobbled_deepslate", 1 }, ["minecraft:gravel"] = { "minecraft:gravel", 1 },
   ["minecraft:tuff"] = { "minecraft:tuff", 1 },
+  ["minecraft:copper_ore"] = { "minecraft:raw_copper", 6 }, ["minecraft:deepslate_copper_ore"] = { "minecraft:raw_copper", 6 },
 }
 local FAIL = {}
 local function fail(msg) FAIL[#FAIL + 1] = string.format("[%.0fs] %s", T, msg) end
@@ -131,11 +153,17 @@ local function turtleApi(u)
     local x, y, z = front(u, d)
     if d == "b" then x, z = u.pos.x - DX[u.f], u.pos.z - DZ[u.f] end
     local b = block(x, y, z)
-    if (b and not b:find("water")) or occupied(x, y, z) or u.fuel < 1 then return false, "Movement obstructed" end
+    if (b and not b:find("water") and not b:find("lava")) or occupied(x, y, z) or u.fuel < 1 then return false, "Movement obstructed" end
     if not loaded(x, z, 1) then return false, "Cannot leave loaded world" end
     local oc = chunk(u.pos.x) .. "," .. chunk(u.pos.z)
     u.pos.x, u.pos.y, u.pos.z = x, y, z
     u.fuel = u.fuel - 1
+    if u.role == "miner" then
+      MOVES = (MOVES or 0) + 1
+      local tk = tostring(ENVS and ENVS.miner and ENVS.miner.task or "?"):match("^(%a+ ?%a*)") or "?"
+      BYTASK = BYTASK or {}
+      BYTASK[tk] = (BYTASK[tk] or 0) + 1
+    end
     local nc = chunk(x) .. "," .. chunk(z)
     if nc ~= oc and u.role == "miner" then
       u.left = u.left
@@ -660,10 +688,19 @@ print("miner pos", m.pos.x, m.pos.y, m.pos.z, "fuel", m.fuel, "warps", m.warps o
 print("loader pos", l.pos.x, l.pos.y, l.pos.z, "fuel", l.fuel)
 print("miner paused (unloaded) " .. (m.frozen or 0) .. " times, shut down " .. (m.shutdowns or 0) .. " times")
 print("chunk index", mu and mu.ci, "stats", mu and mu.stats and textutils.serialize(mu.stats))
+if mu and mu.stats then
+  local st = mu.stats
+  print(string.format("SPEED: %.0f ores/hour  %.1f blocks dug per ore  %d moves  in %.0f min",
+    (st.ores or 0) / (T / 3600), (st.dug or 0) / math.max(1, st.ores or 1), MOVES or 0, T / 60))
+end
 print("delivered by the bus:", textutils.serialize(delivered))
 print("base says delivered:", mu and textutils.serialize(mu.got))
 print("in shulker:", mu and textutils.serialize(mu.carry))
 print("shulker used in the field:", FIELD or 0)
+local bt = {}
+for k, v in pairs(BYTASK or {}) do bt[#bt + 1] = { k, v } end
+table.sort(bt, function(a, b) return a[2] > b[2] end)
+for i = 1, math.min(8, #bt) do print(string.format("  moves while '%s': %d", bt[i][1], bt[i][2])) end
 print(string.format("miner waited for the loader: about %.0f s", WAITED or 0))
 for _, n in ipairs(NOTES) do print("NOTE", n) end
 if delivered["jamd:mining_dim_core"] then fail("the OWNER'S item was unloaded") end

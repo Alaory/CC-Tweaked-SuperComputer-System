@@ -73,7 +73,7 @@ CONFIG = {
 }
 
 STATE_FILE = "miner_state"
-MYVER = "m6"            -- shown on the screen and the base (MINING tab)
+MYVER = "m7"            -- shown on the screen and the base (MINING tab)
 DX = { [0] = 0, 1, 0, -1 }
 DZ = { [0] = -1, 0, 1, 0 }
 FNAME = { [0] = "north", "east", "south", "west" }
@@ -642,6 +642,11 @@ function afterMove()
       listen(1.5)
     end
   end
+  keepInventory()
+end
+-- fuel, junk out, full -> shulker (after a move, and after digging in place)
+function keepInventory()
+  if STASHING then return end
   burnCoal()
   if freeSlots() <= 2 then
     dropJunk()
@@ -681,7 +686,14 @@ function stash()
     if not ok then return false, e end
     ok, e = step("u")
     if not ok then return false, e end
-    ok, e = digDir("f")
+    -- the block above the shulker spot: dig until it STAYS empty (gravel or
+    -- sand from above falls straight back in - a shulker under it cannot open)
+    for _ = 1, 12 do
+      ok, e = digDir("f")
+      if not ok or not turtle.detect() then break end
+      sleep(0.4)
+    end
+    if ok and turtle.detect() then ok, e = false, "falling blocks keep filling the space above the shulker" end
     local okD, eD = step("d")
     if not ok then return false, e end
     if not okD then return false, eD end
@@ -1063,9 +1075,20 @@ function geoScan(radius)
   end
   return nil, "scan failed: " .. tostring(e) .. " (" .. what .. ")"
 end
+-- what the last scan saw: KNOWN[x,y,z] = block name; inside KBOX a cell that
+-- is not in KNOWN is AIR (a cave). Not saved: after a restart it scans again.
+KNOWN, KBOX, TARGETS_AT = nil, nil, {}
+function kkey(x, y, z) return x .. "," .. y .. "," .. z end
+function learnScan(res)
+  local r = CONFIG.scanR
+  KNOWN = {}
+  KBOX = { x1 = S.pos.x - r, x2 = S.pos.x + r, y1 = S.pos.y - r, y2 = S.pos.y + r, z1 = S.pos.z - r, z2 = S.pos.z + r }
+  for _, b in ipairs(res) do KNOWN[kkey(S.pos.x + b.x, S.pos.y + b.y, S.pos.z + b.z)] = b.name end
+end
 function scanLayer(cx, cz)
   local res, err = geoScan(CONFIG.scanR)
   if not res then return nil, err end
+  learnScan(res)
   local x0, z0 = cx * 16, cz * 16
   local out, wantN = {}, {}
   for _, b in ipairs(res) do
@@ -1086,7 +1109,194 @@ function scanLayer(cx, cz)
       end
     end
   end
-  return out
+  return orderTour(out)
+end
+-- the order to dig them: nearest next, then untangled (2-opt) - a shorter tour
+function orderTour(list)
+  if #list < 3 then return list end
+  local function d(a, b) return math.abs(a.x - b.x) + math.abs(a.y - b.y) + math.abs(a.z - b.z) end
+  local left, tour, cur = {}, {}, { x = S.pos.x, y = S.pos.y, z = S.pos.z }
+  for i, t in ipairs(list) do left[i] = t end
+  while #left > 0 do
+    local bi, bd = 1, nil
+    for i, t in ipairs(left) do
+      local dd = d(cur, t)
+      if not bd or dd < bd then bi, bd = i, dd end
+    end
+    cur = table.remove(left, bi)
+    tour[#tour + 1] = cur
+  end
+  local start = { x = S.pos.x, y = S.pos.y, z = S.pos.z }
+  for _ = 1, 8 do
+    local better = false
+    for i = 1, #tour - 2 do
+      local a = (i == 1) and start or tour[i - 1]
+      local b = tour[i]
+      for j = i + 1, #tour - 1 do
+        local c, e = tour[j], tour[j + 1]
+        if d(a, c) + d(b, e) < d(a, b) + d(c, e) then
+          -- reverse tour[i..j]
+          local lo, hi = i, j
+          while lo < hi do tour[lo], tour[hi] = tour[hi], tour[lo] lo, hi = lo + 1, hi - 1 end
+          better = true
+          b = tour[i]
+        end
+      end
+    end
+    if not better then break end
+  end
+  return tour
+end
+-- cost of moving into a cell, from the scan (nil = never)
+function cellCost(x, y, z)
+  if not KBOX or x < KBOX.x1 or x > KBOX.x2 or y < KBOX.y1 or y > KBOX.y2 or z < KBOX.z1 or z > KBOX.z2 then
+    return 2.5                                -- not scanned: most likely stone
+  end
+  local n = KNOWN[kkey(x, y, z)]
+  if not n then return 1 end                  -- air: a cave, nothing to dig
+  if isProtected(n) then return nil end
+  if n:find("lava", 1, true) then return 8 end
+  if isLiquid(n) then return 1.5 end
+  if TARGETS_AT[kkey(x, y, z)] then return 1.2 end
+  return 2.5                                  -- stone: dig + move
+end
+-- A* inside this chunk: to a cell NEXT TO the target (it is dug from there)
+local D6 = { { 1, 0, 0 }, { -1, 0, 0 }, { 0, 0, 1 }, { 0, 0, -1 }, { 0, 1, 0 }, { 0, -1, 0 } }
+function planTo(t, cx, cz)
+  local x0, z0 = cx * 16, cz * 16
+  local y1, y2 = math.max(-63, math.min(S.pos.y, t.y) - 4), math.max(S.pos.y, t.y) + 4
+  local function h(x, y, z) return math.max(0, math.abs(x - t.x) + math.abs(y - t.y) + math.abs(z - t.z) - 1) end
+  local g, par, X, Y, Z, HD, closed = {}, {}, {}, {}, {}, {}, {}
+  local hf, hk, hn = {}, {}, 0
+  local function push(f, k)
+    hn = hn + 1
+    local i = hn
+    while i > 1 do
+      local p = math.floor(i / 2)
+      if hf[p] <= f then break end
+      hf[i], hk[i] = hf[p], hk[p]
+      i = p
+    end
+    hf[i], hk[i] = f, k
+  end
+  local function pop()
+    local k = hk[1]
+    local lf, lk = hf[hn], hk[hn]
+    hf[hn], hk[hn] = nil, nil
+    hn = hn - 1
+    if hn > 0 then
+      local i = 1
+      while true do
+        local c = i * 2
+        if c > hn then break end
+        if c < hn and hf[c + 1] < hf[c] then c = c + 1 end
+        if hf[c] >= lf then break end
+        hf[i], hk[i] = hf[c], hk[c]
+        i = c
+      end
+      hf[i], hk[i] = lf, lk
+    end
+    return k
+  end
+  local sk = kkey(S.pos.x, S.pos.y, S.pos.z)
+  g[sk], X[sk], Y[sk], Z[sk], par[sk], HD[sk] = 0, S.pos.x, S.pos.y, S.pos.z, false, S.pos.f
+  push(h(S.pos.x, S.pos.y, S.pos.z), sk)
+  local n = 0
+  while hn > 0 do
+    local k = pop()
+    if not closed[k] then
+      closed[k] = true
+      local x, y, z = X[k], Y[k], Z[k]
+      if math.abs(x - t.x) + math.abs(y - t.y) + math.abs(z - t.z) == 1 then
+        local path = {}
+        while par[k] do
+          table.insert(path, 1, { X[k], Y[k], Z[k] })
+          k = par[k]
+        end
+        return path
+      end
+      n = n + 1
+      if n > 6000 then return nil end
+      for _, d in ipairs(D6) do
+        local nx, ny, nz = x + d[1], y + d[2], z + d[3]
+        if nx >= x0 and nx <= x0 + 15 and nz >= z0 and nz <= z0 + 15 and ny >= y1 and ny <= y2
+           and not (nx == t.x and ny == t.y and nz == t.z) then
+          local c = cellCost(nx, ny, nz)
+          if c then
+            local nk = kkey(nx, ny, nz)
+            if not closed[nk] then
+              local f = (d[2] == 0) and ((d[1] == 1 and 1) or (d[1] == -1 and 3) or (d[3] == 1 and 2) or 0) or nil
+              if f and HD[k] and f ~= HD[k] then c = c + ((f - HD[k]) % 2 == 0 and 0.8 or 0.4) end
+              local ng = g[k] + c
+              if not g[nk] or ng < g[nk] then
+                g[nk], X[nk], Y[nk], Z[nk], par[nk] = ng, nx, ny, nz, k
+                HD[nk] = f or HD[k]
+                push(ng + h(nx, ny, nz) * 1.001, nk)
+              end
+            end
+          end
+        end
+      end
+    end
+  end
+  return nil
+end
+-- walk a planned path (digging where needed); the scan picture is kept up to date
+function walkPath(path)
+  for _, c in ipairs(path) do
+    local d
+    if c[2] > S.pos.y then d = "u" elseif c[2] < S.pos.y then d = "d"
+    else
+      turnTo((c[1] > S.pos.x and 1) or (c[1] < S.pos.x and 3) or (c[3] > S.pos.z and 2) or 0)
+      d = "f"
+    end
+    local ok, err = step(d)
+    if not ok then return false, err end
+    local key = kkey(S.pos.x, S.pos.y, S.pos.z)
+    if KNOWN then KNOWN[key] = nil end
+    -- the way went THROUGH another ore of the list: that one is done too
+    if TARGETS_AT[key] and P_NOW then
+      TARGETS_AT[key] = nil
+      S.stats.ores = S.stats.ores + 1
+      for i = #P_NOW.targets, 1, -1 do
+        local t = P_NOW.targets[i]
+        if t.x == S.pos.x and t.y == S.pos.y and t.z == S.pos.z then table.remove(P_NOW.targets, i) end
+      end
+    end
+  end
+  return true
+end
+-- dig every target right next to us without moving: above, below, ahead
+-- first, then the sides (turning). Returns how many.
+function mineAround(P)
+  local n = 0
+  local p = S.pos
+  local order = { { 0, 1, 0, "u" }, { 0, -1, 0, "d" } }
+  for k = 0, 3 do
+    local f = (p.f + k) % 4
+    order[#order + 1] = { DX[f], 0, DZ[f], "f", f }
+  end
+  for _, o in ipairs(order) do
+    local x, y, z = p.x + o[1], p.y + o[2], p.z + o[3]
+    local key = kkey(x, y, z)
+    if TARGETS_AT[key] then
+      if o[5] then turnTo(o[5]) end
+      local ok = digDir(o[4])
+      TARGETS_AT[key] = nil
+      for i = #P.targets, 1, -1 do
+        local t = P.targets[i]
+        if t.x == x and t.y == y and t.z == z then table.remove(P.targets, i) end
+      end
+      if ok then
+        n = n + 1
+        S.stats.ores = S.stats.ores + 1
+        if KNOWN then KNOWN[key] = nil end
+      end
+      keepInventory()
+    end
+  end
+  if n > 0 then save() end
+  return n
 end
 function nearest(list)
   local bi, bd
@@ -1214,15 +1424,30 @@ function workStep()
       P.targets = list
       save()
     end
+    -- after a restart the scan picture is gone: look again (from here)
+    if not KNOWN and #P.targets > 0 then
+      local res = geoScan(CONFIG.scanR)
+      if res then learnScan(res) end
+    end
+    TARGETS_AT, P_NOW = {}, P
+    for _, t in ipairs(P.targets) do TARGETS_AT[kkey(t.x, t.y, t.z)] = true end
+    mineAround(P)
     while #P.targets > 0 do
       local okC, errC = checkpoint()
       if not okC then return false, errC end
-      local i = nearest(P.targets)
-      local t = P.targets[i]
+      local t = P.targets[1]                 -- the next one on the planned tour
       setTask("chunk " .. P.ci .. " layer " .. P.li .. "/" .. #L .. ": " .. #P.targets .. " ores left")
-      local ok = goTo(t.x, t.y, t.z)
-      if ok then S.stats.ores = S.stats.ores + 1 end
-      table.remove(P.targets, i)          -- reached or not (bedrock, protected): next
+      -- a planned way (through caves, around lava) to the block next to it
+      local path = KNOWN and planTo(t, cx, cz)
+      local ok
+      if path then ok = walkPath(path)
+      else ok = goTo(t.x, t.y, t.z) if ok then S.stats.ores = S.stats.ores + 1 end end
+      mineAround(P)                          -- it, and every other ore next to us
+      -- not reached (bedrock, a turtle in the way ...): skip it
+      if P.targets[1] == t then
+        table.remove(P.targets, 1)
+        TARGETS_AT[kkey(t.x, t.y, t.z)] = nil
+      end
       save()
     end
     local ok, err = goTo(mx, ly, mz)
