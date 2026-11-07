@@ -60,12 +60,12 @@ local function unitRow(x, y, w, u, role)
   local tag = role .. (u and u.idx and (" " .. u.idx) or "")
   text(x, y, tag, C.dim, C.panel)
   local name = u and ((u.label or "?") .. " #" .. u.id .. (u.ver and (" " .. u.ver) or "")) or "-"
-  local fw = 12
-  text(x + 9, y, trunc(name, w - 9 - #lab - fw - 4), C.text, C.panel)
+  local fw, pw = 12, 11                                -- fuel bar, pill room (the bars line up)
+  text(x + 9, y, trunc(name, w - 9 - pw - fw - 2), C.text, C.panel)
   pill(x + w - #lab - 2, y, lab, C.ink, col)
   local fuel = u and tonumber(u.fuel)
   if fuel then
-    local fx = x + w - #lab - fw - 4
+    local fx = x + w - pw - fw - 1
     local f = math.max(0, math.min(1, fuel / (tonumber(u.fuelMax) or 20000)))
     barW(fx, y, fw, f * fw, (fuel < 500 and C.bad) or (fuel < 2000 and C.warn) or C.good)
   end

@@ -74,7 +74,7 @@ CONFIG = {
 }
 
 STATE_FILE = "miner_state"
-MYVER = "m10"            -- shown on the screen and the base (MINING tab)
+MYVER = "m11"            -- shown on the screen and the base (MINING tab)
 DX = { [0] = 0, 1, 0, -1 }
 DZ = { [0] = -1, 0, 1, 0 }
 FNAME = { [0] = "north", "east", "south", "west" }
@@ -350,6 +350,7 @@ function handle(id, m, proto)
           S.tp = m.plan or nil
           if not m.plan then S.job = nil end
           S.running = (m.plan and m.plan.running) and true or false
+          if newPlan or not m.plan then GO = nil end       -- an old crossing's "go" is not for the new field
           if newPlan then S.err = nil end
           save()
         end
@@ -378,7 +379,8 @@ function doCmd(cmd, args)
         S.running, S.plan.running = true, true
         note("START (" .. #S.team .. " miners)")
       else
-        note("Cannot start: " .. tostring(err))
+        S.err = "cannot start: " .. tostring(err)
+        note(S.err)
       end
       save()
       sendPlan()
@@ -1550,8 +1552,15 @@ function newJob(tp, ci)
   save()
 end
 -- one piece of the miner's work; false, why = stop
+-- paused, but the loader's "go" for my crossing is out (a pause during a
+-- crossing): I still step over - the loader goes, I must not stay behind
+function crossingDue()
+  local J, tp = S.job, S.tp
+  return J and tp and J.phase == "ready" and J.plan == tp.id and (tp.goSent == J.ci or GO == J.ci) or false
+end
 function teamStep()
-  local okC, errC = checkpoint()
+  local okC, errC = true, nil
+  if not crossingDue() then okC, errC = checkpoint() end
   if not okC then return false, errC end
   local tp, J = S.tp, S.job
   if not J or J.plan ~= tp.id then newJob(tp, tp.ci) J = S.job end
@@ -1679,10 +1688,9 @@ function teamStep()
     return true
   elseif J.phase == "ready" then
     -- wait for the loader's "go" (everybody is ready), then step over
-    GO = nil
     local t0, sent = os.clock(), -1000
     while GO ~= ci do
-      if not S.running then return false, "paused" end
+      if not S.running and not crossingDue() then return false, "paused" end
       if os.clock() - sent > 10 then
         equipTool("modem")
         sendTeam(S.leader, "ready", { ci = ci })
@@ -1886,7 +1894,7 @@ function minerRun()
       equipTool("modem")
       sendTeam(nil, "minerhere")
     end
-    if not S.running or not S.leader or not S.tp then
+    if (not S.running and not crossingDue()) or not S.leader or not S.tp then
       equipTool("modem")
       if not S.leader then setTask("waiting for a loader turtle (same dimension)")
       elseif S.err then setTask("PAUSED: " .. S.err)
@@ -1919,7 +1927,7 @@ function minerRun()
         save()
       end
       local okR, ok, err = true, false, "paused"
-      if S.running then okR, ok, err = pcall(teamStep) end
+      if S.running or crossingDue() then okR, ok, err = pcall(teamStep) end
       if not okR then
         if tostring(ok):find("Terminated", 1, true) then error("Terminated", 0) end
         ok, err = false, "error: " .. tostring(ok)

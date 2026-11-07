@@ -439,7 +439,7 @@ function drawFooter()
     events  = "Every message, newest first. Tap a filter to show one kind only",
     system  = "How the base is doing. The SYSTEM LOG keeps system things only (not pushed out by everyday messages)",
     settings = "Pick a group on the left, then tap - / + or the value. RESET = back to base_config.lua",
-    mining = "START / PAUSE reach the miner at its next report (up to 30 s). Unload interval: SETTINGS > MINING",
+    mining = "START / PAUSE / NEW FIELD go to the loader; it tells the miners. Unload interval: SETTINGS > MINING",
   }
   if state.diskLow then
     text(3, H, trunc("  " .. state.diskLow .. "  ", W - 24), C.ink, C.bad)

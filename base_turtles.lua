@@ -1164,7 +1164,11 @@ end
 -- comms worker: surveying turtles near a player stop and go home
 function TT.avoidTick()
   local list, range = TT.threats()
-  if #list == 0 then return end
+  if #list == 0 then
+    -- the player has gone: no trip home needed any more (it gets work again)
+    for _, t in pairs(state.turtles) do t.avoidHome = nil end
+    return
+  end
   local now = os.clock()
   for id, t in pairs(state.turtles) do
     if TT.online(t) and t.pos and t.pos.x and not t.anchor and not t.held then

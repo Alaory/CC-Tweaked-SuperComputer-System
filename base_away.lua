@@ -247,7 +247,8 @@ function AWAY.tick()
   end
   if AWAY.on then
     -- the monitor shows the map, following the turtles
-    if AWAY.cfg("map", true) then
+    -- (only when there is a MAP tab: turtles, a modem for them or map data)
+    if AWAY.cfg("map", true) and (state.tModem or next(state.turtles) or MAP.hasData()) then
       if state.page ~= "map" and state.page ~= "settings" then
         AWAY.page = AWAY.page or state.page
         state.page = "map"

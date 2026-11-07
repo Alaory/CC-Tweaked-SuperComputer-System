@@ -192,8 +192,10 @@ function MINE.status(u)
   end
   if u.role == "loader" then
     if task:find("STUCK", 1, true) or task:find("blocked", 1, true) then return "BLOCKED", C.bad, task end
-    if not u.partner then return "NOT PAIRED", C.warn, task end
-    if task:find("following", 1, true) then return "MOVING", C.good, task end
+    if u.err and not u.running then return "STOPPED", C.bad, tostring(u.err) end
+    if not u.partner then return "NO MINERS", C.warn, task end
+    if not u.running then return "PAUSED", C.label, task end
+    if task:find("crossing", 1, true) then return "MOVING", C.good, task end
     return "LOADING", C.good, task
   end
   if u.err and not u.running then return "STOPPED", C.bad, tostring(u.err) end

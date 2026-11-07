@@ -659,6 +659,26 @@ while T < maxT do
       MINE.cmd(LOADER, "start", {})
     end
   end
+  -- PAUSE while the loader's "go" is out (a crossing): nobody may stay behind
+  if SCEN:find("crosspause") and lu and ENVS.loader.S and ENVS.loader.S.plan then
+    local P = ENVS.loader.S.plan
+    if not CP1 and P.goSent and P.ci >= 1 then
+      CP1, CP_CI = T, P.ci
+      MINE.cmd(LOADER, "pause", {})
+      io.write(string.format("** PAUSE during the crossing of chunk %d at %.0f s\n", P.ci, T))
+    end
+    if CP1 and not CP2 and T > CP1 + 90 then
+      CP2 = true
+      local lcx, lcz = math.floor(l.pos.x / 16), math.floor(l.pos.z / 16)
+      for _, mm in ipairs(MS) do
+        local mcx, mcz = math.floor(mm.pos.x / 16), math.floor(mm.pos.z / 16)
+        if mcx ~= lcx or mcz ~= lcz then fail("miner " .. mm.id .. " left behind after a pause during the crossing") end
+      end
+      if P.ci ~= CP_CI + 1 then fail("the crossing was not finished after the pause (ci " .. P.ci .. ")") end
+      io.write("** after the pause: everybody in chunk " .. P.ci .. " - START again\n")
+      MINE.cmd(LOADER, "start", {})
+    end
+  end
   -- the Import Bus drains the shulker in front of the station
   local sh = SHULKERS[key(DUMP.x, DUMP.y, DUMP.z)]
   if sh then

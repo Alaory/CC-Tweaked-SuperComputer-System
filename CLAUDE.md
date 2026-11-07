@@ -204,7 +204,7 @@ PneumaticCraft drone rides, turtle mapping/surveys, and an AE2 ME network view.
   test step (modem put back on first - gpsHere does that for miners). The
   loader keeps gpsFacing (its Chunky goes with it). A crossing whose "go" is
   out is always finished (P.goSent), even when PAUSE / NEW FIELD come in
-  (NEWFIELD_LATER). Miners: no plan / plan not running -> S.running false
+  (NEWFIELD_LATER); a paused miner still steps over then (crossingDue). Miners: no plan / plan not running -> S.running false
   (the base button follows the LOADER's running only). Log entries carry e
   (epoch): the merged team log sorts by it. Owner's items in a miner at START (S.own) never unloaded (> 4 slots ->
   refused). geoScan looks the scan function up by name. MINING tab: team card
