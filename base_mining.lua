@@ -33,7 +33,8 @@ function MINE.cfgArgs()
            "want=" .. list(MINE.cfg("want", {})),
            "keep=" .. list(MINE.cfg("keep", {})),
            "extraOres=" .. list(MINE.cfg("ores", {})),
-           "skipOres=" .. list(MINE.cfg("skipOres", {})) }
+           "skipOres=" .. list(MINE.cfg("skipOres", {})),
+           "fuelItems=" .. list(MINE.cfg("fuelItems", { "*mining_dim_core*" })) }
 end
 
 function MINE.load()
@@ -187,7 +188,7 @@ function MINE.status(u)
     return "NO FUEL", C.bad, "fuel " .. fuel .. " - put coal in it and type  refuel all  on the turtle"
   end
   if u.role == "loader" and fuel and fuel < 2000 then
-    return "LOW FUEL", C.warn, "fuel " .. fuel .. " - give it a Mining Dim Core (endless fuel) or coal (refuel all)"
+    return "LOW FUEL", C.warn, "fuel " .. fuel .. " - give it fuel: an endless fuel item (if your pack has one) or coal"
   end
   if u.role == "loader" then
     if task:find("STUCK", 1, true) or task:find("blocked", 1, true) then return "BLOCKED", C.bad, task end

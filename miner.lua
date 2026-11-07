@@ -406,7 +406,7 @@ function doCmd(cmd, args)
       local k, v = tostring(a):match("^([%w_]+)=(.*)$")
       if k then
         local val
-        if k == "want" or k == "keep" or k == "extraOres" or k == "skipOres" then
+        if k == "want" or k == "keep" or k == "extraOres" or k == "skipOres" or k == "fuelItems" then
           val = {}
           for w in v:gmatch("[^,]+") do val[#val + 1] = w end
         else
@@ -480,6 +480,35 @@ function burnCoal()
       turtle.select(i)
       while turtle.getFuelLevel() < CONFIG.fuelTarget and turtle.getItemCount(i) > 0 do
         if not turtle.refuel(1) then break end
+      end
+    end
+  end
+  -- still low: any other fuel you gave it (not tools, not mined loot). An item
+  -- that is still there after refuelling (same name, same count) is learned as
+  -- ENDLESS fuel (S.reuse): kept, never unloaded, used first from now on.
+  -- Every modpack has its own (the Mining Dim Core is just one of them).
+  if turtle.getFuelLevel() < CONFIG.lowFuel then
+    for i = 1, 16 do
+      local d = turtle.getItemDetail(i)
+      if d and not isTool(d.name) and not isCoal(d.name) and not isJunk(d.name) then
+        turtle.select(i)
+        if turtle.refuel(0) then
+          while turtle.getFuelLevel() < CONFIG.fuelTarget do
+            local before = turtle.getFuelLevel()
+            if not turtle.refuel(1) or turtle.getFuelLevel() <= before then break end
+            local after = turtle.getItemDetail(i)
+            if after and after.name == d.name and after.count == d.count then
+              S.reuse = S.reuse or {}
+              if not S.reuse[d.name] then
+                S.reuse[d.name] = true
+                note("Endless fuel found: " .. d.name .. " (kept, never unloaded)")
+                save()
+              end
+            elseif not after or after.name ~= d.name then
+              break                              -- used up (or a bucket left): next
+            end
+          end
+        end
       end
     end
   end
@@ -1787,7 +1816,7 @@ function minerRun()
       end
       burnCoal()
       if turtle.getFuelLevel() ~= "unlimited" and turtle.getFuelLevel() < 100 then
-        S.running, S.err = false, "NO FUEL - put a Mining Dim Core or coal in it"
+        S.running, S.err = false, "NO FUEL - give it fuel (an endless fuel item or coal)"
         note(S.err)
         save()
       end

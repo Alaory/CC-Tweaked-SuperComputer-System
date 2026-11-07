@@ -152,12 +152,12 @@ local function teamCard(x, y, w, h, dim, team)
   local function fuelLow(u, lim) return u and tonumber(u.fuel) and tonumber(u.fuel) < (lim or 500) end
   if not l then hint = "Run miner.lua on the loader turtle (role l), standing on the surface."
   elseif #miners == 0 then hint = "Run miner.lua on the miners (role m), next to the loader in its chunk."
-  elseif fuelLow(l, 2000) then hint = "Loader: put a Mining Dim Core in it (endless fuel)."
+  elseif fuelLow(l, 2000) then hint = "Loader: give it fuel - an endless fuel item if your pack has one, else coal (blocks)."
   elseif l.err and not l.running then hint = tostring(l.err) .. " - then START TEAM."
   else
     for _, m in ipairs(miners) do
       if not MINE.online(m) then hint = (m.label or ("#" .. m.id)) .. " does not report: chunk loaded? look at its screen." break end
-      if fuelLow(m) then hint = (m.label or ("#" .. m.id)) .. ": put a Mining Dim Core or coal in it." break end
+      if fuelLow(m) then hint = (m.label or ("#" .. m.id)) .. ": give it fuel (an endless fuel item or coal)." break end
       if m.station == false then hint = (m.label or ("#" .. m.id)) .. " has no unload station: put it on the station, type  miner station." break end
       if m.err and not m.running then hint = (m.label or ("#" .. m.id)) .. ": " .. tostring(m.err) break end
     end
@@ -204,7 +204,7 @@ function drawMiningPage(G)
     local lines = {
       "A team per mining dimension: ONE loader + up to 5 miners, all running miner.lua:",
       "  LOADER  Chunky upgrade + Ender Modem - the team leader; keeps the miners' chunk loaded",
-      "  MINER   End Automata Core + pickaxe; carries an Ender Modem, a Geo Scanner, a shulker box, a Mining Dim Core",
+      "  MINER   End Automata Core + pickaxe; carries an Ender Modem, a Geo Scanner, a shulker box and fuel",
       "",
       "1. The unload station's chunk must stay loaded (a chunk loader, or a player there).",
       "2. EACH miner once: put it on the unload station (facing the storage), run  miner , answer the questions",

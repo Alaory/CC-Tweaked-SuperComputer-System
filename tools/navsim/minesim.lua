@@ -244,7 +244,7 @@ local function turtleApi(u)
   t.getItemDetail = function(i) local it = u.inv[i or u.sel] return it and { name = it.name, count = it.count } or nil end
   t.refuel = function(n)
     local it = u.inv[u.sel]
-    if it and it.name == "jamd:mining_dim_core" then
+    if it and (it.name == "jamd:mining_dim_core" or it.name:find("eternal", 1, true)) then
       u.fuel = math.min(100000, u.fuel + 1000 * (n or 1))        -- endless: not used up
       return true
     end
@@ -554,6 +554,11 @@ if SCEN == "core" then
   m.inv[4] = { name = "jamd:mining_dim_core", count = 1 }
   m.fuel = 300
 end
+if SCEN == "otherfuel" then
+  -- another pack: an endless fuel item with a name nobody told the turtles
+  m.inv[4] = { name = "somemod:eternal_flame", count = 1 }
+  m.fuel = 300
+end
 if SCEN == "geoname" then m.inv[7] = { name = "jamd:mining_dim_core", count = 1 } end
 if SCEN == "ownfull" then
   for i = 5, 13 do m.inv[i] = { name = "minecraft:torch", count = 64 } end
@@ -563,9 +568,10 @@ if SCEN == "direct" then
   SHULKERS[key(DUMP.x, DUMP.y, DUMP.z)] = {}
 end
 local l = newTurtle(LOADER, "loader", LX, LY, LZ, LF,
-  (SCEN == "core") and { [1] = { name = "jamd:mining_dim_core", count = 1 } } or {},
+  (SCEN == "core") and { [1] = { name = "jamd:mining_dim_core", count = 1 } }
+  or (SCEN == "otherfuel") and { [1] = { name = "somemod:eternal_flame", count = 1 } } or {},
   "advancedperipherals:chunk_controller", "computercraft:wireless_modem_advanced")
-if SCEN == "core" then l.fuel = 300 end
+if SCEN == "core" or SCEN == "otherfuel" then l.fuel = 300 end
 setBlock(STATION.x, STATION.y, STATION.z, nil)
 if SCEN ~= "direct" then setBlock(DUMP.x, DUMP.y, DUMP.z, nil) end
 for _, mm in ipairs(MS) do
@@ -663,7 +669,8 @@ while T < maxT do
     ENVS.loader.S.pos.f = (ENVS.loader.S.pos.f + 1) % 4
     io.write("** loader now believes it faces " .. ENVS.loader.S.pos.f .. " (wrong)\n")
   end
-  if SCEN == "core" and T > 3000 and l.fuel < 500 then fail("loader ran low on fuel despite the core") end
+  if (SCEN == "core" or SCEN == "otherfuel") and T > 3000 and l.fuel < 500 then fail("loader ran low on fuel despite the endless item") end
+  if SCEN == "otherfuel" and T > 3000 and (MS[1].fuel or 0) < 300 then fail("miner ran low on fuel despite the endless item") end
   -- next coroutine to run
   table.sort(cos, function(p, q) return p.wake < q.wake end)
   local c = cos[1]
@@ -737,7 +744,7 @@ for k, v in pairs(TIMEBY or {}) do tb[#tb + 1] = { k, v } tsum = tsum + v end
 table.sort(tb, function(a, b) return a[2] > b[2] end)
 for i = 1, math.min(9, #tb) do print(string.format("  miner time '%s': %d%%", tb[i][1], math.floor(tb[i][2] / tsum * 100 + 0.5))) end
 for _, n in ipairs(NOTES) do print("NOTE", n) end
-if delivered["jamd:mining_dim_core"] then fail("the OWNER'S item was unloaded") end
+if delivered["jamd:mining_dim_core"] or delivered["somemod:eternal_flame"] then fail("the OWNER'S item was unloaded") end
 for _, id in ipairs(MINERS) do
   local u = MINE.units[id]
   if u then

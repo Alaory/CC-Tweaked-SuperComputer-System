@@ -188,9 +188,12 @@ PneumaticCraft drone rides, turtle mapping/surveys, and an AE2 ME network view.
   ores_in_ground), names _ore / ore_ / _ore_ (not _block), CONFIG.ores +
   mining.ores (extraOres), never mining.skipOres. Turtles start on the
   SURFACE (loader; miners next to it, same chunk). GPS: gpsCheck at start /
-  reports, gpsFacing (canDig) after a restart and on a new plan. Endless fuel
-  (CONFIG.fuelItems "*mining_dim_core*", S.reuse) first in burnCoal, kept as a
-  tool. Owner's items in a miner at START (S.own) never unloaded (> 4 slots ->
+  reports, gpsFacing (canDig) after a restart and on a new plan. Fuel: the
+  Mining Dim Core is OPTIONAL (not in every pack). burnCoal: known endless
+  items first (CONFIG.fuelItems / mining.fuelItems from the base, S.reuse),
+  then coal, then - still low - any other fuel item it carries (refuel(0)):
+  one that keeps name + count after refuel(1) is LEARNED as endless (S.reuse,
+  kept as a tool, never unloaded); others are simply burned. Owner's items in a miner at START (S.own) never unloaded (> 4 slots ->
   refused). geoScan looks the scan function up by name. MINING tab: team card
   per dim (unitRow per turtle, FIELD map from the loader's ci, MINE.totals,
   items, START/PAUSE TEAM, UNLOAD NOW, NEW FIELD two taps, TO DO, merged LOG).

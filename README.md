@@ -283,8 +283,13 @@ Dimension*), all running `miner.lua`. They show up on **TURTLES > MINING**, neve
 
 | Turtle | Equipped | Carries |
 |---|---|---|
-| 📦 **LOADER** (team leader) | Chunky upgrade + Ender Modem | a Mining Dim Core (endless fuel) |
-| ⛏️ **MINER** (1-5) | End Automata Core (stays on) + pickaxe | Ender Modem, Geo Scanner, shulker box, a Mining Dim Core |
+| 📦 **LOADER** (team leader) | Chunky upgrade + Ender Modem | fuel |
+| ⛏️ **MINER** (1-5) | End Automata Core (stays on) + pickaxe | Ender Modem, Geo Scanner, shulker box, fuel |
+
+⛽ **Fuel:** any fuel works. Miners also burn the coal they mine. If your pack has an **endless
+fuel item** (one that is not used up, e.g. the Mining Dim Core), give one to each turtle: they
+notice it is endless by themselves, keep it and never unload it. The loader can't refuel
+itself otherwise, so give it plenty of coal blocks if there is no endless item.
 
 - Works with the normal Chunky upgrade (only its own chunk loaded) - no server config.
 - Each chunk: every miner gets its own shaft; the loader hands out the layers one at a time
