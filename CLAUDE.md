@@ -202,7 +202,16 @@ PneumaticCraft drone rides, turtle mapping/surveys, and an AE2 ME network view.
   rows of rowLength chunks forward from the start facing, next row to the right;
   per chunk: tunnel to the centre at the start Y, layers every 17 down to minY
   (Geo Scanner r 8, ores + CONFIG.mining.want inside the chunk), exit to the
-  chunk edge, handoff. Junk thrown away; full -> shulker in front with air
+  chunk edge, handoff. Per layer (m7): the scan becomes KNOWN/KBOX (a 3D
+  picture; air inside KBOX = cave), targets ordered by orderTour (nearest +
+  2-opt), planTo = A* inside the chunk to a cell NEXT TO the ore (cellCost:
+  air 1, ore 1.2, water 1.5, stone 2.5, lava 8, protected/turtle never; turns
+  0.4/0.8), walkPath (ores passed through count), mineAround digs every
+  listed ore around it in place (up, down, ahead, sides). After a restart:
+  rescan from where it is. Simulator (ores in veins): +35% ores/hour.
+  Tried and REVERTED: alternating the tunnel between top and bottom (no
+  climb back up) - no gain, the loader then has to climb the shaft and the
+  miner waits for it (1-chunk loading). Junk thrown away; full -> shulker in front with air
   above (stash). Every dumpEvery s (or full shulker): savePoint "work", warp
   "station", unload (empty block in front = shulker there for an Import Bus;
   inventory in front = drop + shulker ABOVE and suckUp), warp back. noMine /
