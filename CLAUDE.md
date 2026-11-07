@@ -59,7 +59,9 @@ PneumaticCraft drone rides, turtle mapping/surveys, and an AE2 ME network view.
   nearest to the base (CONFIG.drone.home) - never row by row from the far corner
   (that sent turtles 28,000 blocks away when zoomed out); spiral spots outside
   the area are skipped cheaply. Old saved row-by-row queues are converted once in
-  feedSurvey. The queue file is written only when it changed (or once a minute). SURVEY: ALL for small areas also goes through
+  feedSurvey: their old far batches / redo spots are DROPPED and the turtles that
+  had one get t.recall (saved in turtles.dat) - TT.receive stops their survey job
+  (also when they resume it after being offline), then sends them home. The queue file is written only when it changed (or once a minute). SURVEY: ALL for small areas also goes through
   the queue (MAP.addSurvey); SURVEY: THIS ONE is a direct order. A spot is
   done when MAP.spotDone (its own column in detail, or its chunk fully in the
   overview) - NOT MAP.scanned alone (17-block spots vs 16-block chunks).

@@ -231,6 +231,22 @@ function TT.receive(id, m)
     t.stopAsk = { tries = 1, last = os.clock() }
     TT.send(id, "stop", {}, true, true)
   end
+  -- called back (its survey batch was far out - old survey order): stop that
+  -- job (also when it resumes it after being offline), then home
+  if t.recall and (m.t == "status" or m.t == "hello") and m.task then
+    local task = tostring(m.task)
+    if task:find("^survey") or task:find("^scanning") then
+      if not t.recallAt or os.clock() - t.recallAt > 20 then
+        t.recallAt = os.clock()
+        TT.send(id, "stop", {}, true, true)                  -- no hold
+      end
+    elseif task == "idle" then
+      t.recall, t.recallAt = nil, nil
+      TT.listDirty = true
+      if t.home then TT.send(id, "home", {}, true) end
+      TT.log(t, "Called back: going home")
+    end
+  end
   local oldVer = t.ver
   if m.ver then t.ver = m.ver end
   t.updReady = m.updReady
@@ -816,7 +832,7 @@ function TT.saveList()
   for id, t in pairs(state.turtles) do
     out[#out + 1] = { id = id, label = t.label, pos = t.pos, home = t.home, seen = t.seenEpoch,
                       task = t.task, ver = t.ver, gear = t.gear, anchor = t.anchor, rescuerRole = t.rescuerRole,
-                      held = t.held }
+                      held = t.held, recall = t.recall }
   end
   saveFileSafe(CONFIG.turtles.listFile, serialSmall(out))
   TT.listDirty = false
@@ -836,6 +852,7 @@ function TT.loadList()
       t.ver, t.gear, t.anchor = e.ver, e.gear, e.anchor
       t.rescuerRole = e.rescuerRole
       t.held = e.held
+      t.recall = e.recall
     end
   end
 end

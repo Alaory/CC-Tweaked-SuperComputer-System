@@ -1137,14 +1137,25 @@ function MAP.feedSurvey()
   -- a survey saved by an older version (row by row from the far corner):
   -- once into the spiral from the base (done spots are skipped anyway)
   if not q.spiral and not q.auto and q.x1 then
-    local keepRedo, keepOut, sent, skipped, ids, excl = q.redo, q.out, q.sent, q.skipped, q.ids, q.excluded
+    local oldOut, sent, skipped, ids, excl = q.out, q.sent, q.skipped, q.ids, q.excluded
     local held = {}
     for id, t in pairs(state.turtles) do held[id] = t.held end
     MAP.queue = nil
     MAP.queueSurvey(q.x1, q.z1, q.x2, q.z2, q.r, ids)
     for id, t in pairs(state.turtles) do t.held = held[id] end         -- (no release: you did not start it now)
     q = MAP.queue
-    q.redo, q.out, q.sent, q.skipped, q.excluded = keepRedo, keepOut, sent or 0, skipped or 0, excl
+    -- the old batches (and spots given back) were far out at the corner: dropped
+    -- (the spiral gets there in its turn); the turtles on their way there are
+    -- called back - also when they come back online later (t.recall, saved)
+    q.sent, q.skipped, q.excluded = sent or 0, skipped or 0, excl
+    for id in pairs(oldOut or {}) do
+      local t = state.turtles[id]
+      if t then
+        t.recall = true
+        TT.listDirty = true
+        TT.log(t, "Its survey batch was far away (old survey order) - called back home")
+      end
+    end
     q.changed = true
   end
   if q.auto and MAP.full then return end           -- auto-map waits for room on the floppies
