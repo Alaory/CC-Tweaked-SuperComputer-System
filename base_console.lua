@@ -50,6 +50,7 @@ HELP = {
   " rescue <id> [x y z [radius]]  send a rescue turtle to a lost or stuck turtle",
   " findlost [radius]    search around the base for lost turtles and reinstall them",
   " turtle <id> forget   take a turtle that is gone (server crash) off the list",
+  " drive <id>   steer a turtle with the keyboard: W A S D, SPACE up, SHIFT down",
   " mine [drop|forget] <id>   mining turtles: drop = a lost miner out of its team",
   " factory [chest <name>|builder <id>|build|stop]   build turtles from AE2 parts",
   " schem [<name>|delete <name>]   Create schematics (drag a .nbt onto this screen)",
@@ -801,6 +802,9 @@ function handleCommand(line)
       if t.gear and t.gear ~= "" then say("     gear: " .. t.gear) end
     end
 
+  elseif cmd == "drive" then
+    say("drive <id> - steer that turtle with this computer's keyboard (W A S D, SPACE, SHIFT, Q quits).")
+    say("Turtle ids: type  turtles")
   elseif cmd == "turtle" then
     local t = words[2] and TT.find(words[2])
     local tc = words[3] and words[3]:lower()

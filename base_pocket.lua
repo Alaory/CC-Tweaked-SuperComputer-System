@@ -122,8 +122,24 @@ function POCKET.status()
   return d
 end
 
+-- the turtle being driven from the pocket: the same six rows as the monitor
+function POCKET.driveView(id)
+  local t = id and state.turtles[id]
+  if not t then return nil end
+  local rows = {}
+  for _, r in ipairs(driveRows(t)) do
+    rows[#rows + 1] = { dir = r.dir, what = driveWord(r.name), seen = r.name ~= nil, key = r.key, act = r.act, does = r.does }
+  end
+  local m = t.driveMsg
+  return { id = t.id, label = short(t.label, 14), facing = t.pos and t.pos.f, fuel = tonumber(t.fuel), rows = rows,
+           online = TT.online(t), waiting = (t.driveSent and not m) and math.floor(os.clock() - t.driveSent) or nil,
+           msg = m and ((m.ok and "OK: " or "NO: ") .. short(m.msg, 60)) or nil, anyway = t.driveAnyway }
+end
+
 ----------------------------------------------------------------- what the pocket can do
 local TCMDS = { stop = true, home = true, locate = true, ping = true, digup = true }
+local DRIVE_ACTS = { minef = true, mineu = true, mined = true, l = true, r = true, b = true, around = true, look = true,
+                     digf = true, digu = true, digd = true }
 -- the owner is in another dimension (the Player Detector knows): positions from
 -- the pocket's GPS there are not overworld places
 local function elsewhere()
@@ -181,6 +197,14 @@ function POCKET.act(a, args, pos)
     end
     TT.send(t.id, c, targs)
     return true, (c == "digup" and "mining up to the surface" or c) .. " - " .. t.label
+  elseif a == "drive" then
+    -- one DRIVE step from the pocket (keys / taps); "force" = DIG ANYWAY
+    local t = state.turtles[tonumber(args[1]) or -1]
+    if not t then return false, "no such turtle" end
+    local step = tostring(args[2] or "")
+    if not DRIVE_ACTS[step] then return false, "not a drive step: " .. step end
+    TT.drive(t.id, step, args[3] == "force")
+    return true, "sent"
   elseif a == "forget" then
     -- a turtle that is gone (deleted by a server crash): off the list - only while offline
     local t = state.turtles[tonumber(args[1]) or -1]
@@ -285,7 +309,10 @@ function POCKET.receive(id, m)
   if m.sig ~= sign(p.key, m.t, m.n, m.a, m.args) then return end
   p.lastN, p.seen = m.n, os.epoch("utc")
   if m.t == "req" then
-    send(id, "status", { data = POCKET.status(), re = m.n })
+    local data = POCKET.status()
+    -- DRIVE mode on the pocket: the six directions of that turtle
+    if m.a == "drive" and type(m.args) == "table" then data.drive = POCKET.driveView(tonumber(m.args[1])) end
+    send(id, "status", { data = data, re = m.n })
   elseif m.t == "act" then
     local okA, ok, msg = pcall(POCKET.act, tostring(m.a), m.args, m.pos)
     if not okA then ok, msg = false, "error: " .. tostring(ok) end

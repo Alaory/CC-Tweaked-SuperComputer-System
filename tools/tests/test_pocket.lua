@@ -226,6 +226,31 @@ penv.draw()
 CHECK(screenText():find("MINE UP", 1, true), "pocket shows MINE UP for a turtle with a pickaxe")
 P.sel = nil
 
+-- DRIVE from the pocket: the six rows arrive, keys and taps steer the turtle
+sent = {}
+TT.send = function(id, c, args) sent[#sent + 1] = { id = id, c = c, args = args } end
+state.turtles[7].lastSeen = os.clock()
+state.turtles[7].pos = { x = 5, y = 40, z = 5, f = "north" }
+TT.lookIn(state.turtles[7], { pos = state.turtles[7].pos, front = "minecraft:iron_ore", up = "minecraft:air", down = "minecraft:stone" })
+penv.startDrive(7)
+pump()
+CHECK(P.data.drive and P.data.drive.rows and #P.data.drive.rows == 6, "DRIVE: the six rows arrive on the pocket")
+CHECK(P.data.drive.rows[1].what == "IRON ORE" and P.data.drive.rows[1].does == "DIG + GO FORWARD", "AHEAD: iron ore, W digs + goes")
+P.tab = "bots"
+CHECK(pcall(penv.draw), "DRIVE screen draws")
+CHECK(screenText():find("DRIVING", 1, true) and screenText():find("[W]", 1, true), "DRIVE screen shows the keys")
+penv.driveKey(keys.w)
+pump()
+penv.driveKey(keys.d)
+pump()
+local cs = {}
+for _, x in ipairs(sent) do if x.c == "drive" then cs[#cs + 1] = x.args[1] end end
+CHECK(table.concat(cs, ",") == "minef,r", "keys W / D from the pocket steer the turtle (" .. table.concat(cs, ",") .. ")")
+penv.driveKey(keys.q)
+pump()
+CHECK(P.drive == nil, "Q leaves DRIVE")
+TT.send = send0
+
 -- UPDATE TURTLES NOW from the pocket
 local fu0 = TT.forceUpdate
 local forcedP = false

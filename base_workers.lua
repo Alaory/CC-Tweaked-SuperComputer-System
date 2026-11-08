@@ -587,7 +587,15 @@ function terminalWorker()
     local line = read(nil, history, complete)
     if line == nil then break end
     if line ~= "" then history[#history + 1] = line end
-    local ok, out = pcall(handleCommand, line)
+    -- drive <id>: steer a turtle with the keyboard (W A S D, SPACE, SHIFT ...)
+    local did = line:match("^%s*drive%s+(%d+)%s*$")
+    if did then
+      local okD, errD = pcall(driveTerminal, tonumber(did))
+      if not okD then print("Error: " .. tostring(errD)) end
+      line = nil
+    end
+    local ok, out = true, {}
+    if line then ok, out = pcall(handleCommand, line) end
     if ok then
       for _, l in ipairs(out) do print(l) end
     else

@@ -91,7 +91,10 @@ function sendBase(t, a, args, extra)
   rednet.send(id, m, PROTO)
   return true
 end
-function refresh() sendBase("req") end
+-- (in DRIVE mode the base also sends that turtle's six directions)
+function refresh()
+  if P.drive then sendBase("req", "drive", { P.drive }) else sendBase("req") end
+end
 -- an action; some need where you stand (the pocket's GPS)
 function act(a, args, withPos)
   local extra = {}
@@ -323,6 +326,10 @@ function pageBots(d, y)
       y = y + 2
       button(1, y, W, "MINE UP TO THE SURFACE", C.warn, function() act("turtle", { t.id, "digup" }) end, true)
     end
+    if t.key ~= "offline" and t.key ~= "missing" then
+      y = y + 2
+      button(1, y, W, "DRIVE IT (keys W A S D)", C.good, function() startDrive(t.id) end)
+    end
     return y + 1
   end
   button(1, y, hw, "STOP ALL", C.bad, function() act("allstop") end, true)
@@ -408,6 +415,65 @@ function pageMore(d, y)
   return y + 1
 end
 
+-- ===== DRIVE: steer one turtle like playing Minecraft =====
+-- W forward, A / D turn, S back, SPACE up, SHIFT down (W / SPACE / SHIFT dig
+-- first when a block is in the way). Or tap the rows. Q / BACKSPACE: back.
+function startDrive(id)
+  P.drive, P.driveArmed = id, nil
+  P.scroll[P.tab] = 0
+  refresh()
+end
+function driveStep(step, force)
+  if not P.drive then return end
+  act("drive", { P.drive, step, force and "force" or nil })
+end
+DRIVE_KEYS = nil
+function driveKey(k)
+  if not DRIVE_KEYS then
+    DRIVE_KEYS = {}
+    for name, step in pairs({ w = "minef", up = "minef", s = "b", down = "b", a = "l", left = "l", d = "r", right = "r",
+                              space = "mineu", leftShift = "mined", rightShift = "mined", c = "around", x = "look",
+                              f = "digf", r = "digu", v = "digd" }) do
+      if keys[name] then DRIVE_KEYS[keys[name]] = step end
+    end
+  end
+  if k == keys.q or k == keys.backspace then P.drive = nil refresh() return true end
+  if k == keys.t then act("turtle", { P.drive, "stop" }) return true end
+  if k == keys.h then act("turtle", { P.drive, "home" }) return true end
+  local s = DRIVE_KEYS[k]
+  if s then driveStep(s) return true end
+  return false
+end
+function pageDrive(d, y)
+  local v = d.drive
+  if not v then put(1, y, "asking the base ...", C.dim) return y + 1 end
+  y = text(y, "DRIVING " .. v.label .. " - facing " .. string.upper(tostring(v.facing or "?")), C.acc)
+  if not v.online then y = text(y, "OFFLINE - it cannot move now", C.bad) end
+  if v.waiting then y = text(y, "waiting for it ... " .. v.waiting .. " s", v.waiting > 5 and C.warn or C.dim)
+  elseif v.msg then y = text(y, v.msg, v.msg:find("^OK") and C.good or C.warn) end
+  y = y + 1
+  for _, r in ipairs(v.rows or {}) do
+    put(1, y, pad(r.dir, 7), C.dim)
+    put(8, y, cut(r.what, W - 7), r.seen and C.text or C.dim)
+    y = y + 1
+    local step = r.act
+    button(1, y, W, "[" .. r.key .. "] " .. r.does, (step == "l" or step == "r" or step == "b") and C.btn or C.acc,
+           function() driveStep(step) end)
+    y = y + 2
+  end
+  local hw = half()
+  button(1, y, hw, "[X] SCAN", C.acc, function() driveStep("look") end)
+  button(hw + 2, y, W - hw - 1, "[T] STOP", C.bad, function() act("turtle", { P.drive, "stop" }) end) y = y + 2
+  button(1, y, hw, "[H] HOME", C.good, function() act("turtle", { P.drive, "home" }) end)
+  button(hw + 2, y, W - hw - 1, "[Q] BACK", C.btn, function() P.drive = nil refresh() end) y = y + 2
+  if v.anyway then
+    local s = v.anyway
+    button(1, y, W, "DIG ANYWAY", C.warn, function() driveStep(s, true) end, true) y = y + 2
+  end
+  y = text(y, "C = turn around. F / R / V = only dig ahead / up / down.", C.dim)
+  return y
+end
+
 local PAGES = { home = pageHome, ride = pageRide, bots = pageBots, mine = pageMine, msg = pageMsg, more = pageMore }
 P.maxOff = {}
 function drawOnce()
@@ -418,7 +484,7 @@ function drawOnce()
   local d = P.data
   local last = TOP
   if d then
-    local ok, res = pcall(PAGES[P.tab] or pageHome, d, TOP)
+    local ok, res = pcall(P.drive and pageDrive or PAGES[P.tab] or pageHome, d, TOP)
     if not ok then at(1, TOP, cut("error: " .. tostring(res), W), C.bad)
     else last = tonumber(res) or TOP end
   elseif P.tab == "msg" then
@@ -514,10 +580,12 @@ function main()
     if ev == "rednet_message" and c == PROTO then handle(a, b)
     elseif ev == "mouse_click" then click(b, c)
     elseif ev == "mouse_scroll" then scroll(a)
+    elseif ev == "key" and P.drive and driveKey(a) then
+      -- (DRIVE mode: the keys steer the turtle)
     elseif ev == "key" and a == keys.up then scroll(-1)
     elseif ev == "key" and a == keys.down then scroll(1)
     elseif ev == "timer" and a == tick then
-      tick = os.startTimer(5)
+      tick = os.startTimer(P.drive and 1 or 5)          -- DRIVE: what it sees, every second
       refresh()
       if P.toast and P.toastAt and os.clock() - P.toastAt > 6 then P.toast = nil end
     end

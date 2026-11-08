@@ -171,7 +171,10 @@ end
 rednet = { open = function() end, host = function() end, send = function() end }
 http = nil
 shell = nil
-keys = {}
+-- CC:Tweaked (1.16+) key codes (GLFW)
+keys = { w = 87, a = 65, s = 83, d = 68, q = 81, c = 67, x = 88, f = 70, r = 82, v = 86, h = 72, t = 84, g = 71,
+         space = 32, leftShift = 340, rightShift = 344, up = 265, down = 264, left = 263, right = 262,
+         backspace = 259, enter = 257 }
 printError = print
 print = function() end   -- keep the load quiet
 

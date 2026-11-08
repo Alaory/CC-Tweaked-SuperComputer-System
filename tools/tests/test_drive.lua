@@ -57,7 +57,7 @@ CHECK(c["101,39,100"] == "deepslate_iron_ore" and c["102,40,100"] == false and c
 CHECK(pcall(draw), "DRIVE page draws with a view")
 -- a refused dig: DIG ANYWAY (two taps) sends the same step with force
 t.driveLast = "digf"
-report(30, { t = "result", cmd = "drive", ok = false, msg = "oak_planks is not a natural block - DIG ANYWAY (two taps) if you are sure" })
+report(30, { t = "result", cmd = "drive", pos = { x = 102, y = 40, z = 100, f = "east" }, ok = false, msg = "oak_planks is not a natural block - DIG ANYWAY (two taps) if you are sure" })
 CHECK(t.driveAnyway == "digf", "refused dig: DIG ANYWAY offered")
 draw()
 local any
@@ -77,3 +77,29 @@ CHECK(pcall(draw), "page draws while waiting for an answer")
 local src = io.open(SRC_DIR .. "/node.lua"):read("a")
 CHECK(src:find('elseif cmd == "drive" then', 1, true) and src:find('if job then return false, "busy: "', 1, true),
       "node.lua: drive steps are immediate and refused while a job runs")
+
+-- the same six rows everywhere: direction, what is there, key, what it does
+local rows = driveRows(t)
+local byDir = {}
+for _, r in ipairs(rows) do byDir[r.dir] = r end
+CHECK(#rows == 6 and byDir.AHEAD.key == "W" and byDir.ABOVE.key == "SPACE" and byDir.BELOW.key == "SHIFT"
+      and byDir.LEFT.key == "A" and byDir.RIGHT.key == "D" and byDir.BEHIND.key == "S", "six rows with their keys")
+CHECK(driveWord(byDir.BELOW.name) == "STONE" and byDir.BELOW.does == "DIG + GO DOWN",
+      "BELOW: stone, DIG + GO DOWN (" .. driveWord(byDir.BELOW.name) .. " / " .. byDir.BELOW.does .. ", pos " ..
+      tostring(t.pos and (t.pos.x .. " " .. t.pos.y .. " " .. tostring(t.pos.f))) .. ")")
+-- keyboard driving on the base computer: W, then A, then Q leaves
+local evs = { { "key", keys.w }, { "key", keys.a }, { "key", keys.space }, { "key", keys.q } }
+local pe = os.pullEvent
+os.pullEvent = function() local e = table.remove(evs, 1) or { "key", keys.q } return e[1], e[2] end
+state.tOut = {}
+t.lastSeen = os.clock()
+local term0 = term
+term = setmetatable({}, { __index = function() return function() return 51, 19 end end })
+local print0 = print
+print = function() end
+local okT, errT = pcall(driveTerminal, 30)
+os.pullEvent, term, print = pe, term0, print0
+local steps = {}
+for _, a in ipairs(sentDrive()) do steps[#steps + 1] = a[1] end
+CHECK(okT, "drive <id> on the computer runs: " .. tostring(errT))
+CHECK(table.concat(steps, ",") == "minef,l,mineu", "keys W / A / SPACE drive it (" .. table.concat(steps, ",") .. ")")

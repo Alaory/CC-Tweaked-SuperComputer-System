@@ -99,94 +99,171 @@ function drawDrivePage(G)
     msg, mcol = "Tap a button: each tap is one step. A busy turtle needs STOP first.", C.dim
   end
   text(x + 2, y0 + 3, trunc(msg, w - 4), mcol, C.panel)
-  -- the tiles
+  -- what is around it: one row per direction - what is there, and the key /
+  -- tap that goes there (the same list on the pocket and the computer's keyboard)
   local v = t.view or {}
-  local tw = math.max(16, math.min(30, math.floor((w - 12) / 4)))
-  local th = math.max(5, math.min(9, math.floor((bottom - y0 - 20) / 3) - 1))
-  local c0 = x + 2
-  local c1, c2 = c0 + tw + 1, c0 + 2 * (tw + 1)
-  local c3 = c2 + tw + 5
-  local r0 = y0 + 6
-  local r1, r2 = r0 + th + 1, r0 + 2 * (th + 1)
-  local known = p and p.x and FWD[tostring(p.f)]
-  local function look(ahead, right, up) if known then return seen(t, ahead, right, up) end end
-  -- one direction: what is there (big), and what a tap does
-  local function tile(tx, ty, title, name, act, hint)
-    local bg, fg, word = C.panel, C.dim, "NOT SEEN YET"
-    if name == false then bg, fg, word = C.bg, C.text, "AIR  (empty)"
-    elseif name ~= nil then
-      bg, fg, word = blockColour(name)
-    end
-    fill(tx, ty, tw, th, bg)
-    round(tx, ty, tw, th, bg, C.panel)
-    text(tx + 2, ty + 1, title, fg, bg)
-    local mid = ty + math.floor(th / 2)
-    text(tx + math.max(1, math.floor((tw - #word) / 2)), mid, trunc(word, tw - 2), fg, bg)
-    if name == nil and title ~= "THE TURTLE" then
-      text(tx + math.max(1, math.floor((tw - 22) / 2)), mid + 1, trunc("(tap SCAN AROUND)", tw - 2), fg, bg)
-    end
-    if hint then text(tx + math.max(1, math.floor((tw - #hint) / 2)), ty + th - 2, trunc(hint, tw - 2), fg, bg) end
-    if act then addHit(tx, ty, tw, th, "tdrive", { t.id, act }) end
-  end
-  local function goHint(name, verb)
-    if name == false then return "TAP = " .. verb end
-    if name == nil then return "TAP = " .. verb .. " (digs if needed)" end
-    if keepName(name) then return "WILL NOT DIG THIS" end
-    return "TAP = DIG IT + " .. verb
-  end
-  local ah, le, ri, be = look(1, 0, 0), look(0, -1, 0), look(0, 1, 0), look(-1, 0, 0)
-  local ab, bl = look(0, 0, 1), look(0, 0, -1)
-  if not known then
-    text(c0, r0, "Position or facing unknown - press GPS LOCATE on the TURTLES page first.", C.warn, C.panel)
-  end
-  tile(c1, r0, "AHEAD", ah, "minef", goHint(ah, "GO FORWARD"))
-  tile(c0, r1, "ON ITS LEFT", le, "l", "TAP = TURN LEFT")
-  tile(c2, r1, "ON ITS RIGHT", ri, "r", "TAP = TURN RIGHT")
-  tile(c1, r2, "BEHIND IT", be, "around", "TAP = TURN AROUND")
-  -- the turtle itself
-  fill(c1, r1, tw, th, C.good)
-  round(c1, r1, tw, th, C.good, C.panel)
-  local fw = "facing " .. string.upper(tostring(p and p.f or "?"))
-  text(c1 + math.floor((tw - 6) / 2), r1 + math.floor(th / 2) - 1, "TURTLE", C.ink, C.good)
-  text(c1 + math.max(1, math.floor((tw - #fw) / 2)), r1 + math.floor(th / 2), fw, C.ink, C.good)
-  -- up / down (a column of their own: above and below the turtle)
-  if c3 + tw <= x + w - 1 then
-    tile(c3, r0, "ABOVE IT", ab, "mineu", goHint(ab, "GO UP"))
-    fill(c3, r1, tw, th, C.good)
-    round(c3, r1, tw, th, C.good, C.panel)
-    text(c3 + math.floor((tw - 6) / 2), r1 + math.floor(th / 2), "TURTLE", C.ink, C.good)
-    tile(c3, r2, "BELOW IT", bl, "mined", goHint(bl, "GO DOWN"))
+  local rows = driveRows(t)
+  local ry = y0 + 6
+  local dw, ww = 12, math.max(20, math.min(34, math.floor((w - 20) / 2)))
+  local aw = w - 4 - dw - ww - 2
+  text(x + 2, ry - 1, "DIRECTION", C.label, C.panel)
+  text(x + 2 + dw + 1, ry - 1, "WHAT IS THERE", C.label, C.panel)
+  text(x + 2 + dw + ww + 2, ry - 1, "TAP TO ...                       (keyboard key)", C.label, C.panel)
+  local rh = math.max(3, math.min(5, math.floor((bottom - y0 - 26) / 6)))
+  for _, r in ipairs(rows) do
+    fill(x + 2, ry, dw, rh, C.head)
+    text(x + 3, ry + math.floor(rh / 2), r.dir, C.text, C.head)
+    local bg, fg = C.panel, C.dim
+    if r.name == false then bg, fg = C.bg, C.text
+    elseif r.name ~= nil then bg, fg = blockColour(r.name) end
+    fill(x + 2 + dw + 1, ry, ww, rh, bg)
+    text(x + 3 + dw + 1, ry + math.floor(rh / 2), trunc(driveWord(r.name), ww - 2), fg, bg)
+    drawButton(x + 2 + dw + ww + 2, ry, aw, rh, r.does .. "   (" .. r.key .. ")", r.col or C.accent, C.ink,
+               "tdrive", { t.id, r.act })
+    ry = ry + rh + 1
   end
   -- the rest
-  local by = r2 + th + 2
+  local by = ry + 1
   local bw = math.floor((w - 4 - 4) / 5)
   local function bt(col, label, kind, value, bg, fg)
     drawButton(x + 2 + col * (bw + 1), by, bw, 3, label, bg or C.empty, fg or C.text, kind, value)
   end
-  bt(0, "SCAN AROUND", "tdrive", { t.id, "look" }, C.label, C.ink)
-  bt(1, "STOP", "tcmd", { t.id, "stop", {} }, C.bad, C.ink)
-  bt(2, "GO HOME", "tcmd", { t.id, "home", {} }, C.good, C.ink)
-  bt(3, "BACK UP (no turn)", "tdrive", { t.id, "b" })
+  bt(0, "SCAN AROUND  (X)", "tdrive", { t.id, "look" }, C.label, C.ink)
+  bt(1, "STOP  (T)", "tcmd", { t.id, "stop", {} }, C.bad, C.ink)
+  bt(2, "GO HOME  (H)", "tcmd", { t.id, "home", {} }, C.good, C.ink)
+  bt(3, "TURN AROUND  (C)", "tdrive", { t.id, "around" })
   if tostring(t.gear or ""):find("pick", 1, true) then
     actButton(x + 2 + 4 * (bw + 1), by, bw, 3, "MINE UP TO SURFACE", { kind = "tdigup", name = tostring(t.id), count = 0 })
   end
   local ly = by + 4
-  if ly <= bottom - 1 then
-    if t.driveAnyway then
-      local what = ({ digf = "AHEAD", digu = "ABOVE", digd = "BELOW", minef = "AHEAD", mineu = "ABOVE",
-                      mined = "BELOW" })[t.driveAnyway] or t.driveAnyway
-      actButton(x + 2, ly, 2 * bw + 1, 1, "DIG ANYWAY: the block " .. what,
-                { kind = "tdriveforce", name = t.id .. ":" .. t.driveAnyway, count = 0 })
-    end
-    local help = { "HOW IT WORKS:",
-      "Tap a tile to go that way. If a block is in the way it is dug first - natural blocks only",
-      "(stone, dirt, gravel, ores ...). Anything built needs DIG ANYWAY; chests, computers and turtles: never.",
-      "LEFT / RIGHT turn the turtle (the side tile becomes AHEAD). BEHIND turns it around.",
-      "SCAN AROUND (needs a Geo Scanner) shows the sides; AHEAD / ABOVE / BELOW update after every step." }
-    for i, l in ipairs(help) do
-      if ly + 2 + i <= bottom - 1 then text(x + 2, ly + 2 + i, trunc(l, w - 4), i == 1 and C.label or C.dim, C.panel) end
-    end
-    text(x + 2 + 2 * (bw + 1), ly, trunc(v.scanAt and ("Sides seen " .. math.floor(os.clock() - v.scanAt) .. " s ago") or
-         (v.scanErr or "Left / right / behind: SCAN AROUND first"), w - 2 * bw - 6), C.dim, C.panel)
+  if ly <= bottom - 1 and t.driveAnyway then
+    local what = ({ digf = "AHEAD", digu = "ABOVE", digd = "BELOW", minef = "AHEAD", mineu = "ABOVE",
+                    mined = "BELOW" })[t.driveAnyway] or t.driveAnyway
+    actButton(x + 2, ly, 2 * bw + 1, 1, "DIG ANYWAY: the block " .. what,
+              { kind = "tdriveforce", name = t.id .. ":" .. t.driveAnyway, count = 0 })
   end
+  local help = { "Drive it like you play Minecraft - on the BASE COMPUTER'S KEYBOARD (type  drive " .. t.id .. " ) or on your",
+                 "POCKET computer (BOTS > the turtle > DRIVE): W forward, A / D turn, S back, SPACE up, SHIFT down.",
+                 "W / SPACE / SHIFT dig first when a block is in the way (natural blocks; built ones need DIG ANYWAY).",
+                 "LEFT / RIGHT / BEHIND need a SCAN AROUND (Geo Scanner); AHEAD / ABOVE / BELOW update every step." }
+  for i, l in ipairs(help) do
+    if ly + 1 + i <= bottom - 1 then text(x + 2, ly + 1 + i, trunc(l, w - 4), C.dim, C.panel) end
+  end
+end
+
+-- ===== shared by the monitor, the computer's keyboard and the pocket =====
+-- what a direction holds, in words
+function driveWord(name)
+  if name == nil then return "not seen yet (scan)" end
+  if name == false then return "air (empty)" end
+  return nice(name)
+end
+-- the six directions: what is there, the key, what the key / tap does
+function driveRows(t)
+  local p = t.pos
+  local known = p and p.x and FWD[tostring(p.f)]
+  local function look(a, r, u) if known then return seen(t, a, r, u) end end
+  local function go(name, verb)
+    if name == false then return verb end
+    if name ~= nil and keepName(name) then return "NO: never dug" end
+    return (name == nil) and verb or ("DIG + " .. verb)
+  end
+  local ah, ab, bl = look(1, 0, 0), look(0, 0, 1), look(0, 0, -1)
+  return {
+    { dir = "AHEAD", name = ah, key = "W", act = "minef", does = go(ah, "GO FORWARD") },
+    { dir = "ABOVE", name = ab, key = "SPACE", act = "mineu", does = go(ab, "GO UP") },
+    { dir = "BELOW", name = bl, key = "SHIFT", act = "mined", does = go(bl, "GO DOWN") },
+    { dir = "LEFT", name = look(0, -1, 0), key = "A", act = "l", does = "TURN LEFT", col = C.label },
+    { dir = "RIGHT", name = look(0, 1, 0), key = "D", act = "r", does = "TURN RIGHT", col = C.label },
+    { dir = "BEHIND", name = look(-1, 0, 0), key = "S", act = "b", does = "BACK UP", col = C.label },
+  }
+end
+-- a key -> a step (keys.* names)
+function driveKeyAct(k)
+  if k == keys.w or k == keys.up then return "minef" end
+  if k == keys.s or k == keys.down then return "b" end
+  if k == keys.a or k == keys.left then return "l" end
+  if k == keys.d or k == keys.right then return "r" end
+  if k == keys.space then return "mineu" end
+  if k == keys.leftShift or k == keys.rightShift then return "mined" end
+  if k == keys.c then return "around" end
+  if k == keys.x then return "look" end
+  if k == keys.f then return "digf" end
+  if k == keys.r then return "digu" end
+  if k == keys.v then return "digd" end
+end
+-- DRIVE on the base computer's own screen + keyboard (console: drive <id>)
+function driveTerminal(id)
+  local t = state.turtles[id]
+  if not t then print("No turtle #" .. tostring(id) .. " - type  turtles") return end
+  local function draw()
+    term.setBackgroundColor(colors.black)
+    term.clear()
+    term.setCursorPos(1, 1)
+    term.setTextColor(colors.yellow)
+    local p = t.pos
+    term.write(("DRIVING " .. t.label .. " #" .. id .. "  facing " .. string.upper(tostring(p and p.f or "?")) ..
+                "  fuel " .. tostring(t.fuel or "?")):sub(1, 51))
+    local y = 3
+    for _, r in ipairs(driveRows(t)) do
+      term.setCursorPos(1, y)
+      term.setTextColor(colors.lightGray)
+      term.write(string.format("%-7s", r.dir))
+      term.setTextColor(r.name == nil and colors.gray or colors.white)
+      term.write(string.format("%-22s", driveWord(r.name):sub(1, 21)))
+      term.setTextColor(colors.lightBlue)
+      term.write(string.format("%-6s", r.key))
+      term.setTextColor(colors.white)
+      term.write(r.does:sub(1, 16))
+      y = y + 1
+    end
+    term.setCursorPos(1, y + 1)
+    term.setTextColor(colors.lightBlue)
+    term.write("X scan  C turn around  H home  T stop  Q quit")
+    term.setCursorPos(1, y + 2)
+    term.write("F / R / V = only dig ahead / up / down")
+    term.setCursorPos(1, y + 4)
+    local m = t.driveMsg
+    if t.driveSent and not m then
+      term.setTextColor(colors.gray)
+      term.write(("waiting for the turtle ... " .. math.floor(os.clock() - t.driveSent) .. " s"):sub(1, 51))
+    elseif m then
+      term.setTextColor(m.ok and colors.lime or colors.orange)
+      term.write(((m.ok and "OK: " or "NO: ") .. m.msg):sub(1, 51))
+      if t.driveAnyway then
+        term.setCursorPos(1, y + 5)
+        term.setTextColor(colors.yellow)
+        term.write("G = DIG ANYWAY (press twice)")
+      end
+    end
+  end
+  local armed = false
+  local tick = os.startTimer(0.5)
+  draw()
+  while true do
+    local ev, k = os.pullEvent()
+    if ev == "key" then
+      if k == keys.q or k == keys.backspace then break end
+      local act = driveKeyAct(k)
+      if act then
+        if act == "look" or TT.online(t) then TT.drive(id, act) end
+        armed = false
+      elseif k == keys.h then TT.send(id, "home", {}) armed = false
+      elseif k == keys.t then TT.send(id, "stop", {}) armed = false
+      elseif k == keys.g and t.driveAnyway then
+        if armed then TT.drive(id, t.driveAnyway, true) armed = false else armed = true end
+      end
+      draw()
+    elseif ev == "timer" and k == tick then
+      tick = os.startTimer(0.5)
+      draw()
+    elseif ev == "terminate" then
+      break
+    end
+  end
+  term.setBackgroundColor(colors.black)
+  term.setTextColor(colors.white)
+  term.clear()
+  term.setCursorPos(1, 1)
+  print("Left DRIVE mode.")
 end
