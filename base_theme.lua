@@ -11,15 +11,15 @@
 -- THEME
 ---------------------------------------------------------------------
 -- BLOCK UI (the look of every page - rules in CLAUDE.md "UI rules"):
--- Minecraft's own colours. Every theme ("biome") gives each colour slot the
+-- the NEW Minecraft menus (1.20+), Minecraft's own colours. Every theme ("biome") gives each colour slot the
 -- same JOB, only the shades of the FRAME change:
 --   bg      page background (dark, like the menu background)
 --   cards   panels (dark inventory window)
 --   lines   inactive tabs, row highlights, bevel highlight of panels
 --   buttons button face (Minecraft's stone button), empty slots, bar tracks
 --   text    white text;  dim = Minecraft's grey text
---   accent  the selected tab / main buttons (Minecraft's blue "hover" button)
---   titles  gold, like Minecraft's gold text (card titles, headings)
+--   accent  main buttons / a selected item (blue)
+--   titles  white headings (the new menus have white titles, not gold)
 -- The status colours are Minecraft's chat colours and the SAME in every
 -- biome (the MAP uses them for grass, water, sand ... too): green = good,
 -- yellow = attention, red = problem, cyan (aqua) = info, gold (orange), pink, purple.
@@ -32,13 +32,15 @@ local SLOTS = { colors.black, colors.gray, colors.magenta, colors.lightGray, col
 local FIXED = { 0x141414, 0x2E2E2E, 0x4A4A4A, 0x6F6F6F, 0xFFFFFF, 0xA89F92, 0x5B7BFF, 0xFFC23A,
                 0x55E6E6, 0x55C855, 0xFFFF55, 0xFFAA00, 0xFF5555, 0xFF77FF, 0xB070FF, 0x9BE05A }
 THEMES = {
+  -- the NEW Minecraft menus (1.20+): dark see-through panels, flat dark buttons
+  -- with a thin outline, white headings, a white outline on what is selected.
   -- frame only: bg, cards, lines, buttons, text, dim, accent, titles (the rest = FIXED)
-  stone     = { 0x161616, 0x2F2F2F, 0x4C4C4C, 0x6F6F6F, 0xFFFFFF, 0xA8A8A8, 0x7086D8, 0xFFC23A },
-  deepslate = { 0x121216, 0x26262E, 0x40404C, 0x5C5C68, 0xF2F2F8, 0x9A9AA8, 0x6F8CE0, 0xFFC23A },
-  oak       = { 0x1A130B, 0x34261A, 0x55402B, 0x7A5C3C, 0xFFF6E8, 0xC2AE94, 0x6FA040, 0xFFD45A },
-  nether    = { 0x170A0A, 0x2E1616, 0x4E2424, 0x6E3434, 0xFFEEEE, 0xC09898, 0xD84A3A, 0xFFB43A },
-  ender     = { 0x0E0B14, 0x1F1A2A, 0x352C48, 0x4C4066, 0xF6F0FF, 0xA89CC0, 0x9A6AF0, 0xF2E8A0 },
-  ocean     = { 0x081419, 0x13262E, 0x22414D, 0x31606E, 0xEAFBFF, 0x94B8C2, 0x35B8C8, 0xFFD45A },
+  stone     = { 0x0C0C0E, 0x1B1B1E, 0x3C3C42, 0x34343A, 0xFFFFFF, 0xA0A0A0, 0x4A7FD0, 0xFFFFFF },
+  deepslate = { 0x0A0A0E, 0x18181F, 0x383846, 0x2E2E3A, 0xF2F2F8, 0x9A9AA8, 0x5070D0, 0xF4F4FF },
+  oak       = { 0x100C08, 0x221A12, 0x4A3A28, 0x3E3022, 0xFFF6E8, 0xC2AE94, 0x5E8C38, 0xFFF4DC },
+  nether    = { 0x100707, 0x221010, 0x4A2222, 0x3C1A1A, 0xFFEEEE, 0xC09898, 0xC03A2E, 0xFFE8E0 },
+  ender     = { 0x0A0810, 0x1A1524, 0x3A2E52, 0x2E2442, 0xF6F0FF, 0xA89CC0, 0x8656E0, 0xFAF4FF },
+  ocean     = { 0x060E12, 0x112028, 0x24404C, 0x1C3440, 0xEAFBFF, 0x94B8C2, 0x2898A8, 0xF0FCFF },
 }
 THEME_ORDER = { "stone", "deepslate", "oak", "nether", "ender", "ocean" }
 local THEME_FILE = "theme.dat"
@@ -107,10 +109,9 @@ C = {
 }
 
 -- colours an item can be tinted with
-ITEM_COLORS = {
+ITEM_COLORS = {                      -- (fixed colours only: lightBlue = the white headings now)
   colors.blue, colors.cyan, colors.green, colors.yellow, colors.orange,
   colors.red, colors.pink, colors.purple, colors.lime,
-  colors.lightBlue,
 }
 
 -- set the program's colours on a monitor or window
