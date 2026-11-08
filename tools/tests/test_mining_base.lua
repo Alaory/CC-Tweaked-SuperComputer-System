@@ -82,3 +82,14 @@ MINE.log(MINE.units[10], "loader line")
 MINE.log(MINE.units[11], "miner line")
 local okD, errD = pcall(draw)
 CHECK(okD, "the MINING page draws: " .. tostring(errD))
+
+-- the team moving away from the unload station (miner.lua transit): those chunks are not field chunks
+report(10, { role = "loader", dim = "overworld", task = "crossing to chunk 1", running = true, team = { 11 }, partner = 11,
+             fuel = 50000, ci = 1, transit = 2 })
+local T1 = MINE.totals(MINE.teams().overworld)
+CHECK(T1.moving and T1.ci == 0, "moving away from the station: shown as such, no field chunk yet")
+CHECK(pcall(draw), "the MINING page draws while the team moves away")
+report(10, { role = "loader", dim = "overworld", task = "chunk 5", running = true, team = { 11 }, partner = 11,
+             fuel = 50000, ci = 5, transit = 2 })
+T1 = MINE.totals(MINE.teams().overworld)
+CHECK(not T1.moving and T1.ci == 3, "after it: field chunk = loader chunk - travel chunks (" .. tostring(T1.ci) .. ")")

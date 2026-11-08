@@ -119,7 +119,8 @@ local function teamCard(x, y, w, h, dim, team)
   local L = (l and tonumber(l.rowLength)) or tonumber(MINE.cfg("rowLength", 16)) or 16
   text(nx, y + 3, "FIELD", C.label, C.panel)
   fieldMap(nx, y + 4, math.min(nw, 3 * L), 3, ci, L)
-  text(nx, y + 8, trunc("chunk " .. ci .. "   " .. math.max(0, ci - 1) .. " done", nw), C.text, C.panel)
+  text(nx, y + 8, trunc(T.moving and "moving away from the station" or
+       ("chunk " .. ci .. "   " .. math.max(0, ci - 1) .. " done"), nw), T.moving and C.warn or C.text, C.panel)
   text(nx, y + 9, trunc(commas(T.ores) .. " ores" .. (T.rate > 0 and ("   " .. commas(math.floor(T.rate)) .. "/hour") or ""),
        nw), C.text, C.panel)
   text(nx, y + 10, trunc(T.dumps .. " unloads   " .. ((l and l.phase == "cross") and "crossing now" or

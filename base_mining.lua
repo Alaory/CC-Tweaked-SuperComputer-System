@@ -101,7 +101,7 @@ function MINE.receive(id, m)
   u.lastSeen, u.seenEpoch = os.clock(), os.epoch("utc")
   for _, k in ipairs({ "label", "role", "dim", "task", "fuel", "fuelMax", "free", "pos", "partner", "running", "err",
                        "ci", "li", "nl", "phase", "station", "carry", "got", "stats", "ver", "rowLength",
-                       "team", "leader", "ready", "idx" }) do
+                       "team", "leader", "ready", "idx", "transit" }) do
     u[k] = m[k]
   end
   -- ores per hour: counted from when it was first seen running
@@ -164,6 +164,9 @@ end
 -- the whole team together: ores, unloads, delivered / carried items, ores per hour
 function MINE.totals(team)
   local T = { ores = 0, dumps = 0, got = {}, carry = {}, rate = 0, ci = team.loader and team.loader.ci }
+  -- (the chunks crossed in the air to get away from the unload station do not count)
+  local tr = team.loader and tonumber(team.loader.transit)
+  if T.ci and tr then T.ci, T.moving = math.max(0, T.ci - tr), T.ci < tr end
   for _, m in ipairs(team.miners or {}) do
     local st = type(m.stats) == "table" and m.stats or {}
     T.ores, T.dumps = T.ores + (tonumber(st.ores) or 0), T.dumps + (tonumber(st.dumps) or 0)

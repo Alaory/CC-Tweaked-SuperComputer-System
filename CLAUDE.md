@@ -197,7 +197,7 @@ PneumaticCraft drone rides, turtle mapping/surveys, and an AE2 ME network view.
   turn), opposite 0.8 (HD[k] = last sideways direction); h weighted 1.001
   (tie-break). tools/navsim/world.lua: turns cost time and are counted; maze /
   maze2 (TX=44) and "astar" (planner alone on 6 random mazes) scenarios.
-- Mining teams (miner.lua m13, base_mining.lua MINE, base_ui_mining.lua; TURTLES >
+- Mining teams (miner.lua m14, base_mining.lua MINE, base_ui_mining.lua; TURTLES >
   MINING): per mining dimension ONE LOADER + up to CONFIG.maxMiners (5) MINERS.
   Same signed protocol with m.mine = true -> TT.receive -> MINE.receive (never
   in state.turtles). Team proto "basemine": loaderhere / minerhere (join, by
@@ -237,7 +237,12 @@ PneumaticCraft drone rides, turtle mapping/surveys, and an AE2 ME network view.
   point lives in its core). Ores (isOreBlock): tags (:ores, _ores, /ores, not
   ores_in_ground), names _ore / ore_ / _ore_ (not _block), CONFIG.ores +
   mining.ores (extraOres), never mining.skipOres. Turtles start on the
-  SURFACE (loader; miners next to it, same chunk). GPS: gpsCheck at start /
+  SURFACE (loader; miners next to it, same chunk). Set up NEXT TO the unload station (m14): miners send
+  their station (m.st on every team message -> S.stations); planTransit on a new plan:
+  the start chunk within noDig of one -> P.transit chunks straight on are crossed in
+  the AIR at P.fy (tunY; no digging, no layers), the field (fieldAt) starts beyond
+  them so its rows never come back; the loader comes down its entry column after.
+  Base: loader reports transit, MINE.totals ci minus it / T.moving. minesim nearstation. GPS: gpsCheck at start /
   reports, gpsFacing (canDig) after a restart and on a new plan. Fuel: the
   Mining Dim Core is OPTIONAL (not in every pack). burnCoal: known endless
   items first (CONFIG.fuelItems / mining.fuelItems from the base, S.reuse),

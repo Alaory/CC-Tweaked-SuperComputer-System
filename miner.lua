@@ -36,6 +36,10 @@
     miner setup     ask everything again
     miner here      the turtle was moved: type its new position
     miner station   (miner) THIS spot is the unload station
+
+  Set up next to the unload station? Fine: on START the team first moves on
+  through the AIR (no digging within noDig of a station) until the whole field
+  is far enough away, then mines - nobody has to carry them away.
 ]]
 
 CONFIG = {
@@ -74,7 +78,7 @@ CONFIG = {
 }
 
 STATE_FILE = "miner_state"
-MYVER = "m13"            -- shown on the screen and the base (MINING tab)
+MYVER = "m14"            -- shown on the screen and the base (MINING tab)
 DX = { [0] = 0, 1, 0, -1 }
 DZ = { [0] = -1, 0, 1, 0 }
 FNAME = { [0] = "north", "east", "south", "west" }
@@ -244,6 +248,7 @@ function sendBase(t, extra)
     for _ in pairs(S.plan.ready or {}) do n = n + 1 end
     m.ready = n
     m.rowLength = CONFIG.rowLength
+    m.transit = S.plan.transit
   end
   if S.role == "miner" then
     local J, tp = S.job, S.tp
@@ -277,6 +282,8 @@ function sendTeam(to, t, extra)
   m.t, m.n = t, nextN()
   m.sig = sign(S.key or "change-me", m.t, m.n)
   m.dim = S.dim
+  -- a miner's unload station: the loader keeps the team's first chunks away from it
+  if S.role == "miner" and S.station then m.st = { x = S.station.x, y = S.station.y, z = S.station.z } end
   if to then pcall(rednet.send, to, m, CONFIG.team) else pcall(rednet.broadcast, m, CONFIG.team) end
 end
 
@@ -302,6 +309,10 @@ function handle(id, m, proto)
       S.seen = S.seen or {}
       S.seen[id] = os.clock()
       if S.lost then S.lost[id] = nil end
+      if type(m.st) == "table" and tonumber(m.st.x) and tonumber(m.st.z) then
+        S.stations = S.stations or {}
+        S.stations[id] = { x = tonumber(m.st.x), y = tonumber(m.st.y) or 0, z = tonumber(m.st.z) }
+      end
       if m.t == "minerhere" then
         S.team = S.team or {}
         local inTeam = false
@@ -1062,7 +1073,16 @@ function layers(yt)
   if #out > 0 and out[#out] - CONFIG.minY > 5 then out[#out + 1] = CONFIG.minY end
   return out
 end
+-- chunk i of the plan: first the P.transit chunks straight on (moving away from
+-- the unload station), then the field in rows - it starts beyond them, so its
+-- rows never come back near the station
 function chunkAt(P, i)
+  local T = P.transit or 0
+  if i < T then return P.sx + DX[P.f] * i, P.sz + DZ[P.f] * i end
+  local cx, cz = fieldAt(P, i - T)
+  return cx + DX[P.f] * T, cz + DZ[P.f] * T
+end
+function fieldAt(P, i)
   local L = math.max(1, CONFIG.rowLength)
   local r, k = math.floor(i / L), i % L
   local along = (r % 2 == 0) and k or (L - 1 - k)
@@ -1556,6 +1576,48 @@ function chunkCols(tp, i)
     x, z = ex + DX[d], ez + DZ[d]                -- next chunk's entry: one step on
   end
 end
+-- MOVING AWAY FROM THE STATION: the first tp.transit chunks are too close to a
+-- miner's unload station (no digging there). The team crosses them in the AIR at
+-- tp.fy (the "tunnel" height there) - nothing is dug - and starts mining in the
+-- first chunk far enough away; the crossings work as always.
+function isTransit(tp, ci) return tp.transit and ci < tp.transit or false end
+function tunY(tp, ci) return isTransit(tp, ci) and tp.fy or tp.yt end
+-- how far a station is from a chunk (0 = inside it)
+function chunkDist(cx, cz, st)
+  local dx = math.max(cx * 16 - st.x, 0, st.x - (cx * 16 + 15))
+  local dz = math.max(cz * 16 - st.z, 0, st.z - (cz * 16 + 15))
+  return math.sqrt(dx * dx + dz * dz)
+end
+-- (loader, new plan) the start chunk is near a team miner's station: the field
+-- starts as many chunks straight on as it takes for ALL of it (every row lies
+-- beyond that line) to stay noDig away; the chunks before it are crossed in the air
+function planTransit(P)
+  local near, top = {}, P.yt + 1
+  for _, id in ipairs(S.team or {}) do
+    local st = S.stations and S.stations[id]
+    if st and chunkDist(P.sx, P.sz, st) < CONFIG.noDig + 1 then
+      near[#near + 1] = st
+      if st.y > top then top = st.y end
+    end
+  end
+  if #near == 0 then return end
+  local fx, fz = DX[P.f], DZ[P.f]
+  local n = 1
+  while n < 8 do
+    local cx, cz = P.sx + fx * n, P.sz + fz * n
+    -- the chunk's near edge, measured along the way the field goes
+    local edge = math.min(fx * cx * 16 + fz * cz * 16, fx * (cx * 16 + 15) + fz * (cz * 16 + 15))
+    local clear = true
+    for _, st in ipairs(near) do
+      if edge - (fx * st.x + fz * st.z) < CONFIG.noDig + 1 then clear = false end
+    end
+    if clear then break end
+    n = n + 1
+  end
+  P.transit = n
+  -- above the station and the start, with room for every miner's lane below it
+  P.fy = math.min(300, top + 4 + #S.team)
+end
 function myIndex()
   for k, id in ipairs(S.team or {}) do if id == os.getComputerID() then return k, #S.team end end
   return 1, math.max(1, #(S.team or {}))
@@ -1592,7 +1654,7 @@ function newJob(tp, ci)
   local k = myIndex()
   local cx, cz = chunkAt(tp, ci)
   local mx, mz = center(cx, cz)
-  local mine = ci > 0 and not (S.station and nearStation(mx, mz, CONFIG.noMine))
+  local mine = ci > 0 and not isTransit(tp, ci) and not (S.station and nearStation(mx, mz, CONFIG.noMine))
   S.job = { ci = ci, phase = (k == 1) and "tunnel" or (mine and "layers" or "lane"), li = 1, mine = mine,
             plan = tp.id }
   save()
@@ -1616,7 +1678,8 @@ function teamStep()
   local mx, mz = center(cx, cz)
   local x1, z1, ex, ez, dir = chunkCols(tp, ci)
   local sx, sz = cx * 16 + SHAFTS[(k - 1) % #SHAFTS + 1][1], cz * 16 + SHAFTS[(k - 1) % #SHAFTS + 1][2]
-  local lane = tp.yt - (k - 1)
+  local ty = tunY(tp, ci)                           -- tunnel height in this chunk (air: moving away)
+  local lane = ty - (k - 1)
   -- I became miner 1 (a team mate was taken out): the main tunnel of this chunk
   -- is my job now - dig it first (walking an already dug one is quick)
   if k == 1 and not J.tunnelDone and J.phase ~= "tunnel" and not crossingDue() then
@@ -1629,8 +1692,9 @@ function teamStep()
   if ci == 0 and (math.floor(S.pos.x / 16) ~= cx or math.floor(S.pos.z / 16) ~= cz) then CHUNK_LOCK = nil end
   if J.phase == "tunnel" then
     -- miner 1: the main tunnel at yt (+ the block above it for the loader)
-    setTask("main tunnel through chunk " .. ci)
-    local ok, err = goVH(x1, tp.yt, z1)
+    setTask(isTransit(tp, ci) and ("moving away from the unload station (chunk " .. ci .. ")")
+            or ("main tunnel through chunk " .. ci))
+    local ok, err = goVH(x1, ty, z1)
     if not ok then return false, err end
     TUNNEL2 = true
     ok, err = tunnel2(ex, ez)
@@ -1707,7 +1771,8 @@ function teamStep()
     return true
   elseif J.phase == "lane" then
     -- my lane: height yt-(k-1) at the exit column, facing the next chunk
-    setTask("to my lane at the edge of chunk " .. ci)
+    setTask(isTransit(tp, ci) and ("moving away from the unload station (chunk " .. ci .. ")")
+            or ("to my lane at the edge of chunk " .. ci))
     local ok, err
     if S.pos.y ~= lane then
       if J.mine or (math.floor(S.pos.x / 16) == cx and math.floor(S.pos.z / 16) == cz and k > 1 and ci > 0) then
@@ -1796,9 +1861,14 @@ function newTeamPlan()
   S.dropped = nil                                   -- a new field: everybody may join again
   S.plan = { id = os.epoch("utc"), sx = math.floor(p.x / 16), sz = math.floor(p.z / 16), f = p.f,
              yt = p.y - 1, x0 = p.x, z0 = p.z, ci = 0, phase = "work", ready = {}, running = true }
+  planTransit(S.plan)
   fillLayers(S.plan)
   save()
   note("New field: " .. #S.team .. " miner(s), facing " .. FNAME[p.f] .. ", tunnel at Y " .. (p.y - 1))
+  if S.plan.transit then
+    note("Too close to the unload station here: the team first moves " .. S.plan.transit ..
+         " chunk(s) on through the air (Y " .. S.plan.fy .. "), then mines")
+  end
   return true
 end
 -- the layers of the current chunk, deepest first (each miner goes down once
@@ -1807,7 +1877,7 @@ function fillLayers(P)
   P.queue, P.assigned = {}, {}
   local cx, cz = chunkAt(P, P.ci)
   local mx, mz = center(cx, cz)
-  if P.ci == 0 or (S.station and nearStation(mx, mz, CONFIG.noMine)) then return end
+  if P.ci == 0 or isTransit(P, P.ci) or (S.station and nearStation(mx, mz, CONFIG.noMine)) then return end
   for i = #layers(P.yt), 1, -1 do P.queue[#P.queue + 1] = i end
 end
 -- one turn of the loader's work
@@ -1846,10 +1916,13 @@ function leaderStep()
       P.checked = P.ci
       save()
     end
-    local ok, err = goTo(ex, P.yt + 1, ez)
+    local hy = tunY(P, P.ci) + 1
+    local ok, err = true, nil
+    if S.pos.y > hy then ok, err = goTo(S.pos.x, hy, S.pos.z) end       -- out of the air: down where I am first
+    if ok then ok, err = goTo(ex, hy, ez) end
     if ok then
       gpsCheck()
-      if S.pos.x ~= ex or S.pos.y ~= P.yt + 1 or S.pos.z ~= ez then return end     -- off: walk again from the right spot
+      if S.pos.x ~= ex or S.pos.y ~= hy or S.pos.z ~= ez then return end     -- off: walk again from the right spot
     end
     if not ok then setTask("STUCK at the chunk edge: " .. tostring(err)) note("Loader: " .. tostring(err)) sleep(5) return end
     -- go!

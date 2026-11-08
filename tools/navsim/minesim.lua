@@ -525,6 +525,9 @@ local NMIN = tonumber(SCEN:match("team(%d)")) or 1
 local LOADER = 10
 local LX, LY, LZ, LF = 100, 65, 8, 1
 if SCEN == "owner" or SCEN == "wrongface" or SCEN == "gpsfix" then LX, LY, LZ, LF = -5271, 70, 10850, 2 end
+-- "nearstation": the team is set up right next to the unload station (no digging there):
+-- it must get away by itself (over the top) and mine further on
+if SCEN:find("nearstation") then LX, LY, LZ = 6, 65, 8 end
 local KEY = "test-key"
 MINERS, MS = {}, {}
 for i = 1, NMIN do
