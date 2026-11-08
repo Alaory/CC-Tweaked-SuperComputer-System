@@ -105,6 +105,11 @@ def _():
     rc, out = run(["lua5.3", "tools/tests/node_build.lua", "node.lua"])
     return rc == 0, out.strip()
 
+@check("node", "MINE UP (node_digup.lua)")
+def _():
+    rc, out = run(["lua5.3", "tools/tests/node_digup.lua", "node.lua"])
+    return rc == 0, out.strip()
+
 for scen in ["hills", "pocket", "wall"]:
     @check("node", "route: " + scen)
     def _(scen=scen):

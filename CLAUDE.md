@@ -153,7 +153,10 @@ PneumaticCraft drone rides, turtle mapping/surveys, and an AE2 ME network view.
   sweep jobs (DIG_JOB). Also a HOME trip when the turtle is STUCK (S.stuck) or "home dig":
   TT.homeTick part 3 sends a stuck idle turtle that carries a pickaxe (t.gear) "home dig"
   after 30 s, every 10 min, max 3 tries (t.digOutTries, reset once not stuck) - the
-  rescuer stuck in a cave after a rescue. test_digout.lua.
+  rescuer stuck in a cave after a rescue. test_digout.lua. MINE UP (button on the turtle card
+  with a pickaxe, two taps; pocket BOTS too): job "digup" [surface Y = MAP.get top + 1]
+  -> digUp: straight up, tryDig (natural only, not near home), stops at that Y or after 6
+  free blocks; says why it stops. tools/tests/node_digup.lua.
 - Chunky upgrade never comes off: every equip goes through equipOn (node.lua),
   which refuses the Chunky side and puts it straight back if the item that
   came off is a Chunky ("chunk" in the name). chunkyFix re-equips a loose one

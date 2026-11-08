@@ -89,6 +89,15 @@ function handleTouch(tx, ty)
           elseif a.kind == "minedrop" then
             local ok, msg = MINE.drop(tonumber(a.name))
             setToast(msg, ok and C.label or C.warn, 7)
+          elseif a.kind == "tdigup" then
+            local t = state.turtles[tonumber(a.name)]
+            if t then
+              local args = {}
+              local h = t.pos and t.pos.x and MAP.get(t.pos.x, t.pos.z)
+              if type(h) == "number" and t.pos.y and h >= t.pos.y then args[1] = h + 1 end   -- the surface there
+              TT.send(t.id, "digup", args)
+              setToast(t.label .. ": mining up to the surface" .. (args[1] and (" (Y " .. args[1] .. ")") or ""), C.label, 6)
+            end
           elseif a.kind == "tforget" then
             local t = state.turtles[tonumber(a.name)]
             if t and TT.online(t) then

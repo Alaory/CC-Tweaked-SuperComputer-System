@@ -2554,10 +2554,45 @@ function build()
   return true, msg
 end
 
+-- MINE UP: straight up to the surface, digging NATURAL blocks only (tryDig: with
+-- its pickaxe, never near home, never anything built). top = the surface height
+-- from the base's map (+1); unknown: up until 6 free blocks in a row (open air)
+function digUp(top)
+  task = "mining up to the surface"
+  local free, fails = 0, 0
+  for _ = 1, 400 do
+    if stopFlag then return false, "stopped at " .. fmt() end
+    local y = S.pos and S.pos.y
+    if top and y and y >= top and not turtle.detectUp() then return true, "at the surface: " .. fmt() end
+    if not top and free >= 6 then return true, "in the open (6 free blocks above where I was): " .. fmt() end
+    if y and y >= 318 then return true, "at the top of the world: " .. fmt() end
+    if turtle.detectUp() then
+      free = 0
+      if not tryDig("up") then
+        local okI, b = turtle.inspectUp()
+        local name = okI and type(b) == "table" and tostring(b.name) or "?"
+        local nearHome = S.home and S.pos and S.pos.x and math.abs(S.pos.x - S.home.x) + math.abs(S.pos.z - S.home.z) <
+                         (tonumber(CONFIG.digNearHome) or 24)
+        return false, "cannot mine up through " .. name .. " at " .. fmt() ..
+               (nearHome and " (too close to home - no digging there)"
+                or (natural(name) and " (no pickaxe?)" or " (not a natural block - never dug)"))
+      end
+    end
+    if up() then
+      fails = 0
+      if not turtle.detectUp() then free = free + 1 end
+    else
+      fails = fails + 1                       -- falling gravel / a mob: dig and try again
+      if fails >= 5 then return false, "cannot move up at " .. fmt() end
+    end
+  end
+  return false, "still not at the surface after 400 blocks: " .. fmt()
+end
+
 function runJob(j)
   local a = j.args
   -- rescue trips dig their way through natural blocks (with a pickaxe)
-  DIG_JOB = (j.cmd == "rescue" or j.cmd == "sweep")
+  DIG_JOB = (j.cmd == "rescue" or j.cmd == "sweep" or j.cmd == "digup")
   -- STUCK (the last trip failed) or "home dig": on the way home it may dig through
   -- NATURAL blocks too (with its pickaxe; never near home, never anything built)
   if j.cmd == "home" and (S.stuck or a[1] == "dig") then DIG_JOB = true end
@@ -2591,6 +2626,8 @@ function runJob(j)
       if not ok then return false, "blocked (" .. dir .. ") at " .. fmt() end
     end
     return true, dir .. " x" .. n .. " -> " .. fmt()
+  elseif j.cmd == "digup" then
+    return digUp(tonumber(a[1]))
   elseif j.cmd == "locate" then
     task = "GPS"
     return gpsFix()

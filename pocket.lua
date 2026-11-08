@@ -319,6 +319,10 @@ function pageBots(d, y)
     else
       button(hw + 2, y, W - hw - 1, "PING", C.btn, function() act("turtle", { t.id, "ping" }) end)
     end
+    if t.pick and t.key ~= "offline" and t.key ~= "missing" then
+      y = y + 2
+      button(1, y, W, "MINE UP TO THE SURFACE", C.warn, function() act("turtle", { t.id, "digup" }) end, true)
+    end
     return y + 1
   end
   button(1, y, hw, "STOP ALL", C.bad, function() act("allstop") end, true)

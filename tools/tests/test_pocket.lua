@@ -203,6 +203,29 @@ local wb = false
 for _, n in ipairs(P.notes) do if n.title == "WELCOME BACK" then wb = true end end
 CHECK(wb, "the WELCOME BACK report reaches the pocket")
 
+-- MINE UP from the pocket: only for a turtle with a pickaxe; the surface height from the map
+sent = {}
+TT.send = function(id, c, args) sent[#sent + 1] = { id = id, c = c, args = args } end
+state.turtles[7].lastSeen = os.clock()
+state.turtles[7].gear = ""
+penv.act("turtle", { 7, "digup" })
+pump()
+CHECK(#sent == 0 and P.toast:find("no pickaxe", 1, true), "MINE UP refused without a pickaxe (" .. tostring(P.toast) .. ")")
+state.turtles[7].gear = "L=minecraft:diamond_pickaxe"
+state.turtles[7].pos = { x = 5, y = 40, z = 5 }
+local get0 = MAP.get
+MAP.get = function() return 70 end
+penv.act("turtle", { 7, "digup" })
+pump()
+MAP.get = get0
+TT.send = send0
+CHECK(sent[1] and sent[1].c == "digup" and sent[1].args[1] == 71, "MINE UP sent with the surface Y from the map")
+penv.refresh() pump()
+P.tab, P.sel = "bots", 7
+penv.draw()
+CHECK(screenText():find("MINE UP", 1, true), "pocket shows MINE UP for a turtle with a pickaxe")
+P.sel = nil
+
 -- UPDATE TURTLES NOW from the pocket
 local fu0 = TT.forceUpdate
 local forcedP = false

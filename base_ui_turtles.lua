@@ -256,14 +256,22 @@ function drawTurtlesPage(G)
   -- the exit route out of the base (shared by all turtles)
   local r5 = y0 + 20
   local hw2 = math.floor((riw - 1) / 2)
+  -- with a pickaxe: MINE UP (straight up to the surface, natural blocks only) - two taps
+  local pick = tostring(t.gear or ""):find("pick", 1, true) and TT.online(t)
+  local ew = pick and math.floor((riw - 2) / 3) or hw2
+  local ew2 = pick and ew or (riw - hw2 - 1)
   if t.rec then
-    drawButton(rix, r5, hw2, 2, "EXIT: RECORDING (" .. t.rec .. ")", C.warn, C.ink, "tcmd", { t.id, "exitrec", {} })
-    drawButton(rix + hw2 + 1, r5, riw - hw2 - 1, 2, "EXIT: SAVE ROUTE", C.good, C.ink, "tcmd",
+    drawButton(rix, r5, ew, 2, "EXIT: RECORDING (" .. t.rec .. ")", C.warn, C.ink, "tcmd", { t.id, "exitrec", {} })
+    drawButton(rix + ew + 1, r5, ew2, 2, "EXIT: SAVE ROUTE", C.good, C.ink, "tcmd",
                { t.id, "exitsave", {} })
   else
-    drawButton(rix, r5, hw2, 2, "EXIT: START RECORDING", C.empty, C.text, "tcmd", { t.id, "exitrec", {} })
-    drawButton(rix + hw2 + 1, r5, riw - hw2 - 1, 2, "EXIT: SAVE ROUTE", C.empty, C.dim, "tcmd",
+    drawButton(rix, r5, ew, 2, "EXIT: START RECORDING", C.empty, C.text, "tcmd", { t.id, "exitrec", {} })
+    drawButton(rix + ew + 1, r5, ew2, 2, "EXIT: SAVE ROUTE", C.empty, C.dim, "tcmd",
                { t.id, "exitsave", {} })
+  end
+  if pick then
+    actButton(rix + 2 * (ew + 1), r5, riw - 2 * (ew + 1), 2, "MINE UP TO THE SURFACE",
+              { kind = "tdigup", name = tostring(t.id), count = 0 }, true)
   end
   local info
   if t.rec then

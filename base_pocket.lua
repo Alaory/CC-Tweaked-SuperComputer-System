@@ -81,6 +81,7 @@ function POCKET.status()
     end
     if #list < 40 then
       list[#list + 1] = { id = t.id, label = short(t.label, 12), lab = lab, key = key, fuel = tonumber(t.fuel),
+                          pick = tostring(t.gear or ""):find("pick", 1, true) and true or nil,
                           task = short(t.task, 40), why = short(why, 60) }
     end
   end
@@ -122,7 +123,7 @@ function POCKET.status()
 end
 
 ----------------------------------------------------------------- what the pocket can do
-local TCMDS = { stop = true, home = true, locate = true, ping = true }
+local TCMDS = { stop = true, home = true, locate = true, ping = true, digup = true }
 -- the owner is in another dimension (the Player Detector knows): positions from
 -- the pocket's GPS there are not overworld places
 local function elsewhere()
@@ -172,8 +173,14 @@ function POCKET.act(a, args, pos)
     local c = tostring(args[2] or "")
     if not t then return false, "no such turtle" end
     if not TCMDS[c] then return false, "not allowed from the pocket: " .. c end
-    TT.send(t.id, c, {})
-    return true, c .. " sent to " .. t.label
+    local targs = {}
+    if c == "digup" then
+      if not tostring(t.gear or ""):find("pick", 1, true) then return false, t.label .. " has no pickaxe" end
+      local h = t.pos and t.pos.x and MAP.get(t.pos.x, t.pos.z)
+      if type(h) == "number" and t.pos.y and h >= t.pos.y then targs[1] = h + 1 end      -- the surface there
+    end
+    TT.send(t.id, c, targs)
+    return true, (c == "digup" and "mining up to the surface" or c) .. " - " .. t.label
   elseif a == "forget" then
     -- a turtle that is gone (deleted by a server crash): off the list - only while offline
     local t = state.turtles[tonumber(args[1]) or -1]

@@ -38,3 +38,30 @@ CHECK(state.turtles[40].digOutTries == nil, "fine again: tries reset")
 -- node.lua: a stuck home trip / "home dig" may dig
 local src = io.open(SRC_DIR .. "/node.lua"):read("a")
 CHECK(src:find('j.cmd == "home" and (S.stuck or a[1] == "dig") then DIG_JOB = true', 1, true), "node.lua: stuck home trips dig")
+-- the MINE UP button on the TURTLES page: only for an online turtle with a pickaxe; tap twice -> "digup"
+local function findDigup()
+  for _, h in ipairs(hits or {}) do
+    local v = h[6]
+    if type(v) == "table" and v.kind == "tdigup" then return h end
+  end
+end
+state.turtles[40].lastSeen = os.clock()
+state.page, state.tSel = "turtles", 40
+CHECK(pcall(draw), "TURTLES page draws with MINE UP")
+CHECK(findDigup(), "MINE UP button for a turtle with a pickaxe")
+state.tSel = 41
+state.turtles[41].lastSeen = os.clock()
+draw()
+CHECK(not findDigup(), "no MINE UP without a pickaxe")
+state.tOut = {}
+state.turtles[40].pos = { x = 10, y = 30, z = 10 }
+local get0 = MAP.get
+MAP.get = function() return 64 end
+state.tSel = 40
+draw()
+local hb = findDigup()
+if hb then handleTouch(hb[1], hb[2]) draw() hb = findDigup() handleTouch(hb[1], hb[2]) end
+MAP.get = get0
+local d
+for _, o in ipairs(state.tOut) do if o.id == 40 and o.msg.cmd == "digup" then d = o.msg.args[1] end end
+CHECK(d == 65, "MINE UP: sent with the surface from the map (" .. tostring(d) .. ")")
