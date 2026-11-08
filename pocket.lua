@@ -136,36 +136,91 @@ function handle(id, m)
 end
 
 ----------------------------------------------------------------- drawing
+-- Rows 1-2 stay put (tabs, base + scroll arrows); the rest of the screen is the
+-- page, which SCROLLS (^ v on row 2, or the mouse wheel / arrow keys). Pages
+-- write at "page rows" (put / button / text); nothing is ever cut off - long
+-- text wraps onto the next line.
 local C = { bg = colors.black, text = colors.white, dim = colors.lightGray, head = colors.gray, good = colors.lime,
             warn = colors.yellow, bad = colors.red, acc = colors.lightBlue, ink = colors.black, btn = colors.gray }
 local KEYCOL = { busy = C.good, trouble = C.acc, still = C.warn, stuck = C.bad, nofuel = C.bad, held = C.warn,
                  idle = C.dim, offline = C.bad, missing = C.bad }
-function put(x, y, s, fg, bg)
+-- list order on BOTS: what needs you first, offline last
+local RANK = { stuck = 1, nofuel = 2, missing = 3, still = 4, trouble = 5, held = 6, busy = 7, idle = 8, offline = 9 }
+local TOP = 3                                       -- first page row on the screen
+local BOTTOM = H - 1                                -- last page row (row H = the message bar)
+-- on the screen (rows 1-2 and the toast)
+function at(x, y, s, fg, bg)
   if y < 1 or y > H then return end
   term.setCursorPos(x, y)
   term.setTextColor(fg or C.text)
   term.setBackgroundColor(bg or C.bg)
   term.write(s)
 end
+function off() return P.scroll[P.tab] or 0 end
+-- on the page (scrolls)
+function put(x, y, s, fg, bg)
+  local sy = y - off()
+  if sy < TOP or sy > BOTTOM then return end
+  at(x, sy, s, fg, bg)
+end
 function cut(s, n) s = tostring(s or "") return #s > n and s:sub(1, n) or s end
--- a button: tap = action(); confirm = needs a second tap within 3 s
-function button(x, y, w, label, bg, action, confirm)
+function pad(s, w) s = cut(s, w) return s .. string.rep(" ", w - #s) end
+-- a tap anywhere on a page row
+function tapRow(y, fn)
+  local sy = y - off()
+  if sy >= TOP and sy <= BOTTOM then P.hits[#P.hits + 1] = { x = 1, y = sy, w = W, fn = fn } end
+end
+-- a button: tap = action(); confirm = needs a second tap within 3 s. fixed = screen row (not scrolled)
+function button(x, y, w, label, bg, action, confirm, fixed)
+  local sy = fixed and y or (y - off())
+  if sy < (fixed and 1 or TOP) or sy > (fixed and H or BOTTOM) then return end
   local armed = P.confirm and P.confirm.key == label and os.clock() < P.confirm.exp
   local l = armed and "TAP AGAIN" or label
-  local pad = math.max(0, w - #l)
-  put(x, y, string.rep(" ", math.floor(pad / 2)) .. cut(l, w) .. string.rep(" ", pad - math.floor(pad / 2)),
-      C.ink, armed and C.warn or (bg or C.btn))
-  P.hits[#P.hits + 1] = { x = x, y = y, w = w, fn = action, confirm = confirm and label }
+  local p = math.max(0, w - #l)
+  at(x, sy, string.rep(" ", math.floor(p / 2)) .. cut(l, w) .. string.rep(" ", p - math.floor(p / 2)),
+     C.ink, armed and C.warn or (bg or C.btn))
+  P.hits[#P.hits + 1] = { x = x, y = sy, w = w, fn = action, confirm = confirm and label }
 end
 function wrap(s, w)
   local out, line = {}, ""
   for word in tostring(s):gmatch("%S+") do
+    while #word > w do                                -- a word longer than the screen
+      if #line > 0 then out[#out + 1] = line line = "" end
+      out[#out + 1] = word:sub(1, w) word = word:sub(w + 1)
+    end
     if #line == 0 then line = word
     elseif #line + 1 + #word <= w then line = line .. " " .. word
     else out[#out + 1] = line line = word end
   end
   if #line > 0 then out[#out + 1] = line end
   return out
+end
+-- wrapped text from column x (next lines indented the same); returns the next free row
+function text(y, s, col, x, tap)
+  x = x or 1
+  for _, l in ipairs(wrap(s, W - x + 1)) do
+    put(x, y, l, col or C.text)
+    if tap then tapRow(y, tap) end
+    y = y + 1
+  end
+  return y
+end
+-- a section bar; tap = open that tab
+function section(y, title, tab)
+  put(1, y, pad(" " .. title .. (tab and "  >" or ""), W), C.text, C.head)
+  if tab then tapRow(y, function() P.tab, P.sel = tab, nil refresh() end) end
+  return y + 1
+end
+function half() return math.floor((W - 1) / 2) end
+-- "Survey2" before "Survey10"
+function natural(s)
+  return (tostring(s):lower():gsub("%d+", function(n) return string.rep("0", 8 - #n) .. n end))
+end
+function fuelText(f)
+  f = tonumber(f)
+  if not f then return "?" end
+  if f >= 10000 then return math.floor(f / 1000) .. "k" end
+  return tostring(math.floor(f))
 end
 
 local TABS = { { "home", "HOME" }, { "ride", "RIDE" }, { "bots", "BOTS" }, { "mine", "MINE" }, { "msg", "MSG" }, { "more", "+" } }
@@ -175,7 +230,7 @@ function drawTabs()
     local label = t[2]
     if t[1] == "msg" and P.unread > 0 then label = "MSG" .. math.min(9, P.unread) end
     local on = P.tab == t[1]
-    put(x, 1, label, on and C.ink or C.text, on and C.acc or C.head)
+    at(x, 1, label, on and C.ink or C.text, on and C.acc or C.head)
     P.hits[#P.hits + 1] = { x = x, y = 1, w = #label, fn = function() P.tab, P.sel = t[1], nil if t[1] == "msg" then P.unread = 0 end refresh() end }
     x = x + #label + 1
   end
@@ -184,54 +239,77 @@ end
 function pageHome(d, y)
   local c = d.counts or {}
   local work = (c.busy or 0) + (c.trouble or 0)
-  put(1, y, "Turtles: " .. work .. " work, " .. (c.idle or 0) .. " idle", C.text) y = y + 1
-  local off = (c.offline or 0) + (c.missing or 0)
-  local need = #(d.needs or {})
-  put(1, y, "  " .. off .. " offline, " .. need .. " need a look", (need > 0 or off > 0) and C.warn or C.dim) y = y + 1
-  for i, n in ipairs(d.needs or {}) do
-    if i > 3 then break end
-    put(1, y, cut(" " .. n.label .. " " .. n.lab, W), C.warn) y = y + 1
+  local offl, miss = c.offline or 0, c.missing or 0
+  y = section(y, "TURTLES", "bots")
+  y = text(y, work .. " working, " .. (c.idle or 0) .. " idle" .. ((c.held or 0) > 0 and (", " .. c.held .. " stopped") or ""), C.text)
+  if offl + miss > 0 then
+    y = text(y, offl .. " offline" .. (miss > 0 and (", " .. miss .. " missing") or ""), C.warn)
   end
-  for _, m in ipairs(d.mining or {}) do
-    put(1, y, cut("Mine " .. m.dim .. ": " .. m.label, W), m.running and C.good or C.dim) y = y + 1
-    if #(m.gone or {}) > 0 then put(1, y, cut("  " .. #m.gone .. " miner(s) gone - MINE tab", W), C.warn) y = y + 1 end
-    put(1, y, cut("  chunk " .. m.ci .. "  " .. m.rate .. "/h  " .. m.miners .. " miners", W), C.dim) y = y + 1
+  local needs = d.needs or {}
+  if #needs == 0 then y = text(y, "nothing needs a look", C.good)
+  else
+    for i, n in ipairs(needs) do
+      if i > 4 then y = text(y, "+" .. (#needs - 4) .. " more - BOTS tab", C.warn) break end
+      local id = n.id
+      y = text(y, "! " .. n.label .. ": " .. n.lab, C.warn, 1, function() P.tab, P.sel = "bots", id end)
+    end
   end
-  if d.factory then put(1, y, cut("Factory: " .. d.factory, W), C.dim) y = y + 1 end
-  put(1, y, cut("Survey: " .. (d.survey and (d.survey .. "%") or "none") .. (d.auto and " (auto-map)" or ""), W), C.dim) y = y + 1
-  put(1, y, cut("Area: " .. tostring(d.area), W), C.dim) y = y + 1
-  if d.away then put(1, y, "Away mode is on", C.acc) y = y + 1 end
+  if #(d.mining or {}) > 0 then
+    y = section(y, "MINING", "mine")
+    for _, m in ipairs(d.mining) do
+      y = text(y, m.dim .. ": " .. m.label, m.running and C.good or C.text)
+      if #(m.gone or {}) > 0 then y = text(y, "! " .. #m.gone .. " miner(s) gone", C.warn, 1) end
+      y = text(y, "chunk " .. m.ci .. ", " .. m.miners .. " miners, " .. m.rate .. " ores/h", C.dim, 2)
+    end
+  end
+  y = section(y, "MAP + FACTORY", "more")
+  local sv
+  if d.survey then sv = "Survey: " .. d.survey .. "% done" .. (d.auto and " (auto-map)" or "")
+  else sv = d.auto and "Auto-map: on" or "Survey: none, auto-map off" end
+  y = text(y, sv, C.dim)
+  y = text(y, "Area: " .. tostring(d.area), C.dim)
+  if d.factory then y = text(y, "Factory: " .. d.factory, C.dim) end
+  if d.away then y = text(y, "Away mode is on", C.acc) end
+  y = y + 1
+  button(1, y, W, "TAKE ME TO THE BASE", C.good, function() act("ride", { "base" }) end) y = y + 2
+  local hw = half()
+  button(1, y, hw, "STOP ALL", C.bad, function() act("allstop") end, true)
+  button(hw + 2, y, W - hw - 1, "ALL HOME", C.acc, function() act("allhome") end, true) y = y + 1
+  return y
 end
 
 function pageRide(d, y)
   button(1, y, W, "TAKE ME TO THE BASE", C.good, function() act("ride", { "base" }) end) y = y + 2
   if d.back then button(1, y, W, "BACK WHERE I WAS / DIED", C.acc, function() act("ride", { "back" }) end) y = y + 2 end
   button(1, y, W, "STOP MY RIDE", C.bad, function() act("ridestop") end) y = y + 2
-  for _, dr in ipairs(d.drones or {}) do
-    put(1, y, cut(dr.label .. ": " .. (not dr.conn and "not connected" or (dr.busy and "busy" or "free")) ..
-        (dr.bar and ("  " .. dr.bar .. " bar") or ""), W), dr.busy and C.warn or C.dim) y = y + 1
+  if #(d.drones or {}) > 0 then
+    y = section(y, "DRONES")
+    for _, dr in ipairs(d.drones) do
+      y = text(y, dr.label .. ": " .. (not dr.conn and "not connected" or (dr.busy and "busy" or "free")) ..
+               (dr.bar and (", " .. dr.bar .. " bar") or ""), dr.busy and C.warn or C.dim)
+    end
   end
-  y = y + 1
-  put(1, y, "Places (tap = fly there):", C.dim) y = y + 1
-  local off = P.scroll.ride or 0
-  for i = 1 + off, #(d.places or {}) do
-    if y > H - 1 then break end
-    local name = d.places[i]
-    button(1, y, W, cut(name, W), C.btn, function() act("ride", { name }) end) y = y + 1
+  if #(d.places or {}) > 0 then
+    y = section(y, "PLACES (tap = fly there)")
+    for _, name in ipairs(d.places) do
+      button(1, y, W, name, C.btn, function() act("ride", { name }) end) y = y + 1
+    end
   end
+  return y
 end
 
 function pageBots(d, y)
+  local hw = half()
   if P.sel then
     local t
     for _, x in ipairs(d.turtles or {}) do if x.id == P.sel then t = x end end
     if not t then P.sel = nil return pageBots(d, y) end
-    put(1, y, cut(t.label .. " #" .. t.id, W), C.text) y = y + 1
-    put(1, y, t.lab, C.ink, KEYCOL[t.key] or C.dim) y = y + 1
-    for _, l in ipairs(wrap(t.why, W)) do if y > 8 then break end put(1, y, l, C.dim) y = y + 1 end
-    put(1, y, cut("fuel " .. tostring(t.fuel or "?"), W), C.dim) y = y + 1
-    put(1, y, cut("task " .. tostring(t.task), W), C.dim) y = y + 2
-    local hw = math.floor((W - 1) / 2)
+    button(1, y, W, "< ALL TURTLES", C.head, function() P.sel = nil end) y = y + 2
+    y = text(y, t.label .. "  #" .. t.id, C.text)
+    put(1, y, " " .. t.lab .. " ", C.ink, KEYCOL[t.key] or C.dim) y = y + 1
+    if t.why and t.why ~= "" then y = text(y, t.why, C.dim) end
+    y = text(y, "fuel " .. tostring(t.fuel or "?"), C.dim)
+    y = text(y, "task " .. tostring(t.task), C.dim) y = y + 1
     button(1, y, hw, "STOP", C.bad, function() act("turtle", { t.id, "stop" }) end)
     button(hw + 2, y, W - hw - 1, "HOME", C.acc, function() act("turtle", { t.id, "home" }) end) y = y + 2
     button(1, y, hw, "GPS", C.btn, function() act("turtle", { t.id, "locate" }) end)
@@ -241,34 +319,42 @@ function pageBots(d, y)
     else
       button(hw + 2, y, W - hw - 1, "PING", C.btn, function() act("turtle", { t.id, "ping" }) end)
     end
-    y = y + 2
-    button(1, y, W, "< ALL TURTLES", C.head, function() P.sel = nil end)
-    return
+    return y + 1
   end
-  local hw = math.floor((W - 1) / 2)
   button(1, y, hw, "STOP ALL", C.bad, function() act("allstop") end, true)
   button(hw + 2, y, W - hw - 1, "ALL HOME", C.acc, function() act("allhome") end, true) y = y + 2
-  local off = P.scroll.bots or 0
-  local list = d.turtles or {}
-  for i = 1 + off, #list do
-    if y > H - 1 then break end
-    local t = list[i]
-    local lab = cut(t.lab, 10)
-    put(1, y, cut(t.label, W - #lab - 1), C.text)
+  local list = {}
+  for _, t in ipairs(d.turtles or {}) do list[#list + 1] = t end
+  table.sort(list, function(a, b)
+    local ra, rb = RANK[a.key] or 5, RANK[b.key] or 5
+    if ra ~= rb then return ra < rb end
+    return natural(a.label) < natural(b.label)
+  end)
+  if #list == 0 then put(1, y, "no turtles", C.dim) return y + 1 end
+  put(1, y, pad("name", W - 15) .. " fuel  status", C.dim) y = y + 1
+  for _, t in ipairs(list) do
+    local lab = cut(t.lab, 9)
+    local f = fuelText(t.fuel)
+    local fcol = (tonumber(t.fuel) or 0) < 1000 and C.bad or ((tonumber(t.fuel) or 0) < 5000 and C.warn or C.dim)
+    put(1, y, cut(t.label, W - 16), C.text)
+    put(W - 14, y, string.rep(" ", 5 - #f) .. f, fcol)
     put(W - #lab + 1, y, lab, C.ink, KEYCOL[t.key] or C.dim)
-    P.hits[#P.hits + 1] = { x = 1, y = y, w = W, fn = function() P.sel = t.id end }
+    local id = t.id
+    tapRow(y, function() P.sel = id end)
     y = y + 1
   end
-  if #list == 0 then put(1, y, "no turtles", C.dim) end
+  return y
 end
 
 function pageMine(d, y)
-  if #(d.mining or {}) == 0 then put(1, y, "no mining teams", C.dim) return end
+  if #(d.mining or {}) == 0 then put(1, y, "no mining teams", C.dim) return y + 1 end
+  local hw = half()
   for _, m in ipairs(d.mining) do
-    put(1, y, cut(m.dim .. ": " .. m.label, W), m.running and C.good or C.text) y = y + 1
-    put(1, y, cut("chunk " .. m.ci .. "  " .. m.ores .. " ores  " .. m.rate .. "/h", W), C.dim) y = y + 1
+    y = section(y, string.upper(m.dim))
+    y = text(y, m.label, m.running and C.good or C.text)
+    y = text(y, "chunk " .. m.ci .. ", " .. m.miners .. " miners", C.dim)
+    y = text(y, m.ores .. " ores, " .. m.rate .. " ores/h", C.dim)
     if m.loader then
-      local hw = math.floor((W - 1) / 2)
       if m.running then button(1, y, hw, "PAUSE", C.warn, function() act("mine", { m.loader, "pause" }) end)
       else button(1, y, hw, "START", C.good, function() act("mine", { m.loader, "start" }) end) end
       button(hw + 2, y, W - hw - 1, "UNLOAD", C.btn, function() act("mine", { m.loader, "unload" }) end)
@@ -276,63 +362,80 @@ function pageMine(d, y)
     end
     -- a miner gone 20+ min (server crash?): out of the team - two taps
     for _, g in ipairs(m.gone or {}) do
-      if y > H - 2 then break end
-      button(1, y, W, cut("DROP " .. g.label .. " (gone)", W), C.bad, function() act("minedrop", { g.id }) end, true)
+      y = text(y, g.label .. " is gone (20+ min). If it was lost in a crash, drop it so the team goes on:", C.warn)
+      button(1, y, W, "DROP " .. g.label, C.bad, function() act("minedrop", { g.id }) end, true)
       y = y + 2
     end
-    y = y + 1
   end
+  return y
 end
 
 function pageMsg(_, y)
-  if #P.notes == 0 then put(1, y, "no messages yet", C.dim) return end
-  local off = P.scroll.msg or 0
-  for i = 1 + off, #P.notes do
-    local n = P.notes[i]
+  if #P.notes == 0 then put(1, y, "no messages yet", C.dim) return y + 1 end
+  button(1, y, W, "CLEAR MESSAGES", C.btn, function() P.notes = {} P.scroll.msg = 0 end, true) y = y + 2
+  for _, n in ipairs(P.notes) do
     local col = (n.kind == "ERROR" and C.bad) or (n.kind == "WARNING" and C.warn) or C.good
     local okD, when = pcall(os.date, "%H:%M", math.floor((n.at or 0) / 1000))
-    for j, l in ipairs(wrap((okD and when or "") .. " " .. tostring(n.title) .. ": " .. tostring(n.msg), W)) do
-      if y > H - 1 then return end
-      put(1, y, l, j == 1 and col or C.dim)
-      y = y + 1
-    end
+    y = text(y, (okD and when or "") .. " " .. tostring(n.title), col)
+    y = text(y, tostring(n.msg), C.dim, 2)
   end
+  return y
 end
 
 function pageMore(d, y)
-  put(1, y, "Work area (corners = here):", C.dim) y = y + 1
-  put(1, y, cut(tostring(d.area), W), C.text) y = y + 1
-  local hw = math.floor((W - 1) / 2)
-  button(1, y, hw, "SET CORNER 1", C.acc, function() act("corner", { 1 }, true) end)
-  button(hw + 2, y, W - hw - 1, "SET CORNER 2", C.acc, function() act("corner", { 2 }, true) end) y = y + 2
+  local hw = half()
+  y = section(y, "WORK AREA")
+  y = text(y, tostring(d.area), C.text)
+  y = text(y, "Corners = where you stand:", C.dim)
+  button(1, y, hw, "CORNER 1", C.acc, function() act("corner", { 1 }, true) end)
+  button(hw + 2, y, W - hw - 1, "CORNER 2", C.acc, function() act("corner", { 2 }, true) end) y = y + 2
   button(1, y, W, "WHOLE WORLD AGAIN", C.btn, function() act("wholeworld") end, true) y = y + 2
+  y = section(y, "SURVEY")
   button(1, y, W, "SURVEY 64 AROUND ME", C.good, function() act("surveyhere", { 64 }, true) end) y = y + 2
   if d.factory then
-    for _, l in ipairs(wrap("Factory: " .. d.factory, W)) do if y > H - 5 then break end put(1, y, l, C.dim) y = y + 1 end
+    y = section(y, "TURTLE FACTORY")
+    y = text(y, d.factory, C.dim)
     button(1, y, W, "FACTORY: TRY AGAIN", C.btn, function() act("factoryretry") end) y = y + 2
   end
-  button(1, H - 1, W, "UNPAIR THIS POCKET", C.bad, function() P.key = nil saveState() end, true)
+  y = section(y, "THIS POCKET")
+  button(1, y, W, "UNPAIR THIS POCKET", C.bad, function() P.key = nil saveState() end, true)
+  return y + 1
 end
 
 local PAGES = { home = pageHome, ride = pageRide, bots = pageBots, mine = pageMine, msg = pageMsg, more = pageMore }
-function draw()
+P.maxOff = {}
+function drawOnce()
   P.hits = {}
   term.setBackgroundColor(C.bg)
   term.clear()
   drawTabs()
   local d = P.data
-  local age = P.got and math.floor(os.clock() - P.got) or nil
-  put(1, 2, cut((P.baseName or "base") .. (age and (age > 15 and (" - no answer " .. age .. " s") or " - live") or " - waiting"), W),
-      (age and age <= 15) and C.good or C.warn)
+  local last = TOP
   if d then
-    local ok, err = pcall(PAGES[P.tab] or pageHome, d, 3)
-    if not ok then put(1, 4, cut("error: " .. tostring(err), W), C.bad) end
+    local ok, res = pcall(PAGES[P.tab] or pageHome, d, TOP)
+    if not ok then at(1, TOP, cut("error: " .. tostring(res), W), C.bad)
+    else last = tonumber(res) or TOP end
   elseif P.tab == "msg" then
-    pageMsg(nil, 3)
+    last = pageMsg(nil, TOP)
   else
-    put(1, 4, "asking the base ...", C.dim)
+    at(1, TOP + 1, "asking the base ...", C.dim)
   end
-  if P.toast then put(1, H, cut(P.toast, W), C.ink, C.acc) end
+  P.maxOff[P.tab] = math.max(0, last - 1 - BOTTOM)
+  -- row 2: the base, and ^ v when the page is longer than the screen
+  local scrollable = P.maxOff[P.tab] > 0
+  local age = P.got and math.floor(os.clock() - P.got) or nil
+  local s = (P.baseName or "base") .. (age and (age > 15 and (" - no answer " .. age .. "s") or " - live") or " - waiting")
+  at(1, 2, pad(s, W), (age and age <= 15) and C.good or C.warn)
+  if scrollable then
+    button(W - 6, 2, 3, off() > 0 and "^" or " ", C.btn, function() scroll(-(H - 4)) end, nil, true)
+    button(W - 2, 2, 3, off() < P.maxOff[P.tab] and "v" or " ", C.btn, function() scroll(H - 4) end, nil, true)
+  end
+  if P.toast then at(1, H, pad(P.toast, W), C.ink, C.acc) end
+end
+function draw()
+  drawOnce()
+  local o = off()
+  if o > (P.maxOff[P.tab] or 0) then P.scroll[P.tab] = P.maxOff[P.tab] drawOnce() end
 end
 
 function click(x, y)
@@ -350,17 +453,16 @@ function click(x, y)
   end
 end
 function scroll(dir)
-  P.scroll[P.tab] = math.max(0, (P.scroll[P.tab] or 0) + dir)
+  P.scroll[P.tab] = math.max(0, math.min(P.maxOff[P.tab] or 0, (P.scroll[P.tab] or 0) + dir))
 end
-
 ----------------------------------------------------------------- pairing + main loop
 function pairScreen()
   term.setBackgroundColor(C.bg)
   term.clear()
-  put(1, 1, "POCKET REMOTE - PAIRING", C.acc)
+  at(1, 1, "POCKET REMOTE - PAIRING", C.acc)
   local y = 3
-  for _, l in ipairs(wrap("The base MONITOR now shows a 6-digit code. Type it here and press Enter:", W)) do put(1, y, l, C.text) y = y + 1 end
-  if P.pairError then put(1, y + 4, cut("last try: " .. P.pairError, W), C.bad) end
+  for _, l in ipairs(wrap("The base MONITOR now shows a 6-digit code. Type it here and press Enter:", W)) do at(1, y, l, C.text) y = y + 1 end
+  if P.pairError then at(1, y + 4, cut("last try: " .. P.pairError, W), C.bad) end
   term.setCursorPos(1, y + 1)
   term.setTextColor(C.warn)
 end

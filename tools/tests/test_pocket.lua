@@ -63,7 +63,56 @@ for _, tab in ipairs({ "home", "ride", "bots", "mine", "msg", "more" }) do
   CHECK(ok, "tab " .. tab .. " draws: " .. tostring(err))
 end
 P.tab = "home" penv.draw()
-CHECK(screenText():find("Turtles:", 1, true), "HOME shows the turtles")
+CHECK(screenText():find("TURTLES", 1, true) and screenText():find("idle", 1, true), "HOME shows the turtles")
+-- a full fleet (like the owner's: 17 turtles, many offline) - nothing is cut off at the edge,
+-- the BOTS list scrolls down to the last turtle, the ones that need you come first
+local fleet = {}
+for i = 1, 17 do
+  fleet[i] = { id = 100 + i, label = "Survey" .. i, lab = i <= 11 and "OFFLINE" or "IDLE", key = i <= 11 and "offline" or "idle",
+               fuel = 900 * i, task = "idle", why = "" }
+end
+fleet[17] = { id = 117, label = "Stucky", lab = "STUCK", key = "stuck", fuel = 3000, task = "idle", why = "blocked by bedrock below" }
+local d0 = P.data
+P.data = { counts = { idle = 6, offline = 11 }, needs = { { id = 117, label = "Stucky", lab = "STUCK" } }, turtles = fleet,
+           mining = { { dim = "overworld", label = "STOPPED", running = false, miners = 2, ci = 12, rate = 0, ores = 0,
+                        loader = 10, gone = { { id = 11, label = "Digger" } } } },
+           factory = "off (SETTINGS > FACTORY: fleet size 0)", auto = true, area = "whole world", places = {}, drones = {} }
+P.got = os.clock()
+P.tab, P.scroll = "home", {}
+penv.draw()
+local wholeWords = true
+for y = 2, 19 do
+  local l = SCREEN[y] or ""
+  -- a cut-off line ends in a letter right at the edge and the text goes on (old: "need a loo")
+  if #l >= 26 and l:sub(26, 26):match("%a") and l:sub(25, 25):match("%a") and not l:match("^%s*%S+%s*$") then
+    if not l:match("^ [A-Z +]+ *>?%s*$") then wholeWords = false end
+  end
+end
+CHECK(wholeWords, "HOME: no line cut off at the right edge\n" .. screenText())
+CHECK(screenText():find("11 offline", 1, true) and screenText():find("Stucky", 1, true), "HOME: offline count and who needs a look")
+P.tab = "bots" penv.draw()
+CHECK(screenText():find("Stucky", 1, true), "BOTS: the stuck turtle is at the top")
+for _ = 1, 10 do
+  local down
+  for _, h in ipairs(P.hits) do if h.y == 2 and h.x > 20 then down = h end end
+  if down then penv.click(down.x, down.y) end
+  penv.draw()
+end
+CHECK(P.scroll.bots and P.scroll.bots > 0, "BOTS scrolls with the v button")
+local all = screenText()
+CHECK(all:find("Survey11", 1, true), "BOTS: scrolled to the end of the list\n" .. all)
+P.scroll.bots = 999 penv.draw()
+CHECK(P.scroll.bots == P.maxOff.bots, "scrolling stops at the end")
+if GETENV("DUMP") then
+  for _, tab in ipairs({ "home", "bots", "mine", "more", "ride" }) do
+    for _, o in ipairs({ 0, 99 }) do
+      P.tab = tab P.scroll = { [tab] = o } penv.draw() if P.scroll[tab] > (P.maxOff[tab] or 0) then P.scroll[tab] = P.maxOff[tab] end penv.draw()
+      io.stderr:write("+--------------------------+ " .. tab .. " scroll " .. P.scroll[tab] .. "\n")
+      for y = 1, 20 do io.stderr:write("|" .. (SCREEN[y] or "") .. string.rep(" ", 26 - #(SCREEN[y] or "")) .. "|\n") end
+    end
+  end
+end
+P.data, P.tab, P.scroll = d0, "home", {}
 if GETENV("DUMP") then
   for _, tab in ipairs({ "home", "ride", "bots", "more" }) do
     P.tab = tab penv.draw()

@@ -337,7 +337,9 @@ PneumaticCraft drone rides, turtle mapping/surveys, and an AE2 ME network view.
   allhome, mine start|pause|unload, corner 1|2 (pocket GPS, else the Player
   Detector), wholeworld, surveyhere, factoryretry. pushNote WARNING / ERROR /
   DONE -> "note" to every paired pocket. Pocket tabs HOME RIDE BOTS MINE MSG +,
-  tap only, risky buttons two taps. Console `pocket [unpair <id>]`.
+  tap only, risky buttons two taps. Pages SCROLL (^ v on row 2; put/button/text
+  take page rows, at() = screen rows; row H = message bar); text WRAPS, never cut;
+  BOTS lists problems first (RANK), natural name order; HOME sections tap to their tab. Console `pocket [unpair <id>]`.
   Also: forget (offline turtle only) and minedrop (MINE.drop) from the pocket
   (two taps); status lists gone miners (20+ min). Messages older than 60 s are
   refused (m.n is the server clock * 100) - replays also after a base restart.
