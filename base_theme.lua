@@ -356,9 +356,10 @@ end
 function waitFor(t, ...)
   local id = os.startTimer(t)
   local names = { ... }
+  local deadline = os.clock() + t
   while true do
     local ev, p = os.pullEventRaw()
-    if ev == "timer" and p == id then return end
+    if (ev == "timer" and p == id) or os.clock() >= deadline then return end
     if ev == "terminate" then os.cancelTimer(id) return end
     for _, n in ipairs(names) do
       if ev == n then os.cancelTimer(id) return end

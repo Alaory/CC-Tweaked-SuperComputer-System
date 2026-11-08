@@ -453,6 +453,11 @@ function commsWorker()
   local opened
   local codeTick = 0
   local tick = os.startTimer(2)
+  -- the 2-s jobs run by the CLOCK, not only on their timer: a timer that goes off
+  -- while a job waits for a peripheral answer (ME bridge, player detector ...) is
+  -- thrown away by CraftOS - before, that stopped ALL these jobs (turtle updates,
+  -- going home, rescues ...) until the base was restarted
+  local nextTick = os.clock() + 2
   while state.running do
     if not opened then
       local m = TT.findModem()
@@ -482,8 +487,11 @@ function commsWorker()
     elseif ev == "disk" and a == TT.installDrive() then
       pcall(TT.codeLoad)
       pcall(TT.prepareInstallFloppy)                -- a floppy in the install drive
-    elseif ev == "timer" and a == tick then
-      tick = os.startTimer(2)
+    end
+    if os.clock() >= nextTick then
+      nextTick = os.clock() + 2
+      tick = os.startTimer(2)                     -- (also replaces a lost one)
+      state.commsTickAt = os.clock()
       if KNOW.dirty and os.clock() - KNOW.saved > 30 then pcall(KNOW.save) end
       local okF, errF = pcall(MAP.feedSurvey)  -- a big survey: next batch to each idle turtle
       if not okF and (not state.feedErrAt or os.clock() - state.feedErrAt > 60) then
@@ -609,9 +617,13 @@ function uiLoop()
 
   drawNow()
   local clockTimer = os.startTimer(1)
+  local clockDue = os.clock() + 1
 
   while state.running do
     local ev, a, b, c, d = os.pullEventRaw()
+    -- a lost timer (thrown away while a peripheral call waited) never stops the screen
+    if os.clock() > clockDue + 2 then clockTimer, clockDue = os.startTimer(1), os.clock() + 1 end
+    if drawTimer and os.clock() - lastDraw > 1 then drawTimer = nil requestDraw() end
 
     if ev == "monitor_touch" and a == monName then
       -- messages from what you just tapped are always shown (USER_ACTION, pushNote)
@@ -630,7 +642,7 @@ function uiLoop()
         drawTimer = nil
         drawNow()
       elseif a == clockTimer then       -- keeps the clock and messages fresh
-        clockTimer = os.startTimer(1)
+        clockTimer, clockDue = os.startTimer(1), os.clock() + 1
         requestDraw()
       end
 

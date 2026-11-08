@@ -20,6 +20,11 @@ PneumaticCraft drone rides, turtle mapping/surveys, and an AE2 ME network view.
   at load time (inside functions, anything goes).
 - Workers run together via `parallel.waitForAny`: uiLoop, invWorker,
   pageWorker, actionWorker, droneWorker, terminalWorker, chatWorker, commsWorker, mapWorker.
+  LOST TIMERS: CraftOS drops events (timers too) that arrive while a coroutine waits
+  for a peripheral answer. So the commsWorker 2-s jobs run by the CLOCK (nextTick; a
+  new timer each tick replaces a lost one), uiLoop re-arms clockTimer / drawTimer,
+  waitFor has a deadline. (Before: one lost timer stopped every 2-s job - updates
+  "queued" forever, idle turtles never sent home.) test_lost_timer.lua.
 - **Peripheral calls belong in workers or fetch functions, never in drawing
   code.** Drawing reads `state.*` only.
 - Drawing: everything is drawn into an off-screen window `win`; `flushWindow()`
