@@ -2862,8 +2862,119 @@ function immediate(cmd, a)
     return true, "home set to " .. fmt() .. " (here)" .. (okW and " + warp point 'home' (GO HOME teleports)" or "")
   elseif cmd == "refuel" then
     return doRefuel()
+  elseif cmd == "drive" then
+    -- DRIVE page: one quick step by hand (never waits long), then what I see
+    if job then return false, "busy: " .. tostring(task) .. " - press STOP first" end
+    local ok, msg = driveStep(tostring(a[1] or ""), a[2] == "force")
+    driveLook(tostring(a[1]) == "look")
+    return ok, msg
   end
   return nil
+end
+
+-- ===== DRIVE: the owner steers the turtle by hand (base DRIVE page) =====
+-- blocks a hand-dig never breaks (inventories, computers, machines): their items
+-- would spill or get lost
+DRIVE_KEEP = { "chest", "barrel", "shulker", "computer", "turtle", "drive", "storage", "ae2:", "spawner",
+               "furnace", "hopper", "dispenser", "dropper", "crate", "drawer", "monitor", "modem", "bed" }
+function driveKeep(name)
+  local n = tostring(name):lower()
+  for _, k in ipairs(DRIVE_KEEP) do if n:find(k, 1, true) then return true end end
+  return false
+end
+-- dig in direction d ("f" / "u" / "d"): natural blocks; anything else only with
+-- force (DIG ANYWAY on the base), never inventories / computers
+function driveDig(d, force)
+  local insp = (d == "u" and turtle.inspectUp) or (d == "d" and turtle.inspectDown) or turtle.inspect
+  local dig = (d == "u" and turtle.digUp) or (d == "d" and turtle.digDown) or turtle.dig
+  local okI, b = insp()
+  if not okI or type(b) ~= "table" then return true, "nothing to dig" end
+  local name = tostring(b.name)
+  if driveKeep(name) then return false, "will not dig " .. name .. " (its items would be lost)" end
+  local nearHome = S.home and S.pos and S.pos.x and math.abs(S.pos.x - S.home.x) + math.abs(S.pos.z - S.home.z) <
+                   (tonumber(CONFIG.digNearHome) or 24)
+  if not force and (not natural(name) or nearHome) then
+    return false, (nearHome and "close to home" or (name .. " is not a natural block")) ..
+                  " - DIG ANYWAY (two taps) if you are sure", "force"
+  end
+  if not findItemLike("_pickaxe") then return false, "no pickaxe in the inventory" end
+  local okD = withEquipped("_pickaxe", dig) == true
+  if not okD then return false, "could not dig " .. name end
+  return true, "dug " .. name
+end
+-- one try to move (a mob in the way: hit it once and try again), no long waits
+function driveMove(d)
+  ensureFuel()
+  local mv = (d == "u" and turtle.up) or (d == "d" and turtle.down) or (d == "b" and turtle.back) or turtle.forward
+  local att = (d == "u" and turtle.attackUp) or (d == "d" and turtle.attackDown) or turtle.attack
+  local ok = mv()
+  if not ok and d ~= "b" then pcall(att) sleep(0.3) ok = mv() end
+  if not ok then
+    if turtle.getFuelLevel() == 0 then return false, "no fuel" end
+    return false, "blocked"
+  end
+  if d == "u" then moved(0, 1, 0) frameMove("u")
+  elseif d == "d" then moved(0, -1, 0) frameMove("d")
+  elseif d == "b" then
+    if S.pos and S.pos.f then moved(-DX[S.pos.f], 0, -DZ[S.pos.f]) end
+    frameMove("b")
+  else
+    if S.pos and S.pos.f then moved(DX[S.pos.f], 0, DZ[S.pos.f]) end
+    frameMove("f")
+  end
+  S.stuck = nil
+  return true, "moved"
+end
+function driveStep(act, force)
+  task = "driven by hand"
+  local m = { f = "f", b = "b", u = "u", d = "d" }
+  if m[act] then return driveMove(m[act]) end
+  if act == "l" then left() return true, "turned left" end
+  if act == "r" then right() return true, "turned right" end
+  local dd = act:match("^dig([fud])$")
+  if dd then return driveDig(dd, force) end
+  local md = act:match("^mine([fud])$")
+  if md then
+    local okD, msgD, need = driveDig(md, force)
+    if not okD then return false, msgD, need end
+    for _ = 1, 4 do                                  -- falling sand / gravel: dig again
+      local okM = driveMove(md)
+      if okM then return true, msgD .. ", moved" end
+      local okD2 = driveDig(md, force)
+      if not okD2 then break end
+    end
+    return false, msgD .. ", but could not move"
+  end
+  if act == "look" then return true, "looked around" end
+  return false, "unknown drive step " .. act
+end
+-- what I see: front / up / down (always), and with look=true a Geo Scanner scan
+-- of radius 3 around me (compact "dx,dy,dz,name;..." in world directions)
+function driveLook(scan)
+  local function n(f) local ok, b = f() return ok and type(b) == "table" and tostring(b.name) or "air" end
+  local v = { front = n(turtle.inspect), up = n(turtle.inspectUp), down = n(turtle.inspectDown) }
+  if scan and findItem(CONFIG.geoItem) then
+    local data = withScanner(function(sc)
+      local res = sc.scan(3)
+      if not res then sleep(2.5) res = sc.scan(3) end
+      return res
+    end)
+    if type(data) == "table" then
+      local o = {}
+      for _, b in ipairs(data) do
+        if type(b) == "table" and b.name and not tostring(b.name):find("air", 1, true) then
+          o[#o + 1] = b.x .. "," .. b.y .. "," .. b.z .. "," .. tostring(b.name):gsub("^minecraft:", "")
+        end
+      end
+      v.scan = table.concat(o, ";")
+    else
+      v.scanErr = "the scan did not work"
+    end
+  elseif scan then
+    v.scanErr = "no Geo Scanner - only front / up / down"
+  end
+  task = "idle"
+  send("look", v)
 end
 
 -- ===== fuel chest at home =====

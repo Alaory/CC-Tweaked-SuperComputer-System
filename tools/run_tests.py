@@ -89,7 +89,7 @@ for t in sorted(glob.glob(os.path.join(ROOT, "tools", "tests", "test_*.lua"))):
         tail = "\n".join(l for l in out.splitlines() if l.startswith(("FAIL", "PASS", "lua5.3:")) or "ERROR" in l)
         return rc == 0 and "PASS" in out, tail or out[-800:]
 
-PAGES = ["inventory", "players", "storage", "curios", "me", "drone", "access", "turtles", "map", "mining",
+PAGES = ["inventory", "players", "storage", "curios", "me", "drone", "access", "turtles", "drive", "map", "mining",
          "system", "events", "settings", "chat"]
 @check("pages", "%d monitor pages draw" % len(PAGES))
 def _():
@@ -103,6 +103,11 @@ def _():
 @check("node", "factory builder (node_build.lua)")
 def _():
     rc, out = run(["lua5.3", "tools/tests/node_build.lua", "node.lua"])
+    return rc == 0, out.strip()
+
+@check("node", "DRIVE steps (node_drive.lua)")
+def _():
+    rc, out = run(["lua5.3", "tools/tests/node_drive.lua", "node.lua"])
     return rc == 0, out.strip()
 
 @check("node", "MINE UP (node_digup.lua)")

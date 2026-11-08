@@ -395,7 +395,14 @@ function TT.receive(id, m)
       setToast(t.label .. " got " .. (CODE and TT.verName(CODE.ver) or "the update") ..
                " - installs when its job is done", C.label)
     end
+  elseif m.t == "look" then
+    TT.lookIn(t, m)
   elseif m.t == "result" then
+    if m.cmd == "drive" then
+      t.driveMsg = { ok = m.ok, msg = tostring(m.msg), at = os.clock() }
+      -- refused (not a natural block / close to home): DIG ANYWAY offers the same step with force
+      t.driveAnyway = (not m.ok and tostring(m.msg):find("DIG ANYWAY", 1, true)) and t.driveLast or nil
+    end
     if m.cmd == "fuelup" and TT.fuelTrip and TT.fuelTrip.id == id then TT.fuelTrip = nil end   -- the next one may go
     if m.cmd == "surveypts" and MAP.batchResult then pcall(MAP.batchResult, id, m.ok) end
     if m.cmd == "build" and FACTORY then pcall(FACTORY.result, id, m.ok, m.msg) end
@@ -1449,6 +1456,47 @@ function TT.homeTick()
                 t.digOutTries .. "/3)")
     end
   end
+end
+
+-- DRIVE page: one step by hand ("f" "b" "u" "d" "l" "r", "digf/u/d", "minef/u/d", "look");
+-- force = DIG ANYWAY. Quiet (no log line per step); a STOP hold ends.
+function TT.drive(id, act, force)
+  local t = state.turtles[id]
+  if not t then return end
+  t.held = nil
+  t.driveLast, t.driveSent, t.driveMsg = act, os.clock(), nil
+  if not force then t.driveAnyway = nil end
+  TT.send(id, "drive", { act, force and "force" or nil }, true)
+  TT.listDirty = true
+end
+local LOOKDIR = { north = { 0, -1 }, east = { 1, 0 }, south = { 0, 1 }, west = { -1, 0 } }
+-- what a driven turtle sees: front / up / down, and (LOOK) a scan of radius 3.
+-- Kept in WORLD positions (t.view.cells["x,y,z"] = name), so it stays right as it moves.
+function TT.lookIn(t, m)
+  local p = m.pos or t.pos
+  local v = t.view or {}
+  if type(v.cells) ~= "table" then v.cells = {} end
+  if p and p.x and type(m.scan) == "string" then
+    v.cells, v.scanAt = {}, os.clock()
+    for dx, dy, dz, name in m.scan:gmatch("(-?%d+),(-?%d+),(-?%d+),([^;]+)") do
+      local f = math.floor
+      v.cells[f(p.x + tonumber(dx)) .. "," .. f(p.y + tonumber(dy)) .. "," .. f(p.z + tonumber(dz))] = name
+    end
+  end
+  local function set(x, y, z, name)
+    local k = math.floor(x) .. "," .. math.floor(y) .. "," .. math.floor(z)
+    if not name or name == "air" or name:find(":air$") then v.cells[k] = false
+    else v.cells[k] = tostring(name):gsub("^minecraft:", "") end
+  end
+  if p and p.x then
+    set(p.x, p.y, p.z, nil)                                   -- (where it stands is free)
+    set(p.x, p.y + 1, p.z, m.up)
+    set(p.x, p.y - 1, p.z, m.down)
+    local d = LOOKDIR[tostring(p.f)]
+    if d then set(p.x + d[1], p.y, p.z + d[2], m.front) end
+  end
+  v.front, v.up, v.down, v.at, v.scanErr = m.front, m.up, m.down, os.clock(), m.scanErr
+  t.view = v
 end
 
 -- the anchor turtle, and whether it is in the base's chunk

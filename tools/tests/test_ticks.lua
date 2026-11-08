@@ -53,7 +53,7 @@ local JOBS = {
   { "MINE.save", function() MINE.save() end }, { "SCHEM.processPending", function() SCHEM.processPending() end },
   { "POCKET.status", function() POCKET.status() end }, { "TT.codeLoad", function() TT.codeLoad() end },
 }
-local PAGES = { "inventory", "players", "drone", "access", "turtles", "map", "mining", "system", "events", "settings", "me" }
+local PAGES = { "inventory", "players", "drone", "access", "turtles", "drive", "map", "mining", "system", "events", "settings", "me" }
 local failed = {}
 for round = 1, 40 do
   CLOCK = CLOCK + 2

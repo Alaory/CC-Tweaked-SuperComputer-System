@@ -89,6 +89,9 @@ function handleTouch(tx, ty)
           elseif a.kind == "minedrop" then
             local ok, msg = MINE.drop(tonumber(a.name))
             setToast(msg, ok and C.label or C.warn, 7)
+          elseif a.kind == "tdriveforce" then
+            local id, act = tostring(a.name):match("^(%d+):(%w+)$")
+            if id then TT.drive(tonumber(id), act, true) end
           elseif a.kind == "tdigup" then
             local t = state.turtles[tonumber(a.name)]
             if t then
@@ -300,6 +303,10 @@ function handleTouch(tx, ty)
             setToast(t.label .. " is no longer the rescue turtle", C.label)
           end
         end
+      elseif h[5] == "tdrive" then
+        TT.drive(h[6][1], h[6][2])
+      elseif h[5] == "dsel" then
+        state.tSel = h[6]
       elseif h[5] == "tcmd" then
         TT.send(h[6][1], h[6][2], h[6][3])
       elseif h[5] == "minecmd" then

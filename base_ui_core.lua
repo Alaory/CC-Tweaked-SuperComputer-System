@@ -136,6 +136,7 @@ function pageTabs()
       if TT.online(t) then on = on + 1 end
     end
     tabs[#tabs + 1] = { "turtles", "TURTLES", all > 0 and (on .. "/" .. all) or nil }
+    if all > 0 then tabs[#tabs + 1] = { "drive", "DRIVE" } end
   end
   if state.tModem or next(state.turtles) or MAP.hasData() then tabs[#tabs + 1] = { "map", "MAP" } end
   if state.tModem or next(MINE.units) then
@@ -168,7 +169,7 @@ local GROUPS = {
   { id = "people",  label = "PLAYERS", pages = { "players", "access" } },
   { id = "me",      label = nil,       pages = { "me" } },
   { id = "drone",   label = nil,       pages = { "drone" } },
-  { id = "turtles", label = "TURTLES", pages = { "turtles", "map", "mining" } },
+  { id = "turtles", label = "TURTLES", pages = { "turtles", "drive", "map", "mining" } },
   { id = "system",  label = "SYSTEM",  pages = { "system", "events", "settings" } },
 }
 -- the group a page belongs to
@@ -552,6 +553,8 @@ function draw()
     drawAccessPage(G)
   elseif state.page == "turtles" then
     drawTurtlesPage(G)
+  elseif state.page == "drive" then
+    drawDrivePage(G)
   elseif state.page == "map" then
     drawMapPage(G)
   elseif state.page == "mining" then

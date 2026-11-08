@@ -157,6 +157,16 @@ PneumaticCraft drone rides, turtle mapping/surveys, and an AE2 ME network view.
   with a pickaxe, two taps; pocket BOTS too): job "digup" [surface Y = MAP.get top + 1]
   -> digUp: straight up, tryDig (natural only, not near home), stops at that Y or after 6
   free blocks; says why it stops. tools/tests/node_digup.lua.
+- DRIVE page (base_ui_drive.lua, TURTLES group "drive"): pick a turtle (dsel), 3 grids 7x7
+  (above / level / below, north up, 4x2 per block) from t.view.cells (WORLD positions
+  "x,y,z" -> name / false = air; TT.lookIn from the turtle's "look" message: front/up/
+  down every step, LOOK = Geo Scanner r 3 as "dx,dy,dz,name;..."). Buttons -> TT.drive
+  (quiet "drive" {act, force}; ends a STOP hold): f b u d l r, digf/u/d, minef/u/d, look;
+  STOP / GO HOME / MINE UP TO THE SURFACE. node.lua immediate "drive": refused while a
+  job runs (STOP first); driveMove = one try (+ one attack), never waits long; driveDig:
+  natural blocks, else / near home only with DIG ANYWAY (two taps, t.driveAnyway from
+  the refusal), NEVER inventories / computers / machines (DRIVE_KEEP), even forced.
+  The page says "no answer for N s" instead of hanging. test_drive.lua, node_drive.lua.
 - Chunky upgrade never comes off: every equip goes through equipOn (node.lua),
   which refuses the Chunky side and puts it straight back if the item that
   came off is a Chunky ("chunk" in the name). chunkyFix re-equips a loose one
@@ -457,7 +467,7 @@ PneumaticCraft drone rides, turtle mapping/surveys, and an AE2 ME network view.
 | base_drones.lua | PneumaticCraft drone missions (teleport mode, air checks, parking/charging) |
 | base_turtles.lua / base_map.lua | turtle comms, shared terrain knowledge, OTA updates, map data |
 | base_console.lua / base_chat.lua / base_input.lua / base_workers.lua | console commands, chat commands, touch input, workers |
-| base_ui_*.lua | one file per page (base_ui_system.lua = STATUS, base_ui_settings.lua = SETTINGS) + base_ui_core.lua (header groups, cards, buttons, bars, footer) |
+| base_ui_*.lua | one file per page (base_ui_drive.lua = DRIVE) (base_ui_system.lua = STATUS, base_ui_settings.lua = SETTINGS) + base_ui_core.lua (header groups, cards, buttons, bars, footer) |
 | node.lua | the turtle program |
 | miner.lua | mining-dimension team program (MINER + LOADER roles; installed by hand, not OTA) |
 | base_mining.lua / base_ui_mining.lua | mining teams on the base (MINE) / MINING tab |
