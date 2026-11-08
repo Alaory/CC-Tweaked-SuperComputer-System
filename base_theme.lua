@@ -11,15 +11,15 @@
 -- THEME
 ---------------------------------------------------------------------
 -- BLOCK UI (the look of every page - rules in CLAUDE.md "UI rules"):
--- the NEW Minecraft menus (1.20+), Minecraft's own colours. Every theme ("biome") gives each colour slot the
+-- Minecraft's own colours, in deeper, softer shades (modern, not retro). Every theme ("biome") gives each colour slot the
 -- same JOB, only the shades of the FRAME change:
 --   bg      page background (dark, like the menu background)
 --   cards   panels (dark inventory window)
 --   lines   inactive tabs, row highlights, bevel highlight of panels
 --   buttons button face (Minecraft's stone button), empty slots, bar tracks
 --   text    white text;  dim = Minecraft's grey text
---   accent  main buttons / a selected item (blue)
---   titles  white headings (the new menus have white titles, not gold)
+--   accent  the selected tab / main buttons (Minecraft's blue "hover" button)
+--   titles  gold, like Minecraft's gold text (card titles, headings)
 -- The status colours are Minecraft's chat colours and the SAME in every
 -- biome (the MAP uses them for grass, water, sand ... too): green = good,
 -- yellow = attention, red = problem, cyan (aqua) = info, gold (orange), pink, purple.
@@ -28,19 +28,19 @@
 local SLOTS = { colors.black, colors.gray, colors.magenta, colors.lightGray, colors.white,
                 colors.brown, colors.blue, colors.lightBlue, colors.cyan, colors.green,
                 colors.yellow, colors.orange, colors.red, colors.pink, colors.purple, colors.lime }
--- the fixed colours (status + map): Minecraft chat colours, a touch softer
-local FIXED = { 0x141414, 0x2E2E2E, 0x4A4A4A, 0x6F6F6F, 0xFFFFFF, 0xA89F92, 0x5B7BFF, 0xFFC23A,
-                0x55E6E6, 0x55C855, 0xFFFF55, 0xFFAA00, 0xFF5555, 0xFF77FF, 0xB070FF, 0x9BE05A }
+-- the fixed colours (status + map): Minecraft chat colours, softened (not garish)
+local FIXED = { 0x141414, 0x2E2E2E, 0x4A4A4A, 0x6F6F6F, 0xFFFFFF, 0xA89F92, 0x5A7CE6, 0xF2B33D,
+                0x52CFCF, 0x5CBF5C, 0xF0DE5C, 0xEE9F34, 0xE85C5C, 0xDE7BD6, 0xA374E6, 0x92D25C }
 THEMES = {
-  -- the NEW Minecraft menus (1.20+): dark see-through panels, flat dark buttons
-  -- with a thin outline, white headings, a white outline on what is selected.
+  -- Minecraft's menus, made modern: stone-grey buttons and gold titles like the
+  -- game, but deeper, softer shades (not the bright flat grey of old games).
   -- frame only: bg, cards, lines, buttons, text, dim, accent, titles (the rest = FIXED)
-  stone     = { 0x0C0C0E, 0x1B1B1E, 0x3C3C42, 0x34343A, 0xFFFFFF, 0xA0A0A0, 0x4A7FD0, 0xFFFFFF },
-  deepslate = { 0x0A0A0E, 0x18181F, 0x383846, 0x2E2E3A, 0xF2F2F8, 0x9A9AA8, 0x5070D0, 0xF4F4FF },
-  oak       = { 0x100C08, 0x221A12, 0x4A3A28, 0x3E3022, 0xFFF6E8, 0xC2AE94, 0x5E8C38, 0xFFF4DC },
-  nether    = { 0x100707, 0x221010, 0x4A2222, 0x3C1A1A, 0xFFEEEE, 0xC09898, 0xC03A2E, 0xFFE8E0 },
-  ender     = { 0x0A0810, 0x1A1524, 0x3A2E52, 0x2E2442, 0xF6F0FF, 0xA89CC0, 0x8656E0, 0xFAF4FF },
-  ocean     = { 0x060E12, 0x112028, 0x24404C, 0x1C3440, 0xEAFBFF, 0x94B8C2, 0x2898A8, 0xF0FCFF },
+  stone     = { 0x121212, 0x262626, 0x3A3A3A, 0x505050, 0xFFFFFF, 0xA8A8A8, 0x5B7FE0, 0xF2B33D },
+  deepslate = { 0x0F0F13, 0x212129, 0x34343F, 0x4A4A57, 0xF2F2F8, 0x9A9AA8, 0x6A84E0, 0xF2B33D },
+  oak       = { 0x15100A, 0x2C2117, 0x433325, 0x5E4730, 0xFFF6E8, 0xC2AE94, 0x6A9A3C, 0xF5C451 },
+  nether    = { 0x130909, 0x281414, 0x3E1F1F, 0x572B2B, 0xFFEEEE, 0xC09898, 0xCC4433, 0xF5A93A },
+  ender     = { 0x0C0A12, 0x1B1725, 0x2D2640, 0x413758, 0xF6F0FF, 0xA89CC0, 0x8C62E8, 0xEFE39C },
+  ocean     = { 0x071116, 0x112129, 0x1C3640, 0x284E5A, 0xEAFBFF, 0x94B8C2, 0x2FA8B8, 0xF5C451 },
 }
 THEME_ORDER = { "stone", "deepslate", "oak", "nether", "ender", "ocean" }
 local THEME_FILE = "theme.dat"
@@ -109,7 +109,7 @@ C = {
 }
 
 -- colours an item can be tinted with
-ITEM_COLORS = {                      -- (fixed colours only: lightBlue = the white headings now)
+ITEM_COLORS = {                      -- (fixed colours only: lightBlue = the gold titles)
   colors.blue, colors.cyan, colors.green, colors.yellow, colors.orange,
   colors.red, colors.pink, colors.purple, colors.lime,
 }

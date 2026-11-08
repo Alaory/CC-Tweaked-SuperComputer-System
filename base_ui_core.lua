@@ -18,46 +18,32 @@ function px(x, y, code, fg, bg)
   win.write(string.char(code))
 end
 
--- BLOCK UI = the NEW Minecraft menus (1.20+): flat boxes with a THIN OUTLINE
--- all round (drawn with the 2x3 "pixel" characters: a line 1/3 of a row high,
--- 1/2 of a column wide). Panels get a soft light line, grey buttons a light
--- line, coloured buttons none (their colour says enough), a SELECTED thing a
--- white line (Minecraft's focus outline: outline(..., C.text)).
+-- BLOCK UI: Minecraft-style boxes and buttons, done the modern way: no thick
+-- 3D frame, just two THIN lines (the 2x3 "pixel" characters, 1/3 of a row):
+-- a soft light line on top of a panel, and a soft SHADOW under every box and
+-- button (they sit on the page). Slots are SUNKEN: a shadow line on top.
 -- CONFIG.style = "plain" turns the lines off.
 function rounded() return CONFIG.style ~= "plain" end
 
--- the outline colour for a face colour (nil = no outline)
-local function edgeOf(inner)
-  if inner == C.panel then return C.head end
-  if inner == C.empty or inner == C.head then return C.bg end    -- buttons: a thin dark edge
-  return nil
-end
--- a thin outline of colour `edge` around a box filled with `inner`
-function outline(x, y, w, h, inner, edge)
-  if CONFIG.style == "plain" or w < 2 or h < 2 or not edge or inner == edge then return end
-  if h == 2 and w < 4 then return end
-  text(x + 1, y, string.char(131):rep(w - 2), edge, inner)        -- top
-  text(x + 1, y + h - 1, string.char(143):rep(w - 2), inner, edge) -- bottom
-  for yy = y + 1, y + h - 2 do
-    px(x, yy, 149, edge, inner)                                   -- left
-    px(x + w - 1, yy, 149, inner, edge)                           -- right
-  end
-  px(x, y, 151, edge, inner)                                      -- top-left
-  px(x + w - 1, y, 148, inner, edge)                              -- top-right
-  px(x, y + h - 1, 138, inner, edge)                              -- bottom-left
-  px(x + w - 1, y + h - 1, 133, inner, edge)                      -- bottom-right
-end
--- every box / button: its outline (call it after the fill, before the text;
--- only boxes 3+ rows tall - a 1-2 row button's label would sit on the line)
+-- a thin line over the top of a box (light) and / or under it (shadow)
+local function topLine(x, y, w, col, inner) text(x, y, string.char(131):rep(w), col, inner) end
+local function bottomLine(x, y, w, inner, col) text(x, y, string.char(143):rep(w), inner, col) end
+-- the lines of a box filled with `inner` (after the fill, before the text; 3+ rows tall)
 function round(x, y, w, h, inner, outer)
-  if h < 3 or inner == C.bg then return end
-  outline(x, y, w, h, inner, edgeOf(inner))
+  if CONFIG.style == "plain" or w < 3 or h < 3 or inner == C.bg then return end
+  if inner == C.panel then topLine(x, y, w, C.head, inner) end   -- panels: a soft light top line
+  bottomLine(x, y + h - 1, w, inner, C.bg)                       -- every box: a shadow under it
 end
-
--- an inventory slot: a dark outline (the new inventories: flat dark slots)
+-- an inventory slot: SUNKEN - a shadow line on top
 function inset(x, y, w, h, inner)
-  if h < 3 then return end
-  outline(x, y, w, h, inner, (inner == C.head or inner == C.empty) and C.bg or C.head)
+  if CONFIG.style == "plain" or w < 3 or h < 3 then return end
+  topLine(x, y, w, C.bg, inner)
+end
+-- a thin outline all round (kept for pages that mark something selected)
+function outline(x, y, w, h, inner, edge)
+  if CONFIG.style == "plain" or w < 3 or h < 3 or not edge then return end
+  topLine(x, y, w, edge, inner)
+  bottomLine(x, y + h - 1, w, inner, edge)
 end
 
 -- a bar: solid ("flat") or thin, the lower two thirds of the row ("rounded")
@@ -243,7 +229,7 @@ end
 -- open page is for
 function drawHeader()
   fill(1, 1, W, 3, C.panel)
-  text(1, 4, string.char(131):rep(W), C.head, C.bg)            -- a thin line under the header
+  bottomLine(1, 3, W, C.panel, C.bg)                             -- (a soft shadow under the header)
   local title = CONFIG.title:gsub(".", "%0 "):sub(1, -2)
   text(3, 2, "\4", colors.cyan, C.panel)                     -- a diamond
   text(5, 2, title, C.label, C.panel)
@@ -286,10 +272,10 @@ function drawHeader()
   for _, t in ipairs(tabs) do
     local active = groupOf(state.page) == t[1]
     local w = widthOf(t, pad, badges)
-    local bg = active and C.empty or C.head
+    local bg = active and C.accent or C.empty
     fill(tx, 1, w, 3, bg)
-    if active then outline(tx, 1, w, 3, bg, C.text) end        -- the open tab: white outline
-    text(tx + pad, 2, t[2], active and C.text or C.dim, bg)
+    round(tx, 1, w, 3, bg, C.panel)
+    text(tx + pad, 2, t[2], C.text, bg)
     if badges and t[3] then
       local bbg = t[4] or (active and C.label or C.head)
       text(tx + pad + #t[2] + 1, 2, " " .. t[3] .. " ", (t[4] or active) and C.ink or C.text, bbg)

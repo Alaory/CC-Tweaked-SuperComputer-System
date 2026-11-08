@@ -488,27 +488,26 @@ PneumaticCraft drone rides, turtle mapping/surveys, and an AE2 ME network view.
   it to check screen changes. It is not game code.
 
 ## UI rules ("Block UI" - every page follows them)
-1. The NEW Minecraft menus (1.20+), never the old chunky ones and never "alien": dark
-   see-through-looking panels, flat dark buttons, WHITE headings, a WHITE OUTLINE on
-   what is selected (the open tab). THEMES are biomes (stone default, deepslate, oak,
-   nether, ender, ocean; `theme` / SETTINGS); a theme only changes the FRAME (bg, cards,
-   lines, buttons, text, dim, accent, titles). Status + map colours are Minecraft's chat
-   colours and FIXED (base_theme.lua FIXED): green good, yellow attention, red problem,
-   cyan info, orange, pink, purple. Never hard-code a frame colour - use C.* (C.label =
-   white headings, C.accent = blue main button, C.empty = button face, C.head = lines /
-   inactive tab). ITEM_COLORS only use fixed colours.
-2. Boxes and buttons are FLAT with a THIN OUTLINE (outline(x,y,w,h,inner,edge): 2x3
-   pixel chars, 1/3 row / 1/2 column thick): round() = panels a soft line (C.head),
-   grey buttons a dark edge (C.bg), coloured buttons none; selected = outline(..., C.text).
-   Slots: inset() = a dark outline. Only 3+ rows tall (a 1-2 row button's label would
-   sit on the line). CONFIG.style "plain" = no lines. Two-tap actions: actButton.
+1. Minecraft's look done MODERN (the owner: liked the stone-button / gold-title look,
+   but not "like a 2001 game"; the flat new-1.20-menu look was NOT liked): stone-grey
+   buttons, gold titles, the blue selected tab - in deeper, softer shades. THEMES are
+   biomes (stone default, deepslate, oak, nether, ender, ocean; `theme` / SETTINGS); a
+   theme only changes the FRAME (bg, cards, lines, buttons, text, dim, accent, titles).
+   Status + map colours are Minecraft's chat colours, softened, FIXED (base_theme.lua
+   FIXED): green good, yellow attention, red problem, cyan info, orange, pink, purple.
+   Never hard-code a frame colour - use C.* (C.label = gold titles, C.accent = blue
+   selected / main button, C.empty = button face, C.head = lines / dark slot).
+2. No thick 3D frames: round() = two THIN lines (2x3 pixel chars, 1/3 row): panels a
+   soft light line on top (C.head), every box / button a soft SHADOW under it (C.bg).
+   Slots: inset() = a shadow line on top (sunken). Only 3+ rows tall. CONFIG.style
+   "plain" = no lines. Two-tap actions: actButton.
 3. Navigation: GROUPS (base_ui_core.lua) = HOME | YOU (inventory, backpacks, curios) |
    AE2 | PLAYERS (players, chat & rides) | DRONES | TURTLES (turtles, drive, map, mining)
    | SYSTEM (status, messages, settings). Row 5 = the group's pages + what the open
    page is for (PAGE_INFO name + one line). New page -> PAGE_INFO entry + a group +
    pageTabs + draw() dispatch + PAGES in run_tests/test_ticks.
 4. HOME (base_ui_home.lua, the start page): status line, every page as a big button
-   (white name, "what it is for", live badge) grouped like the tabs, QUICK ACTIONS
+   (gold name, white "what it is for", live badge) grouped like the tabs, QUICK ACTIONS
    (two taps: stop all / all home / update turtles / drone to base / save map; act
    kind "quick" -> POCKET.act). Nobody has to hunt for a tab.
 5. Check every screen change with tools/preview (render.py draws the 2x3 pixel
