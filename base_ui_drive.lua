@@ -3,44 +3,93 @@
 -- quick step on the turtle (it never waits long), then it says what it sees.
 -- A turtle busy with a job refuses: press STOP first.
 
--- a block's colour and letter on the little grids
-local function blockLook(name)
-  if name == nil then return C.panel, C.dim, " .  " end         -- unknown
-  if name == false then return C.bg, C.dim, "    " end           -- air
-  local n = tostring(name)
-  local bg = C.empty
-  if n:find("lava", 1, true) then bg = C.bad
-  elseif n:find("water", 1, true) then bg = C.accent
-  elseif n:find("_ore", 1, true) or n:find("ore_", 1, true) or n:find("debris", 1, true) then bg = C.warn
-  elseif n:find("leaves", 1, true) or n:find("grass", 1, true) or n:find("log", 1, true) or n:find("moss", 1, true) then bg = C.good
-  elseif n:find("turtle", 1, true) or n:find("computer", 1, true) then bg = C.purple or C.accent
-  end
-  local short = (n:match(":(.+)$") or n)
-  return bg, (bg == C.empty) and C.text or C.ink, (short:sub(1, 1):upper() .. short:sub(2, 3) .. " ")
-end
+-- Everything is drawn from the TURTLE'S point of view (not north-up like a
+-- map): AHEAD is always up / right on the screen, so the pictures match the
+-- FORWARD / TURN / UP / DOWN buttons. Blocks are named in words.
 
--- 7 x 7 blocks around the turtle at height dy (north is up); each block 4 x 2
-local CW, CH = 4, 2
-local function grid(x, y, t, dy, title)
-  local v = t.view or {}
-  local cells = type(v.cells) == "table" and v.cells or {}
-  local p = t.pos
-  text(x, y, title, C.label, C.panel)
-  for gz = -3, 3 do
-    for gx = -3, 3 do
-      local cx, cy = x + (gx + 3) * CW, y + 1 + (gz + 3) * CH
-      if gx == 0 and gz == 0 and dy == 0 then
-        local arrow = ({ north = " ^^ ", east = " >> ", south = " vv ", west = " << " })[tostring(p and p.f)] or " TT "
-        text(cx, cy, arrow, C.ink, C.good)
-        text(cx, cy + 1, "    ", C.ink, C.good)
-      else
-        local name
-        if p and p.x then name = cells[math.floor(p.x + gx) .. "," .. math.floor(p.y + dy) .. "," .. math.floor(p.z + gz)] end
-        local bg, fg, s = blockLook(name)
-        text(cx, cy, s, fg, bg)
-        text(cx, cy + 1, "    ", fg, bg)
-      end
+-- a block's name in words: "deepslate_iron_ore" -> "IRON ORE"
+local function nice(name)
+  local n = tostring(name):match(":(.+)$") or tostring(name)
+  n = n:gsub("^deepslate_(.+_ore)$", "%1"):gsub("_", " ")
+  return n:upper()
+end
+-- colours: background, text
+local function blockCol(name)
+  if name == nil then return C.panel, C.dim end                    -- not seen yet
+  if name == false then return C.bg, C.dim end                     -- air
+  local n = tostring(name)
+  if n:find("lava", 1, true) then return C.bad, C.ink end
+  if n:find("water", 1, true) then return C.accent, C.ink end
+  if n:find("_ore", 1, true) or n:find("ore_", 1, true) or n:find("debris", 1, true) then return C.warn, C.ink end
+  if n:find("leaves", 1, true) or n:find("grass", 1, true) or n:find("log", 1, true) or n:find("moss", 1, true) then
+    return C.good, C.ink
+  end
+  if n:find("chest", 1, true) or n:find("barrel", 1, true) or n:find("turtle", 1, true) or n:find("computer", 1, true) then
+    return C.purple or C.accent, C.ink
+  end
+  return C.empty, C.text
+end
+-- one block: a box cw x ch with its name (2 lines if it needs them)
+local function box(x, y, cw, ch, name, label)
+  local bg, fg = blockCol(name)
+  fill(x, y, cw - 1, ch, bg)
+  local words
+  if label then words = label
+  elseif name == nil then words = "?"
+  elseif name == false then words = ""
+  else words = nice(name) end
+  local l1, l2 = words, nil
+  if #words > cw - 1 then
+    local cut = words:sub(1, cw - 1):match("^(.*) ") or words:sub(1, cw - 1)
+    l1, l2 = cut, words:sub(#cut + 1):gsub("^ ", "")
+  end
+  local mid = y + math.floor((ch - (l2 and 2 or 1)) / 2)
+  text(x + math.max(0, math.floor((cw - 1 - #l1) / 2)), mid, trunc(l1, cw - 1), fg, bg)
+  if l2 and ch >= 2 then text(x + math.max(0, math.floor((cw - 1 - #l2) / 2)), mid + 1, trunc(l2, cw - 1), fg, bg) end
+end
+local FWD = { north = { 0, -1 }, east = { 1, 0 }, south = { 0, 1 }, west = { -1, 0 } }
+-- the block at (ahead, right, up) from the turtle; nil = not seen yet, false = air
+local function seen(t, ahead, right, up)
+  local p, v = t.pos, t.view
+  if not (p and p.x and v and type(v.cells) == "table") then return nil end
+  local f = FWD[tostring(p.f)]
+  if not f then return nil end
+  local x = p.x + f[1] * ahead - f[2] * right
+  local z = p.z + f[2] * ahead + f[1] * right
+  return v.cells[math.floor(x) .. "," .. math.floor(p.y + up) .. "," .. math.floor(z)]
+end
+-- TOP VIEW: 5 x 5 at the turtle's height, AHEAD is up
+local function topView(x, y, t, cw, ch)
+  text(x, y, "SEEN FROM ABOVE  (ahead = up)", C.label, C.panel)
+  text(x + 2 * cw + math.floor((cw - 6) / 2), y + 1, "AHEAD", C.dim, C.panel)
+  text(x + math.floor((cw - 5) / 2), y + 1, "LEFT", C.dim, C.panel)
+  text(x + 4 * cw + math.floor((cw - 6) / 2), y + 1, "RIGHT", C.dim, C.panel)
+  for r = 2, -2, -1 do                                   -- r = blocks ahead (top row = 2 ahead)
+    for c = -2, 2 do                                     -- c = blocks to the right
+      local bx, by = x + (c + 2) * cw, y + 2 + (2 - r) * ch
+      if r == 0 and c == 0 then box(bx, by, cw, ch, "x", "TURTLE") fill(bx, by, cw - 1, ch, C.good)
+        text(bx + math.floor((cw - 7) / 2), by + math.floor((ch - 1) / 2), "TURTLE", C.ink, C.good)
+      else box(bx, by, cw, ch, seen(t, r, c, 0)) end
     end
+  end
+  text(x + 2 * cw + math.floor((cw - 7) / 2), y + 2 + 5 * ch, "BEHIND", C.dim, C.panel)
+end
+-- SIDE VIEW: behind it, the turtle, 4 ahead; 2 above to 2 below
+local function sideView(x, y, t, cw, ch)
+  text(x, y, "SEEN FROM THE SIDE  (ahead = right)", C.label, C.panel)
+  local heads = { "BEHIND", "TURTLE", "1 AHEAD", "2 AHEAD", "3 AHEAD" }
+  for i, h in ipairs(heads) do text(x + (i - 1) * cw + 1, y + 1, trunc(h, cw - 1), C.dim, C.panel) end
+  for u = 2, -2, -1 do
+    local by = y + 2 + (2 - u) * ch
+    for a = -1, 3 do
+      local bx = x + (a + 1) * cw
+      if a == 0 and u == 0 then
+        fill(bx, by, cw - 1, ch, C.good)
+        text(bx + math.floor((cw - 7) / 2), by + math.floor((ch - 1) / 2), "TURTLE", C.ink, C.good)
+      else box(bx, by, cw, ch, seen(t, a, 0, u)) end
+    end
+    text(x + 5 * cw + 1, by + math.floor((ch - 1) / 2), (u > 0 and ("+" .. u .. " up")) or (u < 0 and (-u .. " down")) or "level",
+         C.dim, C.panel)
   end
 end
 
@@ -104,26 +153,18 @@ function drawDrivePage(G)
   local function nm(s) return s and tostring(s):gsub("^minecraft:", "") or "?" end
   text(x + 2, y0 + 5, trunc("FRONT: " .. nm(v.front) .. "    UP: " .. nm(v.up) .. "    DOWN: " .. nm(v.down) ..
        (v.scanErr and ("    (" .. v.scanErr .. ")") or (v.scanAt and ("    scan " .. math.floor(os.clock() - v.scanAt) .. " s ago") or
-       "    (LOOK AROUND for the blocks around it)")), w - 4), C.text, C.panel)
+       "    (SCAN AROUND sees the blocks to the sides too)")), w - 4), C.text, C.panel)
   local gy = y0 + 7
-  local gw = 7 * CW + 3
-  grid(x + 2, gy, t, 1, "ABOVE IT")
-  grid(x + 2 + gw, gy, t, 0, "ITS LEVEL")
-  grid(x + 2 + 2 * gw, gy, t, -1, "BELOW IT")
-  local lx = x + 2 + 3 * gw
-  if lx + 20 < x + w then
-    text(lx, gy + 1, "north is up", C.dim, C.panel)
-    text(lx, gy + 3, ">> = the turtle", C.dim, C.panel)
-    text(lx, gy + 4, "     (its facing)", C.dim, C.panel)
-    text(lx, gy + 6, " .  = not seen yet", C.dim, C.panel)
-    text(lx, gy + 7, "      LOOK AROUND", C.dim, C.panel)
-    text(lx, gy + 9, "yellow = ore", C.dim, C.panel)
-    text(lx, gy + 10, "red = lava", C.dim, C.panel)
-    text(lx, gy + 11, "blue = water", C.dim, C.panel)
-    text(lx, gy + 12, "black = air", C.dim, C.panel)
-  end
+  -- block size: as big as the card allows
+  local cw = math.max(8, math.min(13, math.floor((w - 22) / 10)))
+  local ch = math.max(2, math.min(3, math.floor((bottom - y0 - 30) / 5)))
+  topView(x + 3, gy, t, cw, ch)
+  sideView(x + 3 + 5 * cw + 6, gy, t, cw, ch)
+  text(x + 3, gy + 4 + 5 * ch, trunc("? = not seen yet: SCAN AROUND     black = air     yellow = ore     red = lava     " ..
+       "blue = water     purple = never dug", w - 6), C.dim, C.panel)
   -- the controls
-  local by = gy + 7 * CH + 3
+  local by = gy + 5 * ch + 6
+  if by + 13 > bottom then by = bottom - 13 end
   if by + 14 > bottom then by = math.max(gy + 9, bottom - 14) end
   local bw = math.floor((w - 4 - 4) / 5)
   local function b(col, row, label, act, bg, fg)
@@ -132,7 +173,7 @@ function drawDrivePage(G)
   b(0, 0, "MINE UP", "mineu")
   b(1, 0, "UP", "u", C.accent, C.ink)
   b(2, 0, "DIG UP", "digu")
-  b(3, 0, "LOOK AROUND", "look", C.label, C.ink)
+  b(3, 0, "SCAN AROUND", "look", C.label, C.ink)
   drawButton(x + 2 + 4 * (bw + 1), by, bw, 3, "STOP", C.bad, C.ink, "tcmd", { t.id, "stop", {} })
   b(0, 1, "TURN LEFT", "l")
   b(1, 1, "FORWARD", "f", C.accent, C.ink)

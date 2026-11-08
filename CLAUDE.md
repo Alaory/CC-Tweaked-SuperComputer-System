@@ -157,8 +157,11 @@ PneumaticCraft drone rides, turtle mapping/surveys, and an AE2 ME network view.
   with a pickaxe, two taps; pocket BOTS too): job "digup" [surface Y = MAP.get top + 1]
   -> digUp: straight up, tryDig (natural only, not near home), stops at that Y or after 6
   free blocks; says why it stops. tools/tests/node_digup.lua.
-- DRIVE page (base_ui_drive.lua, TURTLES group "drive"): pick a turtle (dsel), 3 grids 7x7
-  (above / level / below, north up, 4x2 per block) from t.view.cells (WORLD positions
+- DRIVE page (base_ui_drive.lua, TURTLES group "drive"): pick a turtle (dsel), drawn from the
+  TURTLE'S point of view (never north-up - that confused): SEEN FROM ABOVE 5x5 at its level,
+  AHEAD = up, its left/right; SEEN FROM THE SIDE: behind, turtle, 1-3 ahead x 2 up..2 down.
+  Blocks named in words (nice(): "IRON ORE"), ? = not seen, black = air; inside a scan
+  (radius 3 cube) everything not listed is AIR. Data: t.view.cells (WORLD positions
   "x,y,z" -> name / false = air; TT.lookIn from the turtle's "look" message: front/up/
   down every step, LOOK = Geo Scanner r 3 as "dx,dy,dz,name;..."). Buttons -> TT.drive
   (quiet "drive" {act, force}; ends a STOP hold): f b u d l r, digf/u/d, minef/u/d, look;

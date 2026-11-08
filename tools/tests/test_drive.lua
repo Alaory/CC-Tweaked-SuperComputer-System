@@ -43,6 +43,8 @@ local c = t.view and t.view.cells or {}
 CHECK(c["102,40,100"] == "stone" and c["101,39,100"] == "deepslate_iron_ore" and c["101,41,101"] == "lava",
       "the scan is kept in world positions")
 CHECK(c["101,41,100"] == false, "UP air is known as air")
+CHECK(c["99,40,98"] == false and c["104,40,100"] == false, "inside the scan, blocks it did not list are AIR (the scanner leaves air out)")
+CHECK(c["105,40,100"] == nil, "outside the scan: not seen yet")
 -- it moves on: the old cells stay where they are in the world
 report(30, { t = "look", pos = { x = 102, y = 40, z = 100, f = "east" }, front = "minecraft:air", up = "minecraft:air", down = "minecraft:stone" })
 c = t.view.cells
