@@ -53,7 +53,7 @@ SETTING_GROUPS = {
         if nxt == "random" then THEME_MODE = "random" saveTheme(nil)
         else setTheme(nxt) THEME_MODE = nxt saveTheme(nxt) end
       end },
-    cyc("style", "Look", "flat = solid blocks, rounded = rounded corners and thin bars", "flat", { "flat", "rounded" }),
+    cyc("style", "Look", "block = Minecraft-style edges on boxes and buttons, plain = no edges", "block", { "block", "plain" }),
     cyc("notes.show", "Message boxes for", "which messages get a box (all are in EVENTS anyway; your taps always)",
         "important", { "important", "errors", "all", "none" },
         function(v) return ({ important = "warnings+errors", errors = "errors only", all = "everything", none = "none" })[v] or tostring(v) end),

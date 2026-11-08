@@ -66,6 +66,11 @@ function handleTouch(tx, ty)
               MINE.cmd(tonumber(id), cmd, {})
               setToast(cmd:upper() .. " sent to the loader - it tells the miners", C.label, 5)
             end
+          elseif a.kind == "quick" then
+            -- HOME > QUICK ACTIONS (the same actions as the pocket remote)
+            local okQ, okA, msgQ = pcall(POCKET.act, a.name, a.args or {})
+            if not okQ then okA, msgQ = false, tostring(okA) end
+            setToast(tostring(msgQ), okA and C.good or C.warn, 6)
           elseif a.kind == "syssave" then
             -- the map worker saves (it may have to wait for storage helpers)
             MAP.saveNow = true

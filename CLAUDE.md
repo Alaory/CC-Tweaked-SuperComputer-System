@@ -402,7 +402,7 @@ PneumaticCraft drone rides, turtle mapping/surveys, and an AE2 ME network view.
   for massOffline); any report clears it. FORGET (two taps, replaces PING while
   offline) / `turtle <id> forget` -> TT.forget. feedSurvey reclaims the batch of
   a turtle silent > CONFIG.map.reclaimOffline (600 s).
-- Themes (base_theme.lua): THEMES = 6 dark palettes, same JOB per colour slot.
+- Themes (base_theme.lua): THEMES = 6 Minecraft biomes (see UI rules), same JOB per colour slot.
   The 11 slots the MAP uses (MAP_SLOTS: green lime blue yellow orange white
   brown red cyan purple pink) always keep the midnight colours; a theme only
   changes the frame (bg, cards, lines, buttons, titles). Chosen at start: theme.dat {mode, last} or
@@ -468,6 +468,31 @@ PneumaticCraft drone rides, turtle mapping/surveys, and an AE2 ME network view.
 - `tools/preview/` draws the monitor outside the game (Lua 5.3 + Pillow); use
   it to check screen changes. It is not game code.
 
+## UI rules ("Block UI" - every page follows them)
+1. Minecraft look, never "alien": THEMES are biomes (stone default, deepslate, oak,
+   nether, ender, ocean; `theme` / SETTINGS). A theme only changes the FRAME
+   (bg, cards, lines, buttons, text, dim, accent, titles); status + map colours are
+   Minecraft's chat colours and FIXED (base_theme.lua FIXED): green good, yellow
+   attention, red problem, cyan info, orange/gold, pink, purple. Never hard-code a
+   colour for the frame - use C.* (C.label = gold titles, C.accent = blue selected /
+   main button, C.empty = stone button face, C.head = dark slot / inactive).
+2. Boxes and buttons are Minecraft buttons: fill, then round(x,y,w,h,inner) = light
+   edge top/left, shadow bottom/right (only 3+ rows tall; CONFIG.style "plain" = off).
+   Item slots are SUNKEN like the inventory: inset() (dark top/left, light bottom/right).
+   Card titles gold (card(x,y,w,h,label)). Two-tap actions: actButton. 1-2 row buttons
+   stay flat (their label would break the edge).
+3. Navigation: GROUPS (base_ui_core.lua) = HOME | YOU (inventory, backpacks, curios) |
+   AE2 | PLAYERS (players, chat & rides) | DRONES | TURTLES (turtles, drive, map, mining)
+   | SYSTEM (status, messages, settings). Row 5 = the group's pages + what the open
+   page is for (PAGE_INFO name + one line). New page -> PAGE_INFO entry + a group +
+   pageTabs + draw() dispatch + PAGES in run_tests/test_ticks.
+4. HOME (base_ui_home.lua, the start page): status line, every page as a big button
+   (gold name, white "what it is for", live badge) grouped like the tabs, QUICK ACTIONS
+   (two taps: stop all / all home / update turtles / drone to base / save map; act
+   kind "quick" -> POCKET.act). Nobody has to hunt for a tab.
+5. Check every screen change with tools/preview (render.py draws the 2x3 pixel
+   characters, so edges show) in the stone theme.
+
 ## Files
 | File | What |
 |---|---|
@@ -478,7 +503,7 @@ PneumaticCraft drone rides, turtle mapping/surveys, and an AE2 ME network view.
 | base_drones.lua | PneumaticCraft drone missions (teleport mode, air checks, parking/charging) |
 | base_turtles.lua / base_map.lua | turtle comms, shared terrain knowledge, OTA updates, map data |
 | base_console.lua / base_chat.lua / base_input.lua / base_workers.lua | console commands, chat commands, touch input, workers |
-| base_ui_*.lua | one file per page (base_ui_drive.lua = DRIVE) (base_ui_system.lua = STATUS, base_ui_settings.lua = SETTINGS) + base_ui_core.lua (header groups, cards, buttons, bars, footer) |
+| base_ui_*.lua | one file per page (base_ui_home.lua = HOME menu, base_ui_drive.lua = DRIVE) (base_ui_system.lua = STATUS, base_ui_settings.lua = SETTINGS) + base_ui_core.lua (header groups, cards, buttons, bars, footer) |
 | node.lua | the turtle program |
 | miner.lua | mining-dimension team program (MINER + LOADER roles; installed by hand, not OTA) |
 | base_mining.lua / base_ui_mining.lua | mining teams on the base (MINE) / MINING tab |

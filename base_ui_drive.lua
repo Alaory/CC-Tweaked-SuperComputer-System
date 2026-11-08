@@ -140,7 +140,7 @@ function drawDrivePage(G)
         local cx, cy = gx0 + (dx + R) * CW, gy + 2 + (dz + R) * CH
         local name
         if known then name = cells[math.floor(p.x + dx) .. "," .. math.floor(p.y + dy) .. "," .. math.floor(p.z + dz)] end
-        local bg, fg, s = C.panel, C.dim, " ?"
+        local bg, fg, s = C.head, C.dim, "?"
         if name == false then bg, fg, s = C.bg, C.dim, ""
         elseif name ~= nil then
           bg, fg = blockColour(name)
@@ -162,7 +162,7 @@ function drawDrivePage(G)
         if act then
           local h = string.upper(hint)
           text(cx + math.max(0, math.floor((CW - 1 - #h) / 2)), cy + 1, trunc(h, CW - 1),
-               (bg == C.bg or bg == C.panel or bg == C.empty) and C.label or fg, bg)
+               (bg == C.bg or bg == C.head or bg == C.empty) and C.label or fg, bg)
           addHit(cx, cy, CW - 1, CH, "tdrive", { t.id, act })
         end
       end

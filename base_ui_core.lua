@@ -18,23 +18,41 @@ function px(x, y, code, fg, bg)
   win.write(string.char(code))
 end
 
--- is the "rounded" style on?
-function rounded() return CONFIG.style == "rounded" end
+-- BLOCK UI: boxes and buttons look like Minecraft's - a light edge on the top
+-- and left, a dark shadow on the bottom and right (drawn with the 2x3 "pixel"
+-- characters, a thin line). CONFIG.style = "plain" turns the edges off (the
+-- old "flat" / "rounded" styles both get the new look).
+function rounded() return CONFIG.style ~= "plain" end
 
--- round the corners of a box filled with `inner` that sits on `outer`
--- (only in the "rounded" style; "flat" keeps clean square blocks)
+-- the light edge colour for a face colour
+local function hiOf(inner)
+  if inner == C.panel then return C.head end
+  if inner == C.empty or inner == C.head then return C.dim end
+  return C.text
+end
+-- the bevel around a box filled with `inner` (call it after the fill, before the text)
 function round(x, y, w, h, inner, outer)
-  if not rounded() then return end
-  if w < 2 or h < 1 then return end
-  if h == 1 then
-    px(x, y, 145, outer, inner)              -- left: top + bottom pixel cut
-    px(x + w - 1, y, 157, inner, outer)      -- right: top + bottom pixel cut
-    return
-  end
-  px(x, y, 129, outer, inner)                -- top-left
-  px(x + w - 1, y, 130, outer, inner)        -- top-right
-  px(x, y + h - 1, 144, outer, inner)        -- bottom-left
-  px(x + w - 1, y + h - 1, 159, inner, outer) -- bottom-right
+  if CONFIG.style == "plain" or w < 3 or h < 3 or inner == C.bg then return end
+  local hi, sh = hiOf(inner), C.bg
+  text(x + 1, y, string.char(131):rep(w - 2), hi, inner)          -- top edge (light)
+  px(x, y, 151, hi, inner)                                        -- top-left corner
+  for yy = y + 1, y + h - 2 do px(x, yy, 149, hi, inner) end      -- left edge (light)
+  text(x, y + h - 1, string.char(143):rep(w - 1), inner, sh)      -- bottom edge (shadow)
+  for yy = y, y + h - 2 do px(x + w - 1, yy, 149, inner, sh) end  -- right edge (shadow)
+  px(x + w - 1, y + h - 1, 133, inner, sh)                        -- bottom-right corner
+end
+
+-- a SUNKEN box, like a Minecraft inventory slot: dark edge top / left, light
+-- edge bottom / right
+function inset(x, y, w, h, inner)
+  if CONFIG.style == "plain" or w < 3 or h < 2 then return end
+  local hi = (inner == C.empty or inner == C.panel or inner == C.head) and C.dim or C.text
+  text(x + 1, y, string.char(131):rep(w - 2), C.bg, inner)        -- top edge (dark)
+  px(x, y, 151, C.bg, inner)
+  for yy = y + 1, y + h - 2 do px(x, yy, 149, C.bg, inner) end    -- left edge (dark)
+  text(x, y + h - 1, string.char(143):rep(w - 1), inner, hi)      -- bottom edge (light)
+  for yy = y, y + h - 2 do px(x + w - 1, yy, 149, inner, hi) end  -- right edge (light)
+  px(x + w - 1, y + h - 1, 133, inner, hi)
 end
 
 -- a bar: solid ("flat") or thin, the lower two thirds of the row ("rounded")
@@ -56,10 +74,7 @@ end
 function card(x, y, w, h, label)
   fill(x, y, w, h, C.panel)
   round(x, y, w, h, C.panel, C.bg)
-  if label then
-    if rounded() then px(x + 1, y + 1, 149, C.accent, C.panel) end  -- slim accent marker
-    text(x + 2, y + 1, label, C.label, C.panel)
-  end
+  if label then text(x + 2, y + 1, label, C.label, C.panel) end      -- gold title
 end
 
 -- make an area touchable (handled in base_input.lua)
@@ -70,12 +85,12 @@ end
 -- one inventory slot
 function drawCell(x, y, w, h, item, emptyLabel)
   if not item then
-    fill(x, y, w, h, C.empty)
-    round(x, y, w, h, C.empty, C.panel)
+    fill(x, y, w, h, C.head)
+    inset(x, y, w, h, C.head)
     if emptyLabel then
       local l = trunc(emptyLabel, w)
       text(x + math.floor((w - #l) / 2), y + math.floor((h - 1) / 2),
-           l, C.dim, C.empty)
+           l, C.dim, C.head)
     end
     return
   end
@@ -83,7 +98,7 @@ function drawCell(x, y, w, h, item, emptyLabel)
   local selected = selName and item.name == selName
   local bg = selected and C.text or colorFor(item.name)
   fill(x, y, w, h, bg)
-  round(x, y, w, h, bg, C.panel)
+  inset(x, y, w, h, bg)
 
   local pad = w >= 10 and 1 or 0
   local tw = w - pad * 2
@@ -112,14 +127,34 @@ function drawCell(x, y, w, h, item, emptyLabel)
   end
 end
 
+-- every page: its name and what it is for (HOME menu, the strip under the tabs)
+PAGE_INFO = {
+  home      = { "HOME", "Every page in one place, and how the base is doing" },
+  inventory = { "INVENTORY", "What you carry: backpack, hotbar, armour" },
+  storage   = { "BACKPACKS", "Inside your backpacks, tanks and other storage items" },
+  curios    = { "CURIOS", "Rings, belts and charms you wear" },
+  me        = { "AE2 STORAGE", "Your ME network: find, take, store and craft items" },
+  players   = { "PLAYERS", "Who is online, where they are, their health" },
+  access    = { "CHAT & RIDES", "Who may use the $drone chat commands; ride requests" },
+  drone     = { "DRONES", "Drone rides: passenger, destination, air, charging" },
+  turtles   = { "TURTLES", "Every turtle: what it does, fuel, problems; its buttons" },
+  drive     = { "DRIVE", "Steer one turtle by hand and see the blocks around it" },
+  map       = { "MAP", "The world your turtles mapped; start surveys" },
+  mining    = { "MINING", "Mining teams in the mining dimension" },
+  events    = { "MESSAGES", "Every message, newest first" },
+  system    = { "STATUS", "Disk, floppies, base off-times, system log, actions" },
+  settings  = { "SETTINGS", "Change how everything works (tap - / +)" },
+}
+function pageName(p) return PAGE_INFO[p] and PAGE_INFO[p][1] or string.upper(tostring(p)) end
+
 -- the pages there are: { page, label, badge, badge colour } (only when its block is there)
 function pageTabs()
-  local tabs = { { "inventory", "INVENTORY" } }
+  local tabs = { { "home", "HOME" }, { "inventory", "INVENTORY" } }
   local np = det and #(state.players or {}) or 0
   tabs[#tabs + 1] = { "players", "PLAYERS", np > 0 and tostring(np) or nil }
-  if invCaps.storage then tabs[#tabs + 1] = { "storage", "STORAGE" } end
+  if invCaps.storage then tabs[#tabs + 1] = { "storage", "BACKPACKS" } end
   if invCaps.curios then tabs[#tabs + 1] = { "curios", "CURIOS" } end
-  if bridge then tabs[#tabs + 1] = { "me", bridgeKind } end
+  if bridge then tabs[#tabs + 1] = { "me", bridgeKind == "ME" and "AE2 STORAGE" or (bridgeKind .. " STORAGE") } end
   if #droneOrder > 0 then
     tabs[#tabs + 1] = { "drone", #droneOrder > 1 and "DRONES" or "DRONE",
                         #droneOrder > 1 and tostring(#droneOrder) or nil }
@@ -127,7 +162,7 @@ function pageTabs()
   if chatBox then
     local req = 0
     for _ in pairs(state.rideRequests or {}) do req = req + 1 end
-    tabs[#tabs + 1] = { "access", "CHAT", req > 0 and tostring(req) or nil, req > 0 and C.warn or nil }
+    tabs[#tabs + 1] = { "access", "CHAT & RIDES", req > 0 and tostring(req) or nil, req > 0 and C.warn or nil }
   end
   if state.tModem or next(state.turtles) then
     local on, all = 0, 0
@@ -153,7 +188,7 @@ function pageTabs()
   for i = 1, math.min(unread, #state.noteLog) do
     if state.noteLog[i].col == C.bad then anyErr = true break end
   end
-  tabs[#tabs + 1] = { "events", "EVENTS", unread > 0 and tostring(unread) or nil,
+  tabs[#tabs + 1] = { "events", "MESSAGES", unread > 0 and tostring(unread) or nil,
                       unread > 0 and (anyErr and C.bad or C.warn) or nil }
   -- SYSTEM: a dot when the base was off / crashed since you last looked
   local sysNew = (state.sysSeen or 0) < #SYSLOG and SYSLOG[1] and SYSLOG[1].kind ~= "INFO" and SYSLOG[1].kind ~= "DONE"
@@ -165,9 +200,10 @@ end
 -- the top row: pages GROUPED, so it fits on any monitor. A group with more
 -- than one page shows its pages as a second row of small tabs (row 5).
 local GROUPS = {
+  { id = "home",    label = "HOME",    pages = { "home" } },
   { id = "you",     label = "YOU",     pages = { "inventory", "storage", "curios" } },
+  { id = "me",      label = "AE2",     pages = { "me" } },
   { id = "people",  label = "PLAYERS", pages = { "players", "access" } },
-  { id = "me",      label = nil,       pages = { "me" } },
   { id = "drone",   label = nil,       pages = { "drone" } },
   { id = "turtles", label = "TURTLES", pages = { "turtles", "drive", "map", "mining" } },
   { id = "system",  label = "SYSTEM",  pages = { "system", "events", "settings" } },
@@ -197,14 +233,15 @@ function headerTabs()
   return out
 end
 
--- the title, the tabs, the owner and the clock
+-- the header: a diamond + the title, the group tabs (Minecraft buttons), the
+-- owner and the clock; under it the strip with the group's pages + what the
+-- open page is for
 function drawHeader()
   fill(1, 1, W, 3, C.panel)
-
+  round(1, 1, W, 3, C.panel, C.bg)
   local title = CONFIG.title:gsub(".", "%0 "):sub(1, -2)
-  text(3, 2, "\4", C.accent, C.panel)
-  text(5, 2, title, C.text, C.panel)
-  text(5, 3, "Advanced Peripherals", C.dim, C.panel)
+  text(3, 2, "\4", colors.cyan, C.panel)                     -- a diamond
+  text(5, 2, title, C.label, C.panel)
 
   -- right side: owner and clock
   local owner = state.owner or "no player"
@@ -215,9 +252,9 @@ function drawHeader()
   local t = textutils.formatTime(os.time(), true)
   text(W - #t - 2, 3, t, C.dim, C.panel)
 
-  -- the tabs: full header height; the active one is filled and joins the page
+  -- the group tabs: Minecraft buttons; the open one is blue
   local tabs = headerTabs()
-  local x0 = 5 + math.max(#title, 20) + 3
+  local x0 = 5 + math.max(#title, 12) + 3
   local avail = ex - 2 - x0
   local function widthOf(t, pad, badges)
     local w = #t[2] + 2 * pad
@@ -230,51 +267,52 @@ function drawHeader()
     for _, t in ipairs(tabs) do s = s + widthOf(t, pad, badges) + 1 end
     return s - 1
   end
-  -- too wide for the monitor: less padding, then no title, then no badges,
-  -- then short names
   while total() > avail and pad > 1 do pad = pad - 1 end
   if total() > avail then
     x0 = 2
     avail = ex - 2 - x0
-    fill(1, 1, ex - 1, 3, C.panel)                            -- hide the title
+    fill(2, 2, ex - 2, 1, C.panel)                            -- hide the title
   end
   if total() > avail then badges = false end
   if total() > avail then
     for _, t in ipairs(tabs) do t[2] = t[2]:sub(1, 4) end
   end
-
   local tx = x0
   for _, t in ipairs(tabs) do
     local active = groupOf(state.page) == t[1]
     local w = widthOf(t, pad, badges)
-    local bg = active and C.accent or C.head
-    local fg = active and C.ink or C.text
+    local bg = active and C.accent or C.empty
     fill(tx, 1, w, 3, bg)
     round(tx, 1, w, 3, bg, C.panel)
-    text(tx + pad, 2, t[2], fg, bg)
+    text(tx + pad, 2, t[2], C.text, bg)
     if badges and t[3] then
-      local bcol = t[4] or (active and C.ink or C.label)
-      local bbg = active and C.label or C.empty
-      if t[4] then bbg = t[4]; bcol = C.ink end
-      text(tx + pad + #t[2] + 1, 2, " " .. t[3] .. " ", bcol, bbg)
+      local bbg = t[4] or (active and C.label or C.head)
+      text(tx + pad + #t[2] + 1, 2, " " .. t[3] .. " ", (t[4] or active) and C.ink or C.text, bbg)
     end
-    -- the active tab runs into the page: a thin line in its colour under it
-    if active then text(tx, 4, string.char(131):rep(w), C.accent, C.bg) end
     addHit(tx, 1, w, 3, "group", t[1])
     tx = tx + w + 1
   end
-  -- the pages of the open group: small tabs on row 5
+
+  -- row 5: the open group's pages (when it has several) + what this page is for
+  local sx = 2
   for _, t in ipairs(tabs) do
-    if groupOf(state.page) == t[1] and #t.members > 1 then
-      local sx = 2
-      for _, m in ipairs(t.members) do
-        local on = state.page == m[1]
-        local label = " " .. m[2] .. ((m[3] and m[3] ~= "") and (" " .. m[3]) or "") .. " "
-        text(sx, 5, label, on and C.ink or C.text, on and C.label or (m[4] or C.empty))
-        addHit(sx, 5, #label, 1, "page", m[1])
-        sx = sx + #label + 1
+    if groupOf(state.page) == t[1] then
+      if #t.members > 1 then
+        for _, m in ipairs(t.members) do
+          local on = state.page == m[1]
+          local label = " " .. m[2] .. ((m[3] and m[3] ~= "") and (" " .. m[3]) or "") .. " "
+          text(sx, 5, label, on and C.ink or C.text, on and C.label or (m[4] or C.empty))
+          addHit(sx, 5, #label, 1, "page", m[1])
+          sx = sx + #label + 1
+        end
+        sx = sx + 1
       end
     end
+  end
+  local info = PAGE_INFO[state.page]
+  if info then
+    local s2 = (sx == 2 and (info[1] .. "  -  ") or "") .. info[2]
+    text(sx + 1, 5, trunc(s2, W - sx - 2), C.dim, C.bg)
   end
 end
 
@@ -426,7 +464,6 @@ end
 -- the bottom line: hint, toast or disk warning, LIVE status (+ the popup)
 function drawFooter()
   -- slim separator line above the footer (rounded style only)
-  if rounded() then text(1, H - 1, string.char(143):rep(W), C.bg, C.head) end
   fill(1, H, W, 1, C.panel)
   local hint = {
     players = "Touch a player to see raw data",
@@ -445,7 +482,8 @@ function drawFooter()
   if state.diskLow then
     text(3, H, trunc("  " .. state.diskLow .. "  ", W - 24), C.ink, C.bad)
   else
-    text(3, H, hint[state.page] or "Touch an item to highlight it", C.dim, C.panel)
+    text(3, H, hint[state.page] or (PAGE_INFO[state.page] and PAGE_INFO[state.page][2]) or "Touch an item to highlight it",
+         C.dim, C.panel)
   end
   local msg, col = "\7 LIVE", C.good
   if state.status ~= "ok" then msg, col = "\7 OFFLINE", C.bad
@@ -543,6 +581,8 @@ function draw()
   if W < 100 or G.bodyH < 36 then
     drawMessage("MONITOR TOO SMALL",
       { "Use a bigger monitor, or set textScale to 0.5 in CONFIG." }, C.warn)
+  elseif state.page == "home" then
+    drawHomePage(G)
   elseif state.page == "players" then
     drawPlayersPage(G)
   elseif state.page == "me" then
