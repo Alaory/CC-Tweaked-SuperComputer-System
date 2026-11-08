@@ -5,6 +5,7 @@
 -- loaded (chunkyTurtleRadius = 1), never digs a turtle / near the station,
 -- unload trips deliver items, the loader follows.
 local HOURS = tonumber(arg[1]) or 3
+if (arg[2] or ""):find("crashunload") then HOURS = math.max(HOURS, 3) end   -- (the lost miner is taken out after 60 min)
 local SCEN = arg[2] or ""
 local ROOT = (arg[0]:match("^(.*)/tools/navsim/") or ".") .. "/"
 
@@ -367,6 +368,7 @@ local function peripheralApi(u)
           local p = u.points[n]
           if not p then return nil, "no point" end
           if not loaded(p.x, p.z) then return nil, "target not loaded" end
+          if n == "station" and SCEN:find("warpfail") and T < 2400 then return nil, "target not loaded" end
           if occupied(p.x, p.y, p.z) then return nil, "occupied" end
           act(u)
           u.fuel = u.fuel - math.floor(math.sqrt((p.x - u.pos.x) ^ 2 + (p.z - u.pos.z) ^ 2) / 4)
@@ -447,6 +449,7 @@ end
 ---------------------------------------------------------------- environments
 BASE_IN = {}
 local function envFor(u)
+  u.bootT = T
   local env = {}
   local files = u.files
   env.fs = {
@@ -465,7 +468,7 @@ local function envFor(u)
   }
   env.os = {
     epoch = function() return 1700000000000 + math.floor(T * 1000) end,
-    clock = function() return T end,
+    clock = function() return T - (u.bootT or 0) end,   -- starts at 0 on every (re)start, like the game
     time = function() return 12 end,
     getComputerLabel = function() return (u.role == "miner" and "Miner " or "Loader ") .. u.id end,
     setComputerLabel = function() end,
@@ -718,6 +721,48 @@ while T < maxT do
       end
     end
   end
+  if SCEN:find("crashunload") and CRASHED and not DELIV_20 and T > CRASH_T + 1200 then
+    DELIV_20 = 0
+    for _, mm in ipairs(MS) do
+      local st = ENVS[mm.id] and ENVS[mm.id].S
+      if mm.id ~= CRASHED and st and st.stats then DELIV_20 = DELIV_20 + (st.stats.dumps or 0) - (DUMPS_AT_CRASH[mm.id] or 0) end
+    end
+  end
+  if SCEN:find("crashunload") and not CRASHED and T > 1500 then
+    -- the moment the loader has the station marked busy for a miner
+    local LS = ENVS.loader and ENVS.loader.S
+    if LS and LS.stationUse then CRASHED = LS.stationUse.id end
+    if CRASHED then
+      CRASH_T, DELIV_AT_CRASH = T, 0
+      DUMPS_AT_CRASH = {}
+      for _, mm in ipairs(MS) do
+        local st = ENVS[mm.id] and ENVS[mm.id].S
+        DUMPS_AT_CRASH[mm.id] = st and st.stats and st.stats.dumps or 0
+      end
+      for _, v in pairs(delivered) do DELIV_AT_CRASH = DELIV_AT_CRASH + v end
+      for _, c in ipairs(cos) do
+        c.u.open = {}
+        local env = envFor(c.u)
+        ENVS[c.u.id] = env                                   -- (the checks read the restarted program)
+        if c.u.role == "loader" then ENVS.loader = env end
+        c.co = coroutine.create(assert(load(SRC, "miner.lua", "t", env)))
+        c.wake = T + 5
+        -- the miner that had the station is gone for good (deleted by the crash)
+        if c.u.id == CRASHED then c.wake = 1e12 c.u.gone = true end
+      end
+      io.write("** SERVER CRASH at " .. math.floor(T) .. " s while miner " .. CRASHED .. " was at the station\n")
+    end
+  end
+  if SCEN:find("warpfail") and not ORES_WF and T > 2400 then
+    ORES_WF = 0
+    for _, id in ipairs(MINERS) do local u = MINE.units[id] ORES_WF = ORES_WF + ((u and u.stats and u.stats.ores) or 0) end
+  end
+  if SCEN:find("silentback") and not SILENCED and T > 1500 then
+    SILENCED = T
+    local mm = MS[#MS]
+    for _, c in ipairs(cos) do if c.u == mm then c.wake = T + 1500 end end     -- 25 min frozen, then on
+    io.write("** miner " .. mm.id .. " silent for 25 min\n")
+  end
   if SCEN == "full" and not FILLED and T > 120 then
     FILLED = true
     for i = 5, 13 do if not MS[1].inv[i] then MS[1].inv[i] = { name = "minecraft:raw_copper", count = 64 } end end
@@ -814,6 +859,30 @@ if ORES_AT_NF then
   if now - ORES_AT_NF < 50 then fail("the team did not mine after NEW FIELD + START") end
 end
 if delivered["jamd:mining_dim_core"] or delivered["somemod:eternal_flame"] then fail("the OWNER'S item was unloaded") end
+if SCEN:find("crashunload") then
+  local now = 0
+  for _, v in pairs(delivered) do now = now + v end
+  io.write("** delivered after the crash: " .. (now - (DELIV_AT_CRASH or now)) .. " (unload trips in the first 20 min: " ..
+           tostring(DELIV_20) .. ")\n")
+  if CRASHED and (DELIV_20 or 0) == 0 then fail("nobody could unload for 20 min after the crash - the station was stuck 'busy'") end
+  if not CRASHED then fail("no crash happened (nobody at the station?)") end
+  if CRASHED and now - DELIV_AT_CRASH < 50 then fail("nothing unloaded after the crash - station stuck 'busy'?") end
+  local LS = ENVS.loader.S
+  io.write("** loader after the crash: running " .. tostring(LS.running) .. ", team " .. table.concat(LS.team or {}, ",") .. "\n")
+  if not LS.running then fail("the team is still paused after the crash (lost miner not taken out): " .. tostring(LS.err)) end
+  for _, tid in ipairs(LS.team or {}) do if tid == CRASHED then fail("the lost miner is still in the team") end end
+end
+if SCEN:find("warpfail") then
+  local now = 0
+  for _, v in pairs(delivered) do now = now + v end
+  if now < 50 then fail("never unloaded after the station came back") end
+  io.write("** ores while the station could not be reached (40 min): " .. tostring(ORES_WF) .. "\n")
+  if (ORES_WF or 0) < 1000 then fail("the miners did not keep working while the station was unreachable (" .. tostring(ORES_WF) .. " ores)") end
+end
+if SCEN:find("silentback") then
+  local LS = ENVS.loader.S
+  if not LS.running then fail("the team stayed paused after the silent miner came back: " .. tostring(LS.err)) end
+end
 if DROPPED then
   local P = ENVS.loader.S.plan
   io.write("** after the drop: loader at chunk " .. tostring(P and P.ci) .. " (was " .. CI_DROP .. "), team " ..
@@ -829,7 +898,7 @@ if DROPPED then
 end
 for _, id in ipairs(MINERS) do
   local u = MINE.units[id]
-  if id == DROPPED then
+  if id == DROPPED or id == CRASHED then
     -- gone
   elseif u then
     local lab = MINE.status(u)

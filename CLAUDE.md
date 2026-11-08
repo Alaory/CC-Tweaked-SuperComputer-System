@@ -232,7 +232,7 @@ PneumaticCraft drone rides, turtle mapping/surveys, and an AE2 ME network view.
   turn), opposite 0.8 (HD[k] = last sideways direction); h weighted 1.001
   (tie-break). tools/navsim/world.lua: turns cost time and are counted; maze /
   maze2 (TX=44) and "astar" (planner alone on 6 random mazes) scenarios.
-- Mining teams (miner.lua m15, base_mining.lua MINE, base_ui_mining.lua; TURTLES >
+- Mining teams (miner.lua m16, base_mining.lua MINE, base_ui_mining.lua; TURTLES >
   MINING): per mining dimension ONE LOADER + up to CONFIG.maxMiners (5) MINERS.
   Same signed protocol with m.mine = true -> TT.receive -> MINE.receive (never
   in state.turtles). Team proto "basemine": loaderhere / minerhere (join, by
@@ -270,7 +270,19 @@ PneumaticCraft drone rides, turtle mapping/surveys, and an AE2 ME network view.
   (LEADER_SEEN) when another one says loaderhere. MINE.drop(id) (console
   `mine drop` and a DROP button on the MINING tab for a miner gone 20+ min). Unloading: one miner at the station at a time
   (S.stationUse, 6 min max); each miner needs its own `miner station` (the
-  point lives in its core). Ores (isOreBlock): tags (:ores, _ores, /ores, not
+  point lives in its core). SELF-REPAIR (m16): saved times are REAL time (now(), epoch s) - os.clock restarts
+  at 0 after a server crash, so S.stationUse / S.seen kept the station "busy" / a miner
+  "never silent" for hours; the loader clears stationUse on start and when its holder's
+  hello says dumping=false. A failed teleport TO the station = keep working, retry in
+  5/10/20... min (S.dumpRetry); FROM the station = wait there and retry (~30 min);
+  restart at the station -> the main loop finishes the trip first. Any teamStep error
+  = retry by itself (30 s ... 10 min, GPS + facing re-check, FAILS up to 8) before
+  STOPPED. Loader: a silent miner pauses the team (S.pausedFor) -> it goes on by itself
+  when that miner talks again; silent 60 min (CONFIG.autoDrop) with others left -> it is
+  dropped and the team goes on. minesim clock restarts per boot; scenarios
+  team3crashunload (crash while the station is marked busy, holder lost), team2warpfail
+  (station unreachable 40 min - keep mining), team3silentback (silent 25 min, resumes).
+  Ores (isOreBlock): tags (:ores, _ores, /ores, not
   ores_in_ground), names _ore / ore_ / _ore_ (not _block), CONFIG.ores +
   mining.ores (extraOres), never mining.skipOres. Turtles start on the
   SURFACE (loader; miners next to it, same chunk). Set up NEXT TO the unload station (m14): miners send

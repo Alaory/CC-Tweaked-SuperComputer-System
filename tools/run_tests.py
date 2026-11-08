@@ -134,9 +134,9 @@ for mode in ["goto", "deaf", "crash", "badcmd"]:
 MINING = ["plain", "team2", "team3", "team5", "caves", "reboot", "team3reboot", "team5caves", "full", "direct", "core",
           "otherfuel", "loaderdrift", "wrongface", "gpsfix", "r1", "nofuel", "ownfull", "geoname", "corein", "modemon",
           "newfield", "team2newfield", "team3crosspause", "team3drop", "team5drop", "team3dropalive",
-          "nearstation", "team3nearstation"]
+          "nearstation", "team3nearstation", "team3crashunload", "team2warpfail", "team3silentback"]
 if QUICK:
-    MINING = ["plain", "team3", "reboot", "newfield", "team3crosspause", "team3drop", "team3dropalive", "wrongface", "team3nearstation"]
+    MINING = ["plain", "team3", "reboot", "newfield", "team3crosspause", "team3drop", "team3dropalive", "wrongface", "team3nearstation", "team3crashunload"]
 HOURS = "1" if QUICK else "2"
 for scen in MINING:
     @check("mining", scen)

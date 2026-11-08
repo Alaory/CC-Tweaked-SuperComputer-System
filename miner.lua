@@ -78,7 +78,7 @@ CONFIG = {
 }
 
 STATE_FILE = "miner_state"
-MYVER = "m15"            -- shown on the screen and the base (MINING tab)
+MYVER = "m16"            -- shown on the screen and the base (MINING tab)
 DX = { [0] = 0, 1, 0, -1 }
 DZ = { [0] = -1, 0, 1, 0 }
 FNAME = { [0] = "north", "east", "south", "west" }
@@ -269,7 +269,7 @@ function sendBase(t, extra)
   local okS, errS = pcall(rednet.send, id, m, CONFIG.protocol)
   -- a miner also tells its loader it is alive (the loader never leaves a
   -- chunk while a working miner is in it)
-  if S.role == "miner" and S.leader then pcall(sendTeam, S.leader, "hello") end
+  if S.role == "miner" and S.leader then pcall(sendTeam, S.leader, "hello", { dumping = S.dumping and true or false }) end
   showLink(okS and ("reported to base #" .. id .. " at " .. textutils.formatTime(os.time(), true) ..
                     " (key " .. tostring(S.key) .. ")")
                or ("SEND FAILED: " .. tostring(errS)))
@@ -308,8 +308,21 @@ function handle(id, m, proto)
     if m.dim ~= S.dim then return end
     if S.role == "loader" then
       S.seen = S.seen or {}
-      S.seen[id] = os.clock()
+      S.seen[id] = now()                               -- real time: survives a server crash
       if S.lost then S.lost[id] = nil end
+      -- the team was paused because this miner went silent: it is back - go on by itself
+      if S.pausedFor == id and S.plan then
+        S.pausedFor, S.err = nil, nil
+        S.running, S.plan.running = true, true
+        note("Miner " .. id .. " is back - the team goes on by itself")
+        save()
+        sendPlan()
+      end
+      -- the miner that had the station says it is not unloading any more (it restarted ...)
+      if S.stationUse and S.stationUse.id == id and m.t == "hello" and m.dumping == false
+         and now() - (S.stationUse.t or 0) > 30 then
+        S.stationUse = nil
+      end
       if type(m.st) == "table" and tonumber(m.st.x) and tonumber(m.st.z) then
         S.stations = S.stations or {}
         S.stations[id] = { x = tonumber(m.st.x), y = tonumber(m.st.y) or 0, z = tonumber(m.st.z) }
@@ -349,9 +362,10 @@ function handle(id, m, proto)
         STEPPED[id] = true
       elseif m.t == "unloadreq" then
         -- one miner at the station at a time (6 min max)
+        -- (real time: after a server crash the old os.clock time made it "busy" for hours)
         local st = S.stationUse
-        if not st or st.id == id or os.clock() - st.t > 360 then
-          S.stationUse = { id = id, t = os.clock() }
+        if not st or st.id == id or type(st.t) ~= "number" or now() - st.t > 360 or now() < st.t then
+          S.stationUse = { id = id, t = now() }
           sendTeam(id, "unloadok")
         else
           sendTeam(id, "unloadwait", { who = st.id })
@@ -408,7 +422,7 @@ end
 function doCmd(cmd, args)
   -- START / PAUSE / NEW FIELD go to the LOADER (the team leader); it tells the miners
   if cmd == "start" then
-    S.err = nil
+    S.err, S.pausedFor, FAILS = nil, nil, 0
     if S.role == "loader" then
       local ok, err = true, nil
       if not S.plan then ok, err = newTeamPlan() end
@@ -1056,7 +1070,19 @@ function doDump()
   S.dumping = "warping"
   save()
   ok, err = warp("station", S.station)
-  if not ok then S.dumping = nil save() return false, err end
+  if not ok then
+    -- (station chunk not loaded after a crash, low fuel ...): NOT a stop - keep
+    -- working and try again later (5, 10, 20 ... min)
+    S.dumping = nil
+    S.dumpFails = (S.dumpFails or 0) + 1
+    local waitS = math.min(3600, 300 * 2 ^ (S.dumpFails - 1))
+    S.dumpRetry = now() + waitS
+    save()
+    note("Cannot teleport to the unload station (" .. tostring(err) .. ") - working on, trying again in " ..
+         math.floor(waitS / 60) .. " min")
+    return true, "later"
+  end
+  S.dumpFails, S.dumpRetry = nil, nil
   S.dumping = "at"
   save()
   return finishDump()
@@ -1067,6 +1093,22 @@ function finishDump()
   burnCoal()
   setTask("teleporting back to work")
   local okW, errW = warp("work", S.workPt)
+  -- could not: wait at the station and try again (the work chunk may not be
+  -- loaded yet after a crash; fuel from the station's coal ...) - about 30 min
+  local tries = 1
+  while not okW and tries < 12 do
+    if not S.running then return false, "paused" end
+    local waitS = math.min(180, 20 * tries)
+    setTask("at the station: cannot teleport back (" .. tostring(errW) .. ") - again in " .. waitS .. " s")
+    note("Cannot teleport back to work (" .. tostring(errW) .. ") - trying again in " .. waitS .. " s")
+    equipTool("modem")
+    sendBase("status")
+    local t0 = os.clock()
+    while os.clock() - t0 < waitS do listen(2) end
+    burnCoal()
+    tries = tries + 1
+    okW, errW = warp("work", S.workPt)
+  end
   if not okW then return false, "cannot teleport back: " .. tostring(errW) end
   S.dumping = nil
   S.lastDump = now()
@@ -1229,7 +1271,7 @@ function checkpoint()
     return false, e
   end
   if not S.running then return false, "paused" end
-  if DUMP_NOW or (S.lastDump and now() - S.lastDump > CONFIG.dumpEvery) then
+  if (DUMP_NOW or (S.lastDump and now() - S.lastDump > CONFIG.dumpEvery)) and now() >= (S.dumpRetry or 0) then
     -- nothing to unload: no trip, just start the timer again
     local any = next(S.carry) ~= nil
     for i = 1, 16 do
@@ -1902,7 +1944,19 @@ function leaderStep()
       if P.ready[id] ~= P.ci and not (S.lost and S.lost[id]) then missing = missing + 1 end
       -- a miner silent for 10 min is not waited for any more
       -- a miner silent for 20 min: never left behind - the team stops and says so
-      if P.ready[id] ~= P.ci and S.seen and S.seen[id] and os.clock() - S.seen[id] > 1200 then
+      local silent = S.seen and S.seen[id] and now() - S.seen[id]
+      -- silent 60 min (deleted by a crash?) and others are left: out of the team, the others go on
+      if silent and silent > (CONFIG.autoDrop or 3600) and P.ready[id] ~= P.ci and #S.team > 1 then
+        note("Miner " .. id .. " has been silent for " .. math.floor(silent / 60) ..
+             " min - taking it out of the team so the others go on (it can join a NEW FIELD again)")
+        doCmd("drop", { id })
+        S.running, P.running, S.pausedFor = true, true, nil
+        save()
+        sendPlan()
+        return
+      end
+      if P.ready[id] ~= P.ci and silent and silent > 1200 and S.running then
+        S.pausedFor = id                               -- goes on by itself when it talks again
         S.running, P.running = false, false
         S.err = "miner " .. id .. " is silent for 20 min - team paused (is it stuck? its chunk unloaded?)"
         note(S.err)
@@ -2016,7 +2070,7 @@ function minerRun()
       S.pos.x, S.pos.y, S.pos.z = S.station.x, S.station.y, S.station.z
       S.dumping = "at"
       local ok, err = finishDump()
-      if not ok then S.running = false S.err = err note("Unload trip: " .. tostring(err)) end
+      if not ok then note("Unload trip: " .. tostring(err) .. " - it keeps trying by itself") end
     else
       S.dumping = nil
     end
@@ -2067,7 +2121,9 @@ function minerRun()
         save()
       end
       local okR, ok, err = true, false, "paused"
-      if S.running or crossingDue() then okR, ok, err = pcall(teamStep) end
+      if S.dumping == "at" and S.running then
+        okR, ok, err = pcall(finishDump)                  -- still at the station: back to work first
+      elseif S.running or crossingDue() then okR, ok, err = pcall(teamStep) end
       if not okR then
         if tostring(ok):find("Terminated", 1, true) then error("Terminated", 0) end
         ok, err = false, "error: " .. tostring(ok)
@@ -2075,21 +2131,47 @@ function minerRun()
       if not ok and tostring(err):find("next try", 1, true) and (RETRIES or 0) < 5 then
         RETRIES = (RETRIES or 0) + 1                   -- position re-checked: just go on
         note(tostring(err))
+      elseif not ok and err ~= "paused" and (FAILS or 0) < 8 and S.running then
+        -- SELF-REPAIR: no stop - wait (30 s, 1, 2, 4 ... 10 min), check where I
+        -- really am, try again. Only after 8 tries in a row (~40 min) it stops.
+        FAILS = (FAILS or 0) + 1
+        local waitS = math.min(600, 30 * 2 ^ (FAILS - 1))
+        note("Problem: " .. tostring(err) .. " - trying again by itself in " .. waitS .. " s (" .. FAILS .. "/8)")
+        equipTool("modem")
+        sendBase("status")
+        local t0 = os.clock()
+        while os.clock() - t0 < waitS and S.running do
+          setTask("problem: " .. tostring(err) .. " - again in " .. math.floor(waitS - (os.clock() - t0)) .. " s")
+          if os.clock() - LAST_STATUS > 15 then sendBase("status") end
+          listen(2)
+        end
+        gpsCheck()
+        local f = checkFacing()
+        if f then S.pos.f = f end
+        gpsCheck()
+        save()
       elseif not ok then
         if err ~= "paused" then
-          S.running, S.err = false, tostring(err)
-          note("STOPPED: " .. tostring(err))
+          S.running, S.err = false, tostring(err) .. ((FAILS or 0) >= 8 and " (gave up after 8 tries)" or "")
+          note("STOPPED: " .. S.err)
+          FAILS = 0
         end
         save()
         equipTool("modem")
         sendBase("status")
       else
-        RETRIES = 0
+        RETRIES, FAILS = 0, 0
       end
     end
   end
 end
 function loaderRun()
+  -- after a restart (server crash): the station is free again - a miner that is
+  -- really there asks again; an old entry made everybody wait
+  if S.stationUse then S.stationUse = nil save() end
+  if type(S.seen) == "table" then
+    for id, t in pairs(S.seen) do if type(t) ~= "number" or t < 1e9 then S.seen[id] = now() end end   -- (old os.clock values)
+  end
   local side = modemSide()
   if side then pcall(rednet.open, side) else note("No modem on the loader!") end
   gpsCheck()
@@ -2108,6 +2190,21 @@ function loaderRun()
         if tostring(err):find("Terminated", 1, true) then error("Terminated", 0) end
         note("Loader error: " .. tostring(err))
         sleep(2)
+      end
+    elseif S.plan and S.pausedFor then
+      -- paused because a miner went silent: it comes back -> go on (see the
+      -- messages); silent for an hour with others left -> it is taken out, go on
+      local id = S.pausedFor
+      local silent = S.seen and S.seen[id] and now() - S.seen[id] or 0
+      setTask("paused: miner " .. id .. " silent " .. math.floor(silent / 60) .. " min - goes on when it is back")
+      if silent > (CONFIG.autoDrop or 3600) and #(S.team or {}) > 1 then
+        note("Miner " .. id .. " has been silent for " .. math.floor(silent / 60) ..
+             " min - taking it out of the team so the others go on (it can join a NEW FIELD again)")
+        doCmd("drop", { id })
+        S.pausedFor, S.err = nil, nil
+        S.running, S.plan.running = true, true
+        save()
+        sendPlan()
       end
     else
       setTask(#(S.team or {}) == 0 and "waiting for miners (same dimension)"
