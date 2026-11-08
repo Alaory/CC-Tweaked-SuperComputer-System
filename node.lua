@@ -2866,7 +2866,9 @@ function immediate(cmd, a)
     -- DRIVE page: one quick step by hand (never waits long), then what I see
     if job then return false, "busy: " .. tostring(task) .. " - press STOP first" end
     local ok, msg = driveStep(tostring(a[1] or ""), a[2] == "force")
-    driveLook(tostring(a[1]) == "look")
+    -- after every step it looks again: SCAN AROUND = radius 3, a step = radius 1
+    -- (with a Geo Scanner: left / right / behind too)
+    driveLook(tostring(a[1]) == "look" and 3 or 1)
     return ok, msg
   end
   return nil
@@ -2932,6 +2934,14 @@ function driveStep(act, force)
   if act == "l" then left() return true, "turned left" end
   if act == "r" then right() return true, "turned right" end
   if act == "around" then right() right() return true, "turned around" end
+  -- go north / east / south / west (a tapped block on the base's grid): face it, then dig if needed + go
+  local gd = ({ gon = 0, goe = 1, gos = 2, gow = 3 })[act]
+  if gd then
+    if not (S.pos and S.pos.f) then return false, "facing unknown - GPS LOCATE first" end
+    local turns = (gd - S.pos.f) % 4
+    if turns == 1 then right() elseif turns == 2 then right() right() elseif turns == 3 then left() end
+    return driveStep("minef", force)
+  end
   local dd = act:match("^dig([fud])$")
   if dd then return driveDig(dd, force) end
   local md = act:match("^mine([fud])$")
@@ -2951,13 +2961,16 @@ function driveStep(act, force)
 end
 -- what I see: front / up / down (always), and with look=true a Geo Scanner scan
 -- of radius 3 around me (compact "dx,dy,dz,name;..." in world directions)
-function driveLook(scan)
+function driveLook(r)
+  if r == true then r = 3 end                        -- (older callers)
   local function n(f) local ok, b = f() return ok and type(b) == "table" and tostring(b.name) or "air" end
   local v = { front = n(turtle.inspect), up = n(turtle.inspectUp), down = n(turtle.inspectDown) }
+  local scan = r and r >= 1
   if scan and findItem(CONFIG.geoItem) then
+    v.scanR = r
     local data = withScanner(function(sc)
-      local res = sc.scan(3)
-      if not res then sleep(2.5) res = sc.scan(3) end
+      local res = sc.scan(r)
+      if not res and r >= 3 then sleep(2.5) res = sc.scan(r) end   -- (a step does not wait for the cooldown)
       return res
     end)
     if type(data) == "table" then
@@ -2968,10 +2981,10 @@ function driveLook(scan)
         end
       end
       v.scan = table.concat(o, ";")
-    else
+    elseif r >= 3 then
       v.scanErr = "the scan did not work"
     end
-  elseif scan then
+  elseif scan and r >= 3 then
     v.scanErr = "no Geo Scanner - only front / up / down"
   end
   task = "idle"

@@ -421,6 +421,7 @@ end
 function startDrive(id)
   P.drive, P.driveArmed = id, nil
   P.scroll[P.tab] = 0
+  act("drive", { id, "look" })                               -- what is around it, at once
   refresh()
 end
 function driveStep(step, force)

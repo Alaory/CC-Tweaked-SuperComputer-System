@@ -1477,10 +1477,12 @@ function TT.lookIn(t, m)
   local v = t.view or {}
   if type(v.cells) ~= "table" then v.cells = {} end
   if p and p.x and type(m.scan) == "string" then
-    v.cells, v.scanAt = {}, os.clock()
-    -- the scan lists blocks only: everything else within its radius (3) is AIR
+    v.scanAt = os.clock()
+    -- the scan lists blocks only: everything else within its radius is AIR
+    -- (a step scans radius 1, SCAN AROUND radius 3 - what was seen further away stays)
     local f = math.floor
-    for ax = -3, 3 do for ay = -3, 3 do for az = -3, 3 do
+    local sr = math.max(1, math.min(8, math.floor(tonumber(m.scanR) or 3)))
+    for ax = -sr, sr do for ay = -sr, sr do for az = -sr, sr do
       v.cells[f(p.x + ax) .. "," .. f(p.y + ay) .. "," .. f(p.z + az)] = false
     end end end
     for dx, dy, dz, name in m.scan:gmatch("(-?%d+),(-?%d+),(-?%d+),([^;]+)") do

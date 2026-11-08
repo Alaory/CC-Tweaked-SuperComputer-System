@@ -157,18 +157,19 @@ PneumaticCraft drone rides, turtle mapping/surveys, and an AE2 ME network view.
   with a pickaxe, two taps; pocket BOTS too): job "digup" [surface Y = MAP.get top + 1]
   -> digUp: straight up, tryDig (natural only, not near home), stops at that Y or after 6
   free blocks; says why it stops. tools/tests/node_digup.lua.
-- DRIVE page (base_ui_drive.lua, TURTLES group "drive"): pick a turtle (dsel). After 4 picture
-  attempts the owner found confusing (north-up grid, turtle-relative grids, 3D ray-caster,
-  direction tiles) - and a web search (remote-control programs drive with the keyboard
-  like Minecraft, e.g. a pocket "wireless turtle controller") - it is a plain TABLE:
-  driveRows(t) = six rows DIRECTION / WHAT IS THERE (driveWord: "IRON ORE", "air
-  (empty)", "not seen yet (scan)") / what the key or tap does: AHEAD W minef, ABOVE SPACE
-  mineu, BELOW SHIFT mined (dig if needed + go), LEFT A l, RIGHT D r, BEHIND S b; plus X
-  scan, C around, H home, T stop, F/R/V dig only. The SAME rows + keys on: the monitor
-  (tap the button), the base computer's KEYBOARD (console `drive <id>`, terminalWorker
-  -> driveTerminal, Q quits), the POCKET (BOTS > turtle > DRIVE IT: req "drive" {id} ->
-  POCKET.driveView, act "drive" {id, step, force}; pocket.lua pageDrive/driveKey,
-  refresh every 1 s while driving). Data: t.view.cells (WORLD positions
+- DRIVE page (base_ui_drive.lua, TURTLES group "drive"): pick a turtle (dsel; picking it = "look" at
+  once). The owner tried 5 layouts and chose the FIRST (three grids) improved: ABOVE IT /
+  ITS LEVEL / BELOW IT, seen from above NORTH UP (like the MAP) with N/E/S/W labels,
+  radius 2 (5x5), big cells with a gap row; the turtle = green arrows its way (>>>);
+  interesting blocks get a 3-letter code + a "WHAT THE LETTERS MEAN" legend, plain stone /
+  dirt / deepslate are just grey (PLAINS); black = air, ? = not seen. TAP: the 4 blocks
+  next to it on ITS LEVEL ("GO" -> gon/goe/gos/gow: node faces that way, then minef), the
+  middle of ABOVE ("UP" mineu) / BELOW ("DOWN" mined). Buttons: TURN LEFT, FORWARD, TURN
+  RIGHT, UP, DOWN, SCAN AROUND, STOP, GO HOME, BACK, MINE UP TO SURFACE, DIG ANYWAY.
+  Every step the turtle looks again (front/up/down + Geo Scanner radius 1 = scanR; SCAN
+  AROUND radius 3; TT.lookIn only replaces the scanned cube). driveRows / driveWord (six
+  rows with keys) stay for the keyboard: console `drive <id>` and the pocket DRIVE IT
+  (W A S D, SPACE, SHIFT). Data: t.view.cells (WORLD positions
   "x,y,z" -> name / false = air; TT.lookIn from the turtle's "look" message: front/up/
   down every step, LOOK = Geo Scanner r 3 as "dx,dy,dz,name;..."). Buttons -> TT.drive
   (quiet "drive" {act, force}; ends a STOP hold): f b u d l r, digf/u/d, minef/u/d, look;

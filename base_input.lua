@@ -307,6 +307,8 @@ function handleTouch(tx, ty)
         TT.drive(h[6][1], h[6][2])
       elseif h[5] == "dsel" then
         state.tSel = h[6]
+        local st = state.turtles[h[6]]
+        if st and TT.online(st) then TT.drive(h[6], "look") end        -- what is around it, at once
       elseif h[5] == "tcmd" then
         TT.send(h[6][1], h[6][2], h[6][3])
       elseif h[5] == "minecmd" then

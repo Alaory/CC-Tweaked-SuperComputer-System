@@ -99,55 +99,125 @@ function drawDrivePage(G)
     msg, mcol = "Tap a button: each tap is one step. A busy turtle needs STOP first.", C.dim
   end
   text(x + 2, y0 + 3, trunc(msg, w - 4), mcol, C.panel)
-  -- what is around it: one row per direction - what is there, and the key /
-  -- tap that goes there (the same list on the pocket and the computer's keyboard)
+  -- three grids, seen from above (north up, like the MAP): the layer ABOVE it,
+  -- its own LEVEL, the layer BELOW it. Tap a block next to the turtle to go there.
   local v = t.view or {}
-  local rows = driveRows(t)
-  local ry = y0 + 6
-  local dw, ww = 12, math.max(20, math.min(34, math.floor((w - 20) / 2)))
-  local aw = w - 4 - dw - ww - 2
-  text(x + 2, ry - 1, "DIRECTION", C.label, C.panel)
-  text(x + 2 + dw + 1, ry - 1, "WHAT IS THERE", C.label, C.panel)
-  text(x + 2 + dw + ww + 2, ry - 1, "TAP TO ...                       (keyboard key)", C.label, C.panel)
-  local rh = math.max(3, math.min(5, math.floor((bottom - y0 - 26) / 6)))
-  for _, r in ipairs(rows) do
-    fill(x + 2, ry, dw, rh, C.head)
-    text(x + 3, ry + math.floor(rh / 2), r.dir, C.text, C.head)
-    local bg, fg = C.panel, C.dim
-    if r.name == false then bg, fg = C.bg, C.text
-    elseif r.name ~= nil then bg, fg = blockColour(r.name) end
-    fill(x + 2 + dw + 1, ry, ww, rh, bg)
-    text(x + 3 + dw + 1, ry + math.floor(rh / 2), trunc(driveWord(r.name), ww - 2), fg, bg)
-    drawButton(x + 2 + dw + ww + 2, ry, aw, rh, r.does .. "   (" .. r.key .. ")", r.col or C.accent, C.ink,
-               "tdrive", { t.id, r.act })
-    ry = ry + rh + 1
+  local R = 2
+  local CW = math.max(5, math.min(10, math.floor((w - 16) / (3 * (2 * R + 1)))))
+  local CH = 3
+  local gw = (2 * R + 1) * CW
+  local gap = math.max(4, math.floor((w - 4 - 3 * gw) / 3))
+  local gy = y0 + 6
+  local codes, legend = {}, {}
+  local plainSeen = false
+  local PLAINS = { stone = true, deepslate = true, cobbled_deepslate = true, tuff = true, andesite = true, diorite = true,
+                   granite = true, dirt = true, netherrack = true, calcite = true, smooth_basalt = true }
+  local function code(name)
+    local short = tostring(name):match(":(.+)$") or tostring(name)
+    if PLAINS[short] then plainSeen = true return "" end
+    local c = codes[name]
+    if not c then
+      local n = nice(name)
+      c = n:gsub("[^%a]", ""):sub(1, 3)
+      codes[name] = c
+      legend[#legend + 1] = { c = c, name = name, word = n }
+    end
+    return c
   end
-  -- the rest
-  local by = ry + 1
+  local cells = type(v.cells) == "table" and v.cells or {}
+  local known = p and p.x
+  local face = ({ north = 0, east = 1, south = 2, west = 3 })[tostring(p and p.f)]
+  local ARROW = { [0] = "^", ">", "v", "<" }
+  local GO = { [0] = "gon", "goe", "gos", "gow" }
+  local function grid(gx0, dy, title, centreAct, centreHint)
+    text(gx0, gy, title, C.label, C.panel)
+    text(gx0 + math.floor(gw / 2), gy + 1, "N", C.dim, C.panel)
+    text(gx0 + math.floor(gw / 2), gy + 2 + (2 * R + 1) * CH, "S", C.dim, C.panel)
+    text(gx0 - 2, gy + 2 + R * CH, "W", C.dim, C.panel)
+    text(gx0 + gw + 1, gy + 2 + R * CH, "E", C.dim, C.panel)
+    for dz = -R, R do
+      for dx = -R, R do
+        local cx, cy = gx0 + (dx + R) * CW, gy + 2 + (dz + R) * CH
+        local name
+        if known then name = cells[math.floor(p.x + dx) .. "," .. math.floor(p.y + dy) .. "," .. math.floor(p.z + dz)] end
+        local bg, fg, s = C.panel, C.dim, " ?"
+        if name == false then bg, fg, s = C.bg, C.dim, ""
+        elseif name ~= nil then
+          bg, fg = blockColour(name)
+          s = code(name)
+        end
+        local act, hint
+        if dx == 0 and dz == 0 then
+          if dy == 0 then
+            bg, fg, s = C.good, C.ink, (face and string.rep(ARROW[face], 3) or "TTT")
+          else
+            act, hint = centreAct, centreHint
+          end
+        elseif dy == 0 and face and math.abs(dx) + math.abs(dz) == 1 then
+          local dir = (dz == -1 and 0) or (dx == 1 and 1) or (dz == 1 and 2) or 3
+          act, hint = GO[dir], "go"
+        end
+        fill(cx, cy, CW - 1, CH - 1, bg)                    -- (a 1-row gap below each block)
+        text(cx + math.max(0, math.floor((CW - 1 - #s) / 2)), cy, trunc(s, CW - 1), fg, bg)
+        if act then
+          local h = string.upper(hint)
+          text(cx + math.max(0, math.floor((CW - 1 - #h) / 2)), cy + 1, trunc(h, CW - 1),
+               (bg == C.bg or bg == C.panel or bg == C.empty) and C.label or fg, bg)
+          addHit(cx, cy, CW - 1, CH, "tdrive", { t.id, act })
+        end
+      end
+    end
+  end
+  local gx = x + 4
+  grid(gx, 1, "ABOVE IT", "mineu", "up")
+  grid(gx + gw + gap, 0, "ITS LEVEL", nil, nil)
+  grid(gx + 2 * (gw + gap), -1, "BELOW IT", "mined", "down")
+  -- what the short names mean
+  local ly = gy + 4 + (2 * R + 1) * CH
+  table.sort(legend, function(a, b) return a.word < b.word end)
+  text(x + 2, ly, "WHAT THE LETTERS MEAN:", C.label, C.panel)
+  local lx, lcol = x + 2, 0
+  local colW = math.floor((w - 4) / 4)
+  for i, e in ipairs(legend) do
+    if i > 12 then break end
+    local bg, fg = blockColour(e.name)
+    local ex = x + 2 + ((i - 1) % 4) * colW
+    local ey = ly + 1 + math.floor((i - 1) / 4)
+    text(ex, ey, " " .. e.c .. " ", fg, bg)
+    text(ex + #e.c + 3, ey, trunc(e.word, colW - #e.c - 4), C.text, C.panel)
+  end
+  local nl = math.min(12, #legend)
+  if plainSeen then
+    local ex = x + 2 + (nl % 4) * colW
+    local ey = ly + 1 + math.floor(nl / 4)
+    text(ex, ey, "   ", C.text, C.empty)
+    text(ex + 4, ey, "plain stone / dirt", C.text, C.panel)
+  end
+  if #legend == 0 and not plainSeen then text(x + 2, ly + 1, "(nothing seen yet - SCAN AROUND)", C.dim, C.panel) end
+  text(x + 2, ly + 4, trunc("TAP a block marked 'go' / 'up' / 'down' to move there (it turns and digs first if needed).  " ..
+       "Black = air,  ? = not seen yet.  Green arrow = the turtle and the way it faces.", w - 4), C.dim, C.panel)
+  -- buttons
+  local by = ly + 6
+  if by + 7 > bottom then by = bottom - 7 end
   local bw = math.floor((w - 4 - 4) / 5)
-  local function bt(col, label, kind, value, bg, fg)
-    drawButton(x + 2 + col * (bw + 1), by, bw, 3, label, bg or C.empty, fg or C.text, kind, value)
+  local function bt(col, row, label, kind, value, bg, fg)
+    drawButton(x + 2 + col * (bw + 1), by + row * 4, bw, 3, label, bg or C.empty, fg or C.text, kind, value)
   end
-  bt(0, "SCAN AROUND  (X)", "tdrive", { t.id, "look" }, C.label, C.ink)
-  bt(1, "STOP  (T)", "tcmd", { t.id, "stop", {} }, C.bad, C.ink)
-  bt(2, "GO HOME  (H)", "tcmd", { t.id, "home", {} }, C.good, C.ink)
-  bt(3, "TURN AROUND  (C)", "tdrive", { t.id, "around" })
+  bt(0, 0, "TURN LEFT", "tdrive", { t.id, "l" })
+  bt(1, 0, "FORWARD", "tdrive", { t.id, "minef" }, C.accent, C.ink)
+  bt(2, 0, "TURN RIGHT", "tdrive", { t.id, "r" })
+  bt(3, 0, "UP", "tdrive", { t.id, "mineu" }, C.accent, C.ink)
+  bt(4, 0, "DOWN", "tdrive", { t.id, "mined" }, C.accent, C.ink)
+  bt(0, 1, "SCAN AROUND", "tdrive", { t.id, "look" }, C.label, C.ink)
+  bt(1, 1, "STOP", "tcmd", { t.id, "stop", {} }, C.bad, C.ink)
+  bt(2, 1, "GO HOME", "tcmd", { t.id, "home", {} }, C.good, C.ink)
+  bt(3, 1, "BACK", "tdrive", { t.id, "b" })
   if tostring(t.gear or ""):find("pick", 1, true) then
-    actButton(x + 2 + 4 * (bw + 1), by, bw, 3, "MINE UP TO SURFACE", { kind = "tdigup", name = tostring(t.id), count = 0 })
+    actButton(x + 2 + 4 * (bw + 1), by + 4, bw, 3, "MINE UP TO SURFACE", { kind = "tdigup", name = tostring(t.id), count = 0 })
   end
-  local ly = by + 4
-  if ly <= bottom - 1 and t.driveAnyway then
-    local what = ({ digf = "AHEAD", digu = "ABOVE", digd = "BELOW", minef = "AHEAD", mineu = "ABOVE",
-                    mined = "BELOW" })[t.driveAnyway] or t.driveAnyway
-    actButton(x + 2, ly, 2 * bw + 1, 1, "DIG ANYWAY: the block " .. what,
+  if t.driveAnyway and by + 8 <= bottom then
+    actButton(x + 2, by + 8, 2 * bw + 1, 1, "DIG ANYWAY (the block it refused)",
               { kind = "tdriveforce", name = t.id .. ":" .. t.driveAnyway, count = 0 })
-  end
-  local help = { "Drive it like you play Minecraft - on the BASE COMPUTER'S KEYBOARD (type  drive " .. t.id .. " ) or on your",
-                 "POCKET computer (BOTS > the turtle > DRIVE): W forward, A / D turn, S back, SPACE up, SHIFT down.",
-                 "W / SPACE / SHIFT dig first when a block is in the way (natural blocks; built ones need DIG ANYWAY).",
-                 "LEFT / RIGHT / BEHIND need a SCAN AROUND (Geo Scanner); AHEAD / ABOVE / BELOW update every step." }
-  for i, l in ipairs(help) do
-    if ly + 1 + i <= bottom - 1 then text(x + 2, ly + 1 + i, trunc(l, w - 4), C.dim, C.panel) end
   end
 end
 
@@ -238,6 +308,7 @@ function driveTerminal(id)
     end
   end
   local armed = false
+  if TT.online(t) then TT.drive(id, "look") end              -- what is around it, at once
   local tick = os.startTimer(0.5)
   draw()
   while true do

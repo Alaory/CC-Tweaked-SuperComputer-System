@@ -245,7 +245,7 @@ penv.driveKey(keys.d)
 pump()
 local cs = {}
 for _, x in ipairs(sent) do if x.c == "drive" then cs[#cs + 1] = x.args[1] end end
-CHECK(table.concat(cs, ",") == "minef,r", "keys W / D from the pocket steer the turtle (" .. table.concat(cs, ",") .. ")")
+CHECK(table.concat(cs, ",") == "look,minef,r", "DRIVE looks around at once; keys W / D steer the turtle (" .. table.concat(cs, ",") .. ")")
 penv.driveKey(keys.q)
 pump()
 CHECK(P.drive == nil, "Q leaves DRIVE")

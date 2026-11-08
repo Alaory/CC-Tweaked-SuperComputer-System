@@ -119,9 +119,21 @@ driveLook(true)
 local m = SENT[1] and SENT[1].m
 CHECK(SENT[1] and SENT[1].t == "look" and m.up == "minecraft:dirt" and m.scan == "1,0,0,stone", "LOOK sends what it sees: " ..
       tostring(m and m.scan))
+SENT = {}
+driveLook(1)
+CHECK(SENT[1].m.scanR == 1 and SENT[1].m.scan, "after a step: a small scan (radius 1) with the Geo Scanner")
 HAS.geo = false
+SENT = {}
+driveLook(1)
+CHECK(SENT[1].m.front and not SENT[1].m.scan and not SENT[1].m.scanErr, "a step without a Geo Scanner: front / up / down, no error")
 SENT = {}
 driveLook(true)
 CHECK(SENT[1].m.scanErr and not SENT[1].m.scan, "no Geo Scanner: front / up / down only, says why")
+-- a tapped block on the grid: go SOUTH = turn to face south, then dig if needed + go
+HAS.pick = true
+local x0, z0 = P.x, P.z
+setW(P.x, P.y, P.z + 1, "minecraft:dirt")
+ok, msg = driveStep("gos")
+CHECK(ok and P.f == 2 and P.z == z0 + 1 and P.x == x0, "go south: faced south, dug the dirt, moved (" .. tostring(msg) .. ")")
 print(FAILS == 0 and "OK" or (FAILS .. " failed"))
 os.exit(FAILS == 0 and 0 or 1)

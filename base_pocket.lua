@@ -139,7 +139,7 @@ end
 ----------------------------------------------------------------- what the pocket can do
 local TCMDS = { stop = true, home = true, locate = true, ping = true, digup = true }
 local DRIVE_ACTS = { minef = true, mineu = true, mined = true, l = true, r = true, b = true, around = true, look = true,
-                     digf = true, digu = true, digd = true }
+                     digf = true, digu = true, digd = true, gon = true, goe = true, gos = true, gow = true }
 -- the owner is in another dimension (the Player Detector knows): positions from
 -- the pocket's GPS there are not overworld places
 local function elsewhere()

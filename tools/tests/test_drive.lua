@@ -37,8 +37,9 @@ local s = sentDrive()
 CHECK(s[1] and s[1][1] == "minef" and s[1][2] == nil, "tap AHEAD: one step (dig if needed + go)")
 local acts = {}
 for _, h in ipairs(hitsOf("tdrive")) do acts[h[6][2]] = true end
-CHECK(acts.l and acts.r and acts.around and acts.mineu and acts.mined and acts.look,
-      "tiles: LEFT / RIGHT turn, BEHIND turns around, ABOVE / BELOW go up / down, SCAN AROUND")
+CHECK(acts.l and acts.r and acts.mineu and acts.mined and acts.look and acts.b,
+      "buttons: turn left / right, up / down, scan, back")
+CHECK(acts.gon and acts.goe and acts.gos and acts.gow, "the 4 blocks next to the turtle on ITS LEVEL can be tapped to go there")
 CHECK(not t.held, "driving ends a STOP hold")
 -- the answer: what it sees, with a scan (relative, world directions)
 report(30, { t = "look", pos = { x = 101, y = 40, z = 100, f = "east" }, front = "minecraft:stone", up = "minecraft:air",
@@ -102,4 +103,19 @@ os.pullEvent, term, print = pe, term0, print0
 local steps = {}
 for _, a in ipairs(sentDrive()) do steps[#steps + 1] = a[1] end
 CHECK(okT, "drive <id> on the computer runs: " .. tostring(errT))
-CHECK(table.concat(steps, ",") == "minef,l,mineu", "keys W / A / SPACE drive it (" .. table.concat(steps, ",") .. ")")
+CHECK(table.concat(steps, ",") == "look,minef,l,mineu", "drive <id> looks around at once, keys W / A / SPACE drive it (" ..
+      table.concat(steps, ",") .. ")")
+-- a step's small scan (radius 1) keeps what a bigger scan saw further away
+t.view.cells["105,40,100"] = "coal_ore"
+report(30, { t = "look", pos = { x = 102, y = 40, z = 100, f = "east" }, front = "minecraft:air", up = "minecraft:air",
+             down = "minecraft:stone", scan = "0,-1,0,stone", scanR = 1 })
+CHECK(t.view.cells["105,40,100"] == "coal_ore" and t.view.cells["103,40,101"] == false and t.view.cells["102,39,100"] == "stone",
+      "radius-1 scan: near blocks updated, farther ones kept")
+-- picking a turtle on the monitor looks around at once
+state.tOut = {}
+draw()
+local pick
+for _, h in ipairs(hitsOf("dsel")) do if h[6] == 30 then pick = h end end
+if pick then handleTouch(pick[1], pick[2]) end
+local la = sentDrive()
+CHECK(la[1] and la[1][1] == "look", "picking the turtle on the monitor: it looks around at once")
