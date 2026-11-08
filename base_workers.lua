@@ -13,7 +13,8 @@
 local SYS_FILE, SYS_OLD = "system.log", "system.old.log"
 SYSLOG = {}
 do
-  for _, f in ipairs({ SYS_OLD, SYS_FILE }) do
+  local cur, old = logPaths(SYS_FILE, SYS_OLD)
+  for _, f in ipairs({ old, cur }) do
     if fs.exists(f) then
       local h = fs.open(f, "r")
       while h do
@@ -36,13 +37,13 @@ function sysLog(msg, kind)
   table.insert(SYSLOG, 1, { when = d, kind = kind, msg = msg })
   while #SYSLOG > 100 do table.remove(SYSLOG) end
   pcall(function()
-    local okF, free = pcall(fs.getFreeSpace, "/")
-    if okF and type(free) == "number" and free < 8192 then return end
-    if fs.exists(SYS_FILE) and fs.getSize(SYS_FILE) > 16384 then
-      if fs.exists(SYS_OLD) then fs.delete(SYS_OLD) end
-      fs.move(SYS_FILE, SYS_OLD)
+    local cur, old = logPaths(SYS_FILE, SYS_OLD)          -- (a data floppy when there is one)
+    if freeAt(cur) < 8192 then return end
+    if fs.exists(cur) and fs.getSize(cur) > 16384 then
+      if fs.exists(old) then fs.delete(old) end
+      fs.move(cur, old)
     end
-    local h = fs.open(SYS_FILE, "a")
+    local h = fs.open(cur, "a")
     if h then h.writeLine(d .. "|" .. kind .. "|" .. msg) h.close() end
   end)
 end
@@ -437,6 +438,14 @@ function mapWorker()
       pcall(MAP.autoSave)                -- changed map regions, at most once a minute
     end
     if os.clock() - lastCode > 30 then lastCode = os.clock() pcall(TT.codeLoad) end   -- node.lua changed?
+    -- map files still on this computer -> floppies / storage helpers (every 10 min;
+    -- every minute while the computer's disk is low)
+    local okF, pcFree = pcall(fs.getFreeSpace, "/")
+    local low = okF and type(pcFree) == "number" and pcFree < 160 * 1024
+    if os.clock() - (state.offloadAt or -1000) > (low and 60 or 600) then
+      state.offloadAt = os.clock()
+      pcall(MAP.offload)
+    end
     if os.clock() - lastFind > 300 then  -- storage helpers added / gone, and their updates
       lastFind = os.clock()
       local okW2, n2 = pcall(STORE.wakeAll)       -- one switched off meanwhile: on again

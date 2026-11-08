@@ -38,8 +38,9 @@ function MINE.cfgArgs()
 end
 
 function MINE.load()
-  if not fs.exists(FILE) then return end
-  local h = fs.open(FILE, "r")
+  local path = dataPath and dataPath(FILE) or FILE     -- (a data floppy when there is one)
+  if not fs.exists(path) then return end
+  local h = fs.open(path, "r")
   local t = h and textutils.unserialize(h.readAll() or "")
   if h then h.close() end
   if type(t) == "table" then
@@ -55,7 +56,7 @@ function MINE.save()
     out[id] = { id = u.id, label = u.label, role = u.role, dim = u.dim, got = u.got, stats = u.stats,
                 seenEpoch = u.seenEpoch, pos = u.pos, log = u.log }
   end
-  saveFileSafe(FILE, serialSmall(out))
+  saveFileSafe(dataPath and dataPath(FILE) or FILE, serialSmall(out))
   MINE.dirty, MINE.saved = false, os.clock()
 end
 MINE.load()

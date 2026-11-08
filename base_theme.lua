@@ -218,6 +218,38 @@ function dataFile(path, forSave)
   return path
 end
 
+-- where a data file lives NOW (a data floppy first - dataFile moves the
+-- computer's copy there), remembered for a minute: dataFile looks at every
+-- drive, too slow for every log line. Logs, mining.dat, turtles.dat ... use it
+-- so the computer's 1 MB is left for the program.
+local DPATH = {}
+function dataPath(name)
+  local c = DPATH[name]
+  if c and os.clock() - c.t < 60 and c.t <= os.clock() then return c.p end
+  local ok, p = pcall(dataFile, name)
+  p = (ok and p) or name
+  DPATH[name] = { p = p, t = os.clock() }
+  return p
+end
+-- a log file and its ".old" partner in the same place (a floppy); an old
+-- partner still on the computer moves along
+function logPaths(cur, old)
+  local cp = dataPath(cur)
+  local op = old
+  if cp ~= cur then
+    op = fs.combine(fs.getDir(cp), old)
+    if fs.exists(old) and not fs.exists(op) then pcall(fs.move, old, op) end
+    if fs.exists(old) then pcall(fs.delete, old) end
+  end
+  return cp, op
+end
+-- free space where a path lives
+function freeAt(path)
+  local d = fs.getDir(path)
+  local ok, f = pcall(fs.getFreeSpace, d == "" and "/" or d)
+  return ok and type(f) == "number" and f or 0
+end
+
 -- a data file was saved somewhere else (a data floppy): the old copy on the
 -- computer is not needed any more
 function dropOldCopy(configPath, savedPath, nothingInMemory)

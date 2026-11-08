@@ -511,6 +511,30 @@ function MAP.save(toDisks, noTrim)
   return not next(MAP.dirty)
 end
 
+-- map files on THIS computer move to the data floppies / storage helpers when
+-- they have room: only CHANGED files are written, so the ones saved on the
+-- computer before (no floppy / helper yet, or they were full) stayed there and
+-- filled its 1 MB. mapWorker: every 10 min, every minute when the disk is low.
+-- Returns how many moved.
+function MAP.offload()
+  if not MAP.loaded then return 0 end
+  local before = 0
+  for _, p in pairs(MAP.where) do if dirOf(p) == DIR then before = before + 1 end end
+  if before == 0 then return 0 end
+  local room = 0
+  for _, pl in ipairs(places()) do if pl.floppy or pl.remote then room = room + (pl.free or 0) end end
+  if room < 8192 then return 0 end
+  pcall(MAP.save, true, true)                      -- (never drops anything)
+  local after = 0
+  for _, p in pairs(MAP.where) do if dirOf(p) == DIR then after = after + 1 end end
+  local moved = before - after
+  if moved > 0 and sysLog then
+    sysLog("Map: moved " .. moved .. " map file(s) off this computer onto the floppies / storage helpers" ..
+           (after > 0 and (" (" .. after .. " still here - no room left)") or ""), "INFO")
+  end
+  return moved
+end
+
 -- save if something changed and the last save is a minute ago (comms worker)
 function MAP.autoSave()
   if next(MAP.dirty) and os.clock() - MAP.savedAt >= SAVE_EVERY then

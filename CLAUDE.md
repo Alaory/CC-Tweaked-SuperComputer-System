@@ -45,6 +45,13 @@ PneumaticCraft drone rides, turtle mapping/surveys, and an AE2 ME network view.
   dataFile (floppy first). The map leaves CONFIG.map.keepFreeKB (96) free on the
   computer. turtles.dat goes through saveFileSafe. `disks` lists floppies,
   storage helpers and the biggest files on the computer.
+  OFF THE COMPUTER BY DEFAULT: dataPath(name) (base_theme.lua; dataFile cached 60 s)
+  puts events.log / system.log (+ .old via logPaths), mining.dat, me_names.dat and
+  turtles.dat on a DATA FLOPPY when there is one (the computer's copy moves along).
+  MAP.offload (mapWorker, every 10 min, every minute when the computer has < 160 KB
+  free) moves map files saved on the computer earlier onto floppies / storage helpers
+  (MAP.save only rewrites CHANGED files, so old ones stayed on the computer).
+  test_disk_place.lua.
 - The MAP has two layers (base_map.lua): DETAIL (every column, newest
   `maxChunks` chunks) and OVERVIEW (1 value per chunk, never dropped; used at
   zoom >= 16 and where detail is gone). Files in `map/`: detail `<rx>_<rz>.dat`

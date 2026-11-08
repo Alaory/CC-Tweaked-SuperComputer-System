@@ -109,14 +109,14 @@ function noteLogAdd(e)
   table.insert(state.noteLog, 1, e)
   while #state.noteLog > noteSetting("keep") do table.remove(state.noteLog) end
   pcall(function()
-    local okF, free = pcall(fs.getFreeSpace, "/")
-    if okF and type(free) == "number" and free < 8192 then return end   -- disk nearly full: skip
-    if fs.exists(NOTE_FILE) and fs.getSize(NOTE_FILE) > NOTE_MAX then
-      if fs.exists(NOTE_OLD) then fs.delete(NOTE_OLD) end
-      fs.move(NOTE_FILE, NOTE_OLD)
+    local cur, old = logPaths(NOTE_FILE, NOTE_OLD)      -- (a data floppy when there is one)
+    if freeAt(cur) < 8192 then return end              -- disk nearly full: skip
+    if fs.exists(cur) and fs.getSize(cur) > NOTE_MAX then
+      if fs.exists(old) then fs.delete(old) end
+      fs.move(cur, old)
     end
     local function clean(v) return (tostring(v or ""):gsub("[\r\n|]", " ")) end
-    local h = fs.open(NOTE_FILE, "a")
+    local h = fs.open(cur, "a")
     if not h then return end
     h.writeLine(realTime("%Y-%m-%d %H:%M") .. "|" .. noteKind(e.col) .. "|" .. clean(e.title) .. "|" .. clean(e.msg))
     h.close()
@@ -128,7 +128,7 @@ end
 function noteLogClear()
   state.noteLog = {}
   pcall(function()
-    local h = fs.open(NOTE_FILE, "a")
+    local h = fs.open((logPaths(NOTE_FILE, NOTE_OLD)), "a")
     if h then h.writeLine(realTime("%Y-%m-%d %H:%M") .. "|CLEAR||list cleared on the EVENTS tab") h.close() end
   end)
 end
@@ -136,7 +136,8 @@ end
 -- the saved lines (oldest first), from events.old.log and events.log
 function noteLogLines()
   local lines = {}
-  for _, f in ipairs({ NOTE_OLD, NOTE_FILE }) do
+  local cur, old = logPaths(NOTE_FILE, NOTE_OLD)
+  for _, f in ipairs({ old, cur }) do
     if fs.exists(f) then
       local h = fs.open(f, "r")
       while h do
@@ -299,8 +300,9 @@ end
 local NAMES_FILE = "me_names.dat"
 ME_NAMES = {}
 do
-  if fs.exists(NAMES_FILE) then
-    local h = fs.open(NAMES_FILE, "r")
+  local np = dataPath(NAMES_FILE)                    -- (a data floppy when there is one)
+  if fs.exists(np) then
+    local h = fs.open(np, "r")
     local t = h and textutils.unserialize(h.readAll() or "")
     if h then h.close() end
     if type(t) == "table" then for _, n in ipairs(t) do ME_NAMES[n] = true end end
@@ -321,7 +323,7 @@ local function saveNames(force)
   for n in pairs(ME_NAMES) do list[#list + 1] = n end
   table.sort(list)
   local okS, text = pcall(textutils.serialize, list)
-  if okS and saveFileSafe(NAMES_FILE, text) then namesDirty, namesSavedAt = false, os.clock() end
+  if okS and saveFileSafe(dataPath(NAMES_FILE), text) then namesDirty, namesSavedAt = false, os.clock() end
 end
 -- 'me add <id>': look this item up in the partial view from now on
 function meAddName(n) meRememberName(n) saveNames(true) state.meNameCache = nil end

@@ -932,13 +932,14 @@ function TT.saveList()
                       task = t.task, ver = t.ver, gear = t.gear, anchor = t.anchor, rescuerRole = t.rescuerRole,
                       held = t.held, recall = t.recall, missing = t.missing }
   end
-  saveFileSafe(CONFIG.turtles.listFile, serialSmall(out))
+  saveFileSafe(dataPath(CONFIG.turtles.listFile), serialSmall(out))     -- (a data floppy when there is one)
   TT.listDirty = false
 end
 -- read the saved turtle list
 function TT.loadList()
-  if not fs.exists(CONFIG.turtles.listFile) then return end
-  local h = fs.open(CONFIG.turtles.listFile, "r")
+  local lp = dataPath(CONFIG.turtles.listFile)
+  if not fs.exists(lp) then return end
+  local h = fs.open(lp, "r")
   local list = textutils.unserialize(h.readAll() or "")
   h.close()
   if type(list) ~= "table" then return end
