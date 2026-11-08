@@ -142,7 +142,10 @@ PneumaticCraft drone rides, turtle mapping/surveys, and an AE2 ME network view.
   never within digNearHome (24) of its home, never into a home being probed.
   Allowed when the turtle's setting dig is on (base: SETTINGS > TURTLES "Turtles
   dig ..." -> TT.setDig, sent to all and on every hello) or always during rescue /
-  sweep jobs (DIG_JOB).
+  sweep jobs (DIG_JOB). Also a HOME trip when the turtle is STUCK (S.stuck) or "home dig":
+  TT.homeTick part 3 sends a stuck idle turtle that carries a pickaxe (t.gear) "home dig"
+  after 30 s, every 10 min, max 3 tries (t.digOutTries, reset once not stuck) - the
+  rescuer stuck in a cave after a rescue. test_digout.lua.
 - Chunky upgrade never comes off: every equip goes through equipOn (node.lua),
   which refuses the Chunky side and puts it straight back if the item that
   came off is a Chunky ("chunk" in the name). chunkyFix re-equips a loose one

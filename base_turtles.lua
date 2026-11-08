@@ -1411,6 +1411,19 @@ function TT.homeTick()
                    or ("Idle for " .. math.floor(now - t.idleSince) .. " s away from home - going home"))
       end
     end
+    -- 3) STUCK and it carries a pickaxe (e.g. the rescuer after a rescue, in a cave):
+    --    it digs its own way home - natural blocks only (node.lua). Every 10 min,
+    --    3 tries; a turtle that is fine again starts counting from 0.
+    if not t.stuck then t.digOutTries = nil end
+    if on and idle and t.stuck and t.home and not t.held and not t.anchor and not t.missing
+       and tostring(t.gear or ""):find("pick", 1, true)
+       and now - (t.idleSince or now) > 30 and (t.digOutTries or 0) < 3
+       and (not t.digOutAt or now - t.digOutAt > 600) then
+      t.digOutAt, t.digOutTries = now, (t.digOutTries or 0) + 1
+      TT.send(id, "home", { "dig" }, true)
+      TT.log(t, "Stuck (" .. tostring(t.stuck) .. ") - digging its way home through natural blocks (try " ..
+                t.digOutTries .. "/3)")
+    end
   end
 end
 

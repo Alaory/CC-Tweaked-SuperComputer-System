@@ -2558,6 +2558,9 @@ function runJob(j)
   local a = j.args
   -- rescue trips dig their way through natural blocks (with a pickaxe)
   DIG_JOB = (j.cmd == "rescue" or j.cmd == "sweep")
+  -- STUCK (the last trip failed) or "home dig": on the way home it may dig through
+  -- NATURAL blocks too (with its pickaxe; never near home, never anything built)
+  if j.cmd == "home" and (S.stuck or a[1] == "dig") then DIG_JOB = true end
   if S.anchor and (j.cmd == "survey" or j.cmd == "surveypts") then
     return false, "I am the ANCHOR (I keep the base loaded) - turn ANCHOR off first"
   end
