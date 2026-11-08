@@ -157,11 +157,14 @@ PneumaticCraft drone rides, turtle mapping/surveys, and an AE2 ME network view.
   with a pickaxe, two taps; pocket BOTS too): job "digup" [surface Y = MAP.get top + 1]
   -> digUp: straight up, tryDig (natural only, not near home), stops at that Y or after 6
   free blocks; says why it stops. tools/tests/node_digup.lua.
-- DRIVE page (base_ui_drive.lua, TURTLES group "drive"): pick a turtle (dsel), drawn from the
-  TURTLE'S point of view (never north-up - that confused): SEEN FROM ABOVE 5x5 at its level,
-  AHEAD = up, its left/right; SEEN FROM THE SIDE: behind, turtle, 1-3 ahead x 2 up..2 down.
-  Blocks named in words (nice(): "IRON ORE"), ? = not seen, black = air; inside a scan
-  (radius 3 cube) everything not listed is AIR. Data: t.view.cells (WORLD positions
+- DRIVE page (base_ui_drive.lua, TURTLES group "drive"): pick a turtle (dsel); a 3D VIEW (driveRender:
+  ray-caster over t.view.cells in a local 11^3 grid, 2 chars per pixel, cached in
+  state.driveImg by view.at/pos/facing/xray/size): camera 2.9 behind + 3.3 above, looking
+  the way it faces; everything behind it and ABOVE its level is see-through (roof cut
+  away - the 2D grids before were "really confusing"); turtle = green outline; block edges
+  dark, colours per material (mat), dark = air / not seen. X-RAY (state.driveXray, hit
+  "dxray"): plain stone/dirt/... (PLAIN) only as a faint wireframe, ores / lava / water
+  / caves solid. Text line AHEAD / ABOVE / BELOW / LEFT / RIGHT / BEHIND under it. Data: t.view.cells (WORLD positions
   "x,y,z" -> name / false = air; TT.lookIn from the turtle's "look" message: front/up/
   down every step, LOOK = Geo Scanner r 3 as "dx,dy,dz,name;..."). Buttons -> TT.drive
   (quiet "drive" {act, force}; ends a STOP hold): f b u d l r, digf/u/d, minef/u/d, look;

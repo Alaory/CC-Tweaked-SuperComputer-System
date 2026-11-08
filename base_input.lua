@@ -305,6 +305,8 @@ function handleTouch(tx, ty)
         end
       elseif h[5] == "tdrive" then
         TT.drive(h[6][1], h[6][2])
+      elseif h[5] == "dxray" then
+        state.driveXray = not state.driveXray
       elseif h[5] == "dsel" then
         state.tSel = h[6]
       elseif h[5] == "tcmd" then

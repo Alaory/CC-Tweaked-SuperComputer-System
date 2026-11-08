@@ -13,40 +13,6 @@ local function nice(name)
   n = n:gsub("^deepslate_(.+_ore)$", "%1"):gsub("_", " ")
   return n:upper()
 end
--- colours: background, text
-local function blockCol(name)
-  if name == nil then return C.panel, C.dim end                    -- not seen yet
-  if name == false then return C.bg, C.dim end                     -- air
-  local n = tostring(name)
-  if n:find("lava", 1, true) then return C.bad, C.ink end
-  if n:find("water", 1, true) then return C.accent, C.ink end
-  if n:find("_ore", 1, true) or n:find("ore_", 1, true) or n:find("debris", 1, true) then return C.warn, C.ink end
-  if n:find("leaves", 1, true) or n:find("grass", 1, true) or n:find("log", 1, true) or n:find("moss", 1, true) then
-    return C.good, C.ink
-  end
-  if n:find("chest", 1, true) or n:find("barrel", 1, true) or n:find("turtle", 1, true) or n:find("computer", 1, true) then
-    return C.purple or C.accent, C.ink
-  end
-  return C.empty, C.text
-end
--- one block: a box cw x ch with its name (2 lines if it needs them)
-local function box(x, y, cw, ch, name, label)
-  local bg, fg = blockCol(name)
-  fill(x, y, cw - 1, ch, bg)
-  local words
-  if label then words = label
-  elseif name == nil then words = "?"
-  elseif name == false then words = ""
-  else words = nice(name) end
-  local l1, l2 = words, nil
-  if #words > cw - 1 then
-    local cut = words:sub(1, cw - 1):match("^(.*) ") or words:sub(1, cw - 1)
-    l1, l2 = cut, words:sub(#cut + 1):gsub("^ ", "")
-  end
-  local mid = y + math.floor((ch - (l2 and 2 or 1)) / 2)
-  text(x + math.max(0, math.floor((cw - 1 - #l1) / 2)), mid, trunc(l1, cw - 1), fg, bg)
-  if l2 and ch >= 2 then text(x + math.max(0, math.floor((cw - 1 - #l2) / 2)), mid + 1, trunc(l2, cw - 1), fg, bg) end
-end
 local FWD = { north = { 0, -1 }, east = { 1, 0 }, south = { 0, 1 }, west = { -1, 0 } }
 -- the block at (ahead, right, up) from the turtle; nil = not seen yet, false = air
 local function seen(t, ahead, right, up)
@@ -58,39 +24,152 @@ local function seen(t, ahead, right, up)
   local z = p.z + f[2] * ahead + f[1] * right
   return v.cells[math.floor(x) .. "," .. math.floor(p.y + up) .. "," .. math.floor(z)]
 end
--- TOP VIEW: 5 x 5 at the turtle's height, AHEAD is up
-local function topView(x, y, t, cw, ch)
-  text(x, y, "SEEN FROM ABOVE  (ahead = up)", C.label, C.panel)
-  text(x + 2 * cw + math.floor((cw - 6) / 2), y + 1, "AHEAD", C.dim, C.panel)
-  text(x + math.floor((cw - 5) / 2), y + 1, "LEFT", C.dim, C.panel)
-  text(x + 4 * cw + math.floor((cw - 6) / 2), y + 1, "RIGHT", C.dim, C.panel)
-  for r = 2, -2, -1 do                                   -- r = blocks ahead (top row = 2 ahead)
-    for c = -2, 2 do                                     -- c = blocks to the right
-      local bx, by = x + (c + 2) * cw, y + 2 + (2 - r) * ch
-      if r == 0 and c == 0 then box(bx, by, cw, ch, "x", "TURTLE") fill(bx, by, cw - 1, ch, C.good)
-        text(bx + math.floor((cw - 7) / 2), by + math.floor((ch - 1) / 2), "TURTLE", C.ink, C.good)
-      else box(bx, by, cw, ch, seen(t, r, c, 0)) end
-    end
-  end
-  text(x + 2 * cw + math.floor((cw - 7) / 2), y + 2 + 5 * ch, "BEHIND", C.dim, C.panel)
+-- ===== the 3D view: what the turtle sees =====
+-- A small ray-caster over the blocks the turtle reported (t.view.cells). The
+-- camera is just behind the turtle at its height, looking the way it faces (a
+-- little down): the turtle is the green block at the bottom middle, AHEAD is
+-- into the screen. Everything BEHIND the turtle is see-through (it would block
+-- the camera). X-RAY: plain stone / dirt / gravel ... are see-through too, so
+-- ores, lava, water and caves show. Rendered only when something changed
+-- (state.driveImg), 2 characters per pixel (about square on the monitor).
+local BLITC = {}
+local function bc(c)
+  local v = BLITC[c]
+  if not v then v = string.format("%x", math.floor(math.log(c) / math.log(2) + 0.5)) BLITC[c] = v end
+  return v
 end
--- SIDE VIEW: behind it, the turtle, 4 ahead; 2 above to 2 below
-local function sideView(x, y, t, cw, ch)
-  text(x, y, "SEEN FROM THE SIDE  (ahead = right)", C.label, C.panel)
-  local heads = { "BEHIND", "TURTLE", "1 AHEAD", "2 AHEAD", "3 AHEAD" }
-  for i, h in ipairs(heads) do text(x + (i - 1) * cw + 1, y + 1, trunc(h, cw - 1), C.dim, C.panel) end
-  for u = 2, -2, -1 do
-    local by = y + 2 + (2 - u) * ch
-    for a = -1, 3 do
-      local bx = x + (a + 1) * cw
-      if a == 0 and u == 0 then
-        fill(bx, by, cw - 1, ch, C.good)
-        text(bx + math.floor((cw - 7) / 2), by + math.floor((ch - 1) / 2), "TURTLE", C.ink, C.good)
-      else box(bx, by, cw, ch, seen(t, a, 0, u)) end
-    end
-    text(x + 5 * cw + 1, by + math.floor((ch - 1) / 2), (u > 0 and ("+" .. u .. " up")) or (u < 0 and (-u .. " down")) or "level",
-         C.dim, C.panel)
+local PLAIN = {}
+for _, n in ipairs({ "stone", "deepslate", "cobbled_deepslate", "dirt", "coarse_dirt", "rooted_dirt", "grass_block", "podzol",
+                     "mycelium", "gravel", "sand", "red_sand", "sandstone", "red_sandstone", "clay", "mud", "tuff", "andesite",
+                     "diorite", "granite", "calcite", "dripstone_block", "smooth_basalt", "basalt", "blackstone", "netherrack",
+                     "soul_sand", "soul_soil", "end_stone", "cobblestone", "terracotta", "moss_block", "snow_block", "bedrock" }) do
+  PLAIN[n] = true
+end
+local MATS = {}
+-- per block name: lit colour, shaded colour (blit chars), see-through in X-RAY
+local function mat(name)
+  local m = MATS[name]
+  if m then return m end
+  local n = tostring(name)
+  local short = n:match(":(.+)$") or n
+  local lit, sh = C.empty, C.panel
+  if n:find("lava", 1, true) then lit, sh = colors.orange, colors.red
+  elseif n:find("water", 1, true) then lit, sh = colors.cyan, colors.blue
+  elseif n:find("_ore", 1, true) or n:find("ore_", 1, true) or n:find("debris", 1, true) then lit, sh = colors.yellow, colors.orange
+  elseif n:find("leaves", 1, true) or n:find("grass", 1, true) or n:find("moss", 1, true) then lit, sh = colors.lime, colors.green
+  elseif n:find("log", 1, true) or n:find("planks", 1, true) or n:find("wood", 1, true) then lit, sh = colors.brown, colors.brown
+  elseif n:find("dirt", 1, true) or n:find("mud", 1, true) or n:find("clay", 1, true) then lit, sh = colors.brown, colors.brown
+  elseif n:find("chest", 1, true) or n:find("barrel", 1, true) or n:find("turtle", 1, true) or n:find("computer", 1, true) then
+    lit, sh = colors.pink, colors.purple
+  elseif n:find("sand", 1, true) then lit, sh = colors.yellow, colors.brown
   end
+  m = { bc(lit), bc(sh), PLAIN[short] or false, (lit == C.empty) and bc(C.bg) or bc(sh) }
+  MATS[name] = m
+  return m
+end
+function driveRender(t, PW, PH, xray)
+  local p, v = t.pos, t.view
+  local f = FWD[tostring(p.f)]
+  local fx, fz = f[1], f[2]
+  local rx, rz = -fz, fx
+  local R, S = 5, 11
+  local vox = {}
+  for k, name in pairs(v.cells or {}) do
+    local x, y, z = k:match("^(-?%d+),(-?%d+),(-?%d+)$")
+    if x then
+      local lx, ly, lz = tonumber(x) - p.x, tonumber(y) - p.y, tonumber(z) - p.z
+      if lx >= -R and lx <= R and ly >= -R and ly <= R and lz >= -R and lz <= R then
+        vox[(lx + R) + (ly + R) * S + (lz + R) * S * S] = name
+      end
+    end
+  end
+  -- camera: 3 blocks behind the turtle's middle, a bit above it, looking a little down
+  local ox, oy, oz = 0.5 - fx * 2.9, 3.3, 0.5 - fz * 2.9
+  local dx0, dy0, dz0 = fx, -0.72, fz
+  local dl = math.sqrt(dx0 * dx0 + dy0 * dy0 + dz0 * dz0)
+  dx0, dy0, dz0 = dx0 / dl, dy0 / dl, dz0 / dl
+  -- camera up = right x dir
+  local ux, uy, uz = 0 * dz0 - rz * dy0, rz * dx0 - rx * dz0, rx * dy0 - 0 * dx0
+  if uy < 0 then ux, uy, uz = -ux, -uy, -uz end
+  local tanH = 0.78
+  local vScale = tanH * (PH * 0.75) / PW            -- a pixel (2 chars) is ~12 x 9 screen dots
+  local cBg, cEdge, cTurtle, cTurtleS, cWire = bc(C.bg), bc(C.bg), bc(colors.lime), bc(colors.green), bc(C.dim)
+  local floor, abs, huge = math.floor, math.abs, math.huge
+  local rows = {}
+  for j = 0, PH - 1 do
+    local vv = (1 - (j + 0.5) / PH * 2) * vScale
+    local tx, fg, bg = {}, {}, {}
+    for i = 0, PW - 1 do
+      local uu = ((i + 0.5) / PW * 2 - 1) * tanH
+      local dx, dy, dz = dx0 + rx * uu + ux * vv, dy0 + uy * vv, dz0 + rz * uu + uz * vv
+      local cx, cy, cz = floor(ox), floor(oy), floor(oz)
+      local sx, sy, sz = dx > 0 and 1 or -1, dy > 0 and 1 or -1, dz > 0 and 1 or -1
+      local tdx = dx ~= 0 and abs(1 / dx) or huge
+      local tdy = dy ~= 0 and abs(1 / dy) or huge
+      local tdz = dz ~= 0 and abs(1 / dz) or huge
+      local tmx = dx ~= 0 and ((dx > 0 and (cx + 1 - ox) or (ox - cx)) * tdx) or huge
+      local tmy = dy ~= 0 and ((dy > 0 and (cy + 1 - oy) or (oy - cy)) * tdy) or huge
+      local tmz = dz ~= 0 and ((dz > 0 and (cz + 1 - oz) or (oz - cz)) * tdz) or huge
+      local ch, cf, cb = " ", cBg, cBg
+      for _ = 1, 40 do
+        local tt, axis
+        if tmx < tmy and tmx < tmz then tt, axis = tmx, 1 cx = cx + sx tmx = tmx + tdx
+        elseif tmy < tmz then tt, axis = tmy, 2 cy = cy + sy tmy = tmy + tdy
+        else tt, axis = tmz, 3 cz = cz + sz tmz = tmz + tdz end
+        if cx < -R or cx > R or cy < -R or cy > R or cz < -R or cz > R then break end
+        if cx * fx + cz * fz >= 0 and cy <= 0 then          -- (behind it / above its level: roof off)
+          local lit, shade, edgeC
+          if cx == 0 and cy == 0 and cz == 0 then
+            -- the turtle: only its outline (you see through it to what is ahead)
+            local hx, hy, hz = ox + dx * tt, oy + dy * tt, oz + dz * tt
+            local a1, a2
+            if axis == 1 then a1, a2 = hy - floor(hy), hz - floor(hz)
+            elseif axis == 2 then a1, a2 = hx - floor(hx), hz - floor(hz)
+            else a1, a2 = hx - floor(hx), hy - floor(hy) end
+            if a1 < 0.09 or a1 > 0.91 or a2 < 0.09 or a2 > 0.91 then ch, cf, cb = " ", cTurtle, cTurtle break end
+          else
+            local name = vox[(cx + R) + (cy + R) * S + (cz + R) * S * S]
+            if name == nil then
+              if not xray then break end                    -- not seen yet: stays dark
+            elseif name ~= false then
+              local m = mat(name)
+              if not (xray and m[3]) then lit, shade, edgeC = m[1], m[2], m[4]
+              else
+                -- X-RAY: plain stone is only a faint wireframe (you still see where things are)
+                local hx, hy, hz = ox + dx * tt, oy + dy * tt, oz + dz * tt
+                local a1, a2
+                if axis == 1 then a1, a2 = hy - floor(hy), hz - floor(hz)
+                elseif axis == 2 then a1, a2 = hx - floor(hx), hz - floor(hz)
+                else a1, a2 = hx - floor(hx), hy - floor(hy) end
+                if (a1 < 0.05 or a1 > 0.95) and (a2 < 0.05 or a2 > 0.95) then cb = cWire cf = cb break end
+                if (a1 < 0.04 or a1 > 0.96 or a2 < 0.04 or a2 > 0.96) and tt < 4 then cb = cWire cf = cb break end
+              end
+            end
+          end
+          if lit then
+            -- where on the face: near an edge = an outline (like Minecraft's block lines)
+            local hx, hy, hz = ox + dx * tt, oy + dy * tt, oz + dz * tt
+            local a1, a2
+            if axis == 1 then a1, a2 = hy - floor(hy), hz - floor(hz)
+            elseif axis == 2 then a1, a2 = hx - floor(hx), hz - floor(hz)
+            else a1, a2 = hx - floor(hx), hy - floor(hy) end
+            local e = 0.07
+            if a1 < e or a1 > 1 - e or a2 < e or a2 > 1 - e then cb = edgeC or cEdge
+            elseif axis == 2 and sy < 0 then cb = lit                   -- a top face
+            elseif (axis == 1 and fx ~= 0) or (axis == 3 and fz ~= 0) then cb = lit   -- facing the camera
+            else cb = shade end
+            cf = cb
+            break
+          end
+        end
+      end
+      tx[#tx + 1] = ch tx[#tx + 1] = ch
+      fg[#fg + 1] = cf fg[#fg + 1] = cf
+      bg[#bg + 1] = cb bg[#bg + 1] = cb
+    end
+    rows[j] = { table.concat(tx), table.concat(fg), table.concat(bg) }
+  end
+  return rows
 end
 
 function drawDrivePage(G)
@@ -155,17 +234,39 @@ function drawDrivePage(G)
        (v.scanErr and ("    (" .. v.scanErr .. ")") or (v.scanAt and ("    scan " .. math.floor(os.clock() - v.scanAt) .. " s ago") or
        "    (SCAN AROUND sees the blocks to the sides too)")), w - 4), C.text, C.panel)
   local gy = y0 + 7
-  -- block size: as big as the card allows
-  local cw = math.max(8, math.min(13, math.floor((w - 22) / 10)))
-  local ch = math.max(2, math.min(3, math.floor((bottom - y0 - 30) / 5)))
-  topView(x + 3, gy, t, cw, ch)
-  sideView(x + 3 + 5 * cw + 6, gy, t, cw, ch)
-  text(x + 3, gy + 4 + 5 * ch, trunc("? = not seen yet: SCAN AROUND     black = air     yellow = ore     red = lava     " ..
-       "blue = water     purple = never dug", w - 6), C.dim, C.panel)
+  -- the controls go at the bottom; the 3D view fills the space above them
+  local by = bottom - 13
+  local vw = math.min(w - 4, 140)
+  local PW, PH = math.floor(vw / 2), math.max(8, by - gy - 3)
+  local vx = x + 2 + math.floor((w - 4 - PW * 2) / 2)
+  if not (p and p.x and FWD[tostring(p.f)]) then
+    text(x + 2, gy + 2, "Position or facing unknown - press GPS LOCATE on the TURTLES page first.", C.warn, C.panel)
+  elseif not (v.cells and next(v.cells)) then
+    text(x + 2, gy + 2, "Nothing seen yet - press SCAN AROUND (or take a step).", C.dim, C.panel)
+  else
+    local key = table.concat({ t.id, tostring(v.at), p.x, p.y, p.z, tostring(p.f), tostring(state.driveXray), PW, PH }, ":")
+    local img = state.driveImg
+    if not img or img.key ~= key then
+      img = { key = key, rows = driveRender(t, PW, PH, state.driveXray) }
+      state.driveImg = img
+    end
+    for j = 0, PH - 1 do
+      local r = img.rows[j]
+      if r then win.setCursorPos(vx, gy + j) win.blit(r[1], r[2], r[3]) end
+    end
+    text(vx + 1, gy, "LOOKING " .. string.upper(tostring(p.f)) .. " - the way it faces. Green box = the turtle.", C.dim, C.bg)
+    text(vx + 1, gy + 1, "Roof cut away (above it: see ABOVE below). " ..
+         (state.driveXray and "X-RAY: plain stone / dirt as lines, ores & caves solid." or "Dark = air or not seen yet."),
+         C.dim, C.bg)
+  end
+  -- in words, around it (left / right / behind need a SCAN AROUND)
+  local function say(n) if n == nil then return "?" elseif n == false then return "air" end return nice(n):lower() end
+  text(x + 2, by - 2, trunc("AHEAD: " .. say(seen(t, 1, 0, 0)) .. "    ABOVE: " .. say(seen(t, 0, 0, 1)) ..
+       "    BELOW: " .. say(seen(t, 0, 0, -1)) .. "    LEFT: " .. say(seen(t, 0, -1, 0)) .. "    RIGHT: " ..
+       say(seen(t, 0, 1, 0)) .. "    BEHIND: " .. say(seen(t, -1, 0, 0)), w - 30), C.text, C.panel)
+  drawButton(x + w - 26, by - 2, 22, 1, state.driveXray and "X-RAY: ON" or "X-RAY: OFF",
+             state.driveXray and C.warn or C.empty, state.driveXray and C.ink or C.text, "dxray", true)
   -- the controls
-  local by = gy + 5 * ch + 6
-  if by + 13 > bottom then by = bottom - 13 end
-  if by + 14 > bottom then by = math.max(gy + 9, bottom - 14) end
   local bw = math.floor((w - 4 - 4) / 5)
   local function b(col, row, label, act, bg, fg)
     drawButton(x + 2 + col * (bw + 1), by + row * 4, bw, 3, label, bg or C.empty, fg or C.text, "tdrive", { t.id, act })
