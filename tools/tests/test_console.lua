@@ -23,3 +23,6 @@ for _, c in ipairs(list) do
   CHECK(ok, "console '" .. c .. "': " .. tostring(out))
 end
 sleep = sleep0
+-- "disk" (no s) works like "disks"
+local outD = handleCommand("disk") or {}
+CHECK(not table.concat(outD, "\n"):find("Unknown command", 1, true), "'disk' works like 'disks'")

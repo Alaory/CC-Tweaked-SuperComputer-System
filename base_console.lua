@@ -64,6 +64,9 @@ function handleCommand(line)
   local words = {}
   for w in line:gmatch("%S+") do words[#words + 1] = w end
   local cmd = (words[1] or ""):lower()
+  -- easy-to-make typos / other names
+  local ALIAS = { disk = "disks", floppy = "disks", floppies = "disks" }
+  if ALIAS[cmd] then cmd = ALIAS[cmd] end
   local D = state.drone
   local out = {}
   local function say(t) out[#out + 1] = t end
