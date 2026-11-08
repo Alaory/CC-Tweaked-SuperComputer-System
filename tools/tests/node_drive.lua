@@ -110,6 +110,9 @@ HAS.pick = true
 -- turning
 driveStep("l")
 CHECK(P.f == 0 and S.pos.f == 0, "TURN LEFT")
+driveStep("around")
+CHECK(P.f == 2 and S.pos.f == 2, "TURN AROUND")
+driveStep("around")
 -- LOOK: front / up / down + the scan (air left out)
 SENT = {}
 driveLook(true)

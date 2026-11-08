@@ -30,11 +30,15 @@ state.page, state.tSel, state.tOut = "drive", nil, {}
 CHECK(pcall(draw), "DRIVE page draws")
 -- FORWARD
 local fwd
-for _, h in ipairs(hitsOf("tdrive")) do if h[6][2] == "f" then fwd = h end end
-CHECK(fwd and fwd[6][1] == 30, "FORWARD button for the first online turtle")
+for _, h in ipairs(hitsOf("tdrive")) do if h[6][2] == "minef" then fwd = h end end
+CHECK(fwd and fwd[6][1] == 30, "AHEAD tile for the first online turtle")
 handleTouch(fwd[1], fwd[2])
 local s = sentDrive()
-CHECK(s[1] and s[1][1] == "f" and s[1][2] == nil, "tap FORWARD: one drive step sent")
+CHECK(s[1] and s[1][1] == "minef" and s[1][2] == nil, "tap AHEAD: one step (dig if needed + go)")
+local acts = {}
+for _, h in ipairs(hitsOf("tdrive")) do acts[h[6][2]] = true end
+CHECK(acts.l and acts.r and acts.around and acts.mineu and acts.mined and acts.look,
+      "tiles: LEFT / RIGHT turn, BEHIND turns around, ABOVE / BELOW go up / down, SCAN AROUND")
 CHECK(not t.held, "driving ends a STOP hold")
 -- the answer: what it sees, with a scan (relative, world directions)
 report(30, { t = "look", pos = { x = 101, y = 40, z = 100, f = "east" }, front = "minecraft:stone", up = "minecraft:air",

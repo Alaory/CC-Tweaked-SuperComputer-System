@@ -2931,6 +2931,7 @@ function driveStep(act, force)
   if m[act] then return driveMove(m[act]) end
   if act == "l" then left() return true, "turned left" end
   if act == "r" then right() return true, "turned right" end
+  if act == "around" then right() right() return true, "turned around" end
   local dd = act:match("^dig([fud])$")
   if dd then return driveDig(dd, force) end
   local md = act:match("^mine([fud])$")
