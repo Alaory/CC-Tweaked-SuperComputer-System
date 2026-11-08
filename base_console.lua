@@ -46,7 +46,7 @@ HELP = {
   " tanks                your fluid containers: contents and what they offer (for filling from ME)",
   " report [local]       all peripherals + functions -> report.txt, uploaded to pastebin",
   " disks [data|move]    floppy disks; 'disks data' makes empty floppies data disks,",
-  "                      'disks move' moves the map, turtle knowledge and logs onto them now",
+  "                      'disks move' moves the map, logs, turtle + mining data onto them now",
   " rescue <id> [x y z [radius]]  send a rescue turtle to a lost or stuck turtle",
   " findlost [radius]    search around the base for lost turtles and reinstall them",
   " turtle <id> forget   take a turtle that is gone (server crash) off the list",
@@ -364,13 +364,26 @@ function handleCommand(line)
       -- move the big data files onto the data floppies now (trimmed to fit)
       local hasData = false
       for _, d in ipairs(list) do if d.data then hasData = true end end
-      if not hasData then
-        say("No data floppy yet: put an EMPTY floppy into a Disk Drive and type  disks data")
+      local _, helpers = STORE.space()
+      if not hasData and helpers == 0 then
+        say("No data floppy and no storage helper yet: put an EMPTY floppy into a Disk Drive and type  disks data")
         return out
       end
       local before = fs.getFreeSpace("/")
       local chunks0, walls0 = #MAP.order, KNOW.n
-      pcall(MAP.save, true)              -- every region: moves them onto the floppies
+      -- logs and data files: dataPath moves the computer's copy onto a data floppy
+      dataPathReset()
+      if hasData then
+        local cur1 = logPaths("events.log", "events.old.log")
+        local cur2 = logPaths("system.log", "system.old.log")
+        for _, f in ipairs({ "mining.dat", "me_names.dat", CONFIG.turtles.listFile }) do dataPath(f) end
+        say("Logs:             " .. fs.getDir(cur1) .. "/  (events, system" ..
+            (fs.getDir(cur2) ~= fs.getDir(cur1) and (" -> " .. fs.getDir(cur2)) or "") .. ", mining, turtles, AE2 names)")
+      end
+      local movedMap = 0
+      local okO, nO = pcall(MAP.offload)                -- map files: floppies first, then storage helpers
+      if okO then movedMap = nO or 0 end
+      if hasData then pcall(MAP.save, true) end         -- (the rest of the map, as before)
       pcall(KNOW.save)
       pcall(saveLogs)
       local function where(p)
@@ -378,6 +391,7 @@ function handleCommand(line)
         return (fs.exists(d) and (d .. " (" .. math.ceil(fs.getSize(d) / 1024) .. " KB)")) or "not saved"
       end
       local total, onPc, files = MAP.diskUse()
+      if movedMap > 0 then say("Map:              moved " .. movedMap .. " file(s) off this computer") end
       say("Map:              " .. files .. " files, " .. math.ceil((total - onPc) / 1024) ..
           " KB on floppies, " .. math.ceil(onPc / 1024) .. " KB on the computer" ..
           (#MAP.order < chunks0 and ("  - trimmed to the newest " .. #MAP.order .. " chunks") or ""))

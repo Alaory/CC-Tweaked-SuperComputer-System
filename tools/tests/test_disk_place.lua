@@ -46,3 +46,10 @@ local stillThere = false
 for _, f in ipairs(fs.list and fs.list("map") or {}) do stillThere = true end
 CHECK(not stillThere or left == 0, "nothing left in the computer's map folder")
 CHECK(MAP.offload() == 0, "nothing more to move")
+-- 4) 'disks move': an old log still on the computer moves to the floppy at once
+local h = fs.open("events.old.log", "w") h.write("2025-01-01 10:00|INFO|old|line\n") h.close()
+local h2 = fs.open("me_names.dat", "w") h2.write("{}") h2.close()
+local out = handleCommand("disks move") or {}
+CHECK(not fs.exists("events.old.log") and fs.exists("disk9/events.old.log"), "disks move: the old events log moved to the floppy\n" ..
+      table.concat(out, "\n"))
+CHECK(not fs.exists("me_names.dat") and fs.exists("disk9/me_names.dat"), "disks move: me_names.dat moved to the floppy")

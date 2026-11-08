@@ -231,6 +231,7 @@ function dataPath(name)
   DPATH[name] = { p = p, t = os.clock() }
   return p
 end
+function dataPathReset() DPATH = {} end                 -- (look again now: a floppy was put in)
 -- a log file and its ".old" partner in the same place (a floppy); an old
 -- partner still on the computer moves along
 function logPaths(cur, old)
