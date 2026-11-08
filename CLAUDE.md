@@ -384,6 +384,16 @@ PneumaticCraft drone rides, turtle mapping/surveys, and an AE2 ME network view.
   not belong -> back into AE2, place what is missing; daily rotation per site at
   an hour), stage 3 structure "spawning" at flat spots from the map. Litematica /
   WorldEdit files are refused with a hint. tools/tests/fixtures (make_fixtures.py).
+- CURIOS (base_curios.lua CURIOS; CURIOS tab, empty slot selected): FITS = items tagged
+  curios:<slot> (or curios:curio) + items listed under "#curios:<slot>" in the partial view
+  (meTagCache.curioOf - those answers often carry NO tags, so nothing was ever found) +
+  items LEARNED to fit (worn before / put on from here: CURIOS.fits, curios_fits.dat).
+  SHOW ALL lists every AE2 item (Curios refuses what does not fit). AUTO-EQUIP: AUTO next
+  to an item / KEEP ONE ON on a worn one -> rule {slot, item} (curios_auto.dat);
+  CURIOS.autoTick (comms worker, slots read every 8 s while rules exist) queues a cequip
+  (auto=true) when the item is not worn in that slot type and a slot is free (a used
+  totem); r.why = "none left in AE2" / the put-on error (shown on the tab, `curios auto`).
+  Putting on needs CONFIG.me.curiosChest. test_curios.lua.
 - POCKET REMOTE (pocket.lua on the owner's Advanced Pocket Computer with a
   wireless / ender modem; base_pocket.lua POCKET; rednet protocol "basepocket",
   rednet.host'ed by the comms worker; POCKET.out sent there). Pairing: pocket

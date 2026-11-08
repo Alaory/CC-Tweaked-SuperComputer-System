@@ -395,6 +395,15 @@ function handleTouch(tx, ty)
         MAP.setAuto(not MAP.auto.on)
         setToast(MAP.auto.on and "Auto-map is ON: the turtles keep surveying from the base outward, by themselves"
                  or "Auto-map is OFF", MAP.auto.on and C.good or C.label)
+      elseif h[5] == "callfits" then
+        state.curiosAll = not state.curiosAll
+        state.curiosFitPage = 1
+      elseif h[5] == "cauto" and CURIOS then
+        local v = h[6]
+        local on = CURIOS.toggleAuto(v[1], v[2], v[3])
+        setToast(on and ("AUTO-EQUIP ON: one " .. tostring(v[3]) .. " is kept on in " .. prettify(v[1]) ..
+                 " (a new one from AE2 when it is used up)") or ("AUTO-EQUIP OFF for " .. tostring(v[3])),
+                 on and C.good or C.label)
       elseif h[5] == "csel" then
         local cur = state.curiosSel
         if cur and cur.type == h[6][1] and cur.pos == h[6][2] then state.curiosSel = nil

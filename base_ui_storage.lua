@@ -236,7 +236,20 @@ function drawCuriosPage(G)
   -- the slot number as listCurios counts it (from 0 or from 1)
   local slotNo = (row.raw and row.raw[sel.pos]) or (sel.pos - 1 + (row.base or 1))
   kv(ix, top + 3, iw, "Slot", prettify(row.name) .. " " .. sel.pos .. " of " .. row.count)
+  -- AUTO-EQUIP rules for this slot type (keep one on; a used totem is replaced)
+  local rules = {}
+  for _, r in ipairs((CURIOS and CURIOS.auto) or {}) do if r.slot == row.name then rules[#rules + 1] = r end end
   local by = top + 6
+  if #rules > 0 then
+    for i, r in ipairs(rules) do
+      if i > 2 then break end
+      local on = false
+      for _, c in pairs(row.cells) do if type(c) == "table" and c.name == r.item then on = true end end
+      local t = "AUTO: " .. (r.display or prettify(r.item)) .. (r.why and (" - " .. r.why) or (on and " - kept on" or " - putting one on"))
+      text(ix, top + 4 + i, trunc(t, iw), r.why and C.warn or C.good, C.panel)
+    end
+    by = top + 6 + math.min(2, #rules)
+  end
   if it then
     kv(ix, top + 4, iw, "Worn", trunc(it.displayName or prettify(it.name), iw - 8))
     local n = tonumber(it.count) or 1
@@ -247,7 +260,15 @@ function drawCuriosPage(G)
     end
     actButton(ix, by, iw, 3, "TO INVENTORY", { kind = "cunequip", name = it.name, count = n,
                                                slotType = row.name, slotNo = slotNo })
-    text(ix, by + 4, "Tap twice to confirm.", C.dim, C.panel)
+    by = by + 4
+    if bridge and CURIOS and by + 2 <= bottom then
+      local on = CURIOS.ruleOf(row.name, it.name)
+      drawButton(ix, by, iw, 3, on and "AUTO-EQUIP: ON (tap = off)" or "KEEP ONE ON (AUTO-EQUIP)",
+                 on and C.accent or C.empty, C.text, "cauto",
+                 { row.name, it.name, it.displayName and cleanName(it.displayName) or prettify(it.name) })
+      by = by + 4
+    end
+    if by <= bottom then text(ix, by, trunc("Tap twice to confirm. AUTO = put a new one on from AE2 when it is used up.", iw), C.dim, C.panel) end
     return
   end
 
@@ -256,23 +277,34 @@ function drawCuriosPage(G)
     text(ix, by, trunc("No ME Bridge: nothing to put on from it.", iw), C.dim, C.panel)
     return
   end
-  text(ix, by, "FITS HERE (in the ME network)", C.label, C.panel)
+  local all = state.curiosAll
+  text(ix, by, all and "EVERYTHING IN AE2" or "FITS HERE (in AE2)", C.label, C.panel)
+  drawButton(ix + iw - 12, by, 12, 1, all and "ONLY FITTING" or "SHOW ALL", C.empty, C.text, "callfits")
   local me = state.me
   if not me or not me.items then
     text(ix, by + 2, "Reading the ME network...", C.dim, C.panel)
     return
   end
+  local learned = (CURIOS and CURIOS.fits[row.name]) or {}
   local fits = {}
   for _, e in ipairs(me.items) do
-    if e.curios and e.curios[row.name] and (e.count or 0) > 0 then fits[#fits + 1] = e end
+    if (e.count or 0) > 0 then
+      local tagged = e.curios and (e.curios[row.name] or e.curios.curio)
+      if all or tagged or learned[e.name] or (CURIOS and CURIOS.ruleOf(row.name, e.name)) then fits[#fits + 1] = e end
+    end
   end
   table.sort(fits, function(a, b) return a.display:lower() < b.display:lower() end)
   if #fits == 0 then
-    text(ix, by + 2, trunc("Nothing tagged curios:" .. row.name, iw), C.dim, C.panel)
-    text(ix, by + 3, trunc("in the network.", iw), C.dim, C.panel)
+    text(ix, by + 2, trunc("Nothing in AE2 is known to fit " .. prettify(row.name) .. ".", iw), C.dim, C.panel)
+    text(ix, by + 3, trunc("SHOW ALL lists every item: try one -", iw), C.dim, C.panel)
+    text(ix, by + 4, trunc("Curios refuses what does not fit.", iw), C.dim, C.panel)
+    if me.partial then
+      text(ix, by + 6, trunc("(partial ME view: items without a curios tag", iw), C.dim, C.panel)
+      text(ix, by + 7, trunc("are only found after they were worn once)", iw), C.dim, C.panel)
+    end
     return
   end
-  local per = math.max(1, math.floor((bottom - by - 3) / 2))
+  local per = math.max(1, math.floor((bottom - by - 3) / 3))
   local pages2 = math.max(1, math.ceil(#fits / per))
   state.curiosFitPage = math.max(1, math.min(state.curiosFitPage or 1, pages2))
   if pages2 > 1 then
@@ -284,10 +316,17 @@ function drawCuriosPage(G)
   for k = 1, per do
     local e = fits[first + k]
     if not e then break end
-    local ry = by + 2 + (k - 1) * 2
-    text(ix, ry, trunc(e.display, iw - 12), C.text, C.panel)
-    text(ix, ry + 1, compact(e.count) .. " in the network", C.dim, C.panel)
-    actButton(ix + iw - 10, ry, 10, 2, "PUT ON", { kind = "cequip", name = e.name, count = 1,
+    local ry = by + 2 + (k - 1) * 3
+    local tagged = e.curios and (e.curios[row.name] or e.curios.curio)
+    local on = CURIOS and CURIOS.ruleOf(row.name, e.name)
+    text(ix, ry, trunc(e.display, iw - 18), C.text, C.panel)
+    text(ix, ry + 1, trunc(compact(e.count) .. " in AE2" .. ((not tagged and learned[e.name]) and ", worn before" or
+         (not tagged and " - may not fit" or "")), iw - 18), C.dim, C.panel)
+    actButton(ix + iw - 17, ry, 10, 2, "PUT ON", { kind = "cequip", name = e.name, count = 1,
                                                    slotType = row.name, slotNo = slotNo })
+    if CURIOS then
+      drawButton(ix + iw - 6, ry, 6, 2, "AUTO", on and C.accent or C.empty, on and C.text or C.dim, "cauto",
+                 { row.name, e.name, e.display })
+    end
   end
 end

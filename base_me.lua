@@ -441,14 +441,21 @@ function fetchME()
         if not okT and isDistError(list) then return "BROKEN" end
         return {}
       end)
-      cache = { t = os.clock(), items = {}, broken = {}, swept = inList }
+      cache = { t = os.clock(), items = {}, broken = {}, swept = inList, curioOf = {} }
       local seenKey = {}
       for i, list in ipairs(res) do
         if list == "BROKEN" then
           cache.broken[#cache.broken + 1] = "#" .. tags[i]
         elseif type(list) == "table" then
+          -- items listed under "#curios:<slot>" fit that slot, even when the
+          -- answer does not carry the item's tags (then curioSlotsOf finds nothing)
+          local cslot = tags[i]:match("^curios:(.+)$")
           for _, it in ipairs(list) do
             if type(it) == "table" and it.name then
+              if cslot then
+                cache.curioOf[it.name] = cache.curioOf[it.name] or {}
+                cache.curioOf[it.name][cslot] = true
+              end
               local k = tostring(it.name) .. "|" .. (type(it.fingerprint) == "string" and it.fingerprint or "")
               if not seenKey[k] then seenKey[k] = true cache.items[#cache.items + 1] = it end
               -- learn this item's tags for the next sweep
@@ -541,9 +548,15 @@ function fetchME()
       cur.count = cur.count + cnt
       cur.craftable = cur.craftable or craftable
     else
+      local cs = curioSlotsOf(it)
+      local tc = state.meTagCache and state.meTagCache.curioOf and state.meTagCache.curioOf[it.name]
+      if tc then
+        cs = cs or {}
+        for s in pairs(tc) do cs[s] = true end
+      end
       cur = { name = it.name, count = cnt, craftable = craftable,
               display = cleanName(it.displayName or prettify(it.name)),
-              curios = curioSlotsOf(it) }
+              curios = cs }
       me.byName[it.name] = cur
       me.items[#me.items + 1] = cur
     end
@@ -1742,6 +1755,10 @@ function runAction(a)
     if a.kind == "cstore" then n, err = curioToME(a.name, a.count, a.slotType, a.slotNo)
     elseif a.kind == "cunequip" then n, err = curioToInventory(a.name, a.count, a.slotType, a.slotNo)
     else n, err = meToCurio(a.name, a.count, a.slotType, a.slotNo) end
+    if a.kind == "cequip" and CURIOS then
+      if a.auto then CURIOS.autoResult(a, n, err)
+      elseif n > 0 then CURIOS.learn(a.slotType, a.name) end   -- (it fits: shown for this slot type from now on)
+    end
     local verb = (a.kind == "cstore" and "Stored in the network: ") or (a.kind == "cunequip" and "Moved to your inventory: ")
                  or "Put on: "
     if n > 0 then setToast(verb .. disp .. (err and (" - " .. err) or ""), err and C.warn or C.good, 8)

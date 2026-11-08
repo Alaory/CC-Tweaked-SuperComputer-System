@@ -43,6 +43,7 @@ HELP = {
   " me check             does the full ME list work right now? (for finding the broken item)",
   " curios check         can your worn Curios items be read? (the broken item is usually worn)",
   " curios probe         what the curios move functions want (nothing is moved)",
+  " curios auto [clear]  the AUTO-EQUIP rules (keep a totem ... on) / remove them all",
   " tanks                your fluid containers: contents and what they offer (for filling from ME)",
   " report [local]       all peripherals + functions -> report.txt, uploaded to pastebin",
   " disks [data|move]    floppy disks; 'disks data' makes empty floppies data disks,",
@@ -281,6 +282,19 @@ function handleCommand(line)
   elseif cmd == "tanks" then
     tankReport(say)
 
+  elseif cmd == "curios" and words[2] == "auto" then
+    if words[3] == "clear" then
+      CURIOS.auto = {}
+      CURIOS.save()
+      say("All AUTO-EQUIP rules removed.")
+    elseif #CURIOS.auto == 0 then
+      say("No AUTO-EQUIP rules. CURIOS tab: tap a slot, then AUTO next to an item.")
+    else
+      for _, r in ipairs(CURIOS.auto) do
+        say(" " .. r.slot .. ": " .. (r.display or r.item) .. " - " .. (r.why or "kept on"))
+      end
+      if not CONFIG.me.curiosChest then say("NOTE: putting on needs CONFIG.me.curiosChest (an empty barrel).") end
+    end
   elseif cmd == "curios" and words[2] == "probe" then
     say("How this Inventory Manager wants the curios functions called (nothing is moved):")
     curiosProbe(say)
