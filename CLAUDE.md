@@ -504,7 +504,10 @@ blocked -> carry on from there) from not loaded (-> hops). Everything refused
 and the spot is UNDER GROUND (map top > y): the drone lands on the surface
 right above it. A mission's own destination is dr.mdest (cmd.dest, e.g. a chat ride or
 the fly-to-turtle button, else the DRONES page choice dr.dest); chat rides never change
-dr.dest / dr.passenger. Wrong passenger guard (pickupSteps): no Entity Import while another
+dr.dest / dr.passenger. On board? (pickupSteps) after EVERY Entity Import the drone FLIES (goto, no air) liftHeight
+up and the player must rise with it - being next to them proves nothing (it went there
+to get them; that made it teleport off without a passenger). No room to lift -> checked
+on arrival (passengerHere). The liftCheck setting is gone (base_config line unused). Wrong passenger guard (pickupSteps): no Entity Import while another
 player is within 4 blocks of the rider; after the import the drone must be WITH the rider,
 else letGoHere (Entity Export where it is) + fail; lift mode lets go before the next try.
 Teleports only into loaded chunks (players and the

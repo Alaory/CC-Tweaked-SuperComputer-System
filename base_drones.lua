@@ -868,26 +868,30 @@ function pickupSteps(dr, name)
       end
       if not ok then
         -- (nothing more to do this attempt)
-      elseif CONFIG.drone.travel ~= "fly" and not CONFIG.drone.liftCheck then
-        -- no lift: whether the passenger really came along is checked at the
-        -- destination, before anything is released
-        dr.checkAboard = name
-        dr.rider = name
-        droneLog(dr, name .. " picked up (checked on arrival)")
-        return true
       else
-        local okL, errL = travelTo(dr, x, y + CONFIG.drone.liftHeight, z)
-        if not okL then return false, errL end
+        -- on board? The drone is right next to them after ANY import (it went there
+        -- to pick them up), so being close proves nothing. LIFT them a few blocks by
+        -- FLYING (costs no air, also in teleport mode): they rise with it = on board.
+        local lift = CONFIG.drone.liftHeight or 4
+        local okL, errL = droneMoveTo(dr, "pneumaticcraft:goto", x, y + lift, z, 12)
+        if errL == "stopped" or errL == "the drone disconnected" then return false, errL end
+        if not okL then
+          -- no room to lift (a roof): checked on arrival instead (as before)
+          droneLog(dr, "Could not lift (" .. tostring(errL) .. ") - checking on arrival that " .. name .. " came along")
+          dr.checkAboard = name
+          dr.rider = name
+          return true
+        end
         waitFor(1, "drone_abort")
         if dr.abort then return false, "stopped" end
         local _, py = playerPos(name)
-        if type(py) == "number" and py - y >= CONFIG.drone.liftHeight * 0.5 then
-          droneLog(dr, name .. " is on board")
+        if type(py) == "number" and py - y >= lift * 0.5 then
+          droneLog(dr, name .. " is on board (lifted " .. lift .. " blocks)")
           dr.rider = name
           return true
         end
         lastErr = name .. " did not come along"
-        droneLog(dr, "Attempt " .. attempt .. ": " .. lastErr)
+        droneLog(dr, "Attempt " .. attempt .. ": " .. lastErr .. " - trying again")
         -- someone else may be on board: never carry them along to the next try
         letGoHere(dr, "Not the right passenger on board", x, y, z)
       end

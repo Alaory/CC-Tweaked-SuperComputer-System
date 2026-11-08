@@ -178,7 +178,6 @@ SETTING_GROUPS = {
     num("drone.hopLength", "Long trips: hops of", "far away and not loaded: teleport hops this long", 160, 32, 320, 16,
         function(v) return v .. " blocks" end),
     num("drone.pickupTries", "Pickup tries", "tries to pick a player up before giving up", 4, 1, 10, 1, plain),
-    bool("drone.liftCheck", "Lift after a pickup", "ON: lift and check the passenger came along (slower)", false),
   } },
   { name = "CHAT", list = {
     bool("chat.askOwner", "Ask me for strangers' rides", "players not on the allow list need your OK", true),

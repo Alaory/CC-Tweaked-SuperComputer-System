@@ -5,14 +5,15 @@ local HOME = { x = 0, y = 70, z = 0 }
 local W                                   -- this scenario's world
 local function world(opts)
   W = { pos = { x = 2, y = 70, z = 0 }, P = opts.players, carry = nil, act = nil, aborts = 0,
-        grab = opts.grab, unreachable = opts.unreachable or 1e9, homeRefused = opts.homeRefused or 0 }
+        grab = opts.grab, miss = opts.miss, unreachable = opts.unreachable or 1e9, homeRefused = opts.homeRefused or 0 }
   os.pullEventRaw = function()
     CLOCK = CLOCK + 0.3
     if W.act and CLOCK >= W.doneAt then
       local t = W.target
       if W.act == "pneumaticcraft:entity_import" then
         local who = W.grab
-        if not who then           -- the player at the import spot
+        if W.miss then who = nil                 -- the grab catches nobody (the drone is next to you anyway)
+        elseif not who then           -- the player at the import spot
           for n, p in pairs(W.P) do if math.abs(p.x - t.x) <= 1 and math.abs(p.z - t.z) <= 1 then who = n end end
         end
         if who then W.pos = { x = W.P[who].x, y = W.P[who].y, z = W.P[who].z } W.carry = who end
@@ -68,6 +69,22 @@ runMission(dr, { kind = "ferry", passenger = "Bob" })
 CHECK(dr.mission.state == "failed" and tostring(dr.mission.err):find("instead of", 1, true), "wrong player: refused")
 CHECK(near(W.P.Alaory, 0, 0), "wrong player: Alaory stays where she was")
 CHECK(W.carry == nil, "wrong player: nobody on board")
+
+-- the grab catches nobody: the drone stands next to Bob all the same - it must NOT
+-- think he is on board and teleport away without him
+dr = world({ players = { Bob = { x = 300, y = 70, z = 0 }, Alaory = { x = 0, y = 70, z = 0 } }, miss = true })
+dr.dest = { kind = "player", name = "Alaory" }
+local tps = 0
+local setA = dr.periph.setAction
+dr.periph.setAction = function(a) if a == "pneumaticcraft:teleport" and W.target and W.target.x < 250 then tps = tps + 1 end return setA(a) end
+runMission(dr, { kind = "ferry", passenger = "Bob" })
+CHECK(dr.mission.state == "failed", "missed grab: the ride fails (" .. tostring(dr.mission.err) .. ")")
+CHECK(tps == 0 or not tostring(dr.mission.steps[2] and dr.mission.steps[2].status):find("done"),
+      "missed grab: never flew off to the destination without him")
+CHECK(dr.mission.steps[1].status == "fail", "missed grab: noticed at the pickup, not at the destination (" ..
+      tostring(dr.mission.err) .. ")")
+CHECK(dr.rider == nil, "missed grab: nobody counted as on board")
+CHECK(near(W.P.Bob, 300, 0), "missed grab: Bob where he was")
 
 -- a chat ride: what was asked in chat, not what is on the DRONES page
 dr = world({ players = { Bob = { x = 300, y = 70, z = 0 }, Alaory = { x = 0, y = 70, z = 0 } } })
