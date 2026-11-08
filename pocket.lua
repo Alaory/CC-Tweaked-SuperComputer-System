@@ -397,6 +397,8 @@ function pageMore(d, y)
     y = text(y, d.factory, C.dim)
     button(1, y, W, "FACTORY: TRY AGAIN", C.btn, function() act("factoryretry") end) y = y + 2
   end
+  y = section(y, "TURTLE PROGRAM")
+  button(1, y, W, "UPDATE TURTLES NOW", C.acc, function() act("updateall") end, true) y = y + 2
   y = section(y, "THIS POCKET")
   button(1, y, W, "UNPAIR THIS POCKET", C.bad, function() P.key = nil saveState() end, true)
   return y + 1

@@ -456,10 +456,12 @@ function handleCommand(line)
         local mark = (t.ver == CODE.ver) and "up to date" or (t.updReady == CODE.ver and "ready, installs after its job")
                      or (TT.online(t) and "will be updated" or "offline")
         say("  " .. t.label .. " #" .. t.id .. ": " .. TT.verName(t.ver) .. " - " .. mark)
-        if TT.online(t) and TT.outdated(t) then t.updRetry = nil n = n + 1 end
+        if TT.online(t) and TT.outdated(t) then n = n + 1 end
       end
+      TT.forceUpdate()                                -- now, also while you play / automatic updates off
       say("Turtle program on the base: " .. TT.verName(CODE.ver) .. ". " ..
-          (n == 0 and "All online turtles are up to date." or (n .. " turtle(s) get it, one by one.")))
+          (n == 0 and "All online turtles are up to date."
+           or (n .. " turtle(s) get it now, 3 at a time (busy ones stop their job to install it).")))
       say(state.installDisk and ("Install disk is up to date (" .. state.installDisk .. ").")
           or "No install disk: put an empty floppy in a Disk Drive on this computer.")
     end

@@ -72,14 +72,9 @@ function handleTouch(tx, ty)
             os.queueEvent("map_save")
             setToast("Saving the map ...", C.label, 3)
           elseif a.kind == "sysupdate" then
-            pcall(TT.codeLoad, true)
-            TT.updateForce = os.clock() + 600          -- also when automatic updates are off
-            local n = 0
-            for _, t in pairs(state.turtles) do
-              if TT.online(t) and TT.outdated(t) then t.updRetry = nil n = n + 1 end
-            end
+            local n = TT.forceUpdate() or 0             -- also while you play / automatic updates off
             setToast(CODE and (n == 0 and ("All online turtles run " .. TT.verName(CODE.ver))
-                     or (n .. " turtle(s) get " .. TT.verName(CODE.ver) .. ", one by one")) or "No node.lua found", C.label, 5)
+                     or (n .. " turtle(s) get " .. TT.verName(CODE.ver) .. ", 3 at a time")) or "No node.lua found", C.label, 5)
           elseif a.kind == "sysrestart" then
             pcall(MAP.save)
             if sysLog then sysLog("Base restarted from the SYSTEM tab", "INFO") end

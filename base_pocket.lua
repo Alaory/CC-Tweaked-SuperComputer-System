@@ -226,6 +226,11 @@ function POCKET.act(a, args, pos)
     FACTORY.fails, FACTORY.waitUntil = 0, nil
     FACTORY.save()
     return true, "factory: " .. (FACTORY.statusLine())
+  elseif a == "updateall" then
+    local n = TT.forceUpdate()
+    if not n then return false, "no node.lua on the base computer" end
+    return true, n == 0 and ("all online turtles run " .. TT.verName(CODE.ver))
+                         or (n .. " turtle(s) get " .. TT.verName(CODE.ver) .. " now")
   end
   return false, "unknown action " .. tostring(a)
 end

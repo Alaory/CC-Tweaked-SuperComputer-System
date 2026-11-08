@@ -105,7 +105,10 @@ PneumaticCraft drone rides, turtle mapping/surveys, and an AE2 ME network view.
 - Turtle updates: every new node.lua gets a number (v1, v2 ... in
   turtle_versions.dat). TT.updateTick (comms worker) updates up to 3 turtles at a
   time (TT.sending; t.updState sending/ready/retry + t.updNote for the screen;
-  runs when autoUpdate is on, or 10 min after UPDATE TURTLES = TT.updateForce); a busy turtle keeps the update (UPD_READY) and installs it after its
+  runs when autoUpdate is on, or 10 min after UPDATE TURTLES = TT.forceUpdate: button,
+  console `update` (it did NOT force before), pocket "updateall"; busy turtles that
+  already hold it get STOP (no hold) and install at once; list label UPDATE WAITS /
+  UPDATE AFTER JOB / UPDATE QUEUED); a busy turtle keeps the update (UPD_READY) and installs it after its
   job; missing pieces are asked for ("updmiss"). Toasts on each update.
 - Install drive: the Disk Drive under the computer ("bottom", not wired;
   CONFIG.turtles.installDrive). A floppy put in gets the installer + current
@@ -200,7 +203,7 @@ PneumaticCraft drone rides, turtle mapping/surveys, and an AE2 ME network view.
   turn), opposite 0.8 (HD[k] = last sideways direction); h weighted 1.001
   (tie-break). tools/navsim/world.lua: turns cost time and are counted; maze /
   maze2 (TX=44) and "astar" (planner alone on 6 random mazes) scenarios.
-- Mining teams (miner.lua m14, base_mining.lua MINE, base_ui_mining.lua; TURTLES >
+- Mining teams (miner.lua m15, base_mining.lua MINE, base_ui_mining.lua; TURTLES >
   MINING): per mining dimension ONE LOADER + up to CONFIG.maxMiners (5) MINERS.
   Same signed protocol with m.mine = true -> TT.receive -> MINE.receive (never
   in state.turtles). Team proto "basemine": loaderhere / minerhere (join, by
@@ -234,7 +237,8 @@ PneumaticCraft drone rides, turtle mapping/surveys, and an AE2 ME network view.
   team2drop/team3drop/team5drop/team3dropalive (DROPIDX = which miner). The loader
   answers ready/needlayer/unloadreq from a non-member (isMember) with the team list,
   and sends it to a dropped miner directly - an alive dropped miner leaves. S.dropped
-  keeps it from joining again until a NEW FIELD (newTeamPlan clears it). MINE.drop(id) (console
+  keeps it from joining again until a NEW FIELD (newTeamPlan clears it). A lost LOADER: MINE.drop forgets it; miners (m15) leave a loader silent 10 min
+  (LEADER_SEEN) when another one says loaderhere. MINE.drop(id) (console
   `mine drop` and a DROP button on the MINING tab for a miner gone 20+ min). Unloading: one miner at the station at a time
   (S.stationUse, 6 min max); each miner needs its own `miner station` (the
   point lives in its core). Ores (isOreBlock): tags (:ores, _ores, /ores, not

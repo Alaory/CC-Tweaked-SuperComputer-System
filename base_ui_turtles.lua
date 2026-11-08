@@ -146,7 +146,10 @@ function drawTurtlesPage(G)
     local vn = TT.verName(t.ver)
     local old = on and TT.outdated(t)
     local ready = old and CODE and t.updReady == CODE.ver
+    local forcedU = TT.updateForce and os.clock() < TT.updateForce
     local upd = old and (t.updState == "sending" and "SENDING UPDATE" or (t.updState == "retry" and "RETRY UPDATE")
+                         or (ready and "UPDATE AFTER JOB")
+                         or ((not forcedU and (TT.updWaiting or not CONFIG.turtles.autoUpdate)) and "UPDATE WAITS")
                          or "UPDATE QUEUED")
     -- the real state first (stuck / not moving / working / idle + why); an
     -- update in progress only shows when nothing is wrong

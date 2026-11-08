@@ -78,12 +78,13 @@ CONFIG = {
 }
 
 STATE_FILE = "miner_state"
-MYVER = "m14"            -- shown on the screen and the base (MINING tab)
+MYVER = "m15"            -- shown on the screen and the base (MINING tab)
 DX = { [0] = 0, 1, 0, -1 }
 DZ = { [0] = -1, 0, 1, 0 }
 FNAME = { [0] = "north", "east", "south", "west" }
 NOTES = {}
 S = {}
+LEADER_SEEN = os.clock()  -- (miner) last message from my loader
 task = "starting"
 LAST_CHECK = -1000
 LAST_STATUS = -1000
@@ -359,6 +360,15 @@ function handle(id, m, proto)
         if S.stationUse and S.stationUse.id == id then S.stationUse = nil end
       end
     elseif S.role == "miner" then
+      if id == S.leader then LEADER_SEEN = os.clock() end
+      -- my loader is gone (deleted / lost) and another one is here: after 10 min of
+      -- silence I leave the old team and offer myself to the new loader
+      if m.t == "loaderhere" and S.leader and id ~= S.leader and os.clock() - (LEADER_SEEN or 0) > 600
+         and not crossingDue() then
+        note("My loader #" .. S.leader .. " is silent for 10+ min - offering myself to loader #" .. id)
+        S.leader, S.team, S.tp, S.job, S.running = nil, nil, nil, nil, false
+        save()
+      end
       if m.t == "loaderhere" and not S.leader then
         sendTeam(id, "minerhere")
       elseif m.t == "team" and (not S.leader or S.leader == id) then

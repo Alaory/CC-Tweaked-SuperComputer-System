@@ -753,6 +753,30 @@ function TT.updateTick()
   TT.updating = next(TT.sending) and { id = next(TT.sending), t0 = now } or nil
 end
 
+-- UPDATE TURTLES (button, console `update`, pocket): read node.lua again and
+-- send it to every online turtle now - also while you play and when automatic
+-- updates are off (10 min). A BUSY turtle that already has it waiting gets a
+-- STOP (no hold): its job ends, it installs at once (a survey batch is handed
+-- out again). Returns how many get it.
+function TT.forceUpdate()
+  pcall(TT.codeLoad, true)
+  if not CODE then return nil end
+  TT.updateForce = os.clock() + 600
+  local n = 0
+  for _, t in pairs(state.turtles) do
+    if TT.online(t) and TT.outdated(t) then
+      n = n + 1
+      t.updRetry = nil
+      if t.updState == "retry" then t.updState = nil end
+      if t.updReady == CODE.ver and t.task and t.task ~= "idle" then
+        TT.send(t.id, "stop", {}, true, true)
+        TT.log(t, "UPDATE TURTLES: stopping its job so it installs " .. TT.verName(CODE.ver) .. " now")
+      end
+    end
+  end
+  return n
+end
+
 -- a turtle runs a new version now: tell the owner (and when all are done)
 function TT.updated(t, oldVer)
   TT.log(t, "Updated: " .. TT.verName(oldVer) .. " -> " .. TT.verName(t.ver))

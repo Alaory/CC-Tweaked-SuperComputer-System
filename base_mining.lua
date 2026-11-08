@@ -219,7 +219,14 @@ end
 function MINE.drop(id)
   local u = MINE.units[id]
   if not u then return false, "no mining turtle #" .. tostring(id) end
-  if u.role ~= "miner" then return false, "#" .. id .. " is not a miner (only miners can be dropped from a team)" end
+  if u.role ~= "miner" then
+    -- a lost LOADER: off the list; its miners join a new loader by themselves
+    -- (after 10 min without a word from the old one - miner.lua m15)
+    MINE.units[id] = nil
+    pcall(MINE.save)
+    return true, "loader #" .. id .. " forgotten. Put a new loader (miner.lua, role l) in the same dimension: " ..
+                 "the miners join it after 10 min without their old loader, then press START TEAM"
+  end
   local team = MINE.teams()[u.dim or "?"]
   local l = team and team.loader
   if not l then return false, "no loader for " .. tostring(u.dim) .. " - nothing to drop it from" end

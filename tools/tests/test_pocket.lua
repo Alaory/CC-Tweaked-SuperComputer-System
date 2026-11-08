@@ -203,6 +203,16 @@ local wb = false
 for _, n in ipairs(P.notes) do if n.title == "WELCOME BACK" then wb = true end end
 CHECK(wb, "the WELCOME BACK report reaches the pocket")
 
+-- UPDATE TURTLES NOW from the pocket
+local fu0 = TT.forceUpdate
+local forcedP = false
+TT.forceUpdate = function() forcedP = true return 2 end
+CODE = CODE or { ver = "X", pieces = {} }
+penv.act("updateall")
+pump()
+TT.forceUpdate = fu0
+CHECK(forcedP and P.toast:find("get", 1, true), "pocket: UPDATE TURTLES NOW (" .. tostring(P.toast) .. ")")
+
 -- security: a forged message, a replay, and an unpaired pocket do nothing
 local before = POCKET.pockets[PID].lastN
 POCKET.receive(PID, { t = "act", n = os.epoch("utc") * 100 + 99, a = "allstop", sig = "0000000000000000" })
