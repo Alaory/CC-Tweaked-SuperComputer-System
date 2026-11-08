@@ -506,9 +506,10 @@ names exist on this version (getMaxItemStorage etc.); code tries new and old.
   except the explicit BUFFER -> ME button).
 
 **Drones (PneumaticCraft):** teleport costs ~10,000 mL (~0.85 bar) even when it
-fails; flying costs no air. Passenger watch: dr.rider (set after pickup) is checked every
-2 s while moving (riderLeft); off = > 12 blocks apart twice -> "passenger got
-off" -> the drone goes straight home. Long trips hop 160 -> 80 -> 48 blocks
+fails; flying costs no air. Passenger watch: dr.rider (set after pickup) is checked BEFORE EVERY MOVE
+(riderGoneNow in droneMoveTo) and every 2 s while moving (riderLeft): logged off (not in
+getOnlinePlayers, empty list = nobody) or > 12 blocks apart twice 0.5 s apart -> "passenger got
+off" -> the drone goes straight home (before: 2-3 more 160-block hops into unloaded land). Long trips hop 160 -> 80 -> 48 blocks
 before flying into an area that is not loaded. A refused (blocked/tight)
 target with OPEN SKY above it (MAP.get column top <= y-1; skyOpenAbove) ->
 one teleport into the air above + fly down (skyApproach) instead of trying
@@ -520,7 +521,8 @@ and the spot is UNDER GROUND (map top > y): the drone lands on the surface
 right above it. A mission's own destination is dr.mdest (cmd.dest, e.g. a chat ride or
 the fly-to-turtle button, else the DRONES page choice dr.dest); chat rides never change
 dr.dest / dr.passenger. On board? (pickupSteps) after EVERY Entity Import the drone FLIES (goto, no air) liftHeight
-up and the player must rise with it - being next to them proves nothing (it went there
+(min 4: a move counts as arrived within 2.5 blocks) up and the player must rise 2 blocks
+(polled every 0.3 s, goes on at once) - being next to them proves nothing (it went there
 to get them; that made it teleport off without a passenger). No room to lift -> checked
 on arrival (passengerHere). The liftCheck setting is gone (base_config line unused). Wrong passenger guard (pickupSteps): no Entity Import while another
 player is within 4 blocks of the rider; after the import the drone must be WITH the rider,

@@ -86,6 +86,32 @@ CHECK(dr.mission.steps[1].status == "fail", "missed grab: noticed at the pickup,
 CHECK(dr.rider == nil, "missed grab: nobody counted as on board")
 CHECK(near(W.P.Bob, 300, 0), "missed grab: Bob where he was")
 
+-- a long ride (hops of 160 - the far end is not loaded yet) and you get off half way:
+-- the drone must not hop on into unloaded land without you; it goes home
+for _, mode in ipairs({ "gets off", "logs off" }) do
+  dr = world({ players = { Bob = { x = 0, y = 70, z = 0 } }, unreachable = 900 })
+  dr.dest = { kind = "coords", x = 1000, y = 80, z = 0 }
+  local farTp = 0
+  local setA2 = dr.periph.setAction
+  dr.periph.setAction = function(a) if a == "pneumaticcraft:teleport" and W.target and W.target.x >= 500 and W.target.x < 900 then farTp = farTp + 1 end return setA2(a) end
+  local pe = os.pullEventRaw
+  os.pullEventRaw = function(...)
+    local r1, r2 = pe(...)
+    if W.carry == "Bob" and W.pos.x >= 300 then
+      if mode == "logs off" then W.P.Bob = nil end
+      W.carry = nil
+    end
+    return r1, r2
+  end
+  os.pullEvent = os.pullEventRaw
+  runMission(dr, { kind = "ferry", passenger = "Bob" })
+  os.pullEventRaw, os.pullEvent = pe, pe
+  CHECK(dr.mission.state == "failed" and tostring(dr.mission.err):find("got off", 1, true),
+        "you " .. mode .. " half way: the ride ends (" .. tostring(dr.mission.err) .. ")")
+  CHECK(farTp == 0, "you " .. mode .. " half way: no more hops into unloaded land (" .. farTp .. ")")
+  CHECK(near(W.pos, HOME.x, HOME.z), "you " .. mode .. " half way: the drone went home")
+end
+
 -- a chat ride: what was asked in chat, not what is on the DRONES page
 dr = world({ players = { Bob = { x = 300, y = 70, z = 0 }, Alaory = { x = 0, y = 70, z = 0 } } })
 for _, k in ipairs(droneOrder) do drones[k].conn = true drones[k].pressure = 9 drones[k].periph = dr.periph drones[k].busy = false end

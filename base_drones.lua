@@ -491,16 +491,34 @@ end
 -- moving; twice in a row more than 12 blocks apart = they got off. Unknown
 -- positions never count as "got off".
 function riderLeft(dr)
-  local name = dr.rider
-  if not name then return false end
+  if not dr.rider then return false end
   if dr.riderCheck and os.clock() - dr.riderCheck < 2 then return false end
   dr.riderCheck = os.clock()
-  local px, py, pz = playerPos(name)
-  local dx, dy, dz = droneXYZ(dr)
-  if type(px) ~= "number" or not dx then dr.riderFar = 0 return false end
-  local far = math.abs(px - dx) > 12 or math.abs(pz - dz) > 12 or math.abs(py - dy) > 12
-  dr.riderFar = far and (dr.riderFar or 0) + 1 or 0
-  return dr.riderFar >= 2
+  return riderGoneNow(dr)
+end
+-- checked NOW (before every move with a passenger - before, a long trip made a
+-- few more 160-block hops into unloaded land after you got off, and got lost):
+-- logged off = gone; more than 12 blocks from the drone, read twice 0.5 s apart
+-- (one late detector reading is not enough) = gone. Unknown = not gone.
+function riderGoneNow(dr)
+  local name = dr.rider
+  if not name then return false end
+  if det and det.getOnlinePlayers then
+    local ok, list = pcall(det.getOnlinePlayers)
+    if ok and type(list) == "table" then                 -- (empty = nobody online: you were the last one)
+      local on = false
+      for _, n in ipairs(list) do if tostring(n):lower() == name:lower() then on = true end end
+      if not on then droneLog(dr, name .. " logged off during the ride") return true end
+    end
+  end
+  for try = 1, 2 do
+    local px, py, pz = playerPos(name)
+    local dx, dy, dz = droneXYZ(dr)
+    if type(px) ~= "number" or not dx then return false end
+    if math.abs(px - dx) <= 12 and math.abs(pz - dz) <= 12 and math.abs(py - dy) <= 12 then return false end
+    if try == 1 then waitFor(0.5, "drone_abort") end
+  end
+  return true
 end
 
 -- teleport or fly one drone to x y z and wait; returns ok, error
@@ -509,6 +527,8 @@ function droneMoveTo(dr, action, x, y, z, limit)
   local d = dr.periph
   if not d or dr.gone then return false, "Drone Interface disconnected" end
   local isTp = action == "pneumaticcraft:teleport"
+  -- a passenger on board: still with me? Never go on (into unloaded land) without them
+  if dr.rider and riderGoneNow(dr) then return false, "passenger got off" end
   if isTp and not canTeleport(dr) then return false, "low on air" end
   local pBefore = isTp and dronePressure(dr) or nil
   local okS, errS = pcall(areaPoint, dr, x, y, z)
@@ -872,8 +892,9 @@ function pickupSteps(dr, name)
         -- on board? The drone is right next to them after ANY import (it went there
         -- to pick them up), so being close proves nothing. LIFT them a few blocks by
         -- FLYING (costs no air, also in teleport mode): they rise with it = on board.
-        local lift = CONFIG.drone.liftHeight or 4
-        local okL, errL = droneMoveTo(dr, "pneumaticcraft:goto", x, y + lift, z, 12)
+        -- (a move counts as there within 2.5 blocks: the lift must be higher than that)
+        local lift = math.max(4, CONFIG.drone.liftHeight or 4)
+        local okL, errL = droneMoveTo(dr, "pneumaticcraft:goto", x, y + lift, z, 8)
         if errL == "stopped" or errL == "the drone disconnected" then return false, errL end
         if not okL then
           -- no room to lift (a roof): checked on arrival instead (as before)
@@ -882,11 +903,18 @@ function pickupSteps(dr, name)
           dr.rider = name
           return true
         end
-        waitFor(1, "drone_abort")
+        -- they rose with it (2 blocks) = on board: looked at every 0.3 s, goes on at once
+        local py
+        for _ = 1, 7 do
+          if dr.abort then return false, "stopped" end
+          local _, qy = playerPos(name)
+          py = qy
+          if type(py) == "number" and py - y >= 2 then break end
+          waitFor(0.3, "drone_abort")
+        end
         if dr.abort then return false, "stopped" end
-        local _, py = playerPos(name)
-        if type(py) == "number" and py - y >= lift * 0.5 then
-          droneLog(dr, name .. " is on board (lifted " .. lift .. " blocks)")
+        if type(py) == "number" and py - y >= 2 then
+          droneLog(dr, name .. " is on board (lifted)")
           dr.rider = name
           return true
         end
