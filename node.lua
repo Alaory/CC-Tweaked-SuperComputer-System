@@ -624,12 +624,33 @@ local TOPUP = {}       -- the last top-up: gained, uses, refused, seconds (for t
 -- SLOT_LOCK = someone is equipping; TOPUP_RUNNING = a top-up is selecting slots
 SLOT_LOCK, TOPUP_RUNNING = false, false
 local REUSE_SLOTS      -- the slots holding reusable fuel last time (saves looking at all 16)
+-- ENERGY CELLS: an automata core (Advanced Peripherals) turns the FE in a
+-- charged item the turtle carries into fuel (chargeTurtle). Tried first; no
+-- core / no cell / empty cell = nothing happens. Returns the fuel gained.
+function chargeFromCell(target)
+  local f0 = turtle.getFuelLevel()
+  if f0 == "unlimited" or not target or f0 >= target then return 0 end
+  for _, side in ipairs({ "left", "right" }) do
+    local okW, p = pcall(peripheral.wrap, side)
+    if okW and type(p) == "table" and type(p.chargeTurtle) == "function" then
+      local ok, got = pcall(p.chargeTurtle, target - f0)
+      got = ok and tonumber(got) or 0
+      if got > 0 then
+        if not S.cellUsed then S.cellUsed = true send("result", { cmd = "fuel", ok = true,
+          msg = "charged " .. got .. " fuel from an energy cell (FE) - cells are used first from now on" }) end
+        return got
+      end
+    end
+  end
+  return 0
+end
 function topUp(target, onlyReusable, budget)
   local f0 = turtle.getFuelLevel()
   if f0 == "unlimited" or SLOT_LOCK then return 0, false end
   TOPUP_RUNNING = true
   local limit = turtle.getFuelLimit()
   target = math.min(target or limit, limit)
+  pcall(chargeFromCell, target)                  -- (an energy cell first: FE -> fuel)
   S.reuse = S.reuse or {}
   local t0, calls, refused, sel, learnt = os.clock(), 0, 0, turtle.getSelectedSlot(), false
   -- the slots to use: the remembered reusable ones, else all 16 looked at once

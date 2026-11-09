@@ -399,6 +399,12 @@ PneumaticCraft drone rides, turtle mapping/surveys, and an AE2 ME network view.
   factory chest (tap = next EMPTY chest <= 54 slots on the cable), builder (tap = next
   turtle / automatic = the rescuer), status (tap = try again). Console `factory
   [chest <name>|builder <id>|build|stop]`; FLEET card line "Factory".
+- ENERGY CELLS (Advanced Peripherals automata core chargeTurtle: FE in a charged item ->
+  fuel): node.lua chargeFromCell(target) at the start of topUp (any side with chargeTurtle;
+  no core / empty cell = nothing; tells the base once, S.cellUsed); miner.lua (m18) tries
+  it first in burnCoal. A miner keeps a cell only if it was in it at START (S.own).
+  node_cell.lua. Core digBlock (digs with the SELECTED item - maybe enchanted tools, costs
+  fuel + cooldown, setFuelConsumptionRate) is NOT used yet: waiting for the owner's tests.
 - TAUGHT RECIPES (modpacks change recipes: none written in the code). CRAFTER turtle =
   a crafting table equipped (node gear "crafter"; FACTORY.crafter or automatic = the one
   with "crafter"), home next to the factory chest. SETTINGS > FACTORY "Teach a recipe" /

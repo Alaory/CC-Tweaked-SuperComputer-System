@@ -624,12 +624,33 @@ local TOPUP = {}
 
 SLOT_LOCK, TOPUP_RUNNING = false, false
 local REUSE_SLOTS
+
+
+
+function chargeFromCell(target)
+local f0 = turtle.getFuelLevel()
+if f0 == "unlimited" or not target or f0 >= target then return 0 end
+for _, side in ipairs({ "left", "right" }) do
+local okW, p = pcall(peripheral.wrap, side)
+if okW and type(p) == "table" and type(p.chargeTurtle) == "function" then
+local ok, got = pcall(p.chargeTurtle, target - f0)
+got = ok and tonumber(got) or 0
+if got > 0 then
+if not S.cellUsed then S.cellUsed = true send("result", { cmd = "fuel", ok = true,
+msg = "charged " .. got .. " fuel from an energy cell (FE) - cells are used first from now on" }) end
+return got
+end
+end
+end
+return 0
+end
 function topUp(target, onlyReusable, budget)
 local f0 = turtle.getFuelLevel()
 if f0 == "unlimited" or SLOT_LOCK then return 0, false end
 TOPUP_RUNNING = true
 local limit = turtle.getFuelLimit()
 target = math.min(target or limit, limit)
+pcall(chargeFromCell, target)
 S.reuse = S.reuse or {}
 local t0, calls, refused, sel, learnt = os.clock(), 0, 0, turtle.getSelectedSlot(), false
 

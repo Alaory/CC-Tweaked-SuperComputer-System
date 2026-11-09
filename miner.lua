@@ -78,7 +78,7 @@ CONFIG = {
 }
 
 STATE_FILE = "miner_state"
-MYVER = "m17"            -- shown on the screen and the base (MINING tab)
+MYVER = "m18"            -- shown on the screen and the base (MINING tab)
 DX = { [0] = 0, 1, 0, -1 }
 DZ = { [0] = -1, 0, 1, 0 }
 FNAME = { [0] = "north", "east", "south", "west" }
@@ -656,6 +656,18 @@ end
 function burnCoal()
   local fuel = turtle.getFuelLevel()
   if fuel == "unlimited" or fuel >= CONFIG.lowFuel then return end
+  -- an ENERGY CELL first (a charged FE item it carries): the core turns it into
+  -- fuel (Advanced Peripherals chargeTurtle). Put it in BEFORE START: your items
+  -- at START are never unloaded. No cell / empty: nothing happens.
+  local cc = core()
+  if cc and type(cc.chargeTurtle) == "function" then
+    local okC, got = pcall(cc.chargeTurtle, CONFIG.fuelTarget - fuel)
+    if okC and tonumber(got) and tonumber(got) > 0 then
+      if not S.cellUsed then S.cellUsed = true note("Charged " .. got .. " fuel from an energy cell - cells are used first") end
+      fuel = turtle.getFuelLevel()
+      if fuel >= CONFIG.lowFuel then return end
+    end
+  end
   -- endless fuel first (e.g. the Mining Dim Core): refuel(1) keeps the item
   for i = 1, 16 do
     local d = turtle.getItemDetail(i)
