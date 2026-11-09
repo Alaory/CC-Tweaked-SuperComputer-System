@@ -39,3 +39,25 @@ card = oc
 CHECK(not titles.OVERVIEW and not titles.EQUIPMENT, "inventory: no OVERVIEW / EQUIPMENT boxes")
 CHECK((titles.DETAILS or 0) >= 12, "inventory: DETAILS at least 12 rows (" .. tostring(titles.DETAILS) .. ")")
 state.page = was
+-- every hit kind is handled ONCE in base_input.lua (the DRIVE page's turtle list
+-- and the drone picker were both "dsel": the drone picker never worked)
+local src = io.open(SRC_DIR .. "/base_input.lua"):read("a")
+local seenKind = {}
+for k in src:gmatch('elseif h%[5%] == "([%w_]+)" then') do
+  CHECK(not seenKind[k], "hit kind '" .. k .. "' handled twice in base_input.lua")
+  seenKind[k] = true
+end
+-- the drone picker: tapping Drone 2's tab selects it
+state.page = "drone"
+local keys = {}
+for _, k in ipairs(droneOrder) do keys[#keys + 1] = k end
+if #keys >= 2 then
+  state.drone = drones[keys[1]]
+  draw()
+  local tab
+  for _, h in ipairs(hits) do if h[5] == "dsel" and h[6] == keys[2] then tab = h end end
+  CHECK(tab, "drone picker shows Drone 2")
+  if tab then handleTouch(tab[1] + 1, tab[2] + 1) end
+  CHECK(state.drone == drones[keys[2]], "tapping Drone 2 selects it")
+end
+state.page = was

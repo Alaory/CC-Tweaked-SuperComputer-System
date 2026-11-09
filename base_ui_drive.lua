@@ -72,7 +72,7 @@ function drawDrivePage(G)
     local fg = isSel and C.ink or C.text
     text(4, ry, trunc(t.label, lw - 14), fg, isSel and bg or C.empty)
     text(4, ry + 1, trunc(lab, lw - 6), isSel and C.ink or (col or C.dim), isSel and bg or C.empty)
-    addHit(3, ry, lw - 2, 2, "dsel", t.id)
+    addHit(3, ry, lw - 2, 2, "tdsel", t.id)
     ry = ry + 3
   end
   local x = lw + 4

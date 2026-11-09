@@ -343,7 +343,7 @@ function handleTouch(tx, ty)
         end
       elseif h[5] == "tdrive" then
         TT.drive(h[6][1], h[6][2])
-      elseif h[5] == "dsel" then
+      elseif h[5] == "tdsel" then                     -- (DRIVE page; "dsel" = the drone picker)
         state.tSel = h[6]
         local st = state.turtles[h[6]]
         if st and TT.online(st) then TT.drive(h[6], "look") end        -- what is around it, at once

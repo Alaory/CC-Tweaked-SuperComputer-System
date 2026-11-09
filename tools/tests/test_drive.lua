@@ -115,7 +115,7 @@ CHECK(t.view.cells["105,40,100"] == "coal_ore" and t.view.cells["103,40,101"] ==
 state.tOut = {}
 draw()
 local pick
-for _, h in ipairs(hitsOf("dsel")) do if h[6] == 30 then pick = h end end
+for _, h in ipairs(hitsOf("tdsel")) do if h[6] == 30 then pick = h end end
 if pick then handleTouch(pick[1], pick[2]) end
 local la = sentDrive()
 CHECK(la[1] and la[1][1] == "look", "picking the turtle on the monitor: it looks around at once")
