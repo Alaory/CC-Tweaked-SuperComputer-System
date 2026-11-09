@@ -1990,14 +1990,26 @@ KNOW.load()
 -- Then everyone goes home. TT.party (memory only), TT.partyTick (comms worker).
 TT.party = nil
 local PARTY_GAP, PARTY_HOP = 24, 128
--- where a party member stands: ABOVE THE GROUND at that spot (the map's surface + 3),
--- never at the lost turtle's own height (often under ground: the members tried to go
--- DOWN there, could not - no digging - and every trip failed). Unknown ground: the
--- height they travel at (fallback).
+-- where a party member stands: IN THE AIR above the ground there - never at the lost
+-- turtle's own height (often under ground: the members tried to go DOWN, could not -
+-- no digging - every trip failed) and never at a guess (unknown ground on a hillside =
+-- inside the hill: they sat pressed against the slope). The highest ground within 4
+-- blocks (cliffs next to the spot) + 3; only the chunk's rough height known (overview)
+-- -> + 10; nothing known -> the sky highway height (CONFIG.turtles.partySkyY, 150).
 function TT.partyY(x, z, fallback)
-  local top = MAP and MAP.get and MAP.get(math.floor(x), math.floor(z))
-  if top then return top + 3 end
-  return math.max(tonumber(fallback) or 70, 64)
+  local top, rough
+  if MAP and MAP.get then
+    for _, d in ipairs({ { 0, 0 }, { 4, 0 }, { -4, 0 }, { 0, 4 }, { 0, -4 } }) do
+      local h = MAP.get(math.floor(x + d[1]), math.floor(z + d[2]))
+      if h then top = math.max(top or h, h)
+      elseif MAP.getOverview then
+        local o = MAP.getOverview(math.floor(x + d[1]), math.floor(z + d[2]))
+        if o then rough = math.max(rough or o, o) end
+      end
+    end
+  end
+  if top or rough then return math.max((top or -64) + 3, (rough or -64) + 10) end
+  return math.max(tonumber(CONFIG.turtles.partySkyY) or 150, 64)
 end
 
 local function flat(a, b) return math.abs(a.x - b.x) + math.abs(a.z - b.z) end

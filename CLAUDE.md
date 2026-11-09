@@ -533,7 +533,9 @@ PneumaticCraft drone rides, turtle mapping/surveys, and an AE2 ME network view.
   one's last spot = that turtle -> TT.rescue(id, exact x y z, 6, the permanent rescuer)
   (the rescuer checks the ID - isTurtle - before touching it). A lost one that reports
   (Chunky loaded its area) = found. End / no members -> all "home", summary note.
-  GOALS ON THE SURFACE (TT.partyY: MAP.get top + 3, unknown ground -> the height they travel at):
+  GOALS IN THE AIR (TT.partyY: highest MAP.get within 4 blocks + 3 - a cliff next to the spot;
+  only the overview known -> + 10; NOTHING known -> CONFIG.turtles.partySkyY 150, never a guess:
+  "the height they travel at" put them INSIDE unmapped hills - they sat pressed against the slope):
   meet / hops / rings never at the lost turtle's own Y or the drone home's Y (under ground / inside
   the base: members tried to go DOWN, could not - no digging - every trip failed, an idle failed
   trip counted as "arrived", the party raced to MISSING and went home). P.nearTarget (a member

@@ -189,3 +189,18 @@ do
   CHECK(TT.party == nil, "the party ended (could not get there) instead of hanging on")
   MAP.get = get0
 end
+
+-- goal heights: ground UNKNOWN (a hillside nobody mapped) -> up in the air, never
+-- at the members' own height (they sat pressed against the slope); a cliff 4 blocks
+-- away -> above the cliff, not against it
+do
+  local get0, ov0 = MAP.get, MAP.getOverview
+  MAP.get = function() return nil end
+  MAP.getOverview = function() return nil end
+  CHECK(TT.partyY(500, 500, 70) >= 140, "unknown ground: up in the air (" .. TT.partyY(500, 500, 70) .. ")")
+  MAP.getOverview = function() return 110 end
+  CHECK(TT.partyY(500, 500, 70) >= 120, "only the rough chunk height (110): well above it (" .. TT.partyY(500, 500, 70) .. ")")
+  MAP.get = function(x, z) if x == 504 then return 130 end return 70 end
+  CHECK(TT.partyY(500, 500, 70) >= 133, "a cliff 4 blocks away (130): above the cliff (" .. TT.partyY(500, 500, 70) .. ")")
+  MAP.get, MAP.getOverview = get0, ov0
+end
