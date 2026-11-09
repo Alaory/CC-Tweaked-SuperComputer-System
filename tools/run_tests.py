@@ -79,6 +79,18 @@ for f in ["node.lua", "miner.lua"]:
         n = int(m.group(1)) if m else 999
         return n < 160, out.strip()
 
+@check("syntax", "no automata digBlock / useOnBlock (they mine the turtle itself)")
+def _():
+    # Advanced Peripherals before 0.8.2a on 1.21.1: the core aims at its OWN turtle
+    # (issue #840) - tested on the owner's server: lookAtBlock() = turtle_advanced.
+    bad = []
+    for f in sorted(glob.glob(os.path.join(ROOT, "*.lua"))):
+        for i, line in enumerate(open(f, encoding="latin-1").read().split("\n"), 1):
+            code = line.split("--", 1)[0]
+            if re.search(r"\b(digBlock|useOnBlock)\b", code):
+                bad.append("%s:%d: %s" % (os.path.basename(f), i, line.strip()))
+    return not bad, "\n".join(bad)
+
 @check("upgrade", "manifest.txt up to date")
 def _():
     rc, out = run(["python3", "tools/make_manifest.py", "--check"])

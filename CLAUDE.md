@@ -405,7 +405,12 @@ PneumaticCraft drone rides, turtle mapping/surveys, and an AE2 ME network view.
   it first in burnCoal. A miner keeps a cell only if it was in it at START (S.own).
   node_cell.lua. NEVER use the core's digBlock / useOnBlock: tested in game (End Automata
   on the right, deepslate emerald ore in front, pickaxe selected) - the turtle MINES ITSELF
-  (it drops as an item). The core's peripheral type is "end_automata" (+ "automata"), not
+  (it drops as an item); lookAtBlock().name = "computercraft:turtle_advanced" (f = 0.0045):
+  Advanced Peripherals issue #840, fixed in 0.8.2a - the owner's server is older and the
+  owner cannot update it. run_tests fails if any game file calls digBlock / useOnBlock.
+  Only after the server has 0.8.2a+ (lookAtBlock names the block in front): silk touch via
+  the core, and only after checking lookAtBlock().name == turtle.inspect() name each time.
+  The core's peripheral type is "end_automata" (+ "automata"), not
   "endAutomata" as the docs say - find it by "automata" in the type. The server does not
   allow enchanted tools as turtle upgrades (no silk touch / fortune for turtles).
 - TAUGHT RECIPES (modpacks change recipes: none written in the code). CRAFTER turtle =
