@@ -407,7 +407,8 @@ PneumaticCraft drone rides, turtle mapping/surveys, and an AE2 ME network view.
   factory chest (tap = next EMPTY chest OR BARREL <= 54 slots on the cable, never FACTORY.reserved = the
   AE2 buffer / give / take / curios / fluid buffer), builder (tap = next
   turtle / automatic = the rescuer), status (tap = try again). Console `factory
-  [chest <name>|builder <id>|build|stop]`; FLEET card line "Factory".
+  [chest <name>|builder <id>|build|stop|fuel <item> [count]|fuel reset]`; FLEET card line
+  "Factory". `factory fuel` = setSetting factory.fuel / fuelCount (settings.dat).
 - ENERGY CELLS (Advanced Peripherals automata core chargeTurtle: FE in a charged item ->
   fuel): node.lua chargeFromCell(target) at the start of topUp (any side with chargeTurtle;
   no core / empty cell = nothing; tells the base once, S.cellUsed); miner.lua (m18) tries

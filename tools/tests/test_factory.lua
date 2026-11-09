@@ -229,3 +229,12 @@ setup("stock")
 CHECK(FACTORY.blocked() and FACTORY.blocked():find("AE2 buffer", 1, true), "the AE2 buffer as factory chest: refused, told why")
 CONFIG.me.buffer = oldBuf
 CHECK(FACTORY.reserved("minecraft:barrel_77") == nil, "any other barrel is fine")
+
+-- factory fuel <item> [count]: the fuel a new turtle gets (saved in settings.dat)
+handleCommand("factory fuel minecraft:charcoal 8")
+local fp = FACTORY.parts()[6]
+CHECK(fp.name == "minecraft:charcoal" and fp.count == 8, "factory fuel: charcoal x8 (" .. fp.name .. " x" .. fp.count .. ")")
+CHECK(SETTINGS["factory.fuel"] == "minecraft:charcoal", "factory fuel: saved as a setting (base_config.lua untouched)")
+handleCommand("factory fuel reset")
+fp = FACTORY.parts()[6]
+CHECK(fp.name == "minecraft:coal_block" and fp.count == 16, "factory fuel reset: back to 16 coal blocks")

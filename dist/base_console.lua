@@ -57,6 +57,7 @@ HELP = {
 " mine [drop|forget] <id>   mining turtles: drop = a lost miner out of its team",
 " factory [chest <name>|builder <id>|build|stop]   build turtles from AE2 parts",
 " factory recipes|learn|forget <item>|crafter <id>   recipes TAUGHT to a crafting turtle",
+" factory fuel [<item> [count]|reset]   the fuel a new turtle gets (default 16 coal blocks)",
 " schem [<name>|delete <name>]   Create schematics (drag a .nbt onto this screen)",
 " pocket [unpair <id>]   the paired pocket computers (run pocket.lua on one to pair)",
 " turtle <id> warps / warp <name> / warpsave <name>   End Automata Core teleports",
@@ -622,7 +623,28 @@ end
 elseif cmd == "factory" then
 
 local sub = (words[2] or ""):lower()
-if sub == "recipes" then
+if sub == "fuel" then
+
+local item, n = words[3], tonumber(words[4])
+if item == "reset" then
+resetSetting("factory.fuel")
+resetSetting("factory.fuelCount")
+say("Fuel back to the default: " .. FACTORY.cfg("fuelCount", 16) .. " x " .. FACTORY.cfg("fuel", "minecraft:coal_block"))
+elseif item then
+if not item:find(":", 1, true) then
+say("Give the full item name, e.g.  factory fuel minecraft:coal_block 16   (see the AE2 tab for names)")
+else
+setSetting("factory.fuel", item)
+if n then setSetting("factory.fuelCount", math.max(1, math.min(64, math.floor(n)))) end
+local plain = FACTORY.variants(item)
+say("New turtles get " .. FACTORY.cfg("fuelCount", 16) .. " x " .. item .. " (" .. plain .. " in AE2" ..
+((plain == 0) and " - none yet: put some in or give AE2 a pattern" or "") .. ").")
+end
+else
+say("Fuel for new turtles: " .. FACTORY.cfg("fuelCount", 16) .. " x " .. FACTORY.cfg("fuel", "minecraft:coal_block"))
+say("Change:  factory fuel <item> [count]   e.g.  factory fuel minecraft:coal_block 16   - back:  factory fuel reset")
+end
+elseif sub == "recipes" then
 local any = false
 for name, r in pairs(FACTORY.recipes) do
 any = true

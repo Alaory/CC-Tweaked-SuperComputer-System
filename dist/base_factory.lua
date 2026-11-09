@@ -73,7 +73,8 @@ return {
 { name = cfg("geo", "advancedperipherals:geo_scanner"), count = 1, what = "Geo Scanner" },
 { name = cfg("chunky", "advancedperipherals:chunk_controller"), count = 1, what = "Chunky upgrade (Chunk Controller)" },
 { name = cfg("pick", "minecraft:diamond_pickaxe"), count = 1, what = "diamond pickaxe" },
-{ name = cfg("fuel", "minecraft:coal_block"), count = tonumber(cfg("fuelCount", 16)) or 16, what = "fuel" },
+{ name = cfg("fuel", "minecraft:coal_block"), count = tonumber(cfg("fuelCount", 16)) or 16,
+what = "fuel: " .. prettify(cfg("fuel", "minecraft:coal_block")) },
 }
 end
 
