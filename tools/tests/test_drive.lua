@@ -138,3 +138,29 @@ do
   CHECK(lastMsg().hand == true, "a console command: marked as yours")
   HAND_CMD = false
 end
+
+-- the base never switches digging ON for a turtle by itself (a rescue with a
+-- pickaxe used to) and sends every turtle the base's NO-DIG zone
+do
+  local fh = io.open("base_turtles.lua") or io.open("../../base_turtles.lua")
+  local src = fh and fh:read("a") or ""
+  CHECK(src ~= "", "base_turtles.lua read")
+  CHECK(not src:find('"setting", { "dig", "true" }', 1, true), "a rescue never switches digging on")
+  state.tOut = {}
+  CONFIG.drone.home = { x = -5271, y = 64, z = 10845 }
+  CONFIG.turtles.noDigBase = 96
+  if state.turtles[30] then state.turtles[30].zoneSent = nil end
+  report(30, { task = "idle" })
+  local got = {}
+  for _, o in ipairs(state.tOut) do
+    if o.id == 30 and o.msg.cmd == "setting" then got[o.msg.args[1]] = o.msg.args[2] end
+  end
+  CHECK(got.baseAt == "-5271,64,10845" and got.noDigBase == "96", "the turtle gets the base no-dig zone (" ..
+        tostring(got.baseAt) .. " / " .. tostring(got.noDigBase) .. ")")
+  CHECK(got.dig == "false" or got.dig == "true", "and the dig setting itself")
+  state.tOut = {}
+  report(30, { task = "idle" })
+  local again = 0
+  for _, o in ipairs(state.tOut) do if o.msg.cmd == "setting" then again = again + 1 end end
+  CHECK(again == 0, "sent once, not with every report")
+end

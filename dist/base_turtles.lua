@@ -500,7 +500,9 @@ TT.log(t, "Offered home " .. m.x .. " " .. m.y .. " " .. m.z .. " is not free - 
 elseif m.t == "hello" then
 TT.log(t, "Connected")
 
-if CONFIG.turtles.dig ~= nil then TT.send(id, "setting", { "dig", tostring(CONFIG.turtles.dig == true) }, true) end
+
+TT.send(id, "setting", { "dig", tostring(CONFIG.turtles.dig == true) }, true)
+t.zoneSent = nil
 elseif m.t == "scan" then
 local ok = pcall(MAP.addScan, m)
 TT.log(t, ok and ("Scan received at " .. tostring(m.x) .. " " .. tostring(m.z))
@@ -526,7 +528,6 @@ if m.ok then target.rescueTries = nil end
 
 if m.ok and m.mode == "supply" then
 TT.send(target.id, "refuel", {})
-if tostring(m.gave or ""):find("pick", 1, true) then TT.send(target.id, "setting", { "dig", "true" }) end
 TT.send(target.id, "home", {})
 end
 end
@@ -586,8 +587,25 @@ if m.cmd == "restart" and not m.ok and sysLog then sysLog(t.label .. ": " .. tos
 TT.log(t, (m.ok and "Done: " or "Failed: ") .. tostring(m.msg))
 if not m.ok then setToast(t.label .. ": " .. tostring(m.msg), C.warn, 6) end
 end
+pcall(TT.sendZone, t)
 if not state.tSel then state.tSel = id end
 os.queueEvent("inv_update")
+end
+
+
+
+function TT.sendZone(t)
+if not (t and t.id and TT.online(t)) then return end
+local b = CONFIG.drone and CONFIG.drone.home or state.basePos
+if not (b and b.x) then return end
+local at = math.floor(b.x) .. "," .. math.floor(b.y or 64) .. "," .. math.floor(b.z)
+local r = math.floor(tonumber(CONFIG.turtles.noDigBase) or 96)
+local key = at .. "|" .. r .. "|" .. tostring(CONFIG.turtles.dig == true)
+if t.zoneSent == key then return end
+t.zoneSent = key
+TT.send(t.id, "setting", { "baseAt", at }, true)
+TT.send(t.id, "setting", { "noDigBase", tostring(r) }, true)
+TT.send(t.id, "setting", { "dig", tostring(CONFIG.turtles.dig == true) }, true)
 end
 
 
@@ -804,21 +822,74 @@ end
 
 
 
+
+
+
+local function shrinkScan(s)
+local res, i, n = {}, 1, #s
+while i <= n do
+local c = s:sub(i, i)
+if c == '"' or c == "'" then
+local j = i + 1
+while j <= n and s:sub(j, j) ~= c do
+j = j + ((s:sub(j, j) == "\\") and 2 or 1)
+end
+res[#res + 1] = s:sub(i, j)
+i = j + 1
+elseif c == "[" and s:find("^%[=*%[", i) then
+local eq = s:match("^%[(=*)%[", i)
+local closer = "]" .. eq .. "]"
+local e = s:find(closer, i + #eq + 2, true)
+if not e then res[#res + 1] = s:sub(i) return table.concat(res), "str", closer end
+res[#res + 1] = s:sub(i, e + #closer - 1)
+i = e + #closer
+elseif c == "-" and s:sub(i + 1, i + 1) == "-" then
+local eq = s:match("^%[(=*)%[", i + 2)
+if not eq then return table.concat(res) end
+local closer = "]" .. eq .. "]"
+local e = s:find(closer, i + 2 + #eq + 2, true)
+if not e then return table.concat(res), "com", closer end
+res[#res + 1] = " "
+i = e + #closer
+else
+local j = s:find("[\"'%[%-]", i + 1) or (n + 1)
+res[#res + 1] = s:sub(i, j - 1)
+i = j
+end
+end
+return table.concat(res)
+end
+
+
+
 function TT.shrinkCode(text)
-local out, inBlock = {}, false
+local out, mode, closer = {}, nil, nil
 for line in (text .. "\n"):gmatch("(.-)\n") do
-local t = line:match("^%s*(.-)$")
-if inBlock then
-if line:find("]]", 1, true) then inBlock = false end
-t = ""
-elseif t:sub(1, 4) == "--[[" then
-if not t:find("]]", 5, true) then inBlock = true end
-t = ""
-elseif t:sub(1, 2) == "--" then
-t = ""
+local t
+if mode == "str" then
+local e = line:find(closer, 1, true)
+if not e then t = line
+else
+local head, rest = line:sub(1, e + #closer - 1), line:sub(e + #closer)
+local body
+body, mode, closer = shrinkScan(rest)
+t = (head .. body):gsub("%s+$", "")
+end
+elseif mode == "com" then
+local e = line:find(closer, 1, true)
+if not e then t = ""
+else
+local body
+body, mode, closer = shrinkScan((line:sub(e + #closer):gsub("^%s+", "")))
+t = body:gsub("%s+$", "")
+end
+else
+local body
+body, mode, closer = shrinkScan((line:gsub("^%s+", "")))
+t = (mode == "str") and body or body:gsub("%s+$", "")
 end
 out[#out + 1] = t
-if #out % 500 == 0 then TT.workYield() end
+if #out % 300 == 0 then TT.workYield() end
 end
 if out[#out] == "" then out[#out] = nil end
 return table.concat(out, "\n") .. "\n"

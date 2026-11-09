@@ -132,9 +132,11 @@ PneumaticCraft drone rides, turtle mapping/surveys, and an AE2 ME network view.
   environment), not `local function`. Check with
   `python3 tools/check_locals.py node.lua` (must stay well under 200). The
   base also compiles node.lua before sending it (TT.codeLoad), and sends /
-  writes a SHRUNK copy (TT.shrinkCode: whole-line comments, --[[ ]] blocks and
-  indentation removed, every line kept in place so error line numbers match;
-  ~97 KB vs 128 KB - a floppy holds 125 KB). Falls back to the full text if
+  writes a SHRUNK copy (TT.shrinkCode + shrinkScan = tools/slim.py in Lua: whole-line AND
+  end-of-line comments, --[[ ]] blocks, indentation, trailing spaces removed; strings / [[ ]]
+  untouched; every line kept in place so error line numbers match; node.lua 160 KB -> 114 KB -
+  a floppy holds 125 KB; test_map_load wants < 120000). tools/tests/shrink_check.lua + run_tests:
+  same bytecode (luac -s) as the full files, incl. a TRICKY sample (-- inside strings). Falls back to the full text if
   the small one does not compile. CODE.ver is the hash of what is sent.
 - YOUR COMMANDS GO FIRST: TT.send marks m.hand (USER_ACTION = buttons / pocket / queued actions,
   HAND_CMD = console, every "drive"; never "stop"). node.lua: a hand command while a job runs ->
@@ -192,7 +194,14 @@ PneumaticCraft drone rides, turtle mapping/surveys, and an AE2 ME network view.
 - Digging (node.lua tryDig): only with a pickaxe the turtle carries (swapped in on
   the modem side for the dig), only NATURAL blocks (CONFIG.digOk, exact names after
   the colon, "*x" = ends in x - never bricks/smooth/polished/cobblestone/planks),
-  never within digNearHome (24) of its home, never into a home being probed.
+  never into a home being probed. NO-DIG ZONE (inBaseZone, checked first in tryDig, NO job
+  overrides it - rescue / sweep / home dig / digup too): within noDigBase (SETTINGS > TURTLES
+  "No digging around the base", CONFIG.turtles.noDigBase, default 96, x AND z = a square) of the
+  BASE (CONFIG.drone.home; TT.sendZone sends "setting baseAt x,y,z" + noDigBase + dig once per
+  base run / change), within digNearHome (24) of its own home as a SQUARE (the x+z diamond left
+  the base's corners open), position unknown = never. The owner's base got dug: a rescue with
+  a pickaxe used to switch "dig" ON for the rescued turtle for good - removed; hello always sends
+  the base's dig setting. node_nodig.lua, test_drive.lua.
   Allowed when the turtle's setting dig is on (base: SETTINGS > TURTLES "Turtles
   dig ..." -> TT.setDig, sent to all and on every hello) or always during rescue /
   sweep jobs (DIG_JOB). Also a HOME trip when the turtle is STUCK (S.stuck) or "home dig":

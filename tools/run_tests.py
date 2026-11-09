@@ -173,6 +173,33 @@ def _():
     rc, out = run(["lua5.3", "tools/tests/node_partymap.lua", "node.lua"])
     return rc == 0, out.strip()
 
+@check("node", "no digging at the base, any job (node_nodig.lua)")
+def _():
+    rc, out = run(["lua5.3", "tools/tests/node_nodig.lua", "node.lua"])
+    return rc == 0, out.strip()
+
+@check("node", "shrunk node.lua (sent to turtles) = same code (shrink_check.lua)")
+def _():
+    import tempfile
+    d = tempfile.mkdtemp()
+    rc, out = run(["lua5.3", "tools/tests/shrink_check.lua", d])
+    if rc != 0:
+        return False, out.strip()
+    bad = []
+    for f in ["node.lua", "pocket.lua", "base_map.lua", "base_turtles.lua", "miner.lua", "tricky"]:
+        a, b = os.path.join(d, "a.out"), os.path.join(d, "b.out")
+        src = os.path.join(d, "tricky_full.lua") if f == "tricky" else f
+        if f == "tricky":
+            f = "tricky.lua"
+        r1, o1 = run(["luac", "-s", "-o", a, src])
+        r2, o2 = run(["luac", "-s", "-o", b, os.path.join(d, f)])
+        same = r1 == 0 and r2 == 0 and open(a, "rb").read() == open(b, "rb").read()
+        lines = open(os.path.join(ROOT, src), encoding="latin-1").read().count("\n") == \
+                open(os.path.join(d, f), encoding="latin-1").read().count("\n")
+        if not (same and lines):
+            bad.append(f + (" (different code)" if not same else " (lines moved)") + o2)
+    return not bad, "; ".join(bad) or out.strip().replace("\n", "; ")
+
 @check("node", "crafter: learn + craft (node_craft.lua)")
 def _():
     rc, out = run(["lua5.3", "tools/tests/node_craft.lua", "node.lua"])

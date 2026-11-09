@@ -56,7 +56,9 @@ local CONFIG = {
                 "deepslate", "tuff", "andesite", "diorite", "granite", "calcite", "dripstone_block",
                 "netherrack", "basalt", "blackstone", "soul_sand", "soul_soil", "end_stone",
                 "*_leaves", "*_ore", "terracotta", "*_terracotta" },
-  digNearHome = 24,          -- never dig this close (blocks) to my home - the base
+  digNearHome = 24,          -- never dig this close (blocks, x and z) to my home - the base
+  baseAt    = "",            -- "x,y,z" of the BASE (sent by the base) ...
+  noDigBase = 96,            -- ... NOTHING is dug within this many blocks (x and z) of it, by any job
   geoItem   = "advancedperipherals:geo_scanner",
   scanRadius = 8,            -- 8 = free scan (17x17x17); the base can ask for another
   minFuel   = 200,           -- a survey stops below this fuel level
@@ -1022,12 +1024,23 @@ function natural(name)
   return false
 end
 
+-- the base's no-dig zone (CONFIG.baseAt / noDigBase, sent by the base): true = in it
+function inBaseZone()
+  if not (S.pos and S.pos.x) then return true end              -- position unknown: never dig
+  local bx, bz = tostring(CONFIG.baseAt or ""):match("^(-?%d+),%-?%d+,(-?%d+)$")
+  bx, bz = tonumber(bx), tonumber(bz)
+  local r = tonumber(CONFIG.noDigBase) or 96
+  if bx and r > 0 and math.abs(S.pos.x - bx) <= r and math.abs(S.pos.z - bz) <= r then return true end
+  -- and around my own home (a square now: the x+z diamond left the corners of the base open)
+  local h = tonumber(CONFIG.digNearHome) or 24
+  if S.home and math.abs(S.pos.x - S.home.x) < h and math.abs(S.pos.z - S.home.z) < h then return true end
+  return false
+end
 tryDig = function(dir)
   -- digging: when it is switched on (setting dig), and always on rescue trips
   if not (CONFIG.dig or DIG_JOB) then return false end
-  -- never near home (the base and its builds)
-  if S.home and S.pos and S.pos.x and math.abs(S.pos.x - S.home.x) + math.abs(S.pos.z - S.home.z) <
-     (tonumber(CONFIG.digNearHome) or 24) then return false end
+  -- never at the base / near home - no job overrides this
+  if inBaseZone() then return false end
   -- never dig into or next to a home spot that is being checked
   if HOMEPROBE and S.pos and math.abs(S.pos.x - HOMEPROBE.x) + math.abs(S.pos.y - HOMEPROBE.y) +
      math.abs(S.pos.z - HOMEPROBE.z) <= 2 then return false end

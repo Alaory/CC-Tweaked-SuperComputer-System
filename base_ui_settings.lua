@@ -101,6 +101,8 @@ SETTING_GROUPS = {
       hint = "with a pickaxe they carry: stone, dirt, sand, leaves ... never builds, never near home. The rescuer always does",
       get = function() return CONFIG.turtles.dig and "ON" or "OFF" end,
       next = function() TT.setDig(not CONFIG.turtles.dig) end },
+    num("turtles.noDigBase", "No digging around the base", "blocks from the base (x and z): NOTHING is dug there, not even by the rescuer",
+        96, 0, 512, 16, plain),
   } },
   { name = "FACTORY", list = {
     num("factory.target", "Keep this many turtles", "fewer: the factory builds one from AE2 parts (0 = off)",

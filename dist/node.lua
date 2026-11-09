@@ -57,6 +57,8 @@ digOk     = { "stone", "dirt", "grass_block", "coarse_dirt", "rooted_dirt", "pod
 "netherrack", "basalt", "blackstone", "soul_sand", "soul_soil", "end_stone",
 "*_leaves", "*_ore", "terracotta", "*_terracotta" },
 digNearHome = 24,
+baseAt    = "",
+noDigBase = 96,
 geoItem   = "advancedperipherals:geo_scanner",
 scanRadius = 8,
 minFuel   = 200,
@@ -1022,12 +1024,23 @@ end
 return false
 end
 
+
+function inBaseZone()
+if not (S.pos and S.pos.x) then return true end
+local bx, bz = tostring(CONFIG.baseAt or ""):match("^(-?%d+),%-?%d+,(-?%d+)$")
+bx, bz = tonumber(bx), tonumber(bz)
+local r = tonumber(CONFIG.noDigBase) or 96
+if bx and r > 0 and math.abs(S.pos.x - bx) <= r and math.abs(S.pos.z - bz) <= r then return true end
+
+local h = tonumber(CONFIG.digNearHome) or 24
+if S.home and math.abs(S.pos.x - S.home.x) < h and math.abs(S.pos.z - S.home.z) < h then return true end
+return false
+end
 tryDig = function(dir)
 
 if not (CONFIG.dig or DIG_JOB) then return false end
 
-if S.home and S.pos and S.pos.x and math.abs(S.pos.x - S.home.x) + math.abs(S.pos.z - S.home.z) <
-(tonumber(CONFIG.digNearHome) or 24) then return false end
+if inBaseZone() then return false end
 
 if HOMEPROBE and S.pos and math.abs(S.pos.x - HOMEPROBE.x) + math.abs(S.pos.y - HOMEPROBE.y) +
 math.abs(S.pos.z - HOMEPROBE.z) <= 2 then return false end
