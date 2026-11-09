@@ -145,5 +145,7 @@ function drawSystemPage(G)
   actButton(rix + aw + 1, ay + 3, aw, 2, "UPDATE TURTLES", { kind = "sysupdate", name = "turtles", count = 0 }, true)
   actButton(rix + 2 * (aw + 1), ay + 3, riw - 2 * (aw + 1), 2, "RESTART BASE",
             { kind = "sysrestart", name = "base", count = 0 }, true)
-  drawButton(rix, ay + 6, riw, 2, "SETTINGS  >", C.accent, C.ink, "page", "settings")
+  local hw = math.floor((riw - 1) / 2)
+  actButton(rix, ay + 6, hw, 2, "UPGRADE PROGRAM", { kind = "sysupgrade", name = "base", count = 0 })
+  drawButton(rix + hw + 1, ay + 6, riw - hw - 1, 2, "SETTINGS  >", C.accent, C.ink, "page", "settings")
 end

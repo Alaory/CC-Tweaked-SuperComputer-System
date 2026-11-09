@@ -489,6 +489,16 @@ PneumaticCraft drone rides, turtle mapping/surveys, and an AE2 ME network view.
   inventory.lua (STORE.code, must compile) goes to every helper whose version
   (hello -> ver = checksum of its startup.lua) differs (op "upd": checksum +
   compile check, then startup.lua + reboot) - STORE.updateAll in the mapWorker.
+- UPGRADE (upgrade.lua; console `upgrade [check|branch <b>]`, SYSTEM > ACTIONS
+  UPGRADE PROGRAM, or `upgrade` in a shell - also on the pocket): the newest files from
+  GitHub (public repo, raw.githubusercontent.com; the exact commit from api.github.com so
+  files never mix). manifest.txt = "group path size checksum" (groups base / pocket;
+  base_config.lua NEVER in it) - REGENERATE IT after every change: `python3
+  tools/make_manifest.py` (run_tests fails when it is stale). Only changed files; every
+  download must match size + checksum (upgradeHash = make_manifest h) and compile, else
+  nothing is written; temp file when there is room, else old out / new in (old kept in
+  memory); binary "rb"/"wb". Then map saved + reboot. Default branch
+  claude/computercraft-base-review-ihjtqw (upgrade.dat). tools/tests/upgrade_sim.lua.
 - Autostart: `startup.lua` (top level of the computer) finds inventory.lua
   in any folder and restarts it after a crash (inventory.lua raises an error
   on a crash, returns normally on Ctrl+T). inventory.lua turns off

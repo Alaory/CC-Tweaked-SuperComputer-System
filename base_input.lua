@@ -104,6 +104,15 @@ function handleTouch(tx, ty)
             local n = TT.forceUpdate() or 0             -- also while you play / automatic updates off
             setToast(CODE and (n == 0 and ("All online turtles run " .. TT.verName(CODE.ver))
                      or (n .. " turtle(s) get " .. TT.verName(CODE.ver) .. ", 3 at a time")) or "No node.lua found", C.label, 5)
+          elseif a.kind == "sysupgrade" then
+            -- newest files from GitHub; every line in the SYSTEM log, the last one as a box
+            local last = "Upgrade: asking GitHub ..."
+            setToast(last, C.label, 5)
+            local done = baseUpgrade({}, function(s)
+              last = s
+              if sysLog then pcall(sysLog, "upgrade: " .. s, "INFO") end
+            end)
+            if not done then setPopup("UPGRADE", last, C.label) end
           elseif a.kind == "sysrestart" then
             pcall(MAP.save)
             if sysLog then sysLog("Base restarted from the SYSTEM tab", "INFO") end

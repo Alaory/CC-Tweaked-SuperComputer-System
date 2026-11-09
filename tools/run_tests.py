@@ -79,6 +79,16 @@ for f in ["node.lua", "miner.lua"]:
         n = int(m.group(1)) if m else 999
         return n < 160, out.strip()
 
+@check("upgrade", "manifest.txt up to date")
+def _():
+    rc, out = run(["python3", "tools/make_manifest.py", "--check"])
+    return rc == 0, out.strip()
+
+@check("upgrade", "upgrade.lua on a fake disk + GitHub")
+def _():
+    rc, out = run(["lua5.3", "tools/tests/upgrade_sim.lua", ROOT])
+    return rc == 0, out.strip()
+
 # ---- base tests (CHECKs inside) and every page
 for t in sorted(glob.glob(os.path.join(ROOT, "tools", "tests", "test_*.lua"))):
     name = os.path.basename(t)

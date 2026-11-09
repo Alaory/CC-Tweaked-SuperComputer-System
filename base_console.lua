@@ -37,6 +37,8 @@ HELP = {
   " map clear            delete all map scans",
   " exit [clear]         the turtles' exit route out of the base (or delete it)",
   " update               turtle program versions; update outdated turtles now (normally automatic)",
+  " upgrade [check]      get the newest BASE program files from GitHub (no dragging), then restart",
+  " upgrade branch <b>   take the files from another branch",
   " mesetup              find the ME buffer chest (put ONE item in it first) - no settings to edit",
   " me add <item id>     make the ME tab look up an item it does not list (partial view)",
   " me tags <item id>    the tags the ME reports for an item (and its Curios slots)",
@@ -61,6 +63,32 @@ HELP = {
 }
 
 -- one command typed on the computer; returns the lines to print
+-- UPGRADE: the newest program files from GitHub (upgrade.lua next to
+-- inventory.lua does the work: checks every file first, never base_config.lua).
+-- log(text) gets every line; on success the map is saved and the base restarts.
+function baseUpgrade(args, log)
+  local path = fs.combine(BASE_DIR or "", "upgrade.lua")
+  if not fs.exists(path) then
+    log("upgrade.lua is missing. Get it once on the computer's shell (Ctrl+T stops the base):")
+    log("  wget https://raw.githubusercontent.com/Alaory/CC-Tweaked-SuperComputer-System/" ..
+        "claude/computercraft-base-review-ihjtqw/upgrade.lua " .. path)
+    return false
+  end
+  local fn, err = loadfile(path, "t", _ENV)
+  if not fn then log("upgrade.lua is broken: " .. tostring(err)) return false end
+  local okR, done, n = pcall(fn, { args = args or {}, dir = BASE_DIR or "", log = log })
+  if not okR then log("Upgrade stopped by an error: " .. tostring(done)) return false end
+  if done then
+    if sysLog then sysLog("Program upgraded from GitHub (" .. tostring(n) .. " files) - restarting", "INFO") end
+    log("Saving the map and restarting in 3 s ...")
+    pcall(MAP.save)
+    if baseExit then pcall(baseExit, nil) end
+    sleep(3)
+    os.reboot()
+  end
+  return done
+end
+
 function handleCommand(line)
   local words = {}
   for w in line:gmatch("%S+") do words[#words + 1] = w end
@@ -470,6 +498,11 @@ function handleCommand(line)
       say("Biggest files here: " .. table.concat(parts, ", "))
       if state.diskLow then say("Last warning: " .. state.diskLow) end
     end
+
+  elseif cmd == "upgrade" then
+    local a = {}
+    for i = 2, #words do a[#a + 1] = words[i] end
+    baseUpgrade(a, say)
 
   elseif cmd == "update" then
     local okL, errL = pcall(TT.codeLoad, true)       -- always read node.lua again
