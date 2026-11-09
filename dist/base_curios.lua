@@ -90,7 +90,8 @@ end
 
 function CURIOS.autoTick()
 if #CURIOS.auto == 0 or not inv or not bridge or not fetchCurios then return end
-if os.clock() - CURIOS.lastRead < 8 then return end
+
+if os.clock() - CURIOS.lastRead < 1.5 then return end
 CURIOS.lastRead = os.clock()
 local ok, rows, msg, note = pcall(fetchCurios)
 if not ok or type(rows) ~= "table" then return end
@@ -110,9 +111,10 @@ local have = okI and type(it) == "table" and (tonumber(it.count) or 0) or 0
 if have > 0 then
 CURIOS.busy[key] = os.clock() + 20
 r.why = nil
-state.actionQueue[#state.actionQueue + 1] = { kind = "cequip", name = r.item, count = 1, slotType = r.slot,
-slotNo = slotNo, auto = true, key = "auto:" .. key }
-os.queueEvent("inv_wake")
+
+table.insert(state.actionQueue, 1, { kind = "cequip", name = r.item, count = 1, slotType = r.slot,
+slotNo = slotNo, auto = true, key = "auto:" .. key })
+os.queueEvent("inv_action")
 else
 r.why = "none left in AE2"
 CURIOS.busy[key] = os.clock() + 60

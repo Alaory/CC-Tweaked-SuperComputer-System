@@ -84,13 +84,14 @@ local function wearing(row, name)
   return false
 end
 
--- AUTO-EQUIP (comms worker, every 2 s; reads the slots every 8 s while there
+-- AUTO-EQUIP (comms worker, every 2 s; reads the slots every 2 s while there
 -- are rules). A rule whose item is not worn in its slot type and a slot of that
 -- type is free: one comes out of AE2 and is put on (the action worker runs it,
 -- like a tap). After a failure it waits 60 s; the reason is shown on the tab.
 function CURIOS.autoTick()
   if #CURIOS.auto == 0 or not inv or not bridge or not fetchCurios then return end
-  if os.clock() - CURIOS.lastRead < 8 then return end
+  -- every comms tick (2 s): a used totem must be replaced FAST (was every 8 s)
+  if os.clock() - CURIOS.lastRead < 1.5 then return end
   CURIOS.lastRead = os.clock()
   local ok, rows, msg, note = pcall(fetchCurios)
   if not ok or type(rows) ~= "table" then return end
@@ -110,9 +111,10 @@ function CURIOS.autoTick()
         if have > 0 then
           CURIOS.busy[key] = os.clock() + 20         -- (until the slots are read again after it ran)
           r.why = nil
-          state.actionQueue[#state.actionQueue + 1] = { kind = "cequip", name = r.item, count = 1, slotType = r.slot,
-                                                         slotNo = slotNo, auto = true, key = "auto:" .. key }
-          os.queueEvent("inv_wake")
+          -- FIRST in line (before anything else you queued), the worker woken at once
+          table.insert(state.actionQueue, 1, { kind = "cequip", name = r.item, count = 1, slotType = r.slot,
+                                               slotNo = slotNo, auto = true, key = "auto:" .. key })
+          os.queueEvent("inv_action")
         else
           r.why = "none left in AE2"
           CURIOS.busy[key] = os.clock() + 60

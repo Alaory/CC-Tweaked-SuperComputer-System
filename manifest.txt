@@ -6,7 +6,7 @@ base upgrade.lua 9355 01c44fe2
 base base_away.lua 12645 c322a4fa
 base base_chat.lua 15022 e4046699
 base base_console.lua 48191 66cdcc5f
-base base_curios.lua 5867 dcabab86
+base base_curios.lua 6020 3e56460a
 base base_devices.lua 11417 b1426ca4
 base base_drones.lua 60187 5a51cf6f
 base base_factory.lua 14603 ce4ac78f
@@ -48,7 +48,7 @@ slim:base upgrade.lua 6541 24489d13 dist/upgrade.lua
 slim:base base_away.lua 9182 c62b714b dist/base_away.lua
 slim:base base_chat.lua 11113 6559fc82 dist/base_chat.lua
 slim:base base_console.lua 40262 eb8124a7 dist/base_console.lua
-slim:base base_curios.lua 3603 5805d09e dist/base_curios.lua
+slim:base base_curios.lua 3601 10dc6ee3 dist/base_curios.lua
 slim:base base_devices.lua 8034 3a91ff63 dist/base_devices.lua
 slim:base base_drones.lua 40494 269a76f5 dist/base_drones.lua
 slim:base base_factory.lua 10963 cf5b34f5 dist/base_factory.lua

@@ -420,7 +420,7 @@ PneumaticCraft drone rides, turtle mapping/surveys, and an AE2 ME network view.
   items LEARNED to fit (worn before / put on from here: CURIOS.fits, curios_fits.dat).
   SHOW ALL lists every AE2 item (Curios refuses what does not fit). AUTO-EQUIP: AUTO next
   to an item / KEEP ONE ON on a worn one -> rule {slot, item} (curios_auto.dat);
-  CURIOS.autoTick (comms worker, slots read every 8 s while rules exist) queues a cequip
+  CURIOS.autoTick (comms worker, slots read every 2 s while rules exist - was 8 s, too slow for a used totem) queues a cequip FIRST in the action queue
   (auto=true) when the item is not worn in that slot type and a slot is free (a used
   totem); r.why = "none left in AE2" / the put-on error (shown on the tab, `curios auto`).
   Putting on needs CONFIG.me.curiosChest. test_curios.lua.

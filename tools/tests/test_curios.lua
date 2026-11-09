@@ -26,13 +26,21 @@ CHECK(CURIOS.fits.ring and CURIOS.fits.ring["mod:ring_of_x"], "worn item learned
 CHECK(CURIOS.toggleAuto("charm", "minecraft:totem_of_undying", "Totem of Undying") == true, "AUTO on")
 CHECK(#CURIOS.auto == 1, "one rule")
 
--- empty slot + totems in AE2 -> one is put on
-state.actionQueue = {}
+-- empty slot + totems in AE2 -> one is put on, FIRST in line (before your own jobs)
+state.actionQueue = { { kind = "send", name = "minecraft:dirt", count = 64 } }
 CURIOS.lastRead = -100
 CURIOS.autoTick()
 local a = state.actionQueue[1]
 CHECK(a and a.kind == "cequip" and a.name == "minecraft:totem_of_undying" and a.slotType == "charm" and a.slotNo == 0
       and a.count == 1 and a.auto, "auto-equip queued for the empty charm slot")
+CHECK(#state.actionQueue == 2 and state.actionQueue[2].kind == "send", "auto-equip goes before a job already waiting")
+-- the slots are looked at again 2 s later (was 8 s): a totem used now is noticed quickly
+local reads = 0
+local f0 = fetchCurios
+fetchCurios = function() reads = reads + 1 return f0() end
+CLOCK = CLOCK + 2 CURIOS.autoTick()
+CHECK(reads == 1, "slots read again after 2 s")
+fetchCurios = f0
 -- not again while it is running
 state.actionQueue = {}
 CLOCK = CLOCK + 9 CURIOS.autoTick()
