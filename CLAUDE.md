@@ -400,7 +400,8 @@ PneumaticCraft drone rides, turtle mapping/surveys, and an AE2 ME network view.
   FILLED value - 1.21 lists defaults like damage 0) -> refused; exported by its
   fingerprint. The builder must be AT HOME (else sent home first); a builder whose
   inventory is too full gives everything back (parts left in the chest). 3 failures in a row -> stops until `factory build`. SETTINGS > FACTORY: fleet size,
-  factory chest (tap = next EMPTY chest <= 54 slots on the cable), builder (tap = next
+  factory chest (tap = next EMPTY chest OR BARREL <= 54 slots on the cable, never FACTORY.reserved = the
+  AE2 buffer / give / take / curios / fluid buffer), builder (tap = next
   turtle / automatic = the rescuer), status (tap = try again). Console `factory
   [chest <name>|builder <id>|build|stop]`; FLEET card line "Factory".
 - ENERGY CELLS (Advanced Peripherals automata core chargeTurtle: FE in a charged item ->

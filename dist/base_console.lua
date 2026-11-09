@@ -656,6 +656,8 @@ elseif sub == "chest" then
 if words[3] then
 if not peripheral.isPresent(words[3]) then
 say("No '" .. words[3] .. "' on the cable. Type  factory chest  to see the chests.")
+elseif FACTORY.reserved(words[3]) then
+say(words[3] .. " is already used by the base (" .. FACTORY.reserved(words[3]) .. ") - pick another empty chest / barrel.")
 else
 FACTORY.chest = words[3]
 FACTORY.save()
@@ -670,7 +672,9 @@ if okI and isI and name:find("_") and not name:find("drive", 1, true) then
 local okL, list = pcall(peripheral.call, name, "list")
 local items = 0
 for _ in pairs(okL and list or {}) do items = items + 1 end
-say("  " .. name .. (items == 0 and "   (empty)" or ("   " .. items .. " stacks")))
+local used = FACTORY.reserved(name)
+say("  " .. name .. (used and ("   (in use: " .. used .. " - not this one)") or
+(items == 0 and "   (empty)" or ("   " .. items .. " stacks"))))
 n = n + 1
 end
 end

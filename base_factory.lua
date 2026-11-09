@@ -273,6 +273,16 @@ local function fail(why)
   pushNote("WARNING", "Turtle factory: " .. why, C.warn)
 end
 
+-- a container the base already uses for something else (AE2 item buffer,
+-- give / take chests, the curios barrel, the fluid buffer): never the factory chest
+function FACTORY.reserved(name)
+  local me = CONFIG.me or {}
+  if not name then return nil end
+  for _, k in ipairs({ "buffer", "giveChest", "takeChest", "curiosChest", "fluidBuffer" }) do
+    if me[k] == name then return k end
+  end
+end
+
 -- why no turtle is built now (nil = it can build)
 function FACTORY.blocked()
   local target = tonumber(cfg("target", 0)) or 0
@@ -281,6 +291,10 @@ function FACTORY.blocked()
   if not bridge then return "no ME Bridge" end
   if not FACTORY.chest then return "no factory chest set - type  factory chest" end
   if not peripheral.isPresent(FACTORY.chest) then return "the factory chest " .. FACTORY.chest .. " is not on the cable" end
+  if FACTORY.reserved(FACTORY.chest) then
+    return FACTORY.chest .. " is your " .. (FACTORY.reserved(FACTORY.chest) == "curiosChest" and "curios barrel" or "AE2 buffer") ..
+           " - pick ANOTHER empty chest / barrel as the factory chest"
+  end
   local b = builderTurtle()
   if not b then return "no builder turtle - type  factory builder <id>  (or give a turtle the RESCUER role)" end
   if not TT.online(b) then return b.label .. " (builder) is offline" end

@@ -274,6 +274,16 @@ pushNote("WARNING", "Turtle factory: " .. why, C.warn)
 end
 
 
+
+function FACTORY.reserved(name)
+local me = CONFIG.me or {}
+if not name then return nil end
+for _, k in ipairs({ "buffer", "giveChest", "takeChest", "curiosChest", "fluidBuffer" }) do
+if me[k] == name then return k end
+end
+end
+
+
 function FACTORY.blocked()
 local target = tonumber(cfg("target", 0)) or 0
 if target <= 0 then return "off (SETTINGS > FACTORY: keep this many turtles)" end
@@ -281,6 +291,10 @@ if FACTORY.fleet() >= target then return "fleet complete (" .. FACTORY.fleet() .
 if not bridge then return "no ME Bridge" end
 if not FACTORY.chest then return "no factory chest set - type  factory chest" end
 if not peripheral.isPresent(FACTORY.chest) then return "the factory chest " .. FACTORY.chest .. " is not on the cable" end
+if FACTORY.reserved(FACTORY.chest) then
+return FACTORY.chest .. " is your " .. (FACTORY.reserved(FACTORY.chest) == "curiosChest" and "curios barrel" or "AE2 buffer") ..
+" - pick ANOTHER empty chest / barrel as the factory chest"
+end
 local b = builderTurtle()
 if not b then return "no builder turtle - type  factory builder <id>  (or give a turtle the RESCUER role)" end
 if not TT.online(b) then return b.label .. " (builder) is offline" end

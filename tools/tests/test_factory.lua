@@ -193,3 +193,12 @@ do
   CHECK(#p.missing == 1 and p.missing[1] == "minecraft:gold_ingot", "plan: what nobody can make is named")
   FACTORY.recipes = {}
 end
+
+-- a barrel the base already uses (the AE2 item buffer) is never the factory chest
+CONFIG.me = CONFIG.me or {}
+local oldBuf = CONFIG.me.buffer
+CONFIG.me.buffer = "minecraft:chest_9"
+setup("stock")
+CHECK(FACTORY.blocked() and FACTORY.blocked():find("AE2 buffer", 1, true), "the AE2 buffer as factory chest: refused, told why")
+CONFIG.me.buffer = oldBuf
+CHECK(FACTORY.reserved("minecraft:barrel_77") == nil, "any other barrel is fine")

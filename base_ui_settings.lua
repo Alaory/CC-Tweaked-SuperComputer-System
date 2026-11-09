@@ -105,7 +105,7 @@ SETTING_GROUPS = {
   { name = "FACTORY", list = {
     num("factory.target", "Keep this many turtles", "fewer: the factory builds one from AE2 parts (0 = off)",
         0, 0, 32, 1, plain),
-    { kind = "custom", label = "Factory chest", hint = "tap: the next EMPTY chest on the cable (it must be next to the builder)",
+    { kind = "custom", label = "Factory chest", hint = "tap: the next EMPTY chest or barrel on the cable (next to the builder; not the AE2 buffer)",
       get = function() return FACTORY.chest or "not set - tap" end,
       next = function(dir)
         -- the chests on the cable that are empty (or the one chosen now)
@@ -114,7 +114,7 @@ SETTING_GROUPS = {
           local okI, isI = pcall(peripheral.hasType, name, "inventory")
           -- (only chest-sized ones: reading a big storage controller's contents is slow)
           local okS, size = pcall(peripheral.call, name, "size")
-          if okI and isI and name:find("_", 1, true) and not name:find("drive", 1, true)
+          if okI and isI and name:find("_", 1, true) and not name:find("drive", 1, true) and not FACTORY.reserved(name)
              and (name == FACTORY.chest or (okS and tonumber(size) and tonumber(size) <= 54)) then
             local okL, items = pcall(peripheral.call, name, "list")
             if name == FACTORY.chest or (okL and type(items) == "table" and next(items) == nil) then list[#list + 1] = name end
