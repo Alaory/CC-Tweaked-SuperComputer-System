@@ -228,7 +228,10 @@ PneumaticCraft drone rides, turtle mapping/surveys, and an AE2 ME network view.
   -> next offer. Idle for CONFIG.turtles.idleHome s (default 120, 0 = off)
   away from home -> sent home (not held / anchor / stuck / needed by a big
   survey; at most every 10 min). A turtle that never refuelled and has < 1000
-  fuel runs REFUEL once by itself (doRefuel; S.refuelDone).
+  fuel runs REFUEL once by itself (doRefuel(true); S.refuelDone) - only up to FIRST_FUEL (1000), then
+  it can leave (factory build spot); idle top-up does the rest wherever it waits. A job that comes
+  BEFORE that first refuel: ensureFuel (first move, fuel < 20) runs it (before: endless fuel was not
+  known yet -> 0 fuel, the new turtle never left). node_firstfuel.lua.
 - Fuel chest at home (node.lua fuelStation): idle AT home with fuel < lowFuel
   (2000) -> sucks from an inventory below/above/in front (never a turtle),
   burns ONLY fuel items up to stationFuel (20000), non-fuel and empty buckets

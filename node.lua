@@ -467,6 +467,13 @@ end
 function ensureFuel()
   local f = turtle.getFuelLevel()
   if f == "unlimited" or f >= 20 then return end
+  -- a NEW turtle sent off before its first refuel (e.g. off the factory's build
+  -- spot): fill up to FIRST_FUEL now (finds reusable fuel too), the rest later
+  if not S.refuelDone and not SLOT_LOCK then
+    pcall(doRefuel, true)
+    save()
+    if turtle.getFuelLevel() >= 20 then return end
+  end
   if S.reuse and next(S.reuse) then
     topUp(math.min(refuelTarget(), f + 2000), true)
     if turtle.getFuelLevel() >= 20 then return end
@@ -3346,12 +3353,16 @@ end
 
 -- REFUEL: every slot, like before; a reusable item is used again and again (up
 -- to 10 s here - the rest it does by itself while idle). A new turtle does
--- this once by itself (worker), so nobody has to press REFUEL.
-function doRefuel()
+-- this once by itself (worker), so nobody has to press REFUEL - only up to
+-- FIRST_FUEL: enough to get out of the way (a new turtle stands on the factory's
+-- build spot); the rest it fills up by itself while idle, wherever it waits.
+FIRST_FUEL = 1000
+function doRefuel(first)
   S.refuelDone = true
   do
     local before = turtle.getFuelLevel()
-    local _, more = topUp(refuelTarget(), false, 200)
+    local _, more = topUp(first and math.min(refuelTarget(), FIRST_FUEL) or refuelTarget(), false, first and 2000 or 200)
+    if first then more = more or (S.reuse and next(S.reuse) ~= nil) end
     local names = {}
     for n in pairs(S.reuse or {}) do names[#names + 1] = n:gsub("^.*:", "") end
     if before == "unlimited" then return true, "fuel is unlimited on this server - nothing to do" end
@@ -3522,7 +3533,7 @@ function worker()
         S.refuelDone = true
       end
       if not S.refuelDone and not job and not SLOT_LOCK then
-        local okR, okR2, msgR = pcall(doRefuel)
+        local okR, okR2, msgR = pcall(doRefuel, true)
         S.refuelDone = true
         save()
         send("result", { cmd = "refuel", ok = okR and okR2 or false,

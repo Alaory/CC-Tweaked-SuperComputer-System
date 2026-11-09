@@ -467,6 +467,13 @@ end
 function ensureFuel()
 local f = turtle.getFuelLevel()
 if f == "unlimited" or f >= 20 then return end
+
+
+if not S.refuelDone and not SLOT_LOCK then
+pcall(doRefuel, true)
+save()
+if turtle.getFuelLevel() >= 20 then return end
+end
 if S.reuse and next(S.reuse) then
 topUp(math.min(refuelTarget(), f + 2000), true)
 if turtle.getFuelLevel() >= 20 then return end
@@ -3347,11 +3354,15 @@ end
 
 
 
-function doRefuel()
+
+
+FIRST_FUEL = 1000
+function doRefuel(first)
 S.refuelDone = true
 do
 local before = turtle.getFuelLevel()
-local _, more = topUp(refuelTarget(), false, 200)
+local _, more = topUp(first and math.min(refuelTarget(), FIRST_FUEL) or refuelTarget(), false, first and 2000 or 200)
+if first then more = more or (S.reuse and next(S.reuse) ~= nil) end
 local names = {}
 for n in pairs(S.reuse or {}) do names[#names + 1] = n:gsub("^.*:", "") end
 if before == "unlimited" then return true, "fuel is unlimited on this server - nothing to do" end
@@ -3522,7 +3533,7 @@ if not S.refuelDone and (S.reuse ~= nil or fl == "unlimited" or fl >= 1000) then
 S.refuelDone = true
 end
 if not S.refuelDone and not job and not SLOT_LOCK then
-local okR, okR2, msgR = pcall(doRefuel)
+local okR, okR2, msgR = pcall(doRefuel, true)
 S.refuelDone = true
 save()
 send("result", { cmd = "refuel", ok = okR and okR2 or false,

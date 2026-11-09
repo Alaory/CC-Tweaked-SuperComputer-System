@@ -1,6 +1,6 @@
 base inventory.lua 4102 5dfa4597
 base startup.lua 1532 dcf086f6
-base node.lua 154347 f8cbb03f
+base node.lua 154988 80f219fb
 base store.lua 9127 fd1119e4
 base upgrade.lua 9355 01c44fe2
 base base_away.lua 13635 f97c94d4
@@ -42,7 +42,7 @@ pocket pocket.lua 25481 9a734520
 pocket upgrade.lua 9355 01c44fe2
 slim:base inventory.lua 2219 f8498a42 dist/inventory.lua
 slim:base startup.lua 833 00f3544b dist/startup.lua
-slim:base node.lua 110438 5960785e dist/node.lua
+slim:base node.lua 110730 c2a1db23 dist/node.lua
 slim:base store.lua 6731 3afde96d dist/store.lua
 slim:base upgrade.lua 6541 24489d13 dist/upgrade.lua
 slim:base base_away.lua 9633 91b45650 dist/base_away.lua
