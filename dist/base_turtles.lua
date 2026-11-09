@@ -1404,7 +1404,7 @@ end
 
 function TT.atBase(t)
 local b = CONFIG.drone and CONFIG.drone.home or state.basePos
-local r = tonumber(CONFIG.turtles.atBaseRange) or 48
+local r = tonumber(CONFIG.turtles.atBaseRange) or 1024
 if not (b and b.x and t and t.pos and t.pos.x) or r <= 0 then return false end
 return math.abs(t.pos.x - b.x) <= r and math.abs(t.pos.z - b.z) <= r
 end
