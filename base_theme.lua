@@ -41,8 +41,29 @@ THEMES = {
   nether    = { 0x130909, 0x281414, 0x3E1F1F, 0x572B2B, 0xFFEEEE, 0xC09898, 0xCC4433, 0xF5A93A },
   ender     = { 0x0C0A12, 0x1B1725, 0x2D2640, 0x413758, 0xF6F0FF, 0xA89CC0, 0x8C62E8, 0xEFE39C },
   ocean     = { 0x071116, 0x112129, 0x1C3640, 0x284E5A, 0xEAFBFF, 0x94B8C2, 0x2FA8B8, 0xF5C451 },
+  -- Bedrock edition menus: dark slate boxes, LIGHT grey buttons with dark text,
+  -- the selected tab / main button green, white titles (the owner's pick)
+  bedrock   = { 0x1B1B1C, 0x313233, 0x48494A, 0xD0D1D4, 0xFFFFFF, 0xA6A6AA, 0x5A7CE6, 0xFFFFFF },
 }
-THEME_ORDER = { "stone", "deepslate", "oak", "nether", "ender", "ocean" }
+THEME_ORDER = { "bedrock", "stone", "deepslate", "oak", "nether", "ender", "ocean" }
+-- themes with LIGHT buttons: text drawn on a button / the selected tab is made
+-- dark (white, gold, grey or a status colour on light grey cannot be read).
+-- accent = the colour slot of the selected tab / main button (the blue slot is
+-- the MAP's water, so a green accent uses the green slot).
+THEME_STYLE = { bedrock = { light = true, accent = colors.green } }
+LIGHT_FG = nil                       -- [background] = { [text colour] = readable colour }
+function themeStyle()
+  if not C then return end
+  local st = THEME_STYLE[THEME_NAME] or {}
+  C.accent = st.accent or colors.blue
+  if not st.light then LIGHT_FG = nil return end
+  local dark = {}
+  for _, c in ipairs({ C.text, C.label, colors.yellow, colors.lime, colors.cyan, colors.green,
+                       colors.orange, colors.pink, colors.lightBlue }) do dark[c] = C.ink end
+  dark[C.dim] = C.head
+  local onAccent = { [C.text] = C.ink, [C.label] = C.ink, [C.dim] = C.ink, [colors.green] = C.ink }
+  LIGHT_FG = { [C.empty] = dark, [C.accent] = onAccent }
+end
 local THEME_FILE = "theme.dat"
 
 -- the theme for this start: a fixed one (the 'theme' command, or
@@ -83,6 +104,7 @@ function setTheme(name)
   end
   if mon then pcall(applyPalette, mon) end
   if win then pcall(applyPalette, win) end
+  themeStyle()
   shownRows = {}                -- every row is drawn again
   return true
 end
@@ -107,6 +129,8 @@ C = {
   good = colors.green, warn = colors.yellow, bad = colors.red,
   red = colors.red, purple = colors.purple,
 }
+
+themeStyle()
 
 -- colours an item can be tinted with
 ITEM_COLORS = {                      -- (fixed colours only: lightBlue = the gold titles)
@@ -304,6 +328,7 @@ end
 
 -- write text into the off-screen window
 function text(x, y, s, fg, bg)
+  if bg and LIGHT_FG and LIGHT_FG[bg] then fg = LIGHT_FG[bg][fg] or fg end
   if bg then win.setBackgroundColor(bg) end
   win.setTextColor(fg)
   win.setCursorPos(x, y)

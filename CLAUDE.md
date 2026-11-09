@@ -503,6 +503,11 @@ PneumaticCraft drone rides, turtle mapping/surveys, and an AE2 ME network view.
    buttons, gold titles, the blue selected tab - in deeper, softer shades. THEMES are
    biomes (stone default, deepslate, oak, nether, ender, ocean; `theme` / SETTINGS); a
    theme only changes the FRAME (bg, cards, lines, buttons, text, dim, accent, titles).
+   BEDROCK theme (the owner's pick, first in THEME_ORDER; `theme bedrock`): dark slate
+   boxes, LIGHT grey buttons, green selected tab / main button, white titles. THEME_STYLE
+   {light, accent}: C.accent = the green SLOT (the blue slot is the MAP's water - never
+   recolour it); LIGHT_FG makes text() draw white / gold / grey / status text DARK on a
+   light button or the green tab (test_theme.lua). Check new pages in bedrock too.
    Status + map colours are Minecraft's chat colours, softened, FIXED (base_theme.lua
    FIXED): green good, yellow attention, red problem, cyan info, orange, pink, purple.
    Never hard-code a frame colour - use C.* (C.label = gold titles, C.accent = blue
