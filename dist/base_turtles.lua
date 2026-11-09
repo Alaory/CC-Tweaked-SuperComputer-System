@@ -1989,7 +1989,6 @@ KNOW.load()
 
 
 TT.party = nil
-local PARTY_GAP, PARTY_HOP = 24, 128
 
 
 
@@ -2252,7 +2251,12 @@ P.scanNext = false
 end
 if P.scanNext then
 P.scanNext, P.scanned, P.phase, P.scanT = false, {}, "scan", now
-for _, id in ipairs(P.members) do TT.send(id, "findturtles", {}, true) end
+local Tn = P.targets[P.ti] and state.turtles[P.targets[P.ti]]
+
+local floor = (Tn and Tn.pos and Tn.pos.y) and (math.floor(Tn.pos.y) + 2) or nil
+for _, id in ipairs(P.members) do
+TT.send(id, "findturtles", { (P.stage ~= "meet" and floor) or nil }, true)
+end
 return
 end
 P.phase = "next"
@@ -2274,19 +2278,11 @@ cx, cy, cz = cx + p.x, cy + p.y, cz + p.z
 end
 cx, cy, cz = cx / n, cy / n, cz / n
 P.goals = {}
-if P.stage == "travel" and math.abs(T.pos.x - cx) + math.abs(T.pos.z - cz) > 30 then
 
-local dx, dz = T.pos.x - cx, T.pos.z - cz
-local len = math.sqrt(dx * dx + dz * dz)
-local step = math.min(PARTY_HOP, len)
-local wx, wz = cx + dx / len * step, cz + dz / len * step
-local px, pz = -dz / len, dx / len
-for k, id in ipairs(P.members) do
-local off = (k - (n + 1) / 2) * PARTY_GAP
-local gx, gz = wx + px * off, wz + pz * off
-P.goals[id] = { x = gx, y = TT.partyY(gx, gz, cy), z = gz }
-end
-else
+
+
+
+do
 
 P.stage = (P.stage == "ring1") and "ring2" or ((P.stage == "ring2") and "done" or "ring1")
 if P.stage == "done" then

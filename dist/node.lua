@@ -2529,9 +2529,20 @@ if type(b) == "table" and (b.x or 0) == 0 and (b.z or 0) == 0 and (b.y or 0) > 0
 end
 return true
 end
-function findTurtles()
+function findTurtles(floor)
 task = "search party: looking around"
 if not findItem(CONFIG.geoItem) then return false, "I have no Geo Scanner - I only help by loading the area" end
+
+
+local went = 0
+if floor and S.pos and S.pos.y then
+task = "search party: going down to look"
+while went < 250 and S.pos.y - 1 >= floor and not turtle.detectDown() and not stopFlag do
+if not down() then break end
+went = went + 1
+end
+task = "search party: looking around"
+end
 local data, r = scanRaw(16)
 if not data then data, r = scanRaw(8) end
 if not data then return false, "the scan did not work" end
@@ -2551,7 +2562,14 @@ if openSkyIn(data) then
 local okS = pcall(sendSummary, data, r)
 if okS then mapped = " + map updated" end
 end
-return true, "looked around (radius " .. tostring(r) .. "): " .. #seen .. " turtle(s) seen" .. mapped
+
+local back = 0
+while back < went and not stopFlag do
+if not up() then break end
+back = back + 1
+end
+return true, "looked around (radius " .. tostring(r) .. (went > 0 and (", " .. went .. " blocks down") or "") ..
+"): " .. #seen .. " turtle(s) seen" .. mapped
 end
 
 function rescue(tid, x, y, z, mode, radius)
@@ -2931,7 +2949,7 @@ end
 if j.cmd == "craft" then
 return craftRecipe(a[1], a[2])
 elseif j.cmd == "findturtles" then
-return findTurtles()
+return findTurtles(tonumber(a[1]))
 elseif j.cmd == "build" then
 if S.anchor then return false, "I am the ANCHOR - send another turtle" end
 return build()

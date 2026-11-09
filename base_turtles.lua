@@ -1989,7 +1989,6 @@ KNOW.load()
 -- spot after two rings (24 and 56 blocks around it) = it was deleted -> MISSING.
 -- Then everyone goes home. TT.party (memory only), TT.partyTick (comms worker).
 TT.party = nil
-local PARTY_GAP, PARTY_HOP = 24, 128
 -- where a party member stands: IN THE AIR above the ground there - never at the lost
 -- turtle's own height (often under ground: the members tried to go DOWN, could not -
 -- no digging - every trip failed) and never at a guess (unknown ground on a hillside =
@@ -2252,7 +2251,12 @@ function TT.partyTick()
     end
     if P.scanNext then
       P.scanNext, P.scanned, P.phase, P.scanT = false, {}, "scan", now
-      for _, id in ipairs(P.members) do TT.send(id, "findturtles", {}, true) end
+      local Tn = P.targets[P.ti] and state.turtles[P.targets[P.ti]]
+      -- (go down to look - not below the lost turtle's own height + 2)
+      local floor = (Tn and Tn.pos and Tn.pos.y) and (math.floor(Tn.pos.y) + 2) or nil
+      for _, id in ipairs(P.members) do
+        TT.send(id, "findturtles", { (P.stage ~= "meet" and floor) or nil }, true)
+      end
       return
     end
     P.phase = "next"
@@ -2274,19 +2278,11 @@ function TT.partyTick()
   end
   cx, cy, cz = cx / n, cy / n, cz / n
   P.goals = {}
-  if P.stage == "travel" and math.abs(T.pos.x - cx) + math.abs(T.pos.z - cz) > 30 then
-    -- the next hop toward it, side by side across the way
-    local dx, dz = T.pos.x - cx, T.pos.z - cz
-    local len = math.sqrt(dx * dx + dz * dz)
-    local step = math.min(PARTY_HOP, len)
-    local wx, wz = cx + dx / len * step, cz + dz / len * step
-    local px, pz = -dz / len, dx / len
-    for k, id in ipairs(P.members) do
-      local off = (k - (n + 1) / 2) * PARTY_GAP
-      local gx, gz = wx + px * off, wz + pz * off
-      P.goals[id] = { x = gx, y = TT.partyY(gx, gz, cy), z = gz }
-    end
-  else
+  -- STRAIGHT THERE: every member flies to its own spot around the lost turtle at once -
+  -- long trips go over the SKY HIGHWAY by themselves (up, across, down at the end), so
+  -- no hops (the 128-block hops stopped them in unmapped hills). At each spot it drops
+  -- down to just above the ground (no digging) and looks around there (findturtles).
+  do
     -- at the spot: spread out around it (24, then 56 blocks)
     P.stage = (P.stage == "ring1") and "ring2" or ((P.stage == "ring2") and "done" or "ring1")
     if P.stage == "done" then

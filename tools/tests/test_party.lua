@@ -63,7 +63,18 @@ for step = 1, 400 do
 end
 TT.send = send0
 CHECK(TT.party == nil, "the party finished")
-CHECK(spread, "they travel side by side, 24 blocks apart")
+-- straight to the spots around the lost turtles (the sky highway does the long way):
+-- no stops half way any more (the old 128-block hops stopped them in unmapped hills)
+local halfway = 0
+local lostAt = { { 1300, 0 }, { 1300, 200 }, { -1400, 50 } }
+for _, g in ipairs(goals) do
+  if math.abs(g.x) + math.abs(g.z) > 40 then
+    local best = 1e9
+    for _, L in ipairs(lostAt) do best = math.min(best, math.abs(g.x - L[1]) + math.abs(g.z - L[2])) end
+    if best > 120 then halfway = halfway + 1 end
+  end
+end
+CHECK(halfway == 0, "every trip goes straight to a spot near a lost turtle (" .. halfway .. " stops half way)")
 local r = rescues[1]
 CHECK(r and r.by == 9 and r.target == 21 and r.x == 1300 and r.y == 40 and r.z == 0,
       "A seen switched off: the RESCUER is sent to its exact block")

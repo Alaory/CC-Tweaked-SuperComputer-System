@@ -28,5 +28,28 @@ CHECK(SENT[1] and SENT[1].t == "turtlesseen" and #SENT[1].m.seen == 1, "the turt
 DATA[#DATA + 1] = { x = 0, y = 5, z = 0, name = "minecraft:stone" }
 findTurtles()
 CHECK(SUMMARY == 1, "underground: NOT put on the map")
+-- in the air above the spot: it drops down to just above the ground, looks, goes back up
+do
+  local y0, ground = 150, 70
+  S.pos = { x = 100, y = y0, z = 100 }
+  stopFlag = false
+  turtle = turtle or {}
+  turtle.detectDown = function() return S.pos.y - 1 <= ground end
+  function down() S.pos.y = S.pos.y - 1 return true end
+  function up() S.pos.y = S.pos.y + 1 return true end
+  local lowest = y0
+  local scan0 = scanRaw
+  function scanRaw(r) lowest = S.pos.y return DATA, r end
+  DATA = { { x = 0, y = -1, z = 0, name = "minecraft:grass_block" } }
+  local ok, msg = findTurtles(40)
+  CHECK(lowest == ground + 1, "dropped down to just above the ground before looking (scanned at Y " .. lowest .. ")")
+  CHECK(S.pos.y == y0, "and back up to where it was (Y " .. S.pos.y .. ")")
+  CHECK(tostring(msg):find("blocks down", 1, true), "it says how far down it went: " .. tostring(msg))
+  -- never below the floor (the lost turtle's height + 2)
+  S.pos.y, ground = 150, -60
+  findTurtles(120)
+  CHECK(lowest >= 120, "never below the floor it was given (scanned at Y " .. lowest .. ")")
+  scanRaw = scan0
+end
 print(FAILS == 0 and "PASS" or ("FAILED " .. FAILS))
 os.exit(FAILS == 0 and 0 or 1)

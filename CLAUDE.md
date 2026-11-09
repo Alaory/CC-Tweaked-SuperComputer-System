@@ -523,10 +523,13 @@ PneumaticCraft drone rides, turtle mapping/surveys, and an AE2 ME network view.
   console `party [stop]`): members = online, fuel > 2000, not anchor / rescuer / held
   (t.party: no survey batches - TT.available -, no idle-home, idleWhy says so); jobs
   stopped (no hold). Targets = TT.lostList (offline, not MISSING, pos known), nearest-next
-  order. Stages: meet (base, a line) -> travel (hops <= 128 toward the target, members side
-  by side 24 apart across the way; next hop when all are within 6 of their goal or idle 20 s,
-  max 300 s) -> ring1 (24 around the spot) -> ring2 (56) -> TT.markMissing. After EVERY stop
-  each member runs node job "findturtles" (Geo Scanner r 16/8, turtle blocks, not eggs; the SAME scan
+  order. Stages: meet (base, a line) -> STRAIGHT to ring1 (24 around the spot; the owner's idea:
+  the turtles' own SKY HIGHWAY does the long way - the old 128-block side-by-side hops stopped
+  them in unmapped hills) -> ring2 (56) -> TT.markMissing; next stage when all are within 6 of
+  their goal or idle 20 s, max 300 s. After EVERY stop
+  each member runs node job "findturtles" [floor = lost turtle's Y + 2; none at the meet]: drops
+  straight DOWN to just above the ground (detectDown, no digging, never below floor, max 250),
+  scans there, climbs back up (Geo Scanner r 16/8, turtle blocks, not eggs; the SAME scan
   also goes onto the MAP via sendSummary when openSkyIn - nothing above the turtle; underground
   scans would write a false surface; node_partymap.lua) ->
   "turtlesseen" -> TT.partySeen: a block with no online turtle on it, within 96 of a lost
