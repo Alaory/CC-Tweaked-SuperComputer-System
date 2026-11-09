@@ -176,31 +176,31 @@ function drawMapPage(G)
   end
 
   ------------------------------------------------ right column: view controls
-  card(rx, y0, rw, 15, "VIEW")
-  actButton(rx + rw - 15, y0 + 1, 13, 1, "CLEAR MAP", { kind = "mapclear", name = "map", count = 0 })
+  card(rx, y0, rw, 17, "VIEW")
+  actButton(rx + rw - 15, y0 + 1, 13, 2, "CLEAR MAP", { kind = "mapclear", name = "map", count = 0 })
   kv(rix, y0 + 3, riw, "Centre", V.cx .. ", " .. V.cz)
   kv(rix, y0 + 4, riw, "Chunks (overview)", tostring(MAP.ovN))
   kv(rix, y0 + 5, riw, "Chunks (detail)", tostring(#MAP.order))
 
   local bw = math.floor((riw - 3) / 4)
   local b1 = y0 + 7
-  drawButton(rix,                b1, bw, 1, "\27",  C.empty, C.text, "mpan", { -1, 0 })
-  drawButton(rix + bw + 1,       b1, bw, 1, "\24",  C.empty, C.text, "mpan", { 0, -1 })
-  drawButton(rix + 2 * (bw + 1), b1, bw, 1, "\25",  C.empty, C.text, "mpan", { 0, 1 })
-  drawButton(rix + 3 * (bw + 1), b1, bw, 1, "\26",  C.empty, C.text, "mpan", { 1, 0 })
-  local b2 = y0 + 9
-  drawButton(rix,                b2, bw, 1, "ZOOM -", C.empty, C.text, "mzoom", 1)
-  drawButton(rix + bw + 1,       b2, bw, 1, "ZOOM +", C.empty, C.text, "mzoom", -1)
-  drawButton(rix + 2 * (bw + 1), b2, bw * 2 + 1, 1, "ROTATE", C.empty, C.text, "mrot")
-  local b3 = y0 + 11
+  drawButton(rix,                b1, bw, 2, "\27",  C.empty, C.text, "mpan", { -1, 0 })
+  drawButton(rix + bw + 1,       b1, bw, 2, "\24",  C.empty, C.text, "mpan", { 0, -1 })
+  drawButton(rix + 2 * (bw + 1), b1, bw, 2, "\25",  C.empty, C.text, "mpan", { 0, 1 })
+  drawButton(rix + 3 * (bw + 1), b1, bw, 2, "\26",  C.empty, C.text, "mpan", { 1, 0 })
+  local b2 = y0 + 10
+  drawButton(rix,                b2, bw, 2, "ZOOM -", C.empty, C.text, "mzoom", 1)
+  drawButton(rix + bw + 1,       b2, bw, 2, "ZOOM +", C.empty, C.text, "mzoom", -1)
+  drawButton(rix + 2 * (bw + 1), b2, bw * 2 + 1, 2, "ROTATE", C.empty, C.text, "mrot")
+  local b3 = y0 + 13
   text(rix, b3, "CENTRE ON", C.dim, C.panel)
   local cw = math.floor((riw - 2) / 3)
-  drawButton(rix,                b3 + 1, cw, 1, "BASE",   C.empty, C.text, "mcenter", "base")
-  drawButton(rix + cw + 1,       b3 + 1, cw, 1, "TURTLE", C.empty, C.text, "mcenter", "turtle")
-  drawButton(rix + 2 * (cw + 1), b3 + 1, cw, 1, "ME",     C.empty, C.text, "mcenter", "me")
+  drawButton(rix,                b3 + 1, cw, 2, "BASE",   C.empty, C.text, "mcenter", "base")
+  drawButton(rix + cw + 1,       b3 + 1, cw, 2, "TURTLE", C.empty, C.text, "mcenter", "turtle")
+  drawButton(rix + 2 * (cw + 1), b3 + 1, cw, 2, "ME",     C.empty, C.text, "mcenter", "me")
 
   ------------------------------------------------ selected block
-  local sy0 = y0 + 16
+  local sy0 = y0 + 18
   card(rx, sy0, rw, 7, "SELECTED")
   if sel then
     local hgt, blk = MAP.get(sel.x, sel.z)
@@ -222,12 +222,12 @@ function drawMapPage(G)
 
   ------------------------------------------------ turtle actions
   local ty0 = sy0 + 8
-  card(rx, ty0, rw, 10, "TURTLE")
+  card(rx, ty0, rw, 11, "TURTLE")
   local t = state.tSel and state.turtles[state.tSel]
   if not t then
     text(rix, ty0 + 3, trunc("Select a turtle on the TURTLES tab", riw), C.dim, C.panel)
     if next(state.turtles) then
-      actButton(rix, ty0 + 8, riw, 1, "SURVEY: ALL TURTLES (" .. #TT.available() .. ")",
+      actButton(rix, ty0 + 8, riw, 2, "SURVEY: ALL TURTLES (" .. #TT.available() .. ")",
                 { kind = "surveyall", name = "all", count = 0 }, true)
     end
   else
@@ -241,19 +241,19 @@ function drawMapPage(G)
     drawButton(rix + 2 * (tw + 1), ty0 + 5, riw - 2 * (tw + 1), 2, "STOP ALL", C.bad, C.ink, "tstopall")
     local hw = math.floor((riw - 1) / 2)
     local nfree = #TT.available()
-    actButton(rix, ty0 + 8, hw, 1, "SURVEY: ALL (" .. nfree .. ")",
+    actButton(rix, ty0 + 8, hw, 2, "SURVEY: ALL (" .. nfree .. ")",
               { kind = "surveyall", name = "all", count = 0 }, true)
-    actButton(rix + hw + 1, ty0 + 8, riw - hw - 1, 1, "SURVEY: THIS ONE",
+    actButton(rix + hw + 1, ty0 + 8, riw - hw - 1, 2, "SURVEY: THIS ONE",
               { kind = "survey", name = tostring(t.id), count = 0 }, true)
   end
 
   ------------------------------------------------ a survey in progress / auto-map
-  local ly = ty0 + 11
+  local ly = ty0 + 12
   local frac, total, sent, skipped, again = MAP.surveyProgress()
   local q = MAP.queue
   if frac and not q.auto then
     card(rx, ly, rw, 7, "BIG SURVEY")
-    drawButton(rix + riw - 8, ly + 1, 8, 1, "STOP", C.bad, C.ink, "mqstop")
+    drawButton(rix + riw - 8, ly + 1, 8, 2, "STOP", C.bad, C.ink, "mqstop")
     barW(rix, ly + 3, riw, math.floor(frac * riw + 0.5), C.good)
     text(rix, ly + 4, trunc(string.format("%d%% of %s spots", math.floor(frac * 100), compact(total)), riw), C.text, C.panel)
     text(rix, ly + 5, trunc(string.format("%s sent, %s mapped before", compact(sent), compact(skipped)) ..
@@ -264,7 +264,7 @@ function drawMapPage(G)
     -- auto-map: always a survey running, spiralling out from the base
     local on = MAP.auto.on
     card(rx, ly, rw, 6, "AUTO-MAP")
-    drawButton(rix + riw - 10, ly + 1, 10, 1, on and "ON" or "OFF", on and C.good or C.empty,
+    drawButton(rix + riw - 10, ly + 1, 10, 2, on and "ON" or "OFF", on and C.good or C.empty,
                on and C.ink or C.text, "mauto")
     local radius = math.floor(MAP.autoRadius())
     local line1, col1

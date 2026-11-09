@@ -36,16 +36,16 @@ function drawEventsPage(G)
   for _, f in ipairs(FILTERS) do
     local on = (state.eventsFilter or "all") == f[1]
     local label = " " .. f[2] .. " " .. (counts[f[1]] or 0) .. " "
-    drawButton(fx, y0, #label, 1, label, on and C.accent or C.empty, on and C.ink or C.text,
+    drawButton(fx, y0, #label, 2, label, on and C.accent or C.empty, on and C.ink or C.text,
                "evfilter", f[1])
     fx = fx + #label + 1
   end
   local cl = " CLEAR LIST "
-  drawButton(W - #cl - 1, y0, #cl, 1, cl, C.empty, C.text, "evclear")
+  drawButton(W - #cl - 1, y0, #cl, 2, cl, C.empty, C.text, "evclear")
 
   -- the list: 3 rows per message (time + kind + title / message / gap)
   local list = filtered()
-  local cy = y0 + 2
+  local cy = y0 + 3
   local cardH = bottom - cy + 1
   card(2, cy, W - 3, cardH)
   local per = math.max(1, math.floor((cardH - 3) / 3))

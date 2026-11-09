@@ -525,7 +525,14 @@ PneumaticCraft drone rides, turtle mapping/surveys, and an AE2 ME network view.
    (gold name, white "what it is for", live badge) grouped like the tabs, QUICK ACTIONS
    (two taps: stop all / all home / update turtles / drone to base / save map; act
    kind "quick" -> POCKET.act). Nobody has to hunt for a tab.
-5. Check every screen change with tools/preview (render.py draws the 2x3 pixel
+5. UX (test_ux.lua): every button / tab at least 2 ROWS tall (drawButton h=2 = label row +
+   a 2/3 row + shadow; tabButton = thin top edge + label; 1-row list rows only with a gap
+   row). snapTouch (base_input.lua): a tap 1 row / 1 column off a button counts for the
+   nearest one. Text never cut mid-sentence: shorten it or wrap() it. PAGE_INFO
+   descriptions <= 30 characters (HOME buttons). No boxes that only repeat something
+   (INVENTORY: OVERVIEW / EQUIPMENT boxes gone - armour + offhand are a row in the
+   INVENTORY box, slots ~square: ch = 0.62 * cw; DETAILS gets the room).
+6. Check every screen change with tools/preview (render.py draws the 2x3 pixel
    characters, so edges show) in the stone theme.
 
 ## Files

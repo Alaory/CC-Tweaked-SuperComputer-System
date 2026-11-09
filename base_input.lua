@@ -7,7 +7,31 @@
 ---------------------------------------------------------------------
 -- INPUT
 ---------------------------------------------------------------------
+-- A tap that just misses a button (1 row / 1 column off - fingers and the
+-- monitor's thin rows) counts for the NEAREST button; a tap on a button is
+-- never moved. Small 1-row buttons were hard to hit.
+function snapTouch(tx, ty)
+  for i = #hits, 1, -1 do
+    local h = hits[i]
+    if tx >= h[1] and tx <= h[3] and ty >= h[2] and ty <= h[4] then return tx, ty end
+  end
+  local best, bx, by
+  for i = #hits, 1, -1 do
+    local h = hits[i]
+    local cx = math.max(h[1], math.min(h[3], tx))
+    local cy = math.max(h[2], math.min(h[4], ty))
+    local dx, dy = math.abs(cx - tx), math.abs(cy - ty)
+    if dx <= 1 and dy <= 1 then
+      local d = dx + dy * 1.5                    -- (rows are taller than columns)
+      if not best or d < best then best, bx, by = d, cx, cy end
+    end
+  end
+  if best then return bx, by end
+  return tx, ty
+end
+
 function handleTouch(tx, ty)
+  tx, ty = snapTouch(tx, ty)
   for i = #hits, 1, -1 do
     local h = hits[i]
     if tx >= h[1] and tx <= h[3] and ty >= h[2] and ty <= h[4] then

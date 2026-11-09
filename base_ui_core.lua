@@ -119,22 +119,22 @@ function drawCell(x, y, w, h, item, emptyLabel)
 end
 
 -- every page: its name and what it is for (HOME menu, the strip under the tabs)
-PAGE_INFO = {
-  home      = { "HOME", "Every page in one place, and how the base is doing" },
-  inventory = { "INVENTORY", "What you carry: backpack, hotbar, armour" },
-  storage   = { "BACKPACKS", "Inside your backpacks, tanks and other storage items" },
-  curios    = { "CURIOS", "Rings, belts and charms you wear" },
-  me        = { "AE2 STORAGE", "Your ME network: find, take, store and craft items" },
-  players   = { "PLAYERS", "Who is online, where they are, their health" },
-  access    = { "CHAT & RIDES", "Who may use the $drone chat commands; ride requests" },
-  drone     = { "DRONES", "Drone rides: passenger, destination, air, charging" },
-  turtles   = { "TURTLES", "Every turtle: what it does, fuel, problems; its buttons" },
-  drive     = { "DRIVE", "Steer one turtle by hand and see the blocks around it" },
-  map       = { "MAP", "The world your turtles mapped; start surveys" },
-  mining    = { "MINING", "Mining teams in the mining dimension" },
+PAGE_INFO = {                          -- (short: the HOME buttons show it whole, 30 characters)
+  home      = { "HOME", "Everything at a glance" },
+  inventory = { "INVENTORY", "Backpack, hotbar, armour" },
+  storage   = { "BACKPACKS", "Inside backpacks and tanks" },
+  curios    = { "CURIOS", "Rings, belts, charms you wear" },
+  me        = { "AE2 STORAGE", "Find, take, store, craft" },
+  players   = { "PLAYERS", "Who is online, where, health" },
+  access    = { "CHAT & RIDES", "Chat commands, ride requests" },
+  drone     = { "DRONES", "Rides: passenger, place, air" },
+  turtles   = { "TURTLES", "What each turtle does, fuel" },
+  drive     = { "DRIVE", "Steer one turtle by hand" },
+  map       = { "MAP", "The mapped world, surveys" },
+  mining    = { "MINING", "Mining teams" },
   events    = { "MESSAGES", "Every message, newest first" },
-  system    = { "STATUS", "Disk, floppies, base off-times, system log, actions" },
-  settings  = { "SETTINGS", "Change how everything works (tap - / +)" },
+  system    = { "STATUS", "Disk, logs, base off-times" },
+  settings  = { "SETTINGS", "Change how things work" },
 }
 function pageName(p) return PAGE_INFO[p] and PAGE_INFO[p][1] or string.upper(tostring(p)) end
 
@@ -292,8 +292,7 @@ function drawHeader()
         for _, m in ipairs(t.members) do
           local on = state.page == m[1]
           local label = " " .. m[2] .. ((m[3] and m[3] ~= "") and (" " .. m[3]) or "") .. " "
-          text(sx, 5, label, on and C.ink or C.text, on and C.label or (m[4] or C.empty))
-          addHit(sx, 5, #label, 1, "page", m[1])
+          tabButton(sx, 4, label, on and C.ink or C.text, on and C.label or (m[4] or C.empty), "page", m[1])
           sx = sx + #label + 1
         end
         sx = sx + 1
@@ -374,19 +373,32 @@ function geometry()
   G.leftW = math.floor((W - 3) * 0.64)
   G.pitch = math.max(3, math.floor((G.leftW - 2) / 9))
   G.cw = G.pitch - 1
-  local ch = math.floor(G.cw * 0.95)
-  ch = math.min(ch, math.floor((G.bodyH - 26) / 5))
+  -- slots about SQUARE (a character is 2:3, so a cell is ~0.62 rows per column);
+  -- DETAILS below keeps at least 12 rows
+  local ch = math.floor(G.cw * 0.62 + 0.5)
+  ch = math.min(ch, math.floor((G.bodyH - 11 - 13) / 5))
   G.ch = math.max(3, ch)
-  G.backH = 4 * G.ch + 9
-  G.equipH = math.max(G.ch + 4, 11)
-  G.detailH = G.bodyH - G.backH - 1 - G.equipH - 1
+  G.backH = 5 * G.ch + 11                 -- backpack (3 rows), hotbar, armour + offhand
+  G.detailH = G.bodyH - G.backH - 1
   return G
+end
+
+-- a TAB: two rows to tap (row y = a thin top edge, row y+1 = the label)
+function tabButton(x, y, label, fg, bg, kind, value)
+  text(x, y, string.char(131):rep(#label), C.bg, bg)            -- (top third = the page, below = the tab)
+  text(x, y + 1, label, fg, bg)
+  addHit(x, y, #label, 2, kind, value)
 end
 
 -- a touchable button
 function drawButton(x, y, w, h, label, bg, fg, kind, value)
   fill(x, y, w, h, bg)
   round(x, y, w, h, bg, C.panel)
+  if h == 2 and rounded() then
+    -- 2 rows: the lower row = the button's bottom (2/3) + a shadow (1/3), so the
+    -- label sits in the middle of what you see; the whole 2 rows can be tapped
+    text(x, y + 1, string.char(143):rep(w), bg, C.bg)
+  end
   local l = trunc(label, (w >= #label + 2) and w - 2 or w)
   text(x + math.floor((w - #l) / 2), y + math.floor((h - 1) / 2), l, fg, bg)
   addHit(x, y, w, h, kind, value)
@@ -626,12 +638,7 @@ function draw()
 
     drawBackpack(lx, G.y0, leftW, G.backH, G)
 
-    local ey = G.y0 + G.backH + 1
-    local eqW = G.pitch * 5 + 3
-    drawEquip(lx, ey, eqW, G.equipH, G)
-    drawOverview(lx + eqW + 1, ey, leftW - eqW - 1, G.equipH)
-
-    drawDetail(lx, ey + G.equipH + 1, leftW, G.detailH)
+    drawDetail(lx, G.y0 + G.backH + 1, leftW, G.detailH)
     if det then
       local ph = (state.player and state.player.airSupply) and 14 or 11
       drawPlayer(rx, G.y0, rw, ph)

@@ -61,17 +61,19 @@ function drawDrivePage(G)
   if not sel then
     for _, t in ipairs(sorted) do if TT.online(t) then sel = t break end end
   end
-  local ry = y0 + 2
+  local ry = y0 + 3
   for _, t in ipairs(sorted) do
     if ry > bottom - 1 then break end
     local _, lab, col = TT.status(t)
     local isSel = sel and sel.id == t.id
     local bg = isSel and C.accent or C.panel
-    fill(3, ry, lw - 2, 1, bg)
-    text(4, ry, trunc(t.label, lw - 14), isSel and C.ink or C.text, bg)
-    text(lw - 9, ry, trunc(lab, 9), isSel and C.ink or (col or C.dim), bg)
-    addHit(3, ry, lw - 2, 1, "dsel", t.id)
-    ry = ry + 1
+    -- 2 rows per turtle (+ a gap): easy to tap
+    fill(3, ry, lw - 2, 2, isSel and bg or C.empty)
+    local fg = isSel and C.ink or C.text
+    text(4, ry, trunc(t.label, lw - 14), fg, isSel and bg or C.empty)
+    text(4, ry + 1, trunc(lab, lw - 6), isSel and C.ink or (col or C.dim), isSel and bg or C.empty)
+    addHit(3, ry, lw - 2, 2, "dsel", t.id)
+    ry = ry + 3
   end
   local x = lw + 4
   local w = W - x - 1
@@ -194,8 +196,11 @@ function drawDrivePage(G)
     text(ex + 4, ey, "plain stone / dirt", C.text, C.panel)
   end
   if #legend == 0 and not plainSeen then text(x + 2, ly + 1, "(nothing seen yet - SCAN AROUND)", C.dim, C.panel) end
-  text(x + 2, ly + 4, trunc("TAP a block marked 'go' / 'up' / 'down' to move there (it turns and digs first if needed).  " ..
-       "Black = air,  ? = not seen yet.  Green arrow = the turtle and the way it faces.", w - 4), C.dim, C.panel)
+  -- (wrapped, never cut off)
+  for i, l in ipairs(wrap("Tap a block marked GO / UP / DOWN to move there (it turns and digs first if needed). " ..
+                          "Black = air, ? = not seen yet, green arrows = the turtle and the way it faces.", w - 4, 2)) do
+    text(x + 2, ly + 3 + i, l, C.dim, C.panel)
+  end
   -- buttons
   local by = ly + 6
   if by + 7 > bottom then by = bottom - 7 end

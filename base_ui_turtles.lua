@@ -116,7 +116,7 @@ function drawTurtlesPage(G)
     local at, inChunk = TT.anchorInfo()
     local msg, col
     if not at then
-      msg, col = "No ANCHOR: this computer stops when you leave the server", C.warn
+      msg, col = "No ANCHOR: the base stops when you log off", C.warn
     elseif inChunk == true then
       msg, col = at.label .. " is the ANCHOR: the base keeps running when you leave", C.good
     elseif inChunk == false then
