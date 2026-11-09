@@ -74,3 +74,45 @@ CHECK(packAvg < 40, string.format("pack: nearest team mate %.0f blocks on averag
 CHECK(packWorst < 200, "pack: never more than 200 blocks from the nearest (" .. packWorst .. ")")
 CHECK(freeAvg > packAvg * 2, string.format("free-running turtles spread out more (%.0f vs %.0f)", freeAvg, packAvg))
 CHECK(packDone >= freeDone * 0.7, "pack keeps >= 70% of the speed (" .. packDone .. " vs " .. freeDone .. " spots)")
+
+-- after a BASE RESTART the saved round time (q.wave.t) is ahead of the new clock:
+-- the "do not wait for a hung turtle longer than packWait" limit must still work
+do
+  CONFIG.map.pack = true
+  state.turtles, state.tOut = {}, {}
+  for i = 1, 2 do
+    local id = 40 + i
+    state.turtles[id] = { id = id, label = "R" .. i, log = {}, lastN = 0, fuel = 50000,
+      pos = { x = HOME.x + i, y = 70, z = HOME.z }, home = { x = HOME.x + i, y = 70, z = HOME.z },
+      task = "idle", lastSeen = os.clock() }
+  end
+  local DONE = {}
+  MAP.spotDone = function(x, z) return DONE[x .. "," .. z] end
+  MAP.queue = nil
+  MAP.queueSurvey(-9000, 7000, -1500, 15000, 8, nil)
+  local got = { [41] = 0, [42] = 0 }
+  local function feed()
+    local n0 = #state.tOut
+    MAP.feedSurvey()
+    for i = n0 + 1, #state.tOut do
+      local o = state.tOut[i]
+      if o.msg.cmd == "surveypts" then
+        got[o.id] = got[o.id] + 1
+        state.turtles[o.id].task = "survey"
+        if o.id == 41 then                                 -- 41 finishes its spots at once
+          local a = o.msg.args
+          for j = 2, #a, 2 do DONE[a[j] .. "," .. a[j + 1]] = true end
+          state.turtles[41].task, state.turtles[41].idleSince = "idle", os.clock()
+          MAP.batchResult(41, true)
+        end
+      end
+    end
+  end
+  for _ = 1, 10 do CLOCK = CLOCK + 2 for _, t in pairs(state.turtles) do t.lastSeen = CLOCK end feed() end
+  CHECK(got[41] >= 1 and got[42] >= 1 and MAP.queue.wave, "a pack round is out (" .. got[41] .. "/" .. got[42] .. ")")
+  local before = got[41]
+  MAP.queue.wave.t = os.clock() + 500000                   -- (saved before the restart)
+  for _ = 1, 200 do CLOCK = CLOCK + 2 for _, t in pairs(state.turtles) do t.lastSeen = CLOCK end feed() end
+  CHECK(got[41] > before, "restart: the free turtle gets work again after packWait (42 hangs) - got " .. (got[41] - before))
+  MAP.queue = nil
+end

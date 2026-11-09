@@ -91,7 +91,8 @@ PneumaticCraft drone rides, turtle mapping/surveys, and an AE2 ME network view.
   ROUNDS (q.wave): n*packSpots (3) consecutive spiral spots shared out in turn
   (side by side, 17 blocks apart), by measured speed (t.packRate from
   batchResult) so they finish together; the next round only when the whole
-  pack is done (or after packWait 300 s). Keeps them ~20 blocks apart (sim:
+  pack is done (or after packWait 300 s; q.wave.t is saved with the queue - a time from before a
+  base restart is ahead of the new clock and is reset, else the limit never ran out). Keeps them ~20 blocks apart (sim:
   83% of free-running speed) so one wake-up (rescuer / player) reaches all.
   t.packWait -> TT.idleWhy "waiting for the rest of the pack". A turtle still holding
   a batch (q.out[id]) is never free (its batch is reclaimed after 30 s idle first -
@@ -121,7 +122,11 @@ PneumaticCraft drone rides, turtle mapping/surveys, and an AE2 ME network view.
   console `update` (it did NOT force before), pocket "updateall"; busy turtles that
   already hold it get STOP (no hold) and install at once; list label UPDATE WAITS /
   UPDATE AFTER JOB / UPDATE QUEUED); a busy turtle keeps the update (UPD_READY) and installs it after its
-  job; missing pieces are asked for ("updmiss"). Toasts on each update.
+  job; missing pieces are asked for ("updmiss"). Toasts on each update. node installUpdate is
+  SAFE: new program -> startup.new, size checked, THEN old -> startup.old + move (opening the
+  program for writing empties it: on a full disk the old code left a cut-off program = a dead
+  turtle); no room -> startup.old dropped, once more; still none -> error, old program untouched,
+  "upd" result ok=false. node_update_safe.lua.
 - Install drive: the Disk Drive under the computer ("bottom", not wired;
   CONFIG.turtles.installDrive). A floppy put in gets the installer + current
   node.lua at once (TT.prepareInstallFloppy on the "disk" event, comms
@@ -144,7 +149,8 @@ PneumaticCraft drone rides, turtle mapping/surveys, and an AE2 ME network view.
   after); task "waiting - paused '<cmd>' for your commands (back to it in N s)" (QUIET_TASK);
   resumeAfter (120 s) after your LAST command -> back to the job (survey / surveypts / findturtles:
   just idle - the base hands survey work out again). Automatic orders while busy: refused as before.
-  STOP forgets the paused job. Only PAUSABLE jobs (goto home survey surveypts findturtles digup
+  STOP forgets the paused job. A 2nd hand command while the 1st runs keeps the ORIGINAL S.paused
+  (it went back to your own 1st command before). Only PAUSABLE jobs (goto home survey surveypts findturtles digup
   move scan locate - canPause) are paused; build / craft / rescue (a placed Disk Drive) / fuelup /
   warp / core finish first ("it finishes this first, then try again"). Idle top-up (also the first refuel) stops as soon as a job comes
   in (topUp idleStart). node_hand.lua (real listener + worker as coroutines), test_drive.lua.

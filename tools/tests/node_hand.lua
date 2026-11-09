@@ -119,6 +119,8 @@ CHECK(not job or job.cmd ~= "goto" or RAN[#RAN] ~= "goto" or #RAN < 5, "not back
 CLOCK = CLOCK + 70
 run(4)
 CHECK(job and job.cmd == "goto", "after 2 min without your commands: back to the paused job")
+CHECK(job and job.args and job.args[1] == 100, "... the ORIGINAL trip (to 100), not your own later command (to " ..
+      tostring(job and job.args and job.args[1]) .. ")")
 -- STOP forgets it
 cmd("drive", { "u" }, true)
 run(4)

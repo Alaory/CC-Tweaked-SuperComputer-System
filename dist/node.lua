@@ -437,6 +437,15 @@ function pauseForHand()
 if not job then return end
 local j = job
 local sj = type(S.job) == "table" and S.job or {}
+
+
+if S.paused then
+stopFlag = true
+S.job = nil
+save()
+os.queueEvent("node_stop")
+return
+end
 S.paused = { cmd = j.cmd, args = j.args or {}, left = sj.left or j.left, task = task,
 
 idleAfter = (j.cmd == "survey" or j.cmd == "surveypts" or j.cmd == "findturtles") or nil }
@@ -2970,15 +2979,39 @@ return false, "unknown command " .. tostring(j.cmd)
 end
 
 
+
+
+
+
 function installUpdate(code)
+local TMP = "startup.new"
+local function writeTmp()
+if fs.exists(TMP) then fs.delete(TMP) end
+local h = fs.open(TMP, "w")
+if not h then return false end
+local ok = pcall(h.write, code)
+pcall(h.close)
+return ok and fs.exists(TMP) and fs.getSize(TMP) >= #code
+end
+if not writeTmp() then
+
 if fs.exists("startup.old") then fs.delete("startup.old") end
-if fs.exists(MYPATH) then fs.copy(MYPATH, "startup.old") end
-local targets = { MYPATH }
-if MYPATH ~= "startup.lua" and fs.exists("startup.lua") then targets[2] = "startup.lua" end
-for _, path in ipairs(targets) do
-local h = fs.open(path, "w")
-h.write(code)
-h.close()
+if not writeTmp() then
+if fs.exists(TMP) then fs.delete(TMP) end
+error("update NOT installed: the disk is too full to write it (" .. tostring(fs.getFreeSpace("/")) ..
+" bytes free, " .. #code .. " needed) - the old program keeps running", 0)
+end
+end
+if fs.exists("startup.old") then fs.delete("startup.old") end
+if fs.exists(MYPATH) then fs.move(MYPATH, "startup.old") end
+fs.move(TMP, MYPATH)
+if MYPATH ~= "startup.lua" and fs.exists("startup.lua") then
+
+pcall(function()
+fs.delete("startup.lua")
+fs.copy(MYPATH, "startup.lua")
+end)
+if not fs.exists("startup.lua") then pcall(fs.copy, "startup.old", "startup.lua") end
 end
 end
 
@@ -3612,13 +3645,18 @@ end
 if S.paused and not job then task = pausedTask() or task end
 if UPD_READY and not DUP and not job then
 
-installUpdate(UPD_READY.code)
+local okU, errU = pcall(installUpdate, UPD_READY.code)
 UPD_READY = nil
+if okU then
 send("result", { cmd = "upd", ok = true, msg = "job done - update installed, restarting" })
 S.rebootWhy = "after an update"
 save()
 sleep(1)
 os.reboot()
+else
+
+send("result", { cmd = "upd", ok = false, msg = tostring(errU) })
+end
 end
 elseif S.paused then
 

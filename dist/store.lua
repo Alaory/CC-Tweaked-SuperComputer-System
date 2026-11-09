@@ -150,8 +150,10 @@ if type(req) == "table" and req.op then
 if not owner and req.op ~= "hello" then
 owner = id
 local h = fs.open(OWNER_FILE, "w")
+if h then
 h.write(tostring(id))
 h.close()
+end
 end
 if owner and id ~= owner then
 answer(id, req, { ok = false, err = "this helper belongs to computer " .. owner .. " (store reset to change)" })
@@ -176,6 +178,7 @@ answer(id, req, { ok = true })
 sleep(0.5)
 os.reboot()
 else
+pcall(fs.delete, "startup.tmp")
 answer(id, req, { ok = false, err = "could not write the update (disk full?)" })
 end
 end

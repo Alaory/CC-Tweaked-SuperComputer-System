@@ -791,7 +791,9 @@ end
 
 
 local function setStr(code, name, val)
-val = tostring(val):gsub("%%", "%%%%")
+
+
+val = tostring(val):gsub('[\\"]', "\\%0"):gsub("%%", "%%%%")
 return (code:gsub('(\n%s*' .. name .. '%s*=%s*)"[^"\n]*"', '%1"' .. val .. '"', 1))
 end
 
@@ -904,6 +906,7 @@ if not fs.exists(path) then CODE = nil return end
 local mod = path .. ":" .. modTime(path) .. ":" .. fs.getSize(path)
 if CODE and CODE.mod == mod and not force then return end
 local h = fs.open(path, "r")
+if not h then return end
 local text = h.readAll() or ""
 h.close()
 text = setStr(text, "protocol", CONFIG.turtles.protocol)
@@ -1203,6 +1206,7 @@ function TT.loadList()
 local lp = dataPath(CONFIG.turtles.listFile)
 if not fs.exists(lp) then return end
 local h = fs.open(lp, "r")
+if not h then return end
 local list = textutils.unserialize(h.readAll() or "")
 h.close()
 if type(list) ~= "table" then return end

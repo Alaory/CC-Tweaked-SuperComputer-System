@@ -1353,6 +1353,9 @@ end
 if pack and #packFree > 0 and (q.cursor < total or (q.redo and #q.redo > 0)) then
 local open = false
 if q.wave then
+
+
+if (q.wave.t or 0) > os.clock() then q.wave.t = os.clock() end
 for _, wid in ipairs(q.wave.ids or {}) do if q.out and q.out[wid] then open = true end end
 if open and os.clock() - (q.wave.t or 0) > (tonumber(CONFIG.map.packWait) or 300) then open = false end
 end

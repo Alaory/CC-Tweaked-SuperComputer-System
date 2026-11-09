@@ -437,6 +437,15 @@ function pauseForHand()
   if not job then return end
   local j = job
   local sj = type(S.job) == "table" and S.job or {}
+  -- (already paused for an earlier command of yours: THAT job is the one to go back to,
+  --  not your own command that is running now)
+  if S.paused then
+    stopFlag = true
+    S.job = nil
+    save()
+    os.queueEvent("node_stop")
+    return
+  end
   S.paused = { cmd = j.cmd, args = j.args or {}, left = sj.left or j.left, task = task,
                -- survey work: the base hands it out again once idle (the batch is reclaimed)
                idleAfter = (j.cmd == "survey" or j.cmd == "surveypts" or j.cmd == "findturtles") or nil }
@@ -2969,16 +2978,40 @@ function runJob(j)
   return false, "unknown command " .. tostring(j.cmd)
 end
 
--- write a new program over this one (the old one is kept as startup.old)
+-- write a new program over this one (the old one is kept as startup.old).
+-- SAFE ORDER: the new program goes into a temp file first and is checked (complete?);
+-- only then the files are swapped. Opening the program itself for writing EMPTIES it -
+-- on a full disk the write then failed and left the turtle without a program.
+-- Any problem = error(), the running program stays as it is.
 function installUpdate(code)
+  local TMP = "startup.new"
+  local function writeTmp()
+    if fs.exists(TMP) then fs.delete(TMP) end
+    local h = fs.open(TMP, "w")
+    if not h then return false end
+    local ok = pcall(h.write, code)
+    pcall(h.close)
+    return ok and fs.exists(TMP) and fs.getSize(TMP) >= #code
+  end
+  if not writeTmp() then
+    -- no room: the old backup goes, then once more
+    if fs.exists("startup.old") then fs.delete("startup.old") end
+    if not writeTmp() then
+      if fs.exists(TMP) then fs.delete(TMP) end
+      error("update NOT installed: the disk is too full to write it (" .. tostring(fs.getFreeSpace("/")) ..
+            " bytes free, " .. #code .. " needed) - the old program keeps running", 0)
+    end
+  end
   if fs.exists("startup.old") then fs.delete("startup.old") end
-  if fs.exists(MYPATH) then fs.copy(MYPATH, "startup.old") end
-  local targets = { MYPATH }
-  if MYPATH ~= "startup.lua" and fs.exists("startup.lua") then targets[2] = "startup.lua" end
-  for _, path in ipairs(targets) do
-    local h = fs.open(path, "w")
-    h.write(code)
-    h.close()
+  if fs.exists(MYPATH) then fs.move(MYPATH, "startup.old") end     -- (a move needs no room)
+  fs.move(TMP, MYPATH)
+  if MYPATH ~= "startup.lua" and fs.exists("startup.lua") then
+    -- (started from another file name: startup.lua gets it too, as before)
+    pcall(function()
+      fs.delete("startup.lua")
+      fs.copy(MYPATH, "startup.lua")
+    end)
+    if not fs.exists("startup.lua") then pcall(fs.copy, "startup.old", "startup.lua") end
   end
 end
 
@@ -3612,13 +3645,18 @@ function worker()
       if S.paused and not job then task = pausedTask() or task end
       if UPD_READY and not DUP and not job then
         -- an update arrived during the job: install it now
-        installUpdate(UPD_READY.code)
+        local okU, errU = pcall(installUpdate, UPD_READY.code)
         UPD_READY = nil
-        send("result", { cmd = "upd", ok = true, msg = "job done - update installed, restarting" })
-        S.rebootWhy = "after an update"
-        save()
-        sleep(1)
-        os.reboot()
+        if okU then
+          send("result", { cmd = "upd", ok = true, msg = "job done - update installed, restarting" })
+          S.rebootWhy = "after an update"
+          save()
+          sleep(1)
+          os.reboot()
+        else
+          -- (not installed - e.g. the disk is full: the old program keeps running)
+          send("result", { cmd = "upd", ok = false, msg = tostring(errU) })
+        end
       end
     elseif S.paused then
       -- a job paused for YOUR commands: back to it after resumeAfter s without one

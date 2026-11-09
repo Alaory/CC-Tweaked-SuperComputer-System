@@ -62,8 +62,8 @@ end
 function loadState()
   if fs.exists(FILE) then
     local h = fs.open(FILE, "r")
-    local t = textutils.unserialize(h.readAll() or "")
-    h.close()
+    local t = h and textutils.unserialize(h.readAll() or "")
+    if h then h.close() end
     if type(t) == "table" then P.key, P.base, P.baseName = t.key, t.base, t.baseName end
   end
 end

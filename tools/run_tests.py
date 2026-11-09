@@ -200,6 +200,11 @@ def _():
             bad.append(f + (" (different code)" if not same else " (lines moved)") + o2)
     return not bad, "; ".join(bad) or out.strip().replace("\n", "; ")
 
+@check("node", "update on a full disk never breaks the turtle (node_update_safe.lua)")
+def _():
+    rc, out = run(["lua5.3", "tools/tests/node_update_safe.lua", "node.lua"])
+    return rc == 0, out.strip()
+
 @check("node", "crafter: learn + craft (node_craft.lua)")
 def _():
     rc, out = run(["lua5.3", "tools/tests/node_craft.lua", "node.lua"])
