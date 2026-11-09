@@ -12,7 +12,11 @@ local function piece(from, to)
   return src:sub(a, b - 1)
 end
 os.epoch = function() return 1700000000000 end
+os.getComputerLabel = function() return "Miner 9" end
+os.getComputerID = function() return 9 end
+STATE_FILE = "miner_state"
 load(piece("SESSION = tostring", "function now()"))()
+CHECK(COPY == nil and MYTID == 9, "the original: team id = its id")
 CHECK(type(SESSION) == "string" and DUP == false, "a session is picked at start")
 CHECK(piece("function save()", "function loadState()"):find("if DUP then return end", 1, true), "a copy never saves")
 CHECK(piece("function sendTeam(", "function isMember("):find("if DUP or not modemSide()", 1, true), "a copy never talks to the team")
@@ -57,5 +61,36 @@ CHECK(#did == 0, "a stopped copy takes no commands and no team messages")
 cmd("dupfree", SESSION)
 listen(0.01)
 CHECK(DUP == false, "dupfree: the real one again")
+-- TEAM messages: one for another copy with my radio id (to = 100009) is not mine;
+-- the sender's TEAM id (from) is used, not its radio id
+S.role = "miner"
+local seenFrom
+local oldHandle = handle
+inbox[#inbox + 1] = { 4, { t = "loaderhere", n = 1, sig = "sig", dim = "overworld", to = 100009, from = 4 }, "basemine" }
+local sentTo = {}
+function sendTeam(to, t) sentTo[#sentTo + 1] = { to = to, t = t } end
+listen(0.01)
+CHECK(#sentTo == 0, "a team message for copy 1 of my id is ignored")
+inbox[#inbox + 1] = { 4, { t = "loaderhere", n = 2, sig = "sig", dim = "overworld", from = 200004 }, "basemine" }
+listen(0.01)
+CHECK(sentTo[1] and sentTo[1].to == 200004 and sentTo[1].t == "minerhere", "answers the sender's TEAM id (a loader copy 2)")
+-- becomeCopy: tagged name, own state file (role, key, dim, station kept), result, restart
+local LABEL2, FILES, REBOOT, SENT = "Miner 9", {}, false, {}
+os.getComputerLabel = function() return LABEL2 end
+os.setComputerLabel = function(l) LABEL2 = l end
+fs = { open = function(p) return { write = function(s) FILES[p] = s end, close = function() end } end }
+textutils = { serialize = function(t) return "role=" .. tostring(t.role) .. " station=" .. tostring(t.station and t.station.x) end }
+gps = { locate = function() return 1.2, 2.2, 3.2 end }
+function sendBase(t, extra) SENT[#SENT + 1] = extra end
+sleep = function() end
+os.reboot = function() REBOOT = true error("rebooted") end
+S.station = { x = 77, y = 1, z = 2 }
+load(piece("function becomeCopy(k)", "-- listen for a while"))()
+pcall(becomeCopy, 3)
+CHECK(LABEL2 == "Miner 9 [c3]", "becomeCopy: tagged name (" .. LABEL2 .. ")")
+CHECK(FILES["miner_state_c3"] and FILES["miner_state_c3"]:find("role=miner", 1, true) and FILES["miner_state_c3"]:find("station=77", 1, true),
+      "becomeCopy: its own state file keeps role + unload station")
+CHECK(SENT[1] and SENT[1].cmd == "becomecopy" and SENT[1].ok, "becomeCopy: tells the base")
+CHECK(REBOOT, "becomeCopy: restarts")
 print(FAILS == 0 and "PASS" or ("FAILED " .. FAILS))
 os.exit(FAILS == 0 and 0 or 1)

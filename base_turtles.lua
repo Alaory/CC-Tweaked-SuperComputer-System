@@ -75,6 +75,27 @@ function TT.forget(id)
   return true
 end
 
+-- COPIES that became turtles of their own: turtle n*100000 + id (n = the tag
+-- "[c<n>]" in its name). Everything on the base uses that number; only the
+-- radio (base_workers sender, TT.receive) knows it is id with m.copy = n.
+TT.COPYSTEP = 100000
+function TT.realId(v)
+  v = tonumber(v) or 0
+  return v % TT.COPYSTEP, math.floor(v / TT.COPYSTEP)
+end
+-- the next free copy number for an id (no turtle / mining unit / promise uses it)
+TT.copyRes = {}
+function TT.freeCopyNo(id)
+  local real = TT.realId(id)
+  for k = 1, 99 do
+    local v = k * TT.COPYSTEP + real
+    if not state.turtles[v] and not (MINE and MINE.units and MINE.units[v]) and not TT.copyRes[v] then
+      TT.copyRes[v] = true
+      return k
+    end
+  end
+end
+
 function TT.get(id)
   local t = state.turtles[id]
   if not t then
@@ -260,10 +281,12 @@ function TT.dupSeen(t, id, m, opt)
   s.seen, s.dup = now, m.dup and true or nil
   if type(m.pos) == "table" and m.pos.x then s.pos = m.pos end
   for k, v in pairs(S) do if now - v.seen > 600 then S[k] = nil end end
+  if m.t == "result" and m.cmd == "becomecopy" and m.ok then s.promoted = true end
+  if s.promoted then return true end               -- (becoming a turtle of its own: not this one)
   local alive, n = {}, 0
   for k, v in pairs(S) do
     for k2, v2 in pairs(S) do
-      if k ~= k2 and now - v.seen < 120 and now - v2.seen < 120
+      if k ~= k2 and not v.promoted and not v2.promoted and now - v.seen < 120 and now - v2.seen < 120
          and v.seen > v2.first + 2 and v2.seen > v.first + 2 then
         if not alive[k] then alive[k] = true n = n + 1 end
       end
@@ -306,16 +329,36 @@ function TT.dupSeen(t, id, m, opt)
     for _, d in ipairs(dups) do
       where[#where + 1] = d.pos and fmtPos(d.pos.x, d.pos.y, d.pos.z) or "?"
     end
-    local msg = (t.label or ("Turtle " .. id)) .. " exists " .. (#dups + 1) .. " TIMES (server crash copy). " ..
-                "Extra copies stopped at " .. table.concat(where, ", ") .. " - break them (they are copies)"
+    local msg = (t.label or ("Turtle " .. id)) .. " exists " .. (#dups + 1) .. " TIMES (server crash copy) at " ..
+                table.concat(where, ", ") ..
+                ((CONFIG.turtles.copies ~= "stop" and not (opt.canUse and not opt.canUse(m)))
+                 and " - each copy becomes a turtle of its own" or " - the copies are stopped: break them")
     pushNote("WARNING", msg, C.warn)
     if sysLog then sysLog(msg, "WARNING") end
     if opt.log then opt.log(msg) else TT.log(t, msg) end
   end
   if m.ses ~= t.mainSes then
-    if not m.dup and (not s.stopAt or now - s.stopAt > 15) then
+    -- USE it (default): it becomes a turtle of its own; STOP: parked until broken
+    local use = CONFIG.turtles.copies ~= "stop" and not (opt.canUse and not opt.canUse(m))
+    if (not s.stopAt or now - s.stopAt > 15) and (use or not m.dup) then
       s.stopAt = now
-      if opt.stop then opt.stop(m.ses) else TT.send(id, "dupstop", {}, true, true, m.ses) end
+      if use then
+        s.k = s.k or TT.freeCopyNo(id)
+      end
+      if use and s.k then
+        local v = s.k * TT.COPYSTEP + TT.realId(id)
+        local msg = (t.label or ("Turtle " .. id)) .. ": its copy becomes a turtle of its own - '" ..
+                    tostring(t.label or ("Turtle " .. TT.realId(id))):gsub("%s*%[c%d+%]%s*$", "") .. " [c" .. s.k ..
+                    "]' (#" .. v .. ")"
+        if not s.told then
+          s.told = true
+          if sysLog then sysLog(msg, "INFO") end
+          if opt.log then opt.log(msg) else TT.log(t, msg) end
+        end
+        if opt.stop then opt.stop(m.ses, "becomecopy", { s.k })
+        else TT.send(id, "becomecopy", { s.k }, true, true, m.ses) end
+      elseif opt.stop then opt.stop(m.ses)
+      else TT.send(id, "dupstop", {}, true, true, m.ses) end
     end
     return true                                     -- a copy's report: not this turtle's
   end
@@ -327,6 +370,10 @@ function TT.dupText(t)
   if not (t.dups and #t.dups > 0) then return nil end
   local where = {}
   for _, d in ipairs(t.dups) do where[#where + 1] = d.pos and fmtPos(d.pos.x, d.pos.y, d.pos.z) or "?" end
+  if CONFIG.turtles.copies ~= "stop" then
+    return (#t.dups == 1 and "1 COPY" or (#t.dups .. " COPIES")) .. " of it (server crash) at " ..
+           table.concat(where, ", ") .. " - becoming turtle(s) of their own"
+  end
   return (#t.dups == 1 and "1 COPY" or (#t.dups .. " COPIES")) .. " of it (server crash), stopped at " ..
          table.concat(where, ", ") .. " - break them"
 end
@@ -344,6 +391,9 @@ function TT.receive(id, m)
     end
     return
   end
+  -- a COPY that is a turtle of its own ("[c<n>]" in its name): its own number
+  local cn = tonumber(m.copy)
+  if cn and cn >= 1 and cn < 100 then id = cn * TT.COPYSTEP + TT.realId(id) end
   if m.mine then return MINE.receive(id, m) end      -- a mining-dimension team turtle (miner.lua)
   local t = TT.get(id)
   if type(m.ses) == "string" and TT.dupSeen(t, id, m) then return end   -- an extra COPY of this id

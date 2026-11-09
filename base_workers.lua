@@ -483,7 +483,10 @@ function commsWorker()
     end
     while opened and #state.tOut > 0 do
       local o = table.remove(state.tOut, 1)
-      pcall(rednet.send, o.id, o.msg, CONFIG.turtles.protocol)
+      -- a COPY (turtle n*100000 + id): sent to the real id, only the tagged copy obeys
+      local real, copy = TT.realId(o.id)
+      if copy > 0 then o.msg.copy = copy end
+      pcall(rednet.send, real, o.msg, CONFIG.turtles.protocol)
     end
     while opened and #POCKET.out > 0 do                         -- answers / messages for the pocket remote
       local o = table.remove(POCKET.out, 1)

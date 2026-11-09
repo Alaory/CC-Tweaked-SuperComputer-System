@@ -15,6 +15,7 @@ local function sent(cmd)
 end
 state.turtles, state.tOut, state.notes = {}, {}, {}
 TT.sess = {}
+CONFIG.turtles.copies = "stop"                     -- (first: copies are parked)
 -- a normal restart: old session, then a new one (the old one goes silent) = no copies
 report(68, "A", { x = 1, y = 64, z = 1 })
 CLOCK = CLOCK + 5
@@ -73,6 +74,37 @@ report(68, "E", { x = 1, y = 64, z = 1 }, { dup = true })
 report(68, "F", { x = 800, y = 64, z = 802 })
 CHECK(t.mainSes == "F", "a stopped copy never becomes the real one (even nearer home)")
 
+-- USE the copies (the default): the copy becomes a turtle of its own
+CONFIG.turtles.copies = "use"
+TT.sess, TT.copyRes = {}, {}
+state.turtles, state.tOut = {}, {}
+report(70, "P", { x = 5, y = 64, z = 5 })
+CLOCK = CLOCK + 3
+report(70, "P", { x = 5, y = 64, z = 6 })
+report(70, "Q", { x = 400, y = 64, z = 400 })
+CLOCK = CLOCK + 3
+report(70, "P", { x = 5, y = 64, z = 7 })
+report(70, "Q", { x = 400, y = 64, z = 401 })
+CLOCK = CLOCK + 3
+report(70, "P", { x = 5, y = 64, z = 8 })
+report(70, "Q", { x = 400, y = 64, z = 402 })
+local bc = sent("becomecopy")
+CHECK(#bc >= 1 and bc[1].msg.ses == "Q" and bc[1].msg.args[1] == 1 and bc[1].id == 70, "USE: the copy is told to become copy 1")
+CHECK(#sent("dupstop") == 0, "USE: not parked")
+-- it says yes: its old session no longer counts as a copy
+report(70, "Q", nil, { t = "result", cmd = "becomecopy", ok = true })
+CLOCK = CLOCK + 3
+report(70, "P", { x = 5, y = 64, z = 9 })
+CHECK(not state.turtles[70].dups, "after it said yes: no copies listed for #70")
+-- it restarts as "Scout [c1]": its reports (m.copy = 1) are turtle 100070
+report(70, "Q2", { x = 400, y = 64, z = 402 }, { copy = 1, label = "Scout [c1]" })
+local c1 = state.turtles[100070]
+CHECK(c1 and c1.label == "Scout [c1]" and c1.pos.x == 400, "the copy is turtle 100070 of its own")
+CHECK(state.turtles[70].pos.x == 5, "...and does not touch #70")
+local real, cn = TT.realId(100070)
+CHECK(real == 70 and cn == 1, "100070 = radio id 70, copy 1")
+CHECK(TT.freeCopyNo(70) == 2, "the next copy of #70 would be copy 2")
+
 -- MINING turtles (miner.lua m17) the same way: MINE.receive
 local function mreport(id, ses, pos, extra)
   SEQ = SEQ + 1
@@ -83,6 +115,7 @@ local function mreport(id, ses, pos, extra)
   TT.receive(id, m)
 end
 state.tOut = {}
+CONFIG.turtles.copies = "stop"
 mreport(90, "M1", { x = 100, y = 20, z = 100 })
 CLOCK = CLOCK + 3
 mreport(90, "M1", { x = 101, y = 20, z = 100 })
@@ -102,3 +135,26 @@ CHECK(#ms >= 1 and ms[1].msg.ses == "M2" and ms[1].id == 90, "the miner copy get
 state.tOut = {}
 MINE.cmd(90, "unloadnow", {})
 CHECK(state.tOut[1] and state.tOut[1].msg.ses == "M1", "mining commands go to the real one only")
+-- USE: a MINER copy becomes a miner of its own, a LOADER copy is parked
+CONFIG.turtles.copies = "use"
+TT.sess, state.tOut = {}, {}
+local function pair(id, role)
+  mreport(id, "A" .. id, { x = 10, y = 20, z = 10 }, { role = role })
+  CLOCK = CLOCK + 3
+  mreport(id, "A" .. id, { x = 10, y = 20, z = 11 }, { role = role })
+  mreport(id, "B" .. id, { x = 900, y = 20, z = 900 }, { role = role })
+  CLOCK = CLOCK + 3
+  mreport(id, "A" .. id, { x = 10, y = 20, z = 12 }, { role = role })
+  mreport(id, "B" .. id, { x = 900, y = 20, z = 901 }, { role = role })
+  CLOCK = CLOCK + 3
+  mreport(id, "A" .. id, { x = 10, y = 20, z = 13 }, { role = role })
+  mreport(id, "B" .. id, { x = 900, y = 20, z = 902 }, { role = role })
+end
+pair(91, "miner")
+pair(92, "loader")
+local got = {}
+for _, o in ipairs(state.tOut) do got[o.id .. o.msg.cmd] = o.msg end
+CHECK(got["91becomecopy"] and got["91becomecopy"].ses == "B91", "a miner copy becomes a miner of its own")
+CHECK(got["92dupstop"] and not got["92becomecopy"], "a loader copy is parked (one loader per dimension)")
+mreport(91, "B91x", { x = 900, y = 20, z = 902 }, { copy = 1, label = "Miner 91 [c1]" })
+CHECK(MINE.units[100091] and MINE.units[100091].label == "Miner 91 [c1]", "the miner copy is unit 100091")

@@ -93,6 +93,8 @@ SETTING_GROUPS = {
         100, 0, 300, 25, function(v) return (tonumber(v) or 0) == 0 and "off" or (v .. " blocks") end),
     cyc("turtles.avoidWho", "Players to avoid", "strangers = everyone but you and your allow list", "strangers",
         { "strangers", "everyone" }, function(v) return v == "everyone" and "everyone but me" or "strangers" end),
+    cyc("turtles.copies", "Copies after a server crash", "USE = each copy becomes a turtle of its own; STOP = parked, break them",
+        "use", { "use", "stop" }, function(v) return v == "stop" and "STOP them" or "USE them" end),
     num("turtles.offlineAfter", "Offline after", "no report for this long = offline", 45, 15, 300, 5, secs),
     bool("turtles.autoUpdate", "Turtle program updates", "new node.lua goes to the turtles by itself", true),
     { kind = "custom", label = "Turtles dig through natural blocks",

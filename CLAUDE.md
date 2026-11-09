@@ -161,7 +161,18 @@ PneumaticCraft drone rides, turtle mapping/surveys, and an AE2 ME network view.
   base MINE.receive -> TT.dupSeen opt.where: t.dupAnchor = where it was when the 2nd session
   appeared; MINE.cmd adds ses). rememberOwn on a NEW FIELD keeps the first START's record
   (mined ore is not "yours" - before: "9 slots hold your own items", STOPPED).
-  test_dups.lua, node_dup.lua, miner_dup.lua.
+  USING COPIES (CONFIG.turtles.copies "use" default, SETTINGS > TURTLES; "stop" = park):
+  the copy gets "becomecopy <n>" (its ses) -> name "<label> [c<n>]" (the label lives in the
+  turtle BLOCK, not the shared disk, so it survives restarts) + its own files (node:
+  STATE/TRAIL/OUTBOX/SWEEP/CRASH .. COPYSFX; miner: miner_state_c<n> keeping role, key,
+  dim, station ...) + restart. Base: copy n of id = turtle n*100000 + id (TT.realId /
+  TT.freeCopyNo / TT.copyRes); TT.receive maps m.copy -> that number, the comms sender maps
+  back (rednet to the real id, msg.copy = n); node/miner ignore cmds whose copy tag is not
+  theirs. The "becomecopy" ok result marks the old session promoted (no longer a copy).
+  Miners in the team: MYTID = n*100000 + id, team messages carry from / to (radio to
+  to % 100000; handle uses m.from as the sender). LOADER copies are always parked (one
+  loader per dimension; opt.canUse). A promoted miner joins a team when no plan runs
+  (the next NEW FIELD). test_dups.lua, node_dup.lua, miner_dup.lua.
 - node.lua never just ends: the main parallel.waitForAny is in a pcall; an
   error is written to `node_crash`, the turtle reboots (5 s, longer when it
   keeps crashing) and tells the base ("restarted after an ERROR: ..." in the

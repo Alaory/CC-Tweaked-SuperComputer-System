@@ -65,6 +65,39 @@ CHECK(job == nil, "a stopped copy takes no jobs")
 cmd("dupfree", SESSION)
 run()
 CHECK(DUP == false, "dupfree: the real turtle again")
+-- USE a copy: "becomecopy 2" -> name "Scout [c2]" (kept in the turtle block),
+-- its own state file, a restart; with that name it is COPY 2 with _c2 files
+DUP = false
+local LABEL = "Scout"
+local FILES = {}
+os.getComputerLabel = function() return LABEL end
+os.setComputerLabel = function(l) LABEL = l end
+os.getComputerID = function() return 68 end
+fs = { open = function(p) return { write = function(s) FILES[p] = s end, close = function() end } end }
+textutils = { serialize = function() return "{...}" end }
+S.reuse = { ["mod:endless"] = true }
+rebootSoon = false
+n = n + 1
+queue[#queue + 1] = { t = "cmd", n = n, cmd = "becomecopy", args = { 2 }, ses = SESSION, sig = "sig" }
+run()
+CHECK(LABEL == "Scout [c2]", "becomecopy: tagged name (" .. LABEL .. ")")
+CHECK(FILES["node_state_c2"] ~= nil, "becomecopy: its own state file")
+CHECK(rebootSoon == true and DUP == true, "becomecopy: restarts, writes nothing shared before")
+local cp = piece("COPY = tonumber(", "-- Per-turtle settings")
+load(cp)()
+CHECK(COPY == 2 and COPYSFX == "_c2", "named [c2]: copy 2, files end in _c2")
+CHECK(src:find('local STATE_FILE = "node_state" .. COPYSFX', 1, true) and src:find('local OUTBOX_FILE = "node_outbox" .. COPYSFX', 1, true),
+      "a copy keeps its own state + outbox files")
+-- a message for the untagged turtle (no m.copy) is not for copy 2; one with copy = 2 is
+DUP, job = false, nil
+cmd("goto")
+run()
+CHECK(job == nil, "copy 2 ignores messages for the original")
+n = n + 1
+queue[#queue + 1] = { t = "cmd", n = n, cmd = "goto", args = {}, copy = 2, sig = "sig" }
+run()
+CHECK(job and job.cmd == "goto", "copy 2 takes messages tagged copy 2")
+
 -- the send() adds the session
 local snd = piece("function send(t, extra)", "function reply(")
 CHECK(snd:find("m.ses = SESSION", 1, true) and snd:find("if DUP then m.dup = true end", 1, true), "every report carries the session")

@@ -1,6 +1,9 @@
 -- The computer's 1 MB is for the program: logs and the big data files go to a
 -- data floppy when there is one (copies on the computer move along), and map
 -- files saved on the computer earlier move to floppies / storage helpers.
+-- (where files go, not how big the program is: a fixed program size, not the
+-- real one - that grows with every feature)
+CODE_SIZE = 800000
 local function onPc(name) return fs.exists(name) end
 -- 1) no data floppy yet: on the computer
 MAP.loaded = true

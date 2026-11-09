@@ -102,6 +102,12 @@ lastN = 0
 -- writes the shared state file and just reports where it is until broken.
 SESSION = tostring(math.random(100000, 999999)) .. "-" .. tostring(os.epoch("utc") % 100000)
 DUP = false
+-- a COPY that became a turtle of its own: "[c<n>]" in its name (kept in the
+-- turtle block). Its own state file; in the team it is MYTID = n*100000 + id
+-- (team messages carry from / to; the radio goes to the real id).
+COPY = tonumber((os.getComputerLabel() or ""):match("%[c(%d+)%]%s*$"))
+MYTID = (COPY or 0) * 100000 + os.getComputerID()
+if COPY then STATE_FILE = STATE_FILE .. "_c" .. COPY end
 function now() return math.floor(os.epoch("utc") / 1000) end
 function save()
   if DUP then return end                         -- (the state file belongs to the real one)
@@ -238,6 +244,7 @@ function sendBase(t, extra)
   m.sig = sign(S.key or "change-me", m.t, m.n)
   m.mine = true
   m.ses = SESSION
+  m.copy = COPY
   if DUP then m.dup = true end
   m.role, m.dim, m.ver = S.role, S.dim, MYVER
   m.label = os.getComputerLabel() or ("Turtle " .. os.getComputerID())
@@ -294,9 +301,10 @@ function sendTeam(to, t, extra)
   m.t, m.n = t, nextN()
   m.sig = sign(S.key or "change-me", m.t, m.n)
   m.dim = S.dim
+  m.from, m.to = MYTID, to                       -- (copies: the team id, not the radio id)
   -- a miner's unload station: the loader keeps the team's first chunks away from it
   if S.role == "miner" and S.station then m.st = { x = S.station.x, y = S.station.y, z = S.station.z } end
-  if to then pcall(rednet.send, to, m, CONFIG.team) else pcall(rednet.broadcast, m, CONFIG.team) end
+  if to then pcall(rednet.send, to % 100000, m, CONFIG.team) else pcall(rednet.broadcast, m, CONFIG.team) end
 end
 
 -- is this turtle in my team (the loader's list)?
@@ -319,7 +327,8 @@ function handle(id, m, proto)
   end
   if proto == CONFIG.protocol and m.t == "cmd" then
     if m.ses ~= nil and m.ses ~= SESSION then return end      -- meant for another copy of this ID
-    if DUP and m.cmd ~= "dupfree" and m.cmd ~= "dupstop" then return end
+    if (tonumber(m.copy) or 0) ~= (COPY or 0) then return end  -- for the copy with that tag only
+    if DUP and m.cmd ~= "dupfree" and m.cmd ~= "dupstop" and m.cmd ~= "becomecopy" then return end
     if type(m.n) ~= "number" or m.n <= (S.lastCmd or 0) then return end
     if m.sig ~= sign(S.key or "change-me", "cmd", m.n, m.cmd, m.args) then return end
     S.lastCmd = m.n
@@ -330,6 +339,9 @@ function handle(id, m, proto)
     elseif m.cmd == "dupfree" then
       DUP = false
       return
+    elseif m.cmd == "becomecopy" then
+      becomeCopy(tonumber((m.args or {})[1]))       -- (restarts)
+      return
     end
     doCmd(tostring(m.cmd), m.args or {})
     save()
@@ -337,6 +349,8 @@ function handle(id, m, proto)
     return                                       -- a stopped copy: no team messages
   elseif proto == CONFIG.team then
     if type(m.n) ~= "number" or m.sig ~= sign(S.key or "change-me", m.t, m.n) then return end
+    if m.to and tonumber(m.to) ~= MYTID then return end          -- for another copy with my radio id
+    id = tonumber(m.from) or id                                   -- the sender's TEAM id (copies)
     if m.dim ~= S.dim then return end
     if S.role == "loader" then
       S.seen = S.seen or {}
@@ -419,7 +433,7 @@ function handle(id, m, proto)
         sendTeam(id, "minerhere")
       elseif m.t == "team" and (not S.leader or S.leader == id) then
         local mine = false
-        for _, t in ipairs(m.team or {}) do if t == os.getComputerID() then mine = true end end
+        for _, t in ipairs(m.team or {}) do if t == MYTID then mine = true end end
         if mine then
           if S.leader ~= id then note("In the team of loader " .. id) end
           S.leader, S.team = id, m.team
@@ -573,6 +587,32 @@ function hearDup()
     handle(id, m, proto)
   end
   HEAR_ONLY_DUP = false
+end
+
+-- I am an extra COPY and the base wants me as a turtle of my own: a tagged name
+-- (kept in the turtle block), my own state file with what I may keep (role,
+-- key, dimension, fuel knowledge, my unload station - in my own core), then a
+-- restart: I join a team as a new member (the loader's team, if there is room).
+function becomeCopy(k)
+  if not k or k < 1 then return end
+  DUP = true                                     -- (nothing more into the shared file)
+  local name = (os.getComputerLabel() or ("Turtle " .. os.getComputerID())):gsub("%s*%[c%d+%]%s*$", "")
+  name = name .. " [c" .. k .. "]"
+  os.setComputerLabel(name)
+  local own = { role = S.role, key = S.key, dim = S.dim, cfg = S.cfg, reuse = S.reuse, station = S.station,
+                oreDrops = S.oreDrops, junkDrops = S.junkDrops, running = false }
+  local okG, x, y, z = pcall(gps.locate, 2)
+  if okG and x then own.pos = { x = math.floor(x + 0.5), y = math.floor(y + 0.5), z = math.floor(z + 0.5), f = S.pos and S.pos.f }
+  elseif S.pos then own.pos = { x = S.pos.x, y = S.pos.y, z = S.pos.z, f = S.pos.f } end   -- (no GPS: checked on the next field)
+  pcall(function()
+    local h = fs.open("miner_state_c" .. k, "w")
+    h.write(textutils.serialize(own))
+    h.close()
+  end)
+  pcall(sendBase, "result", { cmd = "becomecopy", ok = true, msg = "now '" .. name .. "' - restarting as a team member of its own" })
+  print("I am a COPY - now '" .. name .. "'. Restarting as a turtle of my own.")
+  sleep(1)
+  os.reboot()
 end
 
 -- listen for a while (messages are handled as they come)
@@ -1755,7 +1795,7 @@ function planTransit(P)
   P.fy = math.min(300, top + 4 + #S.team)
 end
 function myIndex()
-  for k, id in ipairs(S.team or {}) do if id == os.getComputerID() then return k, #S.team end end
+  for k, id in ipairs(S.team or {}) do if id == MYTID then return k, #S.team end end
   return 1, math.max(1, #(S.team or {}))
 end
 function myLayers(tp)

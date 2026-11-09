@@ -102,13 +102,17 @@ function MINE.receive(id, m)
   -- an extra COPY of this id (server crash): stopped, its reports kept apart
   if type(m.ses) == "string" and TT.dupSeen and TT.dupSeen(u, id, m, {
        where = true,                       -- (the copy where the real one was stays)
+       canUse = function(mm) return mm.role ~= "loader" end,   -- (one loader per dimension: its copies are parked)
        log = function(text) MINE.log(u, text) end,
-       stop = function(ses)
+       stop = function(ses, cmd, args)
+         cmd, args = cmd or "dupstop", args or {}
          local n = os.epoch("utc")
          if n <= state.tLastN then n = state.tLastN + 1 end
          state.tLastN = n
-         state.tOut[#state.tOut + 1] = { id = id, msg = { t = "cmd", n = n, cmd = "dupstop", args = {}, ses = ses,
-                                                          sig = TT.sign(CONFIG.turtles.key, "cmd", n, "dupstop", {}) } }
+         local a = {}
+         for i, v in ipairs(args) do a[i] = tostring(v) end
+         state.tOut[#state.tOut + 1] = { id = id, msg = { t = "cmd", n = n, cmd = cmd, args = a, ses = ses,
+                                                          sig = TT.sign(CONFIG.turtles.key, "cmd", n, cmd, a) } }
          os.queueEvent("turtle_send")
        end }) then return end
   if m.n <= (u.lastN or 0) then return end

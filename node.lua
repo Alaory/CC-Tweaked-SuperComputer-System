@@ -66,6 +66,14 @@ local CONFIG = {
   maxSurveyPoints = 400,
 }
 
+-- A COPY of a turtle (a server crash left several turtles with one id) gets its
+-- own name "<label> [c<n>]" from the base ("becomecopy"). The label lives in the
+-- turtle BLOCK, not on the (shared) disk - so each copy knows which one it is,
+-- also after restarts, and keeps its own files (node_state_c<n> ...). The base
+-- treats it as turtle n*100000 + id; messages carry m.copy = n.
+COPY = tonumber((os.getComputerLabel() or ""):match("%[c(%d+)%]%s*$"))
+COPYSFX = COPY and ("_c" .. COPY) or ""
+
 -- Per-turtle settings that survive updates, e.g. { dig = true }. Updates from
 -- the base replace this program, never node_settings. (key, protocol and
 -- baseName always come from the program: the base fills them in.)
@@ -217,7 +225,7 @@ rednet.open(modem)
 ---------------------------------------------------------------------
 -- saved state: position, facing, home, last command number
 ---------------------------------------------------------------------
-local STATE_FILE = "node_state"
+local STATE_FILE = "node_state" .. COPYSFX
 local S = { pos = nil, home = nil, lastN = 0 }
 local outboxAck, outboxResend, outboxCount   -- scan outbox (defined further down)
 local moveCount = 0            -- every real move (for the progress watchdog)
@@ -282,7 +290,7 @@ function known() return S.pos ~= nil and S.pos.x ~= nil and S.pos.f ~= nil end
 -- forward/back/up/down/turn is counted there. That frame never depends on GPS,
 -- so retracing is always physically right - even if the world coordinates
 -- were wrong on the way out. GO HOME retraces this first.
-local TRAIL_FILE = "node_trail"
+local TRAIL_FILE = "node_trail" .. COPYSFX
 local trail, trailIdx, trailDirty = {}, {}, 0
 local T = { x = 0, y = 0, z = 0, f = 0 }          -- position/facing in the trail frame
 function trailRebuild()
@@ -385,6 +393,7 @@ function send(t, extra)
   m.t, m.n = t, n
   m.sig = sign(CONFIG.key, t, n)
   m.ses = SESSION
+  m.copy = COPY
   if DUP then m.dup = true end
   m.label = os.getComputerLabel() or ("Turtle " .. os.getComputerID())
   local fuel = turtle.getFuelLevel()
@@ -1180,7 +1189,7 @@ end
 
 -- Scans are kept here until the base confirms it stored them (it may be
 -- offline when the owner left the server). Re-sent from the heartbeat.
-local OUTBOX_FILE = "node_outbox"
+local OUTBOX_FILE = "node_outbox" .. COPYSFX
 local outbox = {}
 if fs.exists(OUTBOX_FILE) then
   local h = fs.open(OUTBOX_FILE, "r")
@@ -2342,7 +2351,7 @@ function sweep(cx, cy, cz, radius, skip)
   for id in tostring(skip or ""):gmatch("%d+") do skipSet[tonumber(id)] = true end
   -- progress is saved after every spot: the same search started again
   -- (after a STOP or a restart) continues where it was
-  local SWEEP_FILE = "node_sweep"
+  local SWEEP_FILE = "node_sweep" .. COPYSFX
   local key = cx .. "," .. cy .. "," .. cz .. "," .. radius
   local first = 1
   if fs.exists(SWEEP_FILE) then
@@ -2841,6 +2850,26 @@ function immediate(cmd, a)
     local x, y, z = gpsRaw(2)
     if x then S.pos = { x = x, y = y, z = z, f = S.pos and S.pos.f } end
     return true, "stopped: I am a DUPLICATE copy of this turtle" .. (x and (" at " .. x .. " " .. y .. " " .. z) or "")
+  elseif cmd == "becomecopy" then
+    -- I am an extra copy: become a turtle of my own - a tagged name (kept in the
+    -- turtle block), my own files, then a restart (finds its place by GPS)
+    local k = tonumber(a[1])
+    if not k or k < 1 then return false, "becomecopy needs a copy number" end
+    DUP = true                                   -- (nothing more into the shared files)
+    stopFlag = true
+    os.queueEvent("node_stop")
+    local name = (os.getComputerLabel() or ("Turtle " .. os.getComputerID())):gsub("%s*%[c%d+%]%s*$", "")
+    name = name .. " [c" .. k .. "]"
+    os.setComputerLabel(name)
+    local own = { reuse = S.reuse, refuelDone = S.refuelDone,
+                  rebootWhy = "as a COPY of turtle #" .. os.getComputerID() .. " (now its own turtle)" }
+    pcall(function()
+      local h = fs.open("node_state_c" .. k, "w")
+      h.write(textutils.serialize(own))
+      h.close()
+    end)
+    rebootSoon = true
+    return true, "I am a COPY of this turtle - now '" .. name .. "', restarting as a turtle of my own"
   elseif cmd == "dupfree" then
     DUP = false
     task = "idle"
@@ -3158,6 +3187,7 @@ function listener()
     local id, m = rednet.receive(CONFIG.protocol)
     if type(m) == "table" and m.t == "cmd" and type(m.n) == "number"
        and (m.ses == nil or m.ses == SESSION)          -- (meant for another copy of this ID)
+       and (tonumber(m.copy) or 0) == (COPY or 0)        -- (for the copy with that tag only)
        and (not DUP or m.cmd == "dupfree" or m.cmd == "dupstop")
        and m.n > (S.lastN or 0) and m.sig == sign(CONFIG.key, m.t, m.n, m.cmd, m.args) then
       S.lastN = m.n
@@ -3435,7 +3465,7 @@ end
 -- the program must never just end: an error used to leave the turtle at its
 -- command prompt (offline, deaf to commands until rebooted by hand). Now the
 -- error is written down, the turtle restarts itself, and the base is told.
-CRASH_FILE = "node_crash"
+CRASH_FILE = "node_crash" .. COPYSFX
 if fs.exists(CRASH_FILE) then
   local h = fs.open(CRASH_FILE, "r")
   local t = textutils.unserialize(h.readAll() or "") or {}
