@@ -5,7 +5,7 @@ local HOME = { x = 0, y = 70, z = 0 }
 local W                                   -- this scenario's world
 local function world(opts)
   W = { pos = { x = 2, y = 70, z = 0 }, P = opts.players, carry = nil, act = nil, aborts = 0,
-        grab = opts.grab, miss = opts.miss, hang = opts.hang or 1, short = opts.short or 0, unreachable = opts.unreachable or 1e9, homeRefused = opts.homeRefused or 0 }
+        grab = opts.grab, miss = opts.miss, stuckExport = opts.stuckExport or 0, detLag = opts.detLag, tps = {}, hang = opts.hang or 1, short = opts.short or 0, unreachable = opts.unreachable or 1e9, homeRefused = opts.homeRefused or 0 }
   os.pullEventRaw = function()
     CLOCK = CLOCK + 0.3
     if W.act and CLOCK >= W.doneAt then
@@ -18,8 +18,11 @@ local function world(opts)
         end
         if who then W.pos = { x = W.P[who].x, y = W.P[who].y, z = W.P[who].z } W.carry = who end
       elseif W.act == "pneumaticcraft:entity_export" then
-        if W.carry then W.P[W.carry] = { x = t.x, y = t.y, z = t.z } end
-        W.carry = nil
+        if W.stuckExport > 0 then W.stuckExport = W.stuckExport - 1        -- "done", but nobody let go
+        else
+          if W.carry then W.P[W.carry] = { x = t.x, y = t.y, z = t.z } end
+          W.carry = nil
+        end
       elseif t.x >= W.unreachable then
         -- refused: not loaded
       elseif t.x == HOME.x and math.abs(t.z - HOME.z) < 8 and W.homeRefused > 0 then
@@ -37,13 +40,27 @@ local function world(opts)
   os.pullEvent = os.pullEventRaw
   local per = {
     clearArea = function() end, addArea = function(x, y, z) W.target = { x = x, y = y, z = z } end,
-    setAction = function(a) W.act = a W.doneAt = CLOCK + (a == "pneumaticcraft:teleport" and 1 or 3) end,
+    setAction = function(a)
+      if a:find("condition", 1, true) then W.cond = a W.act = nil return end   -- (a check, not a move)
+      if a == "pneumaticcraft:teleport" and W.target then W.tps[#W.tps + 1] = { x = W.target.x, y = W.target.y, z = W.target.z } end
+      W.act = a W.doneAt = CLOCK + (a == "pneumaticcraft:teleport" and 1 or 3)
+    end,
     isConnectedToDrone = function() return true end, abortAction = function() W.act = nil W.aborts = W.aborts + 1 end,
     getDronePosition = function() return W.pos.x + 0.5, W.pos.y + 0.5, W.pos.z + 0.5 end,
     isActionDone = function() return W.act == nil end, getDronePressure = function() return 9 end,
-    clearWhitelistText = function() end, clearBlacklistText = function() end, addWhitelistText = function() end,
+    clearWhitelistText = function() W.filter = nil end, clearBlacklistText = function() end,
+    addWhitelistText = function(t) W.filter = t end,
     setUseCount = function() end, exitPiece = function() end, getAction = function() return W.act end }
-  det = { getPlayer = function(n) local p = W.P[n] return p and { x = p.x, y = p.y, z = p.z, dimension = "minecraft:overworld" } end,
+  if opts.cond then
+    -- the drone answers who is on board (drone_condition_entity + evaluateCondition)
+    per.setOperator = function(o) W.op = o end
+    per.setCount = function(n) W.count = n end
+    per.evaluateCondition = function()
+      assert(W.cond == "pneumaticcraft:drone_condition_entity" and W.op == ">=" and W.count == 1, "condition set up wrong")
+      return W.carry ~= nil and (W.filter == nil or W.filter == '"' .. W.carry .. '"')
+    end
+  end
+  det = { getPlayer = function(n) local p = (W.detLag and W.carry == n and W.lagPos) or W.P[n] return p and { x = p.x, y = p.y, z = p.z, dimension = "minecraft:overworld" } end,
           getOnlinePlayers = function() local l = {} for n in pairs(W.P) do l[#l + 1] = n end return l end }
   playerDimNow = function() return DRONE_DIM end
   CONFIG.drone.travel, CONFIG.drone.home, CONFIG.drone.returnHome, CONFIG.drone.charger = "teleport", HOME, true, nil
@@ -186,3 +203,45 @@ runMission(dr, { kind = "fly" })
 CHECK(dr.mission.state == "stopped", "stop: stopped (" .. tostring(dr.mission.state) .. ")")
 CHECK(dr.failedAt == nil, "stop: not counted as a failure")
 dr.abort = false
+
+-- ===== the drone ANSWERS who is on board (drone_condition_entity) =====
+-- a normal ride: on board because the drone says so; Bob let off at Alaory
+dr = world({ players = { Bob = { x = 300, y = 70, z = 0 }, Alaory = { x = 0, y = 70, z = 0 } }, cond = true })
+dr.dest = { kind = "player", name = "Alaory" }
+runMission(dr, { kind = "ferry", passenger = "Bob" })
+CHECK(dr.mission.state == "done" and near(W.P.Bob, 0, 0) and W.carry == nil, "ask the drone: ride done (" .. tostring(dr.mission.err) .. ")")
+CHECK(dr.condOK, "ask the drone: it answered")
+-- the approach: never teleported in right beside Bob (that pushed him) - above his head
+local first = W.tps[1]
+CHECK(first and first.x == 300 and first.y == 73, "approach: above the head, not beside (" ..
+      tostring(first and (first.x .. "," .. first.y .. "," .. first.z)) .. ")")
+
+-- the release does NOTHING the first time ("done" all the same): before, the drone
+-- flew home WITH Bob ("teleports me away and back"). Now: asked, let go again, Bob stays
+dr = world({ players = { Bob = { x = 300, y = 70, z = 0 }, Alaory = { x = 0, y = 70, z = 0 } }, cond = true, stuckExport = 1 })
+dr.dest = { kind = "player", name = "Alaory" }
+runMission(dr, { kind = "ferry", passenger = "Bob" })
+CHECK(near(W.P.Bob, 0, 0) and W.carry == nil, "release did nothing once: Bob still let off at Alaory, not flown home")
+
+-- the release never works: the drone STAYS with Bob at the destination (never flies him back)
+dr = world({ players = { Bob = { x = 300, y = 70, z = 0 }, Alaory = { x = 0, y = 70, z = 0 } }, cond = true, stuckExport = 99 })
+dr.dest = { kind = "player", name = "Alaory" }
+runMission(dr, { kind = "ferry", passenger = "Bob" })
+CHECK(dr.mission.state == "failed" and W.carry == "Bob" and near(W.pos, 2, 0), "release never works: the drone stays at the destination with Bob")
+CHECK(not near(W.pos, HOME.x + 300, HOME.z) and dr.rider == "Bob" and dr.failedAt == nil, "release never works: Bob kept on board, no trip home")
+for _ = 1, 3 do CLOCK = CLOCK + 30 parkCheck() end
+CHECK(#dr.queue == 0, "release never works: the park check does not fly Bob home")
+
+-- the Player Detector lags behind (Bob still "at the pickup spot" while on board):
+-- before, "got off" -> the drone flew home with him. The drone itself says he is on board.
+dr = world({ players = { Bob = { x = 300, y = 70, z = 0 }, Alaory = { x = 0, y = 70, z = 0 } }, cond = true, detLag = true })
+W.lagPos = { x = 300, y = 70, z = 0 }
+dr.dest = { kind = "player", name = "Alaory" }
+runMission(dr, { kind = "ferry", passenger = "Bob" })
+CHECK(dr.mission.state == "done" and near(W.P.Bob, 0, 0), "detector lags: the ride still ends at Alaory (" .. tostring(dr.mission.err) .. ")")
+
+-- the grab catches nobody: the drone says nobody is on board -> not "on board"
+dr = world({ players = { Bob = { x = 300, y = 70, z = 0 }, Alaory = { x = 0, y = 70, z = 0 } }, cond = true, miss = true })
+dr.dest = { kind = "player", name = "Alaory" }
+runMission(dr, { kind = "ferry", passenger = "Bob" })
+CHECK(dr.mission.state == "failed" and dr.rider == nil and dr.mission.steps[1].status == "fail", "ask the drone: a missed grab is noticed at once")

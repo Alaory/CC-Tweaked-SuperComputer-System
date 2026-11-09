@@ -737,6 +737,29 @@ names exist on this version (getMaxItemStorage etc.); code tries new and old.
   owner's own items/fluids -> always move EXACT amounts, never "everything",
   except the explicit BUFFER -> ME button).
 
+**Drones - WHO IS ON BOARD comes from the DRONE (PneumaticCraft source, 1.21 branch,
+DroneInterfaceBlockEntity):** droneCarries(dr, name) = clear/addWhitelistText('"name"') +
+setOperator(">=") (null by default - must be set) + setCount(1) + setAction
+("pneumaticcraft:drone_condition_entity") + evaluateCondition() -> counts drone.getPassengers()
+matching the filter. true/false, nil = cannot answer (dr.condBroken -> old position checks).
+It REPLACES the current action: never during a move / grab. Used: after Entity Import (on board
+/ someone else / nobody - no lift needed), riderGoneNow before every move (the Player Detector
+lags behind a teleport: false "got off" -> flown home), riderLeft skipped while dr.condOK,
+releaseAt (Entity Export reports DONE also when it did nothing -> asked after; again at y+1,
+then where the drone is; dr.rider cleared only when off), a failed RELEASE step = the drone
+STAYS at the destination with the rider (no rescueToBase, failedAt nil, popup), no home step /
+parkCheck home while it carries anyone. Pickup approach (pickupSpots): above the head (0,3,0),
+then 2 blocks to a side - never right beside (the drone landed against the player = pushed);
+no approach teleport when already within 12 blocks (Entity Import flies there itself). All
+interface functions: isConnectedToDrone getDronePressure exitPiece getAllActions
+getDronePosition getDronePositionVec setBlockOrder getAreaTypes add/remove/clear/show/hideArea
+add/clearWhitelist/BlacklistItemFilter/Text/LiquidFilter setSide(s) setEmittingRedstone
+setRenameString setDropStraight setUseCount setCount setIsAndFunction setOperator
+evaluateCondition setUseMaxActions setMaxActions setSneaking setCanSteal setRightClickType
+setPlaceFluidBlocks setAction getAction abortAction isActionDone forgetTarget getUpgrades
+setCraftingGrid set/getVariable setSignText setSignBack setRequiresTool getDroneName
+getOwnerName getOwnerID setCheckLineOfSight setAllowStandbyPickup. test_drones.lua (cond = true).
+
 **Drones (PneumaticCraft):** teleport costs ~10,000 mL (~0.85 bar) even when it
 fails; flying costs no air. Passenger watch: dr.rider (set after pickup) is checked BEFORE EVERY MOVE
 (riderGoneNow in droneMoveTo) and every 2 s while moving (riderLeft): logged off (not in

@@ -8,7 +8,7 @@ base base_chat.lua 15022 e4046699
 base base_console.lua 54373 35f45158
 base base_curios.lua 6020 3e56460a
 base base_devices.lua 11417 b1426ca4
-base base_drones.lua 60187 5a51cf6f
+base base_drones.lua 65718 5dd67245
 base base_factory.lua 29067 3107e2f3
 base base_input.lua 23874 03a5221b
 base base_map.lua 60978 a8fdf431
@@ -50,7 +50,7 @@ slim:base base_chat.lua 11113 6559fc82 dist/base_chat.lua
 slim:base base_console.lua 45269 5a7f6d72 dist/base_console.lua
 slim:base base_curios.lua 3601 10dc6ee3 dist/base_curios.lua
 slim:base base_devices.lua 8034 3a91ff63 dist/base_devices.lua
-slim:base base_drones.lua 40494 269a76f5 dist/base_drones.lua
+slim:base base_drones.lua 43752 f7243c21 dist/base_drones.lua
 slim:base base_factory.lua 21394 27d62fd0 dist/base_factory.lua
 slim:base base_input.lua 16902 0aa99b5d dist/base_input.lua
 slim:base base_map.lua 39447 ad779c93 dist/base_map.lua
