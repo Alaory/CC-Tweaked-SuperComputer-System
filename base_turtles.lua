@@ -194,7 +194,8 @@ function TT.status(t)
   if not TT.online(t) then
     return "offline", "OFFLINE", C.bad,
            ((t.seenEpoch and ("last seen " .. TT.ago(t.seenEpoch)) or "never seen") ..
-            (t.rescuer and " - rescue on its way" or ""))
+            (t.rescuer and " - rescue on its way" or "") ..
+            (TT.atBase(t) and " - at the base: picked up?" or ""))
   end
   local task = tostring(t.task or "idle")
   local busy = task ~= "idle"
@@ -1398,6 +1399,30 @@ function TT.rescuers()
 end
 
 -- what is wrong with a turtle (nil = nothing to do): "fuel", "stuck", "lost"
+-- a turtle that went silent AT the base (CONFIG.turtles.atBaseRange, default 48
+-- blocks, x and z): the base's area is loaded while the base runs, so it was
+-- picked up / broken (you testing), not lost - no rescue, no search party
+function TT.atBase(t)
+  local b = CONFIG.drone and CONFIG.drone.home or state.basePos
+  local r = tonumber(CONFIG.turtles.atBaseRange) or 48
+  if not (b and b.x and t and t.pos and t.pos.x) or r <= 0 then return false end
+  return math.abs(t.pos.x - b.x) <= r and math.abs(t.pos.z - b.z) <= r
+end
+function TT.lostAtBase()
+  local out = {}
+  for _, t in pairs(state.turtles) do
+    if not TT.online(t) and not t.missing and TT.atBase(t) then out[#out + 1] = t end
+  end
+  table.sort(out, function(a, b) return a.id < b.id end)
+  return out
+end
+-- FORGET THEM (TURTLES > FLEET, console `forget base`): every turtle that went silent at the base
+function TT.forgetAtBase()
+  local n = 0
+  for _, t in ipairs(TT.lostAtBase()) do TT.forget(t.id) n = n + 1 end
+  return n
+end
+
 local function problemOf(t)
   local now = os.clock()
   if t.missing and not TT.online(t) then return nil end     -- looked for, not there: no more trips
@@ -1413,6 +1438,7 @@ local function problemOf(t)
   end
   -- offline: how long, by the real clock (also from before the base started)
   if not (t.pos and t.pos.x and t.seenEpoch) then return nil end
+  if TT.atBase(t) then return nil end                        -- silent AT the base: picked up, not lost
   local after = tonumber(CONFIG.turtles.rescueAfter) or 180
   if (os.epoch("utc") - t.seenEpoch) / 1000 < after then return nil end
   return "lost"
@@ -1971,7 +1997,7 @@ local function flat(a, b) return math.abs(a.x - b.x) + math.abs(a.z - b.z) end
 function TT.lostList()
   local out = {}
   for _, t in pairs(state.turtles) do
-    if not TT.online(t) and not t.missing and t.pos and t.pos.x then out[#out + 1] = t end
+    if not TT.online(t) and not t.missing and t.pos and t.pos.x and not TT.atBase(t) then out[#out + 1] = t end
   end
   return out
 end

@@ -60,6 +60,7 @@ HELP = {
 " factory fuel [<item> [count]|reset]   the fuel a new turtle gets (default 16 coal blocks)",
 " factory items [<item>]   every version of an item in AE2 (default: the turtle) - plain or yours",
 " party [stop]          SEARCH PARTY: all free turtles look for the lost ones together; the rescuer fetches them",
+" forget base           forget turtles that went silent AT the base (picked up / broken - no rescue goes there)",
 " schem [<name>|delete <name>]   Create schematics (drag a .nbt onto this screen)",
 " pocket [unpair <id>]   the paired pocket computers (run pocket.lua on one to pair)",
 " turtle <id> warps / warp <name> / warpsave <name>   End Automata Core teleports",
@@ -229,6 +230,13 @@ say(#lost .. " lost turtle(s) (offline, last spot known):")
 for _, t in ipairs(lost) do say("  " .. t.label .. " #" .. t.id .. " at " .. fmtPos(t.pos.x, t.pos.y, t.pos.z)) end
 local ok, msg = TT.partyStart()
 say(msg)
+end
+elseif cmd == "forget" and words[2] == "base" then
+local list = TT.lostAtBase()
+if #list == 0 then say("No turtle went silent at the base.")
+else
+for _, t in ipairs(list) do say("  forgetting " .. t.label .. " #" .. t.id .. " (last at " .. fmtPos(t.pos.x, t.pos.y, t.pos.z) .. ")") end
+say(TT.forgetAtBase() .. " forgotten. (If one is still out there: it reports again once it runs.)")
 end
 elseif cmd == "findlost" then
 local radius = tonumber(words[2])

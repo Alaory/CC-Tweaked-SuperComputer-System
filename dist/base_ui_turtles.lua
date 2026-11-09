@@ -85,6 +85,14 @@ for _, l in ipairs(wrap(pl, iw, 2)) do text(ix, my, l, C.label, C.panel) my = my
 my = my + 1
 end
 
+
+local atb = TT.lostAtBase and TT.lostAtBase() or {}
+if #atb > 0 and my + 4 <= y + h - 2 then
+text(ix, my, trunc(#atb .. " silent AT THE BASE (picked up? no rescue is sent)", iw), C.warn, C.panel)
+actButton(ix, my + 1, math.min(iw, 30), 2, "FORGET THEM (" .. #atb .. ")", { kind = "forgetbase", name = "all", count = 0 })
+my = my + 4
+end
+
 text(ix, my, #need > 0 and ("NEEDS A LOOK (" .. #need .. ")") or "NOTHING NEEDS YOU", #need > 0 and C.warn or C.good, C.panel)
 local ny = my + 1
 for _, n in ipairs(need) do

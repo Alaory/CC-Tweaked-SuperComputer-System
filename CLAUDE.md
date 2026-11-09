@@ -551,7 +551,11 @@ PneumaticCraft drone rides, turtle mapping/surveys, and an AE2 ME network view.
   within" while the turtle is offline -> TT.markMissing (t.missing, saved; popup
   + sysLog with last spot and gear; no more rescues; batch reclaimed; not counted
   for massOffline); any report clears it. FORGET (two taps, replaces PING while
-  offline) / `turtle <id> forget` -> TT.forget. feedSurvey reclaims the batch of
+  offline) / `turtle <id> forget` -> TT.forget. SILENT AT THE BASE (TT.atBase: last spot within
+  CONFIG.turtles.atBaseRange 48 of the base, x and z; the base area is loaded while the base runs
+  -> picked up / broken by the owner testing): problemOf nil (no rescue), not in TT.lostList (no
+  search party), status why "at the base: picked up?", FLEET card line + FORGET THEM (n)
+  (forgetbase -> TT.forgetAtBase), console `forget base`. test_party.lua. feedSurvey reclaims the batch of
   a turtle silent > CONFIG.map.reclaimOffline (600 s).
 - Themes (base_theme.lua): THEMES = 6 Minecraft biomes (see UI rules), same JOB per colour slot.
   The 11 slots the MAP uses (MAP_SLOTS: green lime blue yellow orange white

@@ -119,3 +119,31 @@ do
   CHECK(st.lost == 1, "the pocket is told how many are lost (" .. tostring(st.lost) .. ")")
   TT.party, TT.rescueQ = nil, {}
 end
+
+-- turtles that went silent AT the base (you picked them up while testing): no
+-- rescue, no search party, listed on the FLEET card, FORGET THEM forgets them
+do
+  state.turtles, state.tOut, TT.rescueQ, TT.party = {}, {}, {}, nil
+  CONFIG.drone.home = { x = 0, y = 64, z = 0 }
+  T(9, { rescuerRole = true, gear = "L=x R=y,drive,floppy,pick,fuel,scanner" })
+  T(1)
+  local atB = T(41, { lastSeen = CLOCK - 99999, seenEpoch = os.epoch("utc") - 9999999, pos = { x = 10, y = 64, z = -20 } })
+  local far = T(42, { lastSeen = CLOCK - 99999, seenEpoch = os.epoch("utc") - 9999999, pos = { x = 900, y = 64, z = 0 } })
+  local lost = {}
+  for _, t in ipairs(TT.lostList()) do lost[#lost + 1] = t.id end
+  CHECK(#lost == 1 and lost[1] == 42, "the search party only looks for the far one (" .. table.concat(lost, ",") .. ")")
+  local sent = {}
+  local s0 = TT.send
+  TT.send = function(id, cmd, args, ...) if cmd == "rescue" then sent[#sent + 1] = args[1] end return s0(id, cmd, args, ...) end
+  TT.startedAt = (TT.startedAt or 0) - 99999
+  for _ = 1, 5 do CLOCK = CLOCK + 2 state.turtles[9].lastSeen = CLOCK state.turtles[1].lastSeen = CLOCK TT.patrolTick() end
+  TT.send = s0
+  local toAtB = false
+  for _, id in ipairs(sent) do if id == 41 then toAtB = true end end
+  CHECK(not toAtB, "no rescue sent to the one silent at the base")
+  CHECK(sent[1] == 42, "(the rescuer does go to the far lost one: " .. table.concat(sent, ",") .. ")")
+  local _, _, _, why = TT.status(atB)
+  CHECK(tostring(why):find("at the base", 1, true), "its card says it is at the base (" .. tostring(why) .. ")")
+  CHECK(#TT.lostAtBase() == 1, "listed as silent at the base")
+  CHECK(TT.forgetAtBase() == 1 and state.turtles[41] == nil and state.turtles[42] ~= nil, "FORGET THEM: only that one forgotten")
+end
