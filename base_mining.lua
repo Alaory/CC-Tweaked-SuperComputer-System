@@ -82,7 +82,9 @@ function MINE.cmd(id, cmd, args, quiet)
   state.tLastN = n
   local a = {}
   for i, v in ipairs(args or {}) do a[i] = tostring(v) end
-  local msg = { t = "cmd", n = n, cmd = cmd, args = a, sig = TT.sign(CONFIG.turtles.key, "cmd", n, cmd, a) }
+  -- while it has COPIES (server crash) only the real one obeys (its session)
+  local ses = (u.dups and #u.dups > 0) and u.mainSes or nil
+  local msg = { t = "cmd", n = n, cmd = cmd, args = a, ses = ses, sig = TT.sign(CONFIG.turtles.key, "cmd", n, cmd, a) }
   u.queue = u.queue or {}
   u.queue[#u.queue + 1] = msg
   state.tOut[#state.tOut + 1] = { id = id, msg = msg }
@@ -97,6 +99,18 @@ function MINE.receive(id, m)
     u = { id = id, log = {}, queue = {} }
     MINE.units[id] = u
   end
+  -- an extra COPY of this id (server crash): stopped, its reports kept apart
+  if type(m.ses) == "string" and TT.dupSeen and TT.dupSeen(u, id, m, {
+       where = true,                       -- (the copy where the real one was stays)
+       log = function(text) MINE.log(u, text) end,
+       stop = function(ses)
+         local n = os.epoch("utc")
+         if n <= state.tLastN then n = state.tLastN + 1 end
+         state.tLastN = n
+         state.tOut[#state.tOut + 1] = { id = id, msg = { t = "cmd", n = n, cmd = "dupstop", args = {}, ses = ses,
+                                                          sig = TT.sign(CONFIG.turtles.key, "cmd", n, "dupstop", {}) } }
+         os.queueEvent("turtle_send")
+       end }) then return end
   if m.n <= (u.lastN or 0) then return end
   u.lastN = m.n
   u.lastSeen, u.seenEpoch = os.clock(), os.epoch("utc")

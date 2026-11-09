@@ -235,13 +235,28 @@ end
 -- THE turtle (t.mainSes: one not already stopped, nearest its home), every
 -- other gets "dupstop" meant only for it, and its reports never touch t
 -- (t.dups = where the copies are). TT.sess[id][ses] = {first, seen, pos, dup}.
+-- (also for the mining turtles: MINE.receive with opt = { anchor = where the
+-- real one was, stop = function(ses) sends dupstop, log = function(text) })
 TT.sess = {}
-function TT.dupSeen(t, id, m)
+function TT.dupSeen(t, id, m, opt)
+  opt = opt or {}
   local now = os.clock()
   local S = TT.sess[id] or {}
   TT.sess[id] = S
   local s = S[m.ses]
-  if not s then s = { first = now } S[m.ses] = s end
+  if not s then
+    -- a second session while another one talks: remember where the turtle was
+    -- THEN (both copies' reports move t.pos until they are told apart)
+    for _, v in pairs(S) do
+      if now - v.seen < 120 and type(t.pos) == "table" and t.pos.x then
+        t.dupAnchor = { x = t.pos.x, y = t.pos.y, z = t.pos.z }
+      end
+    end
+    s = { first = now }
+    S[m.ses] = s
+  end
+  local anchor = opt.anchor or t.home
+  if opt.where then anchor = t.dupAnchor or t.pos end
   s.seen, s.dup = now, m.dup and true or nil
   if type(m.pos) == "table" and m.pos.x then s.pos = m.pos end
   for k, v in pairs(S) do if now - v.seen > 600 then S[k] = nil end end
@@ -260,17 +275,20 @@ function TT.dupSeen(t, id, m)
     if t.dups then
       t.dups = nil
       TT.listDirty = true
-      TT.log(t, "No extra copies any more")
+      if opt.log then opt.log("No extra copies any more") else TT.log(t, "No extra copies any more") end
     end
     return false
   end
-  if not (t.mainSes and alive[t.mainSes] and not (S[t.mainSes] or {}).dup) then
+  -- first time copies are seen: choose (the session talking last before is just
+  -- whichever spoke last); afterwards the choice stays
+  local known = t.dups and #t.dups > 0
+  if not (known and t.mainSes and alive[t.mainSes] and not (S[t.mainSes] or {}).dup) then
     local best, bd
     for k in pairs(alive) do
       local v = S[k]
       local d = (v.dup and 1e9 or 0)
-      if t.home and v.pos then
-        d = d + math.abs(v.pos.x - t.home.x) + math.abs((v.pos.y or 0) - (t.home.y or 0)) + math.abs(v.pos.z - t.home.z)
+      if anchor and anchor.x and v.pos then
+        d = d + math.abs(v.pos.x - anchor.x) + math.abs((v.pos.y or 0) - (anchor.y or 0)) + math.abs(v.pos.z - anchor.z)
       end
       if not bd or d < bd then best, bd = k, d end
     end
@@ -292,12 +310,12 @@ function TT.dupSeen(t, id, m)
                 "Extra copies stopped at " .. table.concat(where, ", ") .. " - break them (they are copies)"
     pushNote("WARNING", msg, C.warn)
     if sysLog then sysLog(msg, "WARNING") end
-    TT.log(t, msg)
+    if opt.log then opt.log(msg) else TT.log(t, msg) end
   end
   if m.ses ~= t.mainSes then
     if not m.dup and (not s.stopAt or now - s.stopAt > 15) then
       s.stopAt = now
-      TT.send(id, "dupstop", {}, true, true, m.ses)
+      if opt.stop then opt.stop(m.ses) else TT.send(id, "dupstop", {}, true, true, m.ses) end
     end
     return true                                     -- a copy's report: not this turtle's
   end

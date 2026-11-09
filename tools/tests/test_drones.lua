@@ -5,7 +5,7 @@ local HOME = { x = 0, y = 70, z = 0 }
 local W                                   -- this scenario's world
 local function world(opts)
   W = { pos = { x = 2, y = 70, z = 0 }, P = opts.players, carry = nil, act = nil, aborts = 0,
-        grab = opts.grab, miss = opts.miss, unreachable = opts.unreachable or 1e9, homeRefused = opts.homeRefused or 0 }
+        grab = opts.grab, miss = opts.miss, hang = opts.hang or 1, short = opts.short or 0, unreachable = opts.unreachable or 1e9, homeRefused = opts.homeRefused or 0 }
   os.pullEventRaw = function()
     CLOCK = CLOCK + 0.3
     if W.act and CLOCK >= W.doneAt then
@@ -25,11 +25,13 @@ local function world(opts)
       elseif t.x == HOME.x and math.abs(t.z - HOME.z) < 8 and W.homeRefused > 0 then
         W.homeRefused = W.homeRefused - 1
       else
-        W.pos = { x = t.x, y = t.y, z = t.z }
+        -- (a FLY move counts as there within 2.5 blocks: it may stop short when climbing)
+        local sy = (W.act == "pneumaticcraft:goto" and t.y > W.pos.y) and (t.y - W.short) or t.y
+        W.pos = { x = t.x, y = sy, z = t.z }
       end
       W.act = nil
     end
-    if W.carry then W.P[W.carry] = { x = W.pos.x, y = W.pos.y - 1, z = W.pos.z } end
+    if W.carry then W.P[W.carry] = { x = W.pos.x, y = W.pos.y - W.hang, z = W.pos.z } end
     return "timer", 1
   end
   os.pullEvent = os.pullEventRaw
@@ -153,6 +155,17 @@ for _ = 1, 3 do
 end
 CHECK(near(W.pos, HOME.x, HOME.z), "failed ride: home later")
 CHECK(W.carry == nil and near(W.P.Bob, HOME.x, HOME.z), "failed ride: Bob let out at home")
+
+-- a REAL ride: the player hangs 2.5 blocks UNDER the drone and the lift stops 2
+-- blocks short (it counts as there within 2.5) - before, "did not come along":
+-- the drone let them out at the pickup spot and flew home without them
+dr = world({ players = { Bob = { x = 60, y = 70, z = 0 } }, hang = 2.5, short = 2 })
+runMission(dr, { kind = "pickup", passenger = "Bob" })
+CHECK(dr.rider == "Bob" and W.carry == "Bob", "hanging under the drone, short lift: still counted as on board")
+-- and nobody on board (the grab missed): still caught
+dr = world({ players = { Bob = { x = 60, y = 70, z = 0 } }, hang = 2.5, short = 2, miss = true })
+runMission(dr, { kind = "pickup", passenger = "Bob" })
+CHECK(dr.rider == nil, "missed grab with the real offsets: nobody counted as on board")
 
 -- PICKUP and hold (the owner DROPs later): the park check leaves it alone
 dr = world({ players = { Bob = { x = 50, y = 70, z = 0 } } })

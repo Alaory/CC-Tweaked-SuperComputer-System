@@ -8,12 +8,12 @@ base base_chat.lua 15022 e4046699
 base base_console.lua 48191 66cdcc5f
 base base_curios.lua 5867 dcabab86
 base base_devices.lua 11417 b1426ca4
-base base_drones.lua 59572 e488f106
+base base_drones.lua 60187 5a51cf6f
 base base_factory.lua 14603 ce4ac78f
 base base_input.lua 23463 276351c1
 base base_map.lua 60790 59afeea7
 base base_me.lua 89921 28708a0c
-base base_mining.lua 10150 48f0ca50
+base base_mining.lua 11038 df5ba908
 base base_players.lua 15624 b7926f9d
 base base_pocket.lua 16780 6fa02c2c
 base base_schem.lua 18382 f71f07f2
@@ -21,7 +21,7 @@ base base_state.lua 5225 0b331c53
 base base_storage.lua 11536 e6593881
 base base_store.lua 10027 9638f25f
 base base_theme.lua 17472 8efbb413
-base base_turtles.lua 77514 af3d4ec2
+base base_turtles.lua 78467 1be0bc4d
 base base_ui_chat.lua 5345 53a3cab9
 base base_ui_core.lua 26354 7fda8de0
 base base_ui_drive.lua 15466 0bcca6b3

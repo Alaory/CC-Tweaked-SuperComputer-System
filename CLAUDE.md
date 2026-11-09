@@ -154,8 +154,14 @@ PneumaticCraft drone rides, turtle mapping/surveys, and an AE2 ME network view.
   THEIR ses (every 15 s until m.dup); their reports never touch t; t.dups -> TT.dupText
   (turtle card, FLEET needs list, pocket, away report) + one WARNING / sysLog. While
   copies exist TT.send adds ses = t.mainSes (never otherwise - a restarted turtle must not
-  be locked out). Gone 10 min -> forgotten. miner.lua does not do this yet.
-  test_dups.lua, node_dup.lua.
+  be locked out). Gone 10 min -> forgotten. The first time copies are seen the real one is
+  CHOSEN (not whichever spoke last). MINING turtles too (miner.lua m17: SESSION, DUP, save /
+  sendTeam refused, dupPark freezes the copy between steps; miners hearDup() every 10 s
+  between steps - only "dupstop" acted on, the rest kept in BACKLOG for the next listen;
+  base MINE.receive -> TT.dupSeen opt.where: t.dupAnchor = where it was when the 2nd session
+  appeared; MINE.cmd adds ses). rememberOwn on a NEW FIELD keeps the first START's record
+  (mined ore is not "yours" - before: "9 slots hold your own items", STOPPED).
+  test_dups.lua, node_dup.lua, miner_dup.lua.
 - node.lua never just ends: the main parallel.waitForAny is in a pcall; an
   error is written to `node_crash`, the turtle reboots (5 s, longer when it
   keeps crashing) and tells the base ("restarted after an ERROR: ..." in the
@@ -632,8 +638,10 @@ and the spot is UNDER GROUND (map top > y): the drone lands on the surface
 right above it. A mission's own destination is dr.mdest (cmd.dest, e.g. a chat ride or
 the fly-to-turtle button, else the DRONES page choice dr.dest); chat rides never change
 dr.dest / dr.passenger. On board? (pickupSteps) after EVERY Entity Import the drone FLIES (goto, no air) liftHeight
-(min 4: a move counts as arrived within 2.5 blocks) up and the player must rise 2 blocks
-(polled every 0.3 s, goes on at once) - being next to them proves nothing (it went there
+(min 4: a move counts as arrived within 2.5 blocks) up; on board = the player rose with the
+DRONE (from right after the grab: playerUp >= droneUp - 1, >= 1; a carried player HANGS under
+the drone and the climb may stop 2.5 short - the old "2 above the pickup spot" let real
+passengers out and flew home without them; polled every 0.3 s for 3 s) - being next to them proves nothing (it went there
 to get them; that made it teleport off without a passenger). No room to lift -> checked
 on arrival (passengerHere). The liftCheck setting is gone (base_config line unused). Wrong passenger guard (pickupSteps): no Entity Import while another
 player is within 4 blocks of the rider; after the import the drone must be WITH the rider,

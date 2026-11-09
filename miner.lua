@@ -78,7 +78,7 @@ CONFIG = {
 }
 
 STATE_FILE = "miner_state"
-MYVER = "m16"            -- shown on the screen and the base (MINING tab)
+MYVER = "m17"            -- shown on the screen and the base (MINING tab)
 DX = { [0] = 0, 1, 0, -1 }
 DZ = { [0] = -1, 0, 1, 0 }
 FNAME = { [0] = "north", "east", "south", "west" }
@@ -94,8 +94,17 @@ STASHING = false
 lastN = 0
 
 ---------------------------------------------------------------------- state
+-- DUPLICATES: a server crash while a turtle crosses into the next chunk can
+-- leave SEVERAL turtles with this ID - same items, and the SAME disk (the
+-- state file). Every start picks a SESSION (memory only) that goes with every
+-- message; the base tells extra copies "dupstop" (with their session): such a
+-- copy (DUP) freezes where it is (dupPark), talks to nobody in the team, never
+-- writes the shared state file and just reports where it is until broken.
+SESSION = tostring(math.random(100000, 999999)) .. "-" .. tostring(os.epoch("utc") % 100000)
+DUP = false
 function now() return math.floor(os.epoch("utc") / 1000) end
 function save()
+  if DUP then return end                         -- (the state file belongs to the real one)
   local h = fs.open(STATE_FILE .. ".tmp", "w")
   if not h then return end
   local ok = pcall(function() h.write(textutils.serialize(S)) end)
@@ -228,6 +237,8 @@ function sendBase(t, extra)
   m.t, m.n = t, nextN()
   m.sig = sign(S.key or "change-me", m.t, m.n)
   m.mine = true
+  m.ses = SESSION
+  if DUP then m.dup = true end
   m.role, m.dim, m.ver = S.role, S.dim, MYVER
   m.label = os.getComputerLabel() or ("Turtle " .. os.getComputerID())
   m.task = task
@@ -276,7 +287,7 @@ function sendBase(t, extra)
   LAST_STATUS = os.clock()
 end
 function sendTeam(to, t, extra)
-  if not modemSide() then return end
+  if DUP or not modemSide() then return end      -- (a stopped copy talks to nobody in the team)
   if not rednet.isOpen(modemSide()) then pcall(rednet.open, modemSide()) end
   local m = {}
   for k, v in pairs(extra or {}) do m[k] = v end
@@ -296,13 +307,34 @@ end
 -- a message arrived (base command or the team partner)
 function handle(id, m, proto)
   if type(m) ~= "table" then return end
+  if HEAR_ONLY_DUP then
+    -- (heard between two steps: only a "dupstop" is acted on now - anything
+    -- else waits for the next listen, in order; START mid-dig would count the
+    -- ores it carries as your own items)
+    if not (proto == CONFIG.protocol and m.cmd == "dupstop") then
+      BACKLOG[#BACKLOG + 1] = { id, m, proto }
+      return
+    end
+    HEAR_ONLY_DUP = false
+  end
   if proto == CONFIG.protocol and m.t == "cmd" then
+    if m.ses ~= nil and m.ses ~= SESSION then return end      -- meant for another copy of this ID
+    if DUP and m.cmd ~= "dupfree" and m.cmd ~= "dupstop" then return end
     if type(m.n) ~= "number" or m.n <= (S.lastCmd or 0) then return end
     if m.sig ~= sign(S.key or "change-me", "cmd", m.n, m.cmd, m.args) then return end
     S.lastCmd = m.n
     S.baseId = id
+    if m.cmd == "dupstop" then
+      if not DUP then dupPark() end              -- (never returns)
+      return
+    elseif m.cmd == "dupfree" then
+      DUP = false
+      return
+    end
     doCmd(tostring(m.cmd), m.args or {})
     save()
+  elseif DUP then
+    return                                       -- a stopped copy: no team messages
   elseif proto == CONFIG.team then
     if type(m.n) ~= "number" or m.sig ~= sign(S.key or "change-me", m.t, m.n) then return end
     if m.dim ~= S.dim then return end
@@ -511,8 +543,44 @@ function doCmd(cmd, args)
   end
   sendBase("status")
 end
+-- I am an extra COPY (server crash): stand still where I am (this is only
+-- called between steps, from listen), say where I am, wait to be broken.
+-- "dupfree" from the base (the real one is gone): restart as the real one.
+function dupPark()
+  DUP = true
+  S.running = false
+  task = "DUPLICATE copy - stopped (break me)"
+  local okG, x, y, z = pcall(gps.locate, 2)
+  if okG and x then S.pos = { x = math.floor(x + 0.5), y = math.floor(y + 0.5), z = math.floor(z + 0.5), f = S.pos and S.pos.f } end
+  note("I am a DUPLICATE copy of this turtle (server crash) - stopped here, break me")
+  print("DUPLICATE COPY of this turtle (server crash) - stopped. Break this one.")
+  while true do
+    pcall(sendBase, "status")
+    listen(30)
+    if not DUP then os.reboot() end
+  end
+end
+
+-- a short listen between steps (miners): only "dupstop" now, the rest later
+BACKLOG = {}
+HEAR_ONLY_DUP = false
+function hearDup()
+  HEAR_ONLY_DUP = true
+  local t0 = os.clock()
+  while os.clock() - t0 < 0.05 do
+    local id, m, proto = rednet.receive(nil, 0.05)
+    if not id then break end
+    handle(id, m, proto)
+  end
+  HEAR_ONLY_DUP = false
+end
+
 -- listen for a while (messages are handled as they come)
 function listen(secs)
+  while #BACKLOG > 0 and not HEAR_ONLY_DUP do       -- (heard between steps, kept for now)
+    local b = table.remove(BACKLOG, 1)
+    handle(b[1], b[2], b[3])
+  end
   local t0 = os.clock()
   while true do
     local left = secs - (os.clock() - t0)
@@ -755,6 +823,12 @@ end
 -- facing is off: GPS check instead.
 function step(d)
   if S.role ~= "miner" then burnCoal() end
+  -- a miner can dig for minutes without listening: every 10 s a short listen
+  -- (between steps), so a "dupstop" for an extra copy stops it quickly
+  if S.role == "miner" and os.clock() - (LAST_HEAR or 0) > 10 then
+    LAST_HEAR = os.clock()
+    hearDup()
+  end
   if CHUNK_LOCK and S.role == "miner" then
     local x, _, z = cellFor(d)
     if math.floor(x / 16) ~= CHUNK_LOCK[1] or math.floor(z / 16) ~= CHUNK_LOCK[2] then
@@ -1145,12 +1219,22 @@ function fieldAt(P, i)
 end
 function center(cx, cz) return cx * 16 + 8, cz * 16 + 8 end
 -- what is in the miner at START (not tools, not coal) belongs to you: never unloaded
+-- (a NEW FIELD later: what it mined since is NOT yours - the first record is
+-- kept, at most what it still holds; before, a new field reaching a miner that
+-- carried ore counted the ore as yours -> "9 slots hold your own items", STOPPED)
 function rememberOwn()
-  S.own = {}
+  local cur = {}
   for i = 1, 16 do
     local d = turtle.getItemDetail(i)
-    if d and not isTool(d.name) and not isCoal(d.name) then S.own[d.name] = (S.own[d.name] or 0) + d.count end
+    if d and not isTool(d.name) and not isCoal(d.name) then cur[d.name] = (cur[d.name] or 0) + d.count end
   end
+  if S.own then
+    local keep = {}
+    for n, c in pairs(cur) do if S.own[n] then keep[n] = math.min(c, S.own[n]) end end
+    S.own = keep
+    return
+  end
+  S.own = cur
   if next(S.own) then note("Items in me at START are kept (not unloaded)") end
 end
 -- GPS (a GPS system in this dimension): our real position, or nil
@@ -2103,10 +2187,10 @@ function minerRun()
         if f then S.pos.f = f end
         gpsCheck()
         rememberOwn()
-        local used = 0
+        local used = 0                           -- slots with YOUR items (not what it mined)
         for i = 1, 16 do
           local d = turtle.getItemDetail(i)
-          if d and not isTool(d.name) and not isCoal(d.name) then used = used + 1 end
+          if d and S.own[d.name] and not isTool(d.name) and not isCoal(d.name) then used = used + 1 end
         end
         if used > 4 then
           S.running, S.err = false, used .. " slots hold your own items - the miner needs the room. Take them out, then START"

@@ -868,9 +868,11 @@ function pickupSteps(dr, name)
       end
       -- did it take the RIGHT player? (the drone must be with them now)
       local wrong
+      local py0, dy0                             -- player + drone height right after the grab
       if ok then
         local dx, dy, dz = droneXYZ(dr)
         local qx, qy, qz = playerPos(name)
+        py0, dy0 = qy, dy
         if dx and type(qx) == "number" and
            (math.abs(qx - dx) > 5 or math.abs(qz - dz) > 5 or math.abs(qy - dy) > 6) then
           local who = playersNear(name, dx, dy, dz, 3)
@@ -903,17 +905,24 @@ function pickupSteps(dr, name)
           dr.rider = name
           return true
         end
-        -- they rose with it (2 blocks) = on board: looked at every 0.3 s, goes on at once
-        local py
-        for _ = 1, 7 do
+        -- they rose WITH it = on board. Measured against the drone's own climb from
+        -- right after the grab: a carried player hangs UNDER the drone and a move
+        -- counts as there within 2.5 blocks - "2 blocks above the pickup spot"
+        -- failed for a real passenger (let out, the drone flew home without them).
+        -- Looked at every 0.3 s for 3 s, goes on at once.
+        local aboard = false
+        for _ = 1, 10 do
           if dr.abort then return false, "stopped" end
           local _, qy = playerPos(name)
-          py = qy
-          if type(py) == "number" and py - y >= 2 then break end
+          local _, ddy = droneXYZ(dr)
+          if type(qy) == "number" and type(py0) == "number" and ddy and dy0 then
+            local droneUp, playerUp = ddy - dy0, qy - py0
+            if droneUp >= 1 and playerUp >= droneUp - 1 and playerUp >= 1 then aboard = true break end
+          end
           waitFor(0.3, "drone_abort")
         end
         if dr.abort then return false, "stopped" end
-        if type(py) == "number" and py - y >= 2 then
+        if aboard then
           droneLog(dr, name .. " is on board (lifted)")
           dr.rider = name
           return true

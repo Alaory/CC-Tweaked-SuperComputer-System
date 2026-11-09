@@ -72,3 +72,33 @@ CLOCK = CLOCK + 3
 report(68, "E", { x = 1, y = 64, z = 1 }, { dup = true })
 report(68, "F", { x = 800, y = 64, z = 802 })
 CHECK(t.mainSes == "F", "a stopped copy never becomes the real one (even nearer home)")
+
+-- MINING turtles (miner.lua m17) the same way: MINE.receive
+local function mreport(id, ses, pos, extra)
+  SEQ = SEQ + 1
+  local m = { t = "status", n = os.epoch("utc") + 1000 + SEQ, ses = ses, mine = true, role = "miner", dim = "overworld",
+              label = "Miner 9", pos = pos }
+  for k, v in pairs(extra or {}) do m[k] = v end
+  m.sig = TT.sign(CONFIG.turtles.key, m.t, m.n)
+  TT.receive(id, m)
+end
+state.tOut = {}
+mreport(90, "M1", { x = 100, y = 20, z = 100 })
+CLOCK = CLOCK + 3
+mreport(90, "M1", { x = 101, y = 20, z = 100 })
+mreport(90, "M2", { x = 2000, y = 20, z = 2000 })
+CLOCK = CLOCK + 3
+mreport(90, "M1", { x = 102, y = 20, z = 100 })
+mreport(90, "M2", { x = 2000, y = 20, z = 2001 })
+CLOCK = CLOCK + 3
+mreport(90, "M1", { x = 103, y = 20, z = 100 })
+mreport(90, "M2", { x = 2000, y = 20, z = 2002 })
+local u = MINE.units[90]
+CHECK(u and u.dups and #u.dups == 1 and u.mainSes == "M1", "miner copies: the one where the real one was stays")
+CHECK(u.pos.x == 103, "a miner copy's reports do not move the real one")
+local ms = {}
+for _, o in ipairs(state.tOut) do if o.msg.cmd == "dupstop" then ms[#ms + 1] = o end end
+CHECK(#ms >= 1 and ms[1].msg.ses == "M2" and ms[1].id == 90, "the miner copy gets dupstop (its session)")
+state.tOut = {}
+MINE.cmd(90, "unloadnow", {})
+CHECK(state.tOut[1] and state.tOut[1].msg.ses == "M1", "mining commands go to the real one only")
