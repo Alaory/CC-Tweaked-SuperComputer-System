@@ -93,12 +93,12 @@ text(x + 2, y0 + 2, trunc((p and p.x and ("at " .. p.x .. " " .. p.y .. " " .. p
 local msg, mcol
 if t.driveSent and not t.driveMsg then
 local ago = math.floor(os.clock() - t.driveSent)
-if ago >= 6 then msg, mcol = "no answer for " .. ago .. " s - is it busy or out of range? STOP, then try again", C.warn
+if ago >= 6 then msg, mcol = "no answer for " .. ago .. " s - out of range? Try again", C.warn
 else msg, mcol = "sent ...", C.dim end
 elseif t.driveMsg then
 msg, mcol = (t.driveMsg.ok and "OK: " or "NO: ") .. t.driveMsg.msg, t.driveMsg.ok and C.good or C.warn
 else
-msg, mcol = "Tap a button: each tap is one step. A busy turtle needs STOP first.", C.dim
+msg, mcol = "Each tap is one step. A busy turtle pauses its job for you.", C.dim
 end
 text(x + 2, y0 + 3, trunc(msg, w - 4), mcol, C.panel)
 

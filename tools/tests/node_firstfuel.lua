@@ -45,5 +45,13 @@ CHECK(tostring(msg):find("keeps filling", 1, true), "it says it fills up the res
 FUEL = 0
 doRefuel()
 CHECK(FUEL > 1010, "REFUEL button: more than the first-start amount (" .. FUEL .. ")")
+-- idle top-up toward a full tank: an order that comes in stops it at once
+FUEL = 3000
+local r0 = turtle.refuel
+local uses = 0
+turtle.refuel = function(n) uses = uses + 1 if uses == 5 then job = { cmd = "home" } end return r0(n) end
+topUp(100000, true, 40)
+turtle.refuel, job = r0, nil
+CHECK(uses <= 6, "an order while filling up: it stops filling and goes (" .. uses .. " uses)")
 print(FAILS == 0 and "PASS" or ("FAILED " .. FAILS))
 os.exit(FAILS == 0 and 0 or 1)

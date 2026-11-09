@@ -64,6 +64,7 @@ refuelTo  = nil,
 lowFuel   = 2000,
 stationFuel = 20000,
 maxSurveyPoints = 400,
+resumeAfter = 120,
 }
 
 
@@ -419,6 +420,31 @@ m.waiting = outboxCount and outboxCount() or 0
 pcall(rednet.send, baseId, m, CONFIG.protocol)
 end
 
+
+
+
+
+
+HAND, LAST_HAND, NEXT_JOB, DRIVE_NEXT = false, -1000, nil, nil
+function pauseForHand()
+if not job then return end
+local j = job
+local sj = type(S.job) == "table" and S.job or {}
+S.paused = { cmd = j.cmd, args = j.args or {}, left = sj.left or j.left, task = task,
+
+idleAfter = (j.cmd == "survey" or j.cmd == "surveypts" or j.cmd == "findturtles") or nil }
+stopFlag = true
+S.job = nil
+save()
+os.queueEvent("node_stop")
+end
+function pausedTask()
+local p = S.paused
+if not p then return nil end
+local left = math.max(0, math.floor((tonumber(CONFIG.resumeAfter) or 120) - (os.clock() - LAST_HAND)))
+return "waiting - paused '" .. tostring(p.cmd) .. "' for your commands (back to it in " .. left .. " s)"
+end
+
 function reply(cmd, ok, msg)
 send("result", { cmd = cmd, ok = ok, msg = msg })
 if pendingInfo then
@@ -655,6 +681,7 @@ function topUp(target, onlyReusable, budget)
 local f0 = turtle.getFuelLevel()
 if f0 == "unlimited" or SLOT_LOCK then return 0, false end
 TOPUP_RUNNING = true
+local idleStart = (job == nil)
 local limit = turtle.getFuelLimit()
 target = math.min(target or limit, limit)
 pcall(chargeFromCell, target)
@@ -686,6 +713,8 @@ turtle.select(sl.i)
 local dead = false
 while turtle.getFuelLevel() < target do
 if (budget and calls >= budget) or (job and stopFlag) or SLOT_LOCK then stop = true break end
+
+if idleStart and job and turtle.getFuelLevel() >= 20 then stop = true break end
 local before = turtle.getFuelLevel()
 local ok = turtle.refuel(1)
 calls = calls + 1
@@ -3062,6 +3091,7 @@ DUP = false
 task = "idle"
 return true, "I am the real turtle again"
 elseif cmd == "stop" then
+S.paused, NEXT_JOB, DRIVE_NEXT = nil, nil, nil
 stopFlag = true
 if S.job then S.job = nil end
 save()
@@ -3108,7 +3138,13 @@ elseif cmd == "refuel" then
 return doRefuel()
 elseif cmd == "drive" then
 
-if job then return false, "busy: " .. tostring(task) .. " - press STOP first" end
+if job then
+if not HAND then return false, "busy: " .. tostring(task) .. " - press STOP first" end
+local was = task
+pauseForHand()
+DRIVE_NEXT = { act = tostring(a[1] or ""), force = a[2] == "force" }
+return true, "paused '" .. tostring(was) .. "' - your step comes right after"
+end
 local ok, msg = driveStep(tostring(a[1] or ""), a[2] == "force")
 
 
@@ -3388,7 +3424,10 @@ S.lastN = m.n
 save()
 baseId = id
 local a = type(m.args) == "table" and m.args or {}
+HAND = m.hand == true and m.cmd ~= "stop"
+if HAND then LAST_HAND = os.clock() end
 local okI, ok, msg = pcall(immediate, m.cmd, a)
+HAND = false
 if not okI then ok, msg = false, "error in '" .. tostring(m.cmd) .. "': " .. tostring(ok) end
 if ok == nil and msg == "quiet" then
 
@@ -3400,9 +3439,16 @@ save()
 sleep(1)
 os.reboot()
 end
+elseif job and m.hand == true then
+
+local was = task
+pauseForHand()
+NEXT_JOB = { cmd = m.cmd, args = a }
+reply(m.cmd, true, "paused '" .. tostring(was) .. "' - doing your " .. m.cmd .. " now")
 elseif job then
 reply(m.cmd, false, "busy: " .. task .. " (press STOP first)")
 else
+if m.hand ~= true then S.paused = nil end
 stopFlag = false
 job = { cmd = m.cmd, args = a }
 end
@@ -3499,7 +3545,18 @@ if fix then msg = msg .. " (" .. fix .. ")" end
 end
 save()
 reply(j.cmd, ok and true or false, msg)
-if UPD_READY and not DUP then
+
+if NEXT_JOB then
+job, NEXT_JOB, stopFlag = NEXT_JOB, nil, false
+elseif DRIVE_NEXT then
+local d = DRIVE_NEXT
+DRIVE_NEXT, stopFlag = nil, false
+local okD, okS, msgS = pcall(driveStep, d.act, d.force)
+pcall(driveLook, d.act == "look" and 3 or 1)
+reply("drive", okD and okS or false, okD and msgS or tostring(okS))
+end
+if S.paused and not job then task = pausedTask() or task end
+if UPD_READY and not DUP and not job then
 
 installUpdate(UPD_READY.code)
 UPD_READY = nil
@@ -3508,6 +3565,25 @@ S.rebootWhy = "after an update"
 save()
 sleep(1)
 os.reboot()
+end
+elseif S.paused then
+
+if os.clock() - LAST_HAND >= (tonumber(CONFIG.resumeAfter) or 120) then
+local p = S.paused
+S.paused = nil
+save()
+stopFlag = false
+if p.idleAfter then
+task = "idle"
+send("result", { cmd = p.cmd, ok = true, msg = "no command from you for a while - free for survey work again" })
+else
+job = { cmd = p.cmd, args = p.args or {}, left = p.left, delay = 3 }
+send("result", { cmd = p.cmd, ok = true, msg = "no command from you for a while - back to: " .. tostring(p.task or p.cmd) })
+end
+else
+local tk = pausedTask()
+if tk ~= task then task = tk end
+sleep(1)
 end
 else
 

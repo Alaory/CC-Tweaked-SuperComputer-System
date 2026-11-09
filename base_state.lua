@@ -8,6 +8,7 @@
 ---------------------------------------------------------------------
 -- STATE
 ---------------------------------------------------------------------
+HAND_CMD = false        -- a console command is running: turtle commands from it are YOURS (TT.send hand)
 state = {
   status = "loading", -- loading | ok | nocard | offline
   owner = nil,

@@ -610,7 +610,11 @@ function terminalWorker()
       line = nil
     end
     local ok, out = true, {}
-    if line then ok, out = pcall(handleCommand, line) end
+    if line then
+      HAND_CMD = true                       -- (turtle commands typed here are YOURS: they go first)
+      ok, out = pcall(handleCommand, line)
+      HAND_CMD = false
+    end
     if ok then
       for _, l in ipairs(out) do print(l) end
     else

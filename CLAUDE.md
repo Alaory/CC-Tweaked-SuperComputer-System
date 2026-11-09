@@ -136,6 +136,14 @@ PneumaticCraft drone rides, turtle mapping/surveys, and an AE2 ME network view.
   indentation removed, every line kept in place so error line numbers match;
   ~97 KB vs 128 KB - a floppy holds 125 KB). Falls back to the full text if
   the small one does not compile. CODE.ver is the hash of what is sent.
+- YOUR COMMANDS GO FIRST: TT.send marks m.hand (USER_ACTION = buttons / pocket / queued actions,
+  HAND_CMD = console, every "drive"; never "stop"). node.lua: a hand command while a job runs ->
+  pauseForHand (job stopped, kept in S.paused with its spots left, NEXT_JOB / DRIVE_NEXT run right
+  after); task "waiting - paused '<cmd>' for your commands (back to it in N s)" (QUIET_TASK);
+  resumeAfter (120 s) after your LAST command -> back to the job (survey / surveypts / findturtles:
+  just idle - the base hands survey work out again). Automatic orders while busy: refused as before.
+  STOP forgets the paused job. Idle top-up (also the first refuel) stops as soon as a job comes
+  in (topUp idleStart). node_hand.lua (real listener + worker as coroutines), test_drive.lua.
 - STOP (node.lua): clears the saved job at once (no resume after a reload);
   a job that ignores it for 2 s is cut off (FORCE_STOP: no new move/turn;
   stopWatch kills it when not STEPPING / modem on / no slot lock, then

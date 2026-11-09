@@ -8,6 +8,7 @@
 
 
 
+HAND_CMD = false
 state = {
 status = "loading",
 owner = nil,

@@ -1849,7 +1849,10 @@ function TT.send(id, cmd, args, quiet, again, ses)
   for i, v in ipairs(args or {}) do a[i] = v end
   local t = state.turtles[id]
   if not ses and t and t.dups and #t.dups > 0 then ses = t.mainSes end
-  state.tOut[#state.tOut + 1] = { id = id, msg = { t = "cmd", n = n, cmd = cmd, args = a, ses = ses,
+  -- YOUR command (a button, the pocket, the console, DRIVE): the turtle pauses its
+  -- job for it and goes back to the job later (node.lua pauseForHand)
+  local hand = (USER_ACTION or HAND_CMD or cmd == "drive") and cmd ~= "stop" or nil
+  state.tOut[#state.tOut + 1] = { id = id, msg = { t = "cmd", n = n, cmd = cmd, args = a, ses = ses, hand = hand,
                                     sig = TT.sign(CONFIG.turtles.key, "cmd", n, cmd, a) } }
   -- any command you give (not the quiet automatic ones) ends a STOP hold
   if t and t.held and cmd ~= "stop" and not quiet then t.held = nil TT.listDirty = true end

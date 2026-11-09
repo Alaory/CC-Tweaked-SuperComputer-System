@@ -610,7 +610,11 @@ if not okD then print("Error: " .. tostring(errD)) end
 line = nil
 end
 local ok, out = true, {}
-if line then ok, out = pcall(handleCommand, line) end
+if line then
+HAND_CMD = true
+ok, out = pcall(handleCommand, line)
+HAND_CMD = false
+end
 if ok then
 for _, l in ipairs(out) do print(l) end
 else

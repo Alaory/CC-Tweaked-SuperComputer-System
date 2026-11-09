@@ -163,6 +163,11 @@ def _():
     rc, out = run(["lua5.3", "tools/tests/node_firstfuel.lua", "node.lua"])
     return rc == 0, out.strip()
 
+@check("node", "your commands pause a job, back after 2 min (node_hand.lua)")
+def _():
+    rc, out = run(["lua5.3", "tools/tests/node_hand.lua", "node.lua"])
+    return rc == 0, out.strip()
+
 @check("node", "crafter: learn + craft (node_craft.lua)")
 def _():
     rc, out = run(["lua5.3", "tools/tests/node_craft.lua", "node.lua"])

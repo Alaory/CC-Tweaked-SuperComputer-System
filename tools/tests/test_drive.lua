@@ -119,3 +119,22 @@ for _, h in ipairs(hitsOf("tdsel")) do if h[6] == 30 then pick = h end end
 if pick then handleTouch(pick[1], pick[2]) end
 local la = sentDrive()
 CHECK(la[1] and la[1][1] == "look", "picking the turtle on the monitor: it looks around at once")
+
+-- YOUR commands are marked (the turtle pauses its job for them); automatic ones not
+do
+  local function lastMsg() return state.tOut[#state.tOut].msg end
+  TT.drive(30, "f")
+  CHECK(lastMsg().hand == true, "DRIVE step: marked as yours")
+  TT.send(30, "home", {})
+  CHECK(lastMsg().hand == nil, "an automatic home: not marked")
+  USER_ACTION = true
+  TT.send(30, "home", {})
+  CHECK(lastMsg().hand == true, "GO HOME you pressed: marked as yours")
+  TT.send(30, "stop", {})
+  CHECK(lastMsg().hand == nil, "STOP: never marked (it is a stop)")
+  USER_ACTION = false
+  HAND_CMD = true
+  TT.send(30, "goto", { 1, 2, 3 })
+  CHECK(lastMsg().hand == true, "a console command: marked as yours")
+  HAND_CMD = false
+end
