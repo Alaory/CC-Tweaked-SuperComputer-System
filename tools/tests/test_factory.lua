@@ -120,8 +120,35 @@ CHECK(#FPS == 6 and FPS[1] == "FP-computercraft:turtle_advanced", "exported by f
 -- your OWN enchanted pickaxe in the ME network: not taken, everything back
 ME, CRAFTS, CHEST, sent = run("own", function() end)
 CHECK(not sent:find("build"), "own pickaxe: no build")
-CHECK(FACTORY.last and tostring(FACTORY.last.msg):find("OWN", 1, true), "own pickaxe: told why")
+CHECK(FACTORY.lastMissing and FACTORY.lastMissing[1].name == "minecraft:diamond_pickaxe",
+      "own pickaxe only: it counts as missing (never taken), named")
 CHECK(ME["minecraft:diamond_pickaxe"] == 3 and ME["computercraft:turtle_advanced"] == 1, "own pickaxe: every part back in the ME network")
+
+-- YOUR used pickaxe AND a plain one in AE2 (two versions): the plain one is taken
+do
+  local ME, CRAFTABLE, CRAFTS, CHEST = setup("stock")
+  bridge.getItems = function(f)
+    if f.name == "minecraft:diamond_pickaxe" then
+      return { { name = f.name, amount = 1, fingerprint = "FP-USED", components = { ["minecraft:damage"] = 412 } },
+               { name = f.name, amount = 2, fingerprint = "FP-NEW", components = { ["minecraft:damage"] = 0 } } }
+    end
+    return { bridge.getItem(f) }
+  end
+  FPS = {}
+  local sent = {}
+  local send0 = TT.send
+  TT.send = function(id, c, ...) sent[#sent + 1] = c return send0(id, c, ...) end
+  for _ = 1, 6 do CLOCK = CLOCK + 11 for _, t in pairs(state.turtles) do t.lastSeen = CLOCK end FACTORY.tick() end
+  TT.send = send0
+  local usedNew = false
+  for _, fp in ipairs(FPS) do if fp == "FP-NEW" then usedNew = true end if fp == "FP-USED" then usedNew = false break end end
+  CHECK(usedNew and table.concat(sent, ","):find("build", 1, true), "your used pickaxe + a plain one: the PLAIN one goes into the turtle")
+  local rows = FACTORY.check()
+  local pick
+  for _, r in ipairs(rows) do if r.part.name == "minecraft:diamond_pickaxe" then pick = r end end
+  CHECK(pick and pick.own == 1, "check: your used one is counted apart (" .. tostring(pick and pick.own) .. ")")
+  bridge.getItems = nil
+end
 
 -- the builder is out (not at its home next to the chest): sent home first
 setup("stock")

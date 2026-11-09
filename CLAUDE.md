@@ -397,8 +397,12 @@ PneumaticCraft drone rides, turtle mapping/surveys, and an AE2 ME network view.
   the chest. Parts: CONFIG.factory.turtle/modem/geo/chunky/pick/fuel(+fuelCount
   16). Never your own items: before export the ME item is looked at -
   enchanted / renamed / damaged / a used computer-turtle (nbt or components with a
-  FILLED value - 1.21 lists defaults like damage 0) -> refused; exported by its
-  fingerprint. The builder must be AT HOME (else sent home first); a builder whose
+  FILLED value - 1.21 lists defaults like damage 0) -> never taken. FACTORY.variants(name):
+  EVERY version in AE2 (bridge.getItems{name}, else getItem) -> plain count, own count, a
+  plain fingerprint (before: the FIRST version AE2 gave was "the" item - the owner's one
+  used pickaxe stopped the factory). Parts count only plain ones (own only -> missing / AE2
+  crafts a fresh one); exported by the plain fingerprint. `factory` prints the parts FIRST
+  and status / "Last try" LAST (the reason had scrolled off the screen). The builder must be AT HOME (else sent home first); a builder whose
   inventory is too full gives everything back (parts left in the chest). 3 failures in a row -> stops until `factory build`. SETTINGS > FACTORY: fleet size,
   factory chest (tap = next EMPTY chest OR BARREL <= 54 slots on the cable, never FACTORY.reserved = the
   AE2 buffer / give / take / curios / fluid buffer), builder (tap = next

@@ -139,14 +139,43 @@ local function meCraftable(name)
   return ok and type(it) == "table" and it.isCraftable and true or false
 end
 
--- every part: { part, have, craftable, ok } - and the missing patterns
+-- every VERSION of an item in AE2 (a used / enchanted pickaxe is kept apart from
+-- a fresh one): how many PLAIN ones, how many of YOURS (never taken) and the
+-- fingerprint of a plain one. Before: the first version AE2 gave was taken as
+-- "the" item - your used pickaxe stopped the whole factory.
+local function variants(name)
+  local list
+  if bridge and type(bridge.getItems) == "function" then
+    local ok, r = pcall(bridge.getItems, { name = name })
+    if ok and type(r) == "table" then list = r end
+  end
+  if not list then
+    local ok, it = callx(bridge, "getItem", { name = name })
+    list = (ok and type(it) == "table") and { it } or {}
+  end
+  local plain, own, fp = 0, 0, nil
+  for _, it in pairs(list) do
+    if type(it) == "table" and it.name == name then
+      local n = tonumber(it.amount or it.count) or 0
+      if special(it) then own = own + n
+      else
+        plain = plain + n
+        if n > 0 and not fp then fp = it.fingerprint end
+      end
+    end
+  end
+  return plain, own, fp
+end
+FACTORY.variants = variants
+
+-- every part: { part, have (plain ones), own (yours - never taken), craftable, ok } - and the missing ones
 function FACTORY.check()
   local rows, missing = {}, {}
   for _, p in ipairs(FACTORY.parts()) do
-    local have = meCount(p.name)
+    local have, own = variants(p.name)
     local craftable = have < p.count and meCraftable(p.name)
     local ok = have >= p.count or craftable
-    rows[#rows + 1] = { part = p, have = have, craftable = craftable, ok = ok }
+    rows[#rows + 1] = { part = p, have = have, own = own, craftable = craftable, ok = ok }
     if not ok then missing[#missing + 1] = p end
   end
   return rows, missing
@@ -353,7 +382,11 @@ function FACTORY.tick()
         end
       end
       local names = {}
-      for _, p in ipairs(missing) do names[#names + 1] = p.what end
+      local ownOf = {}
+      for _, r in ipairs(rows) do if r.own and r.own > 0 then ownOf[r.part.name] = true end end
+      for _, p in ipairs(missing) do
+        names[#names + 1] = p.what .. (ownOf[p.name] and " (only YOUR own one - enchanted / renamed / used - is in AE2)" or "")
+      end
       if plan and #plan.missing > 0 then
         names = {}
         for _, n in ipairs(plan.missing) do names[#names + 1] = prettify(n) end
@@ -382,7 +415,7 @@ function FACTORY.tick()
   elseif j.step == "crafting" then
     local ready = true
     for _, p in ipairs(FACTORY.parts()) do
-      if meCount(p.name) < p.count then ready = false end
+      if (variants(p.name)) < p.count then ready = false end
     end
     if ready then
       setStep("export")
@@ -400,16 +433,16 @@ function FACTORY.tick()
     else
       j.exported = {}
       for _, p in ipairs(FACTORY.parts()) do
-        -- the item AE2 would give: never your own (enchanted / renamed / a used
-        -- turtle); asked for by its fingerprint, so it is exactly the one looked at
-        local okI, it = callx(bridge, "getItem", { name = p.name })
-        if okI and special(it) then
+        -- a PLAIN one, never your own (enchanted / renamed / a used turtle);
+        -- asked for by its fingerprint, so it is exactly the one looked at
+        local plain, own, fp = variants(p.name)
+        if plain < p.count then
           save()
-          return fail("the " .. p.what .. " in your ME system looks like your OWN one (enchanted, renamed or used) - " ..
-                      "not taken. Keep a plain one in stock (or let AE2 craft one) and take yours out of the network")
+          return fail("no plain " .. p.what .. " in AE2" .. ((own > 0) and " (only YOUR own one - not taken)" or "") ..
+                      " - keep a plain one in stock or give AE2 a pattern for it")
         end
         local filter = { name = p.name, count = p.count }
-        if okI and type(it) == "table" and it.fingerprint then filter.fingerprint = it.fingerprint end
+        if fp then filter.fingerprint = fp end
         local ok, r = transfer(bridge, { "exportItem" }, FACTORY.chest, filter)
         local moved = ok and numOf(r) or 0
         j.exported[p.name] = moved

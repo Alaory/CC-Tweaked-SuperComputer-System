@@ -700,27 +700,28 @@ function handleCommand(line)
       FACTORY.save()
       say("Factory stopped for an hour (set the fleet size to 0 in SETTINGS > FACTORY to switch it off).")
     else
-      local line = FACTORY.statusLine()
-      say("Factory: " .. line .. "   (fleet " .. FACTORY.fleet() .. ", target " .. tostring(FACTORY.cfg("target", 0)) .. ")")
-      local b = FACTORY.builderTurtle()
-      say("  builder: " .. (b and (b.label .. " #" .. b.id) or "none") .. "   chest: " .. tostring(FACTORY.chest or "none") ..
-          "   built so far: " .. tostring(FACTORY.built or 0))
-      if FACTORY.last then say("  last: " .. tostring(FACTORY.last.msg)) end
+      -- (the parts first, the status LAST: a long list scrolled the reason off the screen)
       if bridge then
-        say("Parts per turtle (in the ME network / AE2 can craft it):")
+        say("Parts per turtle (plain ones in AE2 - yours are never taken):")
         local rows = FACTORY.check()
         for _, r in ipairs(rows) do
-          local st = r.have >= r.part.count and "in stock" or (r.craftable and "AE2 crafts it" or "MISSING - no pattern")
-          say(string.format("  %-28s %3d x  have %-5d %s", r.part.what, r.part.count, r.have, st))
+          local st = r.have >= r.part.count and "ok" or (r.craftable and "AE2 crafts it" or
+                     ((r.own or 0) > 0 and "only YOURS (used/enchanted)" or "MISSING"))
+          say(string.format(" %-20s %2d x have %-6d %s", r.part.what:sub(1, 20), r.part.count, r.have, st))
           if not r.ok then
             local hint = FACTORY.hint(r.part.name)
-            say("      " .. r.part.name .. (hint and ("  - recipe: " .. hint) or "  - recipe: see JEI"))
+            say("    " .. r.part.name .. (hint and (" - recipe: " .. hint) or " - give AE2 a pattern"))
           end
         end
-        say("AE2 works out the sub-parts itself (e.g. the computer inside the turtle) - if it has patterns for them.")
       else
         say("No ME Bridge - the factory needs AE2.")
       end
+      local b = FACTORY.builderTurtle()
+      say("Builder: " .. (b and (b.label .. " #" .. b.id) or "none") .. "   chest: " .. tostring(FACTORY.chest or "none") ..
+          "   built: " .. tostring(FACTORY.built or 0))
+      if FACTORY.last then say("Last try: " .. tostring(FACTORY.last.msg)) end
+      local line = FACTORY.statusLine()
+      say("FACTORY: " .. line .. "   (fleet " .. FACTORY.fleet() .. ", target " .. tostring(FACTORY.cfg("target", 0)) .. ")")
     end
 
   elseif cmd == "schem" or cmd == "schematics" then
