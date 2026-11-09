@@ -53,12 +53,14 @@ local function upgrade(args)
   local ok, n = fn({ args = args, dir = "base", log = function(s) log[#log + 1] = s end })
   return ok, n, table.concat(log, "\n")
 end
-local function fresh(cap)
+-- what upgrade installs by default: the SLIM copy (dist/)
+local function slimOf(p) return readReal("dist/" .. p) end
+local function fresh(cap, full)
   DISK, CAP = {}, cap or 1048576
   -- an older install: every file, two changed, the owner's config
   for line in readReal("manifest.txt"):gmatch("[^\n]+") do
     local g, p = line:match("^(%S+) (%S+)")
-    if g == "base" then DISK[(p == "startup.lua") and p or ("base/" .. p)] = readReal(p) end
+    if g == "base" then DISK[(p == "startup.lua") and p or ("base/" .. p)] = full and readReal(p) or slimOf(p) end
   end
   DISK["base/base_ui_core.lua"] = "-- old\n" .. DISK["base/base_ui_core.lua"]:sub(1, 30000)
   DISK["base/base_me.lua"] = nil                              -- (a missing file = new)
@@ -71,8 +73,9 @@ CHECK(not ok and DISK["base/base_me.lua"] == nil, "check: nothing written\n" .. 
 CHECK(log:find("base_ui_core.lua") and log:find("base_me.lua (new)", 1, true), "check lists the changed files\n" .. log)
 ok, n, log = upgrade({})
 CHECK(ok and n == 2, "2 files updated\n" .. log)
-CHECK(DISK["base/base_me.lua"] == readReal("base_me.lua") and DISK["base/base_ui_core.lua"] == readReal("base_ui_core.lua"),
-      "the new files are exact")
+CHECK(DISK["base/base_me.lua"] == slimOf("base_me.lua") and DISK["base/base_ui_core.lua"] == slimOf("base_ui_core.lua"),
+      "the new files are the exact SLIM copies")
+CHECK(#DISK["base/base_me.lua"] < #readReal("base_me.lua") * 0.85, "slim = clearly smaller")
 CHECK(DISK["base/base_config.lua"] == "CONFIG = { mine = true }", "base_config.lua not touched")
 CHECK(DISK["base/base_ui_core.lua.new"] == nil, "no temp file left")
 ok, n, log = upgrade({})
@@ -80,7 +83,7 @@ CHECK(not ok and log:find("up to date"), "second run: up to date\n" .. log)
 
 -- a cut download: NOTHING written
 fresh()
-BROKEN = "base_me.lua"
+BROKEN = "dist/base_me.lua"
 local before = DISK["base/base_ui_core.lua"]
 ok, n, log = upgrade({})
 CHECK(not ok and DISK["base/base_ui_core.lua"] == before and DISK["base/base_me.lua"] == nil, "broken download: nothing changed\n" .. log)
@@ -95,10 +98,24 @@ CHECK(DISK["base/base_me.lua"] == nil, "too little space: nothing written")
 
 -- tight: room for the growth but not for a temp copy -> old out, new in
 fresh()
-local need = #readReal("base_me.lua") + (#readReal("base_ui_core.lua") - #DISK["base/base_ui_core.lua"])
+local need = #slimOf("base_me.lua") + (#slimOf("base_ui_core.lua") - #DISK["base/base_ui_core.lua"])
 CAP = used() + need + 9000
 ok, n, log = upgrade({})
-CHECK(ok and DISK["base/base_ui_core.lua"] == readReal("base_ui_core.lua"), "tight space: still updated\n" .. log)
+CHECK(ok and DISK["base/base_ui_core.lua"] == slimOf("base_ui_core.lua"), "tight space: still updated\n" .. log)
+
+-- a computer with the FULL files (installed by hand / an older upgrade): made slim
+fresh(nil, true)
+local before = used()
+ok, n, log = upgrade({})
+CHECK(ok and n >= 38 and used() < before - 150000, "full files -> slim: " .. tostring(n) .. " files, " ..
+      math.floor((before - used()) / 1024) .. " KB freed")
+-- upgrade full: the commented files (and it stays so); upgrade slim: back
+ok, n, log = upgrade({ "full" })
+CHECK(ok and DISK["base/base_me.lua"] == readReal("base_me.lua"), "upgrade full: the commented files\n" .. log)
+ok, n, log = upgrade({})
+CHECK(not ok and log:find("up to date"), "...and it stays full\n" .. log)
+ok, n, log = upgrade({ "slim" })
+CHECK(ok and DISK["base/base_me.lua"] == slimOf("base_me.lua"), "upgrade slim: back to slim")
 
 -- the pocket: only pocket.lua (+ upgrade.lua)
 DISK, CAP = {}, 1048576
@@ -109,6 +126,7 @@ local names = {}
 for k in pairs(DISK) do names[#names + 1] = k end
 table.sort(names)
 CHECK(ok and table.concat(names, ",") == "pocket.lua,upgrade.dat,upgrade.lua", "pocket gets pocket.lua + upgrade.lua: " .. table.concat(names, ","))
+CHECK(DISK["pocket.lua"] == slimOf("pocket.lua"), "the pocket gets the slim pocket.lua")
 pocket = nil
 
 print((FAILS == 0 and "PASS" or "FAIL") .. " (" .. N .. " checks, " .. FAILS .. " failed)")

@@ -4,6 +4,9 @@
 --   upgrade                  download what changed, check it, restart
 --   upgrade check            only show what would change (nothing is written)
 --   upgrade branch <name>    use another branch from now on (saved in upgrade.dat)
+--   upgrade full / slim      commented files from now on / SLIM ones again (the default:
+--                            no comments or indentation, ~30% smaller, the same code and the
+--                            same line numbers - the readable files stay on GitHub)
 --
 -- Works on the BASE (also typed in the base program's console) and on the
 -- POCKET computer (gets pocket.lua). Turtles get node.lua from the base, the
@@ -95,6 +98,12 @@ local function run(o)
     log("Branch set to " .. args[2] .. ". Type  upgrade  to get its files.")
     return false
   end
+  if args[1] == "full" or args[1] == "slim" then
+    saved.full = (args[1] == "full") or nil
+    writeBin(SAVE, textutils.serialize(saved))
+    log(saved.full and "From now on the FULL files (with comments) - getting them now."
+        or "From now on the SLIM files (no comments, ~30% smaller) - getting them now.")
+  end
   local checkOnly = args[1] == "check"
   local branch = saved.branch or DEFAULT_BRANCH
 
@@ -111,9 +120,15 @@ local function run(o)
   if not man then log("Could not read the file list: " .. tostring(err)) return false end
   local group = whichGroup()
   local list = {}
-  for line in man:gmatch("[^\n]+") do
-    local g, path, size, sum = line:match("^(%S+)%s+(%S+)%s+(%d+)%s+(%x+)")
-    if g == group then list[#list + 1] = { path = path, size = tonumber(size), sum = sum } end
+  -- the SLIM copies ("slim:<group>", from dist/) unless you want the full ones
+  local want = saved.full and group or ("slim:" .. group)
+  for pass = 1, 2 do
+    for line in man:gmatch("[^\n]+") do
+      local g, path, size, sum, src = line:match("^(%S+)%s+(%S+)%s+(%d+)%s+(%x+)%s*(%S*)")
+      if g == want then list[#list + 1] = { path = path, size = tonumber(size), sum = sum, src = (src ~= "" and src) or nil } end
+    end
+    if #list > 0 then break end
+    want = group                                -- (an older file list: no slim copies)
   end
   if #list == 0 then log("The file list has no files for this computer (" .. group .. ").") return false end
 
@@ -152,7 +167,7 @@ local function run(o)
   -- 4. download + check EVERYTHING first (nothing written yet)
   for i, f in ipairs(changed) do
     log(("  getting %s (%d/%d)"):format(f.path, i, #changed))
-    local body, e = get(base .. f.path)
+    local body, e = get(base .. (f.src or f.path))
     if not body then log("Download failed: " .. f.path .. " - " .. tostring(e) .. ". Nothing was changed.") return false end
     if #body ~= f.size or upgradeHash(body, yield) ~= f.sum then
       log("Download of " .. f.path .. " is not complete / not the right version. Nothing was changed - try again in a minute.")

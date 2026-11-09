@@ -1,0 +1,3495 @@
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+local CONFIG = {
+protocol  = "basectl",
+baseName  = "base",
+key       = "change-me",
+heartbeat = 5,
+climb     = 20,
+sidestep  = 6,
+trailMax  = 4000,
+gpsEvery  = 32,
+pathfind  = 4,
+navMargin = 40,
+navNodes  = 60000,
+navReplans = 40,
+navRescan = 6,
+backoff   = { 8, 16, 32 },
+outboxMax = 40,
+
+skyY      = 150,
+skyMinDist = 48,
+exitNear  = 24,
+noProgress = 60,
+deadLife  = 3 * 3600000,
+deadRadius = 3,
+learnEvery = 10,
+
+warpAutoMax = 40,
+warpGain  = 48,
+resendEvery = 20,
+settleMax = 10,
+gpsIdle   = 60,
+
+
+dig       = false,
+
+
+
+digOk     = { "stone", "dirt", "grass_block", "coarse_dirt", "rooted_dirt", "podzol", "mycelium",
+"gravel", "sand", "red_sand", "clay", "mud", "moss_block", "snow", "snow_block",
+"deepslate", "tuff", "andesite", "diorite", "granite", "calcite", "dripstone_block",
+"netherrack", "basalt", "blackstone", "soul_sand", "soul_soil", "end_stone",
+"*_leaves", "*_ore", "terracotta", "*_terracotta" },
+digNearHome = 24,
+geoItem   = "advancedperipherals:geo_scanner",
+scanRadius = 8,
+minFuel   = 200,
+refuelTo  = nil,
+lowFuel   = 2000,
+stationFuel = 20000,
+maxSurveyPoints = 400,
+}
+
+
+
+
+
+
+COPY = tonumber((os.getComputerLabel() or ""):match("%[c(%d+)%]%s*$"))
+COPYSFX = COPY and ("_c" .. COPY) or ""
+
+
+
+
+local SETTINGS_FILE = "node_settings"
+function loadSettings()
+if not fs.exists(SETTINGS_FILE) then return {} end
+local h = fs.open(SETTINGS_FILE, "r")
+local t = textutils.unserialize(h.readAll() or "")
+h.close()
+return type(t) == "table" and t or {}
+end
+for k, v in pairs(loadSettings()) do
+if k ~= "key" and k ~= "protocol" and k ~= "baseName" then CONFIG[k] = v end
+end
+
+
+function codeHash(str)
+local h1, h2 = 5381, 52711
+for i = 1, #str do
+local c = str:byte(i)
+h1 = (h1 * 33 + c) % 4294967296
+h2 = (h2 * 131 + c * 7 + i) % 4294967296
+end
+return string.format("%08x%08x", h1, h2)
+end
+local MYPATH = (shell and shell.getRunningProgram and shell.getRunningProgram()) or "startup.lua"
+local MYVER = "?"
+if fs.exists(MYPATH) then
+local h = fs.open(MYPATH, "r")
+MYVER = codeHash(h.readAll() or "")
+h.close()
+end
+local UPD, rebootSoon = nil, false
+local UPD_READY = nil
+
+
+if MYPATH ~= "startup.lua" and MYPATH ~= "/startup.lua" and fs.exists(MYPATH)
+and not fs.exists("startup.lua") then
+fs.copy(MYPATH, "startup.lua")
+print("Installed myself as startup.lua - I start by myself from now on.")
+end
+
+
+
+
+function findModemSide()
+for _, s in ipairs(rs.getSides()) do
+if peripheral.getType(s) == "modem" and peripheral.call(s, "isWireless") then return s end
+end
+end
+
+
+function findItemLike(part)
+for i = 1, 16 do
+local d = turtle.getItemDetail(i)
+if d and d.name:find(part, 1, true) then return i end
+end
+end
+
+
+
+
+function isChunkyItem(name) return tostring(name or ""):lower():find("chunk", 1, true) ~= nil end
+
+
+function equippedName(side)
+local f = (side == "left") and turtle.getEquippedLeft or turtle.getEquippedRight
+if not f then return nil end
+local ok, d = pcall(f)
+return ok and type(d) == "table" and d.name or nil
+end
+
+function isChunkySide(side)
+if isChunkyItem(equippedName(side)) then return true end
+local ty = peripheral.getType(side)
+return ty ~= nil and isChunkyItem(ty)
+end
+
+
+
+
+function equipOn(side)
+if isChunkySide(side) then return false end
+local was = STEPPING
+STEPPING = true
+local ok
+if side == "left" then ok = turtle.equipLeft() else ok = turtle.equipRight() end
+if ok then
+local d = turtle.getItemDetail(turtle.getSelectedSlot())
+if d and isChunkyItem(d.name) then
+if side == "left" then turtle.equipLeft() else turtle.equipRight() end
+ok = false
+end
+end
+STEPPING = was
+return ok
+end
+
+
+
+
+function chunkyFix(modemSide)
+if not (turtle.getEquippedLeft and turtle.getEquippedRight) then return nil end
+if isChunkySide("left") or isChunkySide("right") then return nil end
+for i = 1, 16 do
+local d = turtle.getItemDetail(i)
+if d and isChunkyItem(d.name) then
+local side = (modemSide == "left") and "right" or "left"
+local sel = turtle.getSelectedSlot()
+turtle.select(i)
+local ok
+if side == "left" then ok = turtle.equipLeft() else ok = turtle.equipRight() end
+turtle.select(sel)
+return ok and ("Chunky upgrade was in the inventory - equipped it again (" .. side .. ")") or nil
+end
+end
+end
+
+local modem = findModemSide()
+if not modem then
+
+
+
+local slot = findItemLike("modem")
+if slot then
+local sides = {}
+for _, side in ipairs({ "left", "right" }) do
+local ty = tostring(peripheral.getType(side) or ""):lower()
+if ty:find("geo", 1, true) or ty:find("automata", 1, true) then table.insert(sides, 1, side)
+elseif peripheral.getType(side) == nil then sides[#sides + 1] = side end
+end
+for _, side in ipairs(sides) do
+turtle.select(findItemLike("modem") or slot)
+if equipOn(side) then break end
+end
+turtle.select(1)
+sleep(0.3)
+modem = findModemSide()
+if modem then print("Modem was in the inventory - equipped it again.") end
+end
+end
+do
+local fixed = chunkyFix(modem)
+if fixed then print(fixed) end
+end
+if not modem then error("Equip a Wireless or Ender Modem first.", 0) end
+rednet.open(modem)
+
+
+
+
+local STATE_FILE = "node_state" .. COPYSFX
+local S = { pos = nil, home = nil, lastN = 0 }
+local outboxAck, outboxResend, outboxCount
+local moveCount = 0
+local recAdd
+local gearString
+local learnBlocked
+if fs.exists(STATE_FILE) then
+local h = fs.open(STATE_FILE, "r")
+local t = textutils.unserialize(h.readAll() or "")
+h.close()
+if type(t) == "table" then S = t end
+end
+
+local writeErr = nil
+
+
+
+
+
+
+SESSION = tostring(math.random(100000, 999999)) .. "-" .. tostring(os.epoch("utc") % 100000)
+DUP = false
+
+function writeFile(path, value)
+if DUP then return false end
+local ok, text = pcall(textutils.serialize, value)
+if not ok then
+writeErr = "cannot save " .. path .. ": " .. tostring(text)
+printError(writeErr)
+return false
+end
+local h = fs.open(path, "w")
+if not h then return false end
+local okW, errW = pcall(function() h.write(text) h.close() end)
+if not okW then
+pcall(h.close)
+writeErr = "cannot save " .. path .. ": " .. tostring(errW)
+return false
+end
+return true
+end
+
+function save()
+writeFile(STATE_FILE, S)
+end
+S.recording = nil
+
+
+local FACE = { south = 0, west = 1, north = 2, east = 3 }
+local FNAME = { [0] = "south", "west", "north", "east" }
+local DX = { [0] = 0, -1, 0, 1 }
+local DZ = { [0] = 1, 0, -1, 0 }
+
+function fmt()
+if not (S.pos and S.pos.x) then return "?" end
+return S.pos.x .. " " .. S.pos.y .. " " .. S.pos.z
+end
+function known() return S.pos ~= nil and S.pos.x ~= nil and S.pos.f ~= nil end
+
+
+
+
+
+
+local TRAIL_FILE = "node_trail" .. COPYSFX
+local trail, trailIdx, trailDirty = {}, {}, 0
+local T = { x = 0, y = 0, z = 0, f = 0 }
+function trailRebuild()
+trailIdx = {}
+for i, k in ipairs(trail) do trailIdx[k] = i end
+end
+if fs.exists(TRAIL_FILE) then
+local h = fs.open(TRAIL_FILE, "r")
+local t = textutils.unserialize(h.readAll() or "")
+h.close()
+if type(t) == "table" and t.v == 2 and type(t.trail) == "table" and type(t.T) == "table" then
+trail, T = t.trail, t.T
+end
+trailRebuild()
+end
+function trailSave()
+writeFile(TRAIL_FILE, { v = 2, T = T, trail = trail })
+trailDirty = 0
+end
+function frameKey() return T.x .. "," .. T.y .. "," .. T.z end
+function trailReset()
+T = { x = 0, y = 0, z = 0, f = 0 }
+trail = { frameKey() }
+trailRebuild()
+trailSave()
+end
+if #trail == 0 then trailReset() end
+function trailAdd()
+local k = frameKey()
+local i = trailIdx[k]
+if i then
+
+for j = #trail, i + 1, -1 do trailIdx[trail[j]] = nil; trail[j] = nil end
+else
+trail[#trail + 1] = k
+trailIdx[k] = #trail
+if #trail > CONFIG.trailMax + 200 then
+for _ = 1, 200 do table.remove(trail, 1) end
+trailRebuild()
+end
+end
+trailDirty = trailDirty + 1
+if trailDirty >= 25 then trailSave() end
+end
+
+
+function frameMove(kind, dir)
+moveCount = moveCount + 1
+local f = dir or T.f
+if kind == "u" then T.y = T.y + 1
+elseif kind == "d" then T.y = T.y - 1
+elseif kind == "f" then T.x, T.z = T.x + DX[f], T.z + DZ[f]
+else T.x, T.z = T.x - DX[f], T.z - DZ[f] end
+trailAdd()
+end
+
+
+
+
+function sign(key, t, n, cmd, args)
+local parts = {}
+for i, v in ipairs(args or {}) do parts[i] = tostring(v) end
+local str = key .. "|" .. tostring(t) .. "|" .. tostring(n) .. "|" .. tostring(cmd or "") ..
+"|" .. table.concat(parts, ",")
+local h1, h2 = 5381, 52711
+for i = 1, #str do
+local c = str:byte(i)
+h1 = (h1 * 33 + c) % 4294967296
+h2 = (h2 * 131 + c * 7 + i) % 4294967296
+end
+return string.format("%08x%08x", h1, h2)
+end
+
+local baseId, task, job, stopFlag = nil, "idle", nil, false
+local lastSent = 0
+
+function itemCount()
+local n = 0
+for i = 1, 16 do n = n + turtle.getItemCount(i) end
+return n
+end
+
+local modemAttached = true
+local pendingInfo = nil
+
+function send(t, extra)
+if not modemAttached then return end
+if not baseId then
+local ok, id = pcall(rednet.lookup, CONFIG.protocol, CONFIG.baseName)
+baseId = ok and id or nil
+end
+if not baseId then return end
+local n = os.epoch("utc")
+if n <= lastSent then n = lastSent + 1 end
+lastSent = n
+
+
+local m = {}
+for k, v in pairs(extra or {}) do m[k] = v end
+m.t, m.n = t, n
+m.sig = sign(CONFIG.key, t, n)
+m.ses = SESSION
+m.copy = COPY
+if DUP then m.dup = true end
+m.label = os.getComputerLabel() or ("Turtle " .. os.getComputerID())
+local fuel = turtle.getFuelLevel()
+m.fuel = fuel
+m.fuelMax = (fuel ~= "unlimited") and turtle.getFuelLimit() or nil
+m.items = itemCount()
+m.task = task
+if S.pos and S.pos.x then
+m.pos = { x = S.pos.x, y = S.pos.y, z = S.pos.z, f = S.pos.f and FNAME[S.pos.f] or nil }
+end
+m.home = S.home and { x = S.home.x, y = S.home.y, z = S.home.z } or nil
+m.stuck = S.stuck
+m.trail = #trail
+m.anchor = S.anchor
+m.ver = MYVER
+m.updReady = UPD_READY and UPD_READY.ver or nil
+m.gear = S.gear
+m.rec = S.recording and (S.recCount or 1) or nil
+m.waiting = outboxCount and outboxCount() or 0
+pcall(rednet.send, baseId, m, CONFIG.protocol)
+end
+
+function reply(cmd, ok, msg)
+send("result", { cmd = cmd, ok = ok, msg = msg })
+if pendingInfo then
+for i, l in ipairs(pendingInfo) do
+send("result", { cmd = cmd, ok = false, msg = "scanner functions " .. i .. "/" .. #pendingInfo .. ": " .. l })
+end
+pendingInfo = nil
+end
+end
+
+
+
+
+local memFree
+function moved(dx, dy, dz)
+if S.pos and S.pos.x then
+S.pos.x, S.pos.y, S.pos.z = S.pos.x + dx, S.pos.y + dy, S.pos.z + dz
+save()
+if memFree then memFree(S.pos.x, S.pos.y, S.pos.z) end
+if recAdd then recAdd() end
+end
+end
+
+
+
+
+function blockedOrWait(move, detect, dir)
+if detect() then
+if learnBlocked then learnBlocked(dir) end
+return false
+end
+for _ = 1, 4 do
+sleep(0.5)
+if move() then return true end
+if detect() then
+if learnBlocked then learnBlocked(dir) end
+return false
+end
+end
+return false
+end
+
+
+
+
+function ensureFuel()
+local f = turtle.getFuelLevel()
+if f == "unlimited" or f >= 20 then return end
+if S.reuse and next(S.reuse) then
+topUp(math.min(refuelTarget(), f + 2000), true)
+if turtle.getFuelLevel() >= 20 then return end
+end
+local sel = turtle.getSelectedSlot()
+for i = 1, 16 do
+local d = turtle.getItemDetail(i)
+if d and isFuel(d.name) then
+turtle.select(i)
+while turtle.getFuelLevel() < 500 and turtle.refuel(1) do end
+if turtle.getFuelLevel() >= 500 then break end
+end
+end
+turtle.select(sel)
+end
+
+
+
+STEPPING = false
+
+FORCE_STOP = false
+function forceCheck()
+if FORCE_STOP then error("stopped (forced) at " .. fmt(), 0) end
+end
+
+function fwd()
+forceCheck()
+STEPPING = true
+ensureFuel()
+local ok = turtle.forward() or blockedOrWait(turtle.forward, turtle.detect, "forward")
+if ok then
+if S.pos and S.pos.f then moved(DX[S.pos.f], 0, DZ[S.pos.f]) end
+frameMove("f")
+end
+STEPPING = false
+return ok
+end
+function bck()
+forceCheck()
+STEPPING = true
+ensureFuel()
+local ok = turtle.back()
+if ok then
+if S.pos and S.pos.f then moved(-DX[S.pos.f], 0, -DZ[S.pos.f]) end
+frameMove("b")
+end
+STEPPING = false
+return ok
+end
+function up()
+forceCheck()
+STEPPING = true
+ensureFuel()
+local ok = turtle.up() or blockedOrWait(turtle.up, turtle.detectUp, "up")
+if ok then
+moved(0, 1, 0)
+frameMove("u")
+end
+STEPPING = false
+return ok
+end
+function down()
+forceCheck()
+STEPPING = true
+ensureFuel()
+local ok = turtle.down() or blockedOrWait(turtle.down, turtle.detectDown, "down")
+if ok then
+moved(0, -1, 0)
+frameMove("d")
+end
+STEPPING = false
+return ok
+end
+function right()
+forceCheck()
+STEPPING = true
+turtle.turnRight()
+if S.pos and S.pos.f then S.pos.f = (S.pos.f + 1) % 4 save() end
+T.f = (T.f + 1) % 4
+STEPPING = false
+end
+function left()
+forceCheck()
+STEPPING = true
+turtle.turnLeft()
+if S.pos and S.pos.f then S.pos.f = (S.pos.f + 3) % 4 save() end
+T.f = (T.f + 3) % 4
+STEPPING = false
+end
+
+function faceFrame(tf)
+while T.f ~= tf do
+if (T.f + 1) % 4 == tf then right() else left() end
+end
+end
+function face(f)
+while S.pos.f ~= f do
+if (S.pos.f + 1) % 4 == f then right() else left() end
+end
+end
+
+local tryDig
+local gpsCheck
+local findWay
+
+
+
+function stepForward()
+if fwd() then return true end
+if tryDig("forward") and fwd() then return true end
+
+
+local maxClimb = CONFIG.climb
+if findItem(CONFIG.geoItem) then maxClimb = math.min(6, CONFIG.climb) end
+for _ = 1, maxClimb do
+if stopFlag then return false end
+if not up() then
+if not (tryDig("up") and up()) then return false end
+end
+if fwd() then return true end
+if tryDig("forward") and fwd() then return true end
+end
+return false
+end
+
+
+function sidestep(f)
+for _, d in ipairs({ 1, 3 }) do
+face((f + d) % 4)
+if fwd() or (tryDig("forward") and fwd()) then
+face(f)
+return true
+end
+end
+face(f)
+return false
+end
+
+function noFuel()
+ensureFuel()
+local f = turtle.getFuelLevel()
+return f ~= "unlimited" and f < 1
+end
+
+
+
+
+
+
+
+
+
+local TOPUP = {}
+
+
+SLOT_LOCK, TOPUP_RUNNING = false, false
+local REUSE_SLOTS
+function topUp(target, onlyReusable, budget)
+local f0 = turtle.getFuelLevel()
+if f0 == "unlimited" or SLOT_LOCK then return 0, false end
+TOPUP_RUNNING = true
+local limit = turtle.getFuelLimit()
+target = math.min(target or limit, limit)
+S.reuse = S.reuse or {}
+local t0, calls, refused, sel, learnt = os.clock(), 0, 0, turtle.getSelectedSlot(), false
+
+
+local slots = {}
+if onlyReusable and REUSE_SLOTS then
+for _, sl in ipairs(REUSE_SLOTS) do slots[#slots + 1] = { i = sl.i, name = sl.name, count = sl.count } end
+else
+for i = 1, 16 do
+local d = turtle.getItemDetail(i)
+if d and (not onlyReusable or S.reuse[d.name]) then
+slots[#slots + 1] = { i = i, name = d.name, count = d.count }
+end
+end
+table.sort(slots, function(a, b)
+local ra, rb = S.reuse[a.name] and 1 or 0, S.reuse[b.name] and 1 or 0
+if ra ~= rb then return ra > rb end
+return a.i < b.i
+end)
+end
+local stop = false
+while #slots > 0 and turtle.getFuelLevel() < target and not stop do
+local keep, any, cooling = {}, false, false
+for _, sl in ipairs(slots) do
+turtle.select(sl.i)
+local dead = false
+while turtle.getFuelLevel() < target do
+if (budget and calls >= budget) or (job and stopFlag) or SLOT_LOCK then stop = true break end
+local before = turtle.getFuelLevel()
+local ok = turtle.refuel(1)
+calls = calls + 1
+if not ok or turtle.getFuelLevel() <= before then
+
+local d = S.reuse[sl.name] and turtle.getItemDetail(sl.i)
+if d and d.name == sl.name then
+cooling, refused = true, refused + 1
+else
+dead = true
+end
+break
+end
+any = true
+if not S.reuse[sl.name] then
+
+local c = turtle.getItemCount(sl.i)
+if c >= sl.count then S.reuse[sl.name], learnt = true, true
+else
+sl.count = c
+if c == 0 then dead = true break end
+end
+end
+end
+if not dead then keep[#keep + 1] = sl end
+if stop then break end
+end
+slots = keep
+if not any then
+if not cooling or stop then break end
+sleep(0.05)
+calls = calls + 1
+end
+end
+turtle.select(sel)
+
+local rs = {}
+for _, sl in ipairs(slots) do if S.reuse[sl.name] then rs[#rs + 1] = sl end end
+REUSE_SLOTS = (#rs > 0) and rs or nil
+if learnt then save() end
+TOPUP_RUNNING = false
+local gained = turtle.getFuelLevel() - f0
+TOPUP = { gained = gained, uses = calls - refused, refused = refused, secs = os.clock() - t0 }
+return gained, stop and budget ~= nil and calls >= budget
+end
+
+
+function refuelTarget()
+local limit = turtle.getFuelLimit()
+return math.min(limit, tonumber(CONFIG.refuelTo) or limit)
+end
+
+
+function stepTo(x, y, z)
+local dx, dy, dz = x - S.pos.x, y - S.pos.y, z - S.pos.z
+if math.abs(dx) + math.abs(dy) + math.abs(dz) ~= 1 then return false end
+if dy == 1 then return up() or (tryDig("up") and up()) end
+if dy == -1 then return down() or (tryDig("down") and down()) end
+if dx == 1 then face(3) elseif dx == -1 then face(1) elseif dz == 1 then face(0) else face(2) end
+return fwd() or (tryDig("forward") and fwd())
+end
+
+
+function stepToFrame(x, y, z)
+local dx, dy, dz = x - T.x, y - T.y, z - T.z
+if math.abs(dx) + math.abs(dy) + math.abs(dz) ~= 1 then return false end
+if dy == 1 then return up() or (tryDig("up") and up()) end
+if dy == -1 then return down() or (tryDig("down") and down()) end
+if dx == 1 then faceFrame(3) elseif dx == -1 then faceFrame(1)
+elseif dz == 1 then faceFrame(0) else faceFrame(2) end
+return fwd() or (tryDig("forward") and fwd())
+end
+
+
+function backtrack()
+local total = #trail
+while #trail > 1 do
+if stopFlag then return false, "stopped while retracing at " .. fmt() end
+if noFuel() then return false, "out of fuel at " .. fmt() end
+if trail[#trail] ~= frameKey() then return false, "path record does not match my moves" end
+task = "retracing path " .. (total - #trail + 1) .. "/" .. (total - 1)
+local x, y, z = trail[#trail - 1]:match("^(-?%d+),(-?%d+),(-?%d+)$")
+if not stepToFrame(tonumber(x), tonumber(y), tonumber(z)) then
+return false, "retracing blocked at " .. fmt()
+end
+end
+return true
+end
+
+
+function backtrackSteps(n)
+local done = 0
+while done < n and #trail > 1 do
+if stopFlag then return false end
+if trail[#trail] ~= frameKey() then return false end
+local x, y, z = trail[#trail - 1]:match("^(-?%d+),(-?%d+),(-?%d+)$")
+if not stepToFrame(tonumber(x), tonumber(y), tonumber(z)) then return false end
+done = done + 1
+end
+return done > 0
+end
+
+function round(v) return math.floor(v + 0.5) end
+local gpsWarned = false
+
+
+
+function gpsRaw(timeout)
+local ok, x, y, z = pcall(gps.locate, timeout or 1)
+if not ok or not x then return nil end
+if not gpsWarned and (math.abs(x - round(x)) > 0.15 or math.abs(y - round(y)) > 0.15
+or math.abs(z - round(z)) > 0.15) then
+gpsWarned = true
+send("result", { cmd = "gps", ok = false, msg = string.format(
+"GPS gives uneven numbers (%.2f %.2f %.2f) - check the coordinates in the gps host computers' startup", x, y, z) })
+end
+return round(x), round(y), round(z)
+end
+
+
+
+
+function detectFacing(x, y, z)
+for turns = 0, 3 do
+if turtle.forward() then
+local x2, _, z2 = gpsRaw(2)
+local backOk = turtle.back()
+local f
+if x2 then
+if x2 > x then f = 3 elseif x2 < x then f = 1 elseif z2 > z then f = 0 elseif z2 < z then f = 2 end
+end
+if not backOk then
+if x2 then x, z = x2, z2 end
+frameMove("f", (T.f + turns) % 4)
+end
+for _ = 1, turns do
+turtle.turnLeft()
+if f then f = (f + 3) % 4 end
+end
+return f, x, y, z
+end
+turtle.turnRight()
+end
+
+return nil, x, y, z
+end
+
+
+function gpsFix()
+local x, y, z = gpsRaw(2)
+if not x then return false, "no GPS signal - use setpos instead" end
+STEPPING = true
+local okF, f, rx, ry, rz = pcall(detectFacing, x, y, z)
+STEPPING = false
+if not okF then error(f, 0) end
+local oldF = S.pos and S.pos.f or nil
+local changed = not (S.pos and S.pos.x == rx and S.pos.y == ry and S.pos.z == rz and (f == nil or f == oldF))
+S.pos = { x = rx, y = ry, z = rz, f = f or oldF }
+save()
+local note = ""
+if f == nil then note = " (facing NOT checked: blocked on all sides)"
+elseif oldF ~= nil and oldF ~= f then note = " (facing was wrong: " .. FNAME[oldF] .. ")" end
+return true, "GPS: " .. fmt() .. (S.pos.f and (" facing " .. FNAME[S.pos.f]) or "") .. note
+end
+
+
+
+gpsCheck = function()
+if not (S.pos and S.pos.x) then return nil end
+local x, y, z = gpsRaw(1)
+if not x then return nil end
+if x ~= S.pos.x or y ~= S.pos.y or z ~= S.pos.z then
+local was = fmt()
+S.pos.x, S.pos.y, S.pos.z = x, y, z
+save()
+return "position corrected by GPS: " .. was .. " -> " .. fmt()
+end
+end
+
+
+function verifyPose()
+if gpsRaw(1) then
+local ok, msg = gpsFix()
+if ok and (msg:find("was wrong", 1, true) or msg:find("NOT checked", 1, true)) then
+send("result", { cmd = "gps", ok = true, msg = msg })
+end
+end
+end
+
+
+
+
+function findItem(name)
+for i = 1, 16 do
+local d = turtle.getItemDetail(i)
+if d and d.name == name then return i end
+end
+end
+
+
+function withScanner(fn)
+if modem ~= "left" and modem ~= "right" then
+return false, "the modem must be EQUIPPED (left or right) for scanning"
+end
+local slot = findItem(CONFIG.geoItem)
+if not slot then return false, "no Geo Scanner in the inventory" end
+turtle.select(slot)
+if not equipOn(modem) then
+turtle.select(1)
+return false, "could not equip the Geo Scanner"
+end
+modemAttached = false
+
+
+
+local sc, methods
+for _ = 1, 20 do
+sleep(0.1)
+methods = peripheral.getMethods(modem)
+if methods then
+local name
+for _, m in ipairs(methods) do if m == "scan" then name = m end end
+if not name then
+for _, m in ipairs(methods) do
+local l = m:lower()
+if l:find("scan", 1, true) and not l:find("cost", 1, true) then name = m break end
+end
+end
+if name then
+local side = modem
+sc = { scan = function(r) return peripheral.call(side, name, r) end, fname = name }
+break
+end
+end
+end
+local info
+if not sc then
+info = "the Geo Scanner has no scan function (side " .. modem .. ", type " ..
+tostring((peripheral.getType(modem))) .. ")"
+end
+local ok, a, b = pcall(function()
+if not sc then error(info, 0) end
+return fn(sc)
+end)
+if not sc and methods then
+
+local line = ""
+local lines = {}
+for _, m in ipairs(methods) do
+if #line + #m > 60 then lines[#lines + 1] = line; line = "" end
+line = line .. (line == "" and "" or ",") .. m
+end
+if line ~= "" then lines[#lines + 1] = line end
+pendingInfo = lines
+end
+
+
+local back = false
+local mslot = findItemLike("modem")
+if mslot then
+turtle.select(mslot)
+back = equipOn(modem)
+end
+turtle.select(1)
+sleep(0.2)
+pcall(rednet.open, modem)
+modemAttached = back and true or false
+if not back then return false, "could not re-equip the modem!" end
+if not ok then return false, tostring(a) end
+return a, b
+end
+
+
+
+function withEquipped(part, fn)
+if modem ~= "left" and modem ~= "right" then return false end
+local slot = findItemLike(part)
+if not slot then return false end
+turtle.select(slot)
+if not equipOn(modem) then turtle.select(1) return false end
+modemAttached = false
+sleep(0.1)
+local ok, res = pcall(fn)
+local mslot = findItemLike("modem")
+local back = false
+if mslot then
+turtle.select(mslot)
+back = equipOn(modem)
+end
+turtle.select(1)
+sleep(0.1)
+pcall(rednet.open, modem)
+modemAttached = back and true or false
+return ok and res
+end
+
+function natural(name)
+local id = tostring(name):match(":(.+)$") or tostring(name)
+for _, n in ipairs(CONFIG.digOk) do
+if n:sub(1, 1) == "*" then
+local suf = n:sub(2)
+if id:sub(-#suf) == suf then return true end
+elseif id == n then return true end
+end
+return false
+end
+
+tryDig = function(dir)
+
+if not (CONFIG.dig or DIG_JOB) then return false end
+
+if S.home and S.pos and S.pos.x and math.abs(S.pos.x - S.home.x) + math.abs(S.pos.z - S.home.z) <
+(tonumber(CONFIG.digNearHome) or 24) then return false end
+
+if HOMEPROBE and S.pos and math.abs(S.pos.x - HOMEPROBE.x) + math.abs(S.pos.y - HOMEPROBE.y) +
+math.abs(S.pos.z - HOMEPROBE.z) <= 2 then return false end
+local inspect = (dir == "up" and turtle.inspectUp) or (dir == "down" and turtle.inspectDown) or turtle.inspect
+local okI, data = inspect()
+if not okI or type(data) ~= "table" or not natural(data.name) then return false end
+local dig = (dir == "up" and turtle.digUp) or (dir == "down" and turtle.digDown) or turtle.dig
+return withEquipped("_pickaxe", dig) == true
+end
+
+function isOre(b)
+local n = tostring(b.name)
+if n:find("_ore", 1, true) or n:find("ancient_debris", 1, true) then return true end
+if type(b.tags) == "table" then
+for _, t in pairs(b.tags) do
+if tostring(t):find("ores", 1, true) then return true end
+end
+end
+return false
+end
+
+
+
+
+
+
+
+function now() return os.epoch("utc") end
+local MEM, memCount = {}, 0
+local DEAD = {}
+local EXIT = nil
+local pend = { walls = {}, clears = {}, dead = {} }
+function memKey(x, y, z) return x .. "," .. y .. "," .. z end
+
+
+local LIFE = {
+hard  = { fresh = 10 * 60000, fade = 6 * 3600000 },
+short = { fresh = 2 * 60000,  fade = 30 * 60000 },
+door  = { fresh = 60000,      fade = 10 * 60000 },
+}
+function kindOf(name)
+local n = tostring(name)
+if n:find("door", 1, true) or n:find("gate", 1, true) then return "door" end
+if n:find("sand", 1, true) or n:find("gravel", 1, true) or n:find("leaves", 1, true)
+or n:find("snow", 1, true) or n:find("powder", 1, true) or n:find("scaffold", 1, true) then
+return "short"
+end
+return "hard"
+end
+
+function wallCost(e, t)
+local L = LIFE[e.k] or LIFE.hard
+local age = t - e.t
+if age < L.fresh then return nil end
+if age > L.fresh + L.fade then return 0 end
+return 40 * (1 - (age - L.fresh) / L.fade)
+end
+function isLiquid(name)
+name = tostring(name)
+return name:find("water", 1, true) or name:find("lava", 1, true)
+end
+
+function memWall(x, y, z, kind, src, t)
+local k = memKey(x, y, z)
+local old = MEM[k]
+t = t or now()
+if old and old.t > t then return end
+if not old then memCount = memCount + 1 end
+MEM[k] = { t = t, k = kind or "hard", s = src or "scan" }
+end
+function memClear(x, y, z)
+local k = memKey(x, y, z)
+local old = MEM[k]
+if old then
+MEM[k] = nil
+memCount = memCount - 1
+if old.s ~= "scan" then pend.clears[#pend.clears + 1] = k end
+end
+end
+memFree = function(x, y, z) memClear(x, y, z) end
+
+
+function learnScan(data, r)
+if not (S.pos and S.pos.x) then return end
+if memCount > 250000 then MEM, memCount = {}, 0 end
+local cx, cy, cz = S.pos.x, S.pos.y, S.pos.z
+local seen = {}
+for _, b in ipairs(data) do
+if type(b) == "table" and b.name and not isLiquid(b.name) then
+seen[memKey(cx + (b.x or 0), cy + (b.y or 0), cz + (b.z or 0))] = kindOf(b.name)
+end
+end
+local t = now()
+for dx = -r, r do
+for dy = -r, r do
+for dz = -r, r do
+local x, y, z = cx + dx, cy + dy, cz + dz
+local kind = seen[memKey(x, y, z)]
+if kind then memWall(x, y, z, kind, "scan", t) else memClear(x, y, z) end
+end
+end
+end
+memClear(cx, cy, cz)
+end
+local lastScanAt = nil
+
+
+learnBlocked = function(dir)
+if not (S.pos and S.pos.x and S.pos.f) then return end
+local inspect = (dir == "up" and turtle.inspectUp) or (dir == "down" and turtle.inspectDown) or turtle.inspect
+local okI, d = inspect()
+if not okI then return end
+local x, y, z = S.pos.x, S.pos.y, S.pos.z
+if dir == "up" then y = y + 1
+elseif dir == "down" then y = y - 1
+else x, z = x + DX[S.pos.f], z + DZ[S.pos.f] end
+local kind = kindOf(type(d) == "table" and d.name)
+local k = memKey(x, y, z)
+local old = MEM[k]
+memWall(x, y, z, kind, "bump")
+if not old or old.s == "scan" or (now() - old.t) > 60000 then
+pend.walls[#pend.walls + 1] = k .. "," .. kind
+end
+end
+
+
+function addDead(x, y, z)
+local k = memKey(x, y, z)
+DEAD[k] = { x = x, y = y, z = z, t = now() }
+pend.dead[#pend.dead + 1] = k
+end
+
+function deadNear(x, y, z)
+local r, t = CONFIG.deadRadius, now()
+for _, d in pairs(DEAD) do
+if t - d.t < CONFIG.deadLife and math.abs(d.x - x) <= r and math.abs(d.z - z) <= r
+and math.abs(d.y - y) <= r then
+return true
+end
+end
+return false
+end
+
+
+local REC, recIdx = nil, nil
+function recStart()
+REC, recIdx = {}, {}
+if S.pos and S.pos.x then
+REC[1] = { S.pos.x, S.pos.y, S.pos.z }
+recIdx[memKey(S.pos.x, S.pos.y, S.pos.z)] = 1
+end
+end
+recAdd = function()
+if not REC then return end
+local k = memKey(S.pos.x, S.pos.y, S.pos.z)
+local i = recIdx[k]
+if i then
+for j = #REC, i + 1, -1 do
+recIdx[memKey(REC[j][1], REC[j][2], REC[j][3])] = nil
+REC[j] = nil
+end
+else
+REC[#REC + 1] = { S.pos.x, S.pos.y, S.pos.z }
+recIdx[k] = #REC
+end
+S.recCount = #REC
+end
+function recStop()
+local r = REC
+REC, recIdx = nil, nil
+return r or {}
+end
+
+function compressRoute(cells)
+if #cells <= 2 then return cells end
+local out = { cells[1] }
+for i = 2, #cells - 1 do
+local a, b, c = cells[i - 1], cells[i], cells[i + 1]
+local d1 = (b[1] - a[1]) .. "," .. (b[2] - a[2]) .. "," .. (b[3] - a[3])
+local d2 = (c[1] - b[1]) .. "," .. (c[2] - b[2]) .. "," .. (c[3] - b[3])
+if d1 ~= d2 then out[#out + 1] = b end
+end
+out[#out + 1] = cells[#cells]
+return out
+end
+function routeToString(points)
+local o = {}
+for _, p in ipairs(points) do o[#o + 1] = p[1] .. "," .. p[2] .. "," .. p[3] end
+return table.concat(o, ";")
+end
+function routeFromString(str)
+local pts = {}
+for x, y, z in tostring(str or ""):gmatch("(-?%d+),(-?%d+),(-?%d+)") do
+pts[#pts + 1] = { tonumber(x), tonumber(y), tonumber(z) }
+end
+return pts
+end
+
+
+function scanRaw(r)
+local fix = gpsCheck()
+if fix then send("result", { cmd = "gps", ok = true, msg = fix }) end
+if not (S.pos and S.pos.x) then return nil, "position unknown - use GPS LOCATE" end
+r = math.max(1, math.min(16, math.floor(tonumber(r) or CONFIG.scanRadius)))
+local data, err = withScanner(function(sc)
+local res, e = sc.scan(r)
+if not res then
+sleep(2.5)
+res, e = sc.scan(r)
+end
+if not res then error(e or "scan failed") end
+return res
+end)
+if not data then return nil, err end
+learnScan(data, r)
+lastScanAt = { x = S.pos.x, y = S.pos.y, z = S.pos.z }
+return data, r
+end
+
+
+
+local OUTBOX_FILE = "node_outbox" .. COPYSFX
+local outbox = {}
+if fs.exists(OUTBOX_FILE) then
+local h = fs.open(OUTBOX_FILE, "r")
+local t = textutils.unserialize(h.readAll() or "")
+h.close()
+if type(t) == "table" then
+outbox = t
+for _, p in ipairs(outbox) do
+if type(p) == "table" then p.home, p.pos, p.sig, p.n, p.t = nil, nil, nil, nil, nil end
+end
+end
+end
+
+
+do
+local stripped = 0
+for _, p in ipairs(outbox) do
+if type(p) == "table" and type(p.ores) == "table" and #p.ores > 0 then p.ores = {} stripped = stripped + 1 end
+end
+local okF, free = pcall(fs.getFreeSpace, "/")
+local trimmed = 0
+if okF and type(free) == "number" and free < 100000 then
+while #outbox > 10 do table.remove(outbox, 1) trimmed = trimmed + 1 end
+if fs.exists("startup.old") then pcall(fs.delete, "startup.old") end
+end
+if stripped > 0 or trimmed > 0 then
+writeFile(OUTBOX_FILE, outbox)
+CLEANNOTE = "cleaned up old data: " .. stripped .. " stored scans without ores" ..
+(trimmed > 0 and (", " .. trimmed .. " old scans dropped (disk was nearly full)") or "")
+end
+end
+function outboxSave()
+writeFile(OUTBOX_FILE, outbox)
+end
+function sendScan(payload)
+S.scanSeq = (S.scanSeq or 0) + 1
+save()
+payload.sid = S.scanSeq
+outbox[#outbox + 1] = payload
+while #outbox > CONFIG.outboxMax do table.remove(outbox, 1) end
+outboxSave()
+send("scan", payload)
+end
+outboxAck = function(sid)
+for i = #outbox, 1, -1 do
+if outbox[i].sid == sid then table.remove(outbox, i) end
+end
+outboxSave()
+end
+outboxCount = function() return #outbox end
+outboxResend = function()
+for i = 1, math.min(3, #outbox) do send("scan", outbox[i]) end
+end
+
+
+function sendSummary(data, r)
+local n = 2 * r + 1
+local cols, names, nidx, ores = {}, {}, {}, {}
+local function pal(nm)
+local i = nidx[nm]
+if not i then
+i = #names + 1
+names[i], nidx[nm] = nm, i
+end
+return i
+end
+for _, b in ipairs(data) do
+if type(b) == "table" and b.name then
+local dx, dy, dz = b.x or 0, b.y or 0, b.z or 0
+if not (dx == 0 and dy == 0 and dz == 0) and math.abs(dx) <= r and math.abs(dz) <= r then
+local idx = (dz + r) * n + (dx + r) + 1
+local t = cols[idx]
+if not t or dy > t[1] then cols[idx] = { dy, pal(b.name) } end
+
+
+end
+end
+end
+sendScan({ x = S.pos.x, y = S.pos.y, z = S.pos.z, r = r,
+names = names, cols = cols, ores = ores })
+return #ores
+end
+
+
+function scanHere(r)
+task = "scanning"
+local data, rr = scanRaw(r)
+if not data then return false, rr end
+local nores = sendSummary(data, rr)
+return true, "scanned " .. #data .. " blocks at " .. fmt()
+end
+
+
+
+
+function isStop(err) return tostring(err):find("^stopped") ~= nil end
+
+function isFinal(err) return tostring(err):find("home spot not free", 1, true) ~= nil end
+function note(cmd, msg) send("result", { cmd = cmd, ok = false, msg = msg }) end
+
+
+local knowReady = false
+
+
+
+
+CRUISE, CRUISE_FOR = nil, nil
+function requestKnowledge(tx, tz)
+if not (S.pos and S.pos.x) then return end
+knowReady = false
+CRUISE, CRUISE_FOR = nil, tx .. "," .. tz
+send("need", { x1 = math.min(S.pos.x, tx), z1 = math.min(S.pos.z, tz),
+x2 = math.max(S.pos.x, tx), z2 = math.max(S.pos.z, tz),
+fx = S.pos.x, fz = S.pos.z, tx = tx, tz = tz })
+for _ = 1, 15 do
+if knowReady then return end
+sleep(0.2)
+end
+end
+
+function learnFlush()
+if #pend.walls + #pend.clears + #pend.dead == 0 then return end
+send("learn", { walls = table.concat(pend.walls, ";"), clears = table.concat(pend.clears, ";"),
+dead = table.concat(pend.dead, ";") })
+pend = { walls = {}, clears = {}, dead = {} }
+end
+
+
+local WD = {}
+function watchStart(tx, ty, tz, goalY)
+WD = { tx = tx, ty = ty, tz = tz, goalY = goalY, best = math.huge, at = moveCount }
+end
+function watchStalled()
+if not (S.pos and S.pos.x and WD.tx) then return false end
+local d
+if WD.goalY then d = math.max(0, WD.goalY - S.pos.y)
+else
+d = math.abs(S.pos.x - WD.tx) + math.abs(S.pos.z - WD.tz)
+if WD.ty then d = d + math.abs(S.pos.y - WD.ty) end
+end
+if d < WD.best then WD.best, WD.at = d, moveCount end
+return moveCount - WD.at > CONFIG.noProgress
+end
+
+
+
+
+
+function astar(sx, sy, sz, tx, ty, tz, goalY, near)
+local m = CONFIG.navMargin
+local minX, maxX = math.min(sx, tx) - m, math.max(sx, tx) + m
+local minZ, maxZ = math.min(sz, tz) - m, math.max(sz, tz) + m
+local minY = math.max(-63, math.min(sy, ty or sy) - 20)
+local maxY = math.min(318, math.max(sy, ty or sy, goalY or sy) + 30)
+local SY, SZ = maxY - minY + 1, maxZ - minZ + 1
+local tnow = now()
+local function key(x, y, z) return ((x - minX) * SY + (y - minY)) * SZ + (z - minZ) end
+local function h(x, y, z)
+if goalY then return math.max(0, goalY - y) end
+local d = math.abs(x - tx) + math.abs(z - tz)
+if ty then d = d + math.abs(y - ty) end
+if type(near) == "table" then
+return math.max(0, math.abs(x - tx) + math.abs(z - tz) - near.h) + math.max(0, math.abs(y - (ty or y)) - near.v)
+elseif near then
+d = math.max(0, d - near)
+end
+return d
+end
+local function isGoal(x, y, z)
+if goalY then return y >= goalY end
+if type(near) == "table" then
+return math.abs(x - tx) + math.abs(z - tz) <= near.h and math.abs(y - (ty or y)) <= near.v
+elseif near then
+return math.abs(x - tx) + math.abs(z - tz) + (ty and math.abs(y - ty) or 0) <= near
+end
+return x == tx and z == tz and (not ty or y == ty)
+end
+
+local deadCost = {}
+for _, d in pairs(DEAD) do
+local age = tnow - d.t
+if age < CONFIG.deadLife and d.x >= minX and d.x <= maxX and d.z >= minZ and d.z <= maxZ then
+local pen = 25 * (1 - age / CONFIG.deadLife)
+local R = CONFIG.deadRadius
+for dx = -R, R do for dy = -R, R do for dz = -R, R do
+local kk = memKey(d.x + dx, d.y + dy, d.z + dz)
+deadCost[kk] = math.max(deadCost[kk] or 0, pen)
+end end end
+end
+end
+local hf, hk, hn = {}, {}, 0
+local function push(f, k)
+hn = hn + 1
+local i = hn
+while i > 1 do
+local pi = math.floor(i / 2)
+if hf[pi] <= f then break end
+hf[i], hk[i] = hf[pi], hk[pi]
+i = pi
+end
+hf[i], hk[i] = f, k
+end
+local function pop()
+local k = hk[1]
+local lf, lk = hf[hn], hk[hn]
+hf[hn], hk[hn] = nil, nil
+hn = hn - 1
+if hn > 0 then
+local i = 1
+while true do
+local c = i * 2
+if c > hn then break end
+if c < hn and hf[c + 1] < hf[c] then c = c + 1 end
+if hf[c] >= lf then break end
+hf[i], hk[i] = hf[c], hk[c]
+i = c
+end
+hf[i], hk[i] = lf, lk
+end
+return k
+end
+
+
+
+
+local g, X, Y, Z, parent, closed, HD = {}, {}, {}, {}, {}, {}, {}
+local sk = key(sx, sy, sz)
+g[sk], X[sk], Y[sk], Z[sk], parent[sk] = 0, sx, sy, sz, false
+
+HD[sk] = S.pos and S.pos.f and ({ [0] = 3, 2, 4, 1 })[S.pos.f] or nil
+push(h(sx, sy, sz) * 1.001, sk)
+local D6 = { { 1, 0, 0 }, { -1, 0, 0 }, { 0, 0, 1 }, { 0, 0, -1 }, { 0, 1, 0 }, { 0, -1, 0 } }
+local expanded = 0
+while hn > 0 do
+local k = pop()
+if not closed[k] then
+closed[k] = true
+local x, y, z = X[k], Y[k], Z[k]
+if isGoal(x, y, z) then
+local path, n = {}, k
+while parent[n] do
+table.insert(path, 1, { X[n], Y[n], Z[n] })
+n = parent[n]
+end
+return path
+end
+expanded = expanded + 1
+if expanded > CONFIG.navNodes then return nil, "the way is too long or too complicated" end
+if expanded % 1000 == 0 then
+os.queueEvent("nav_yield")
+os.pullEvent("nav_yield")
+end
+for di, d in ipairs(D6) do
+local nx, ny, nz = x + d[1], y + d[2], z + d[3]
+if nx >= minX and nx <= maxX and ny >= minY and ny <= maxY and nz >= minZ and nz <= maxZ then
+local mk = memKey(nx, ny, nz)
+local e = MEM[mk]
+local extra = 0
+if e then extra = wallCost(e, tnow) end
+if extra ~= nil then
+local nk = key(nx, ny, nz)
+if not closed[nk] then
+local step = 1 + extra + (deadCost[mk] or 0)
+if not ty and not goalY and d[2] < 0 then step = step + 0.5 end
+
+local hd = HD[k]
+if di <= 4 and hd and hd ~= di then
+step = step + (((hd == 1 and di == 2) or (hd == 2 and di == 1) or (hd == 3 and di == 4)
+or (hd == 4 and di == 3)) and 0.8 or 0.4)
+end
+local ng = g[k] + step
+if g[nk] == nil or ng < g[nk] then
+g[nk], X[nk], Y[nk], Z[nk], parent[nk] = ng, nx, ny, nz, k
+HD[nk] = (di <= 4) and di or hd
+push(ng + h(nx, ny, nz) * 1.001, nk)
+end
+end
+end
+end
+end
+end
+end
+return nil, "no way found with what I know"
+end
+
+
+
+
+findWay = function(tx, ty, tz, goalY, near)
+local scanner = findItem(CONFIG.geoItem) ~= nil
+local function rescan()
+if not scanner then return end
+task = "scanning the surroundings"
+local data, r = scanRaw(CONFIG.scanRadius)
+if data then pcall(sendSummary, data, r) end
+end
+local function senseAround()
+local x, y, z = S.pos.x, S.pos.y, S.pos.z
+if turtle.detectUp() then memWall(x, y + 1, z, "hard", "scan") else memClear(x, y + 1, z) end
+if turtle.detectDown() then memWall(x, y - 1, z, "hard", "scan") else memClear(x, y - 1, z) end
+if S.pos.f then
+for _ = 1, 4 do
+local f = S.pos.f
+if turtle.detect() then memWall(x + DX[f], y, z + DZ[f], "hard", "scan")
+else memClear(x + DX[f], y, z + DZ[f]) end
+right()
+end
+end
+end
+local function arrived()
+if goalY then return S.pos.y >= goalY end
+if type(near) == "table" then
+return math.abs(S.pos.x - tx) + math.abs(S.pos.z - tz) <= near.h and math.abs(S.pos.y - (ty or S.pos.y)) <= near.v
+elseif near then
+return math.abs(S.pos.x - tx) + math.abs(S.pos.z - tz) + (ty and math.abs(S.pos.y - ty) or 0) <= near
+end
+return S.pos.x == tx and S.pos.z == tz and (not ty or S.pos.y == ty)
+end
+watchStart(tx, ty, tz, goalY)
+rescan()
+if not scanner then senseAround() end
+local maxPlans = scanner and CONFIG.navReplans or CONFIG.navReplans * 6
+local plans, bumps = 0, 0
+while plans < maxPlans do
+if stopFlag then return false, "stopped" end
+if arrived() then return true, "reached the target on a planned route" end
+task = "planning a route"
+local path, err = astar(S.pos.x, S.pos.y, S.pos.z, tx, ty, tz, goalY, near)
+if not path then return false, err end
+plans = plans + 1
+task = "following a planned route (" .. #path .. " blocks)"
+for _, p in ipairs(path) do
+if stopFlag then return false, "stopped" end
+if noFuel() then return false, "out of fuel at " .. fmt() end
+if watchStalled() then return false, "no progress (going in circles) at " .. fmt() end
+if not stepTo(p[1], p[2], p[3]) then
+
+
+if not MEM[memKey(p[1], p[2], p[3])] then memWall(p[1], p[2], p[3], "hard", "bump") end
+bumps = bumps + 1
+if scanner then
+if bumps % 3 == 0 then rescan() end
+else
+senseAround()
+end
+break
+end
+if scanner and lastScanAt and (math.abs(S.pos.x - lastScanAt.x) + math.abs(S.pos.y - lastScanAt.y)
++ math.abs(S.pos.z - lastScanAt.z)) >= CONFIG.navRescan then
+rescan()
+break
+end
+end
+end
+if arrived() then return true, "reached the target on a planned route" end
+return false, "gave up after " .. plans .. " plans"
+end
+
+
+
+local sinceCheck = 0
+function moveToXZ(tx, tz)
+local planned = 0
+watchStart(tx, nil, tz)
+for _ = 1, 6 do
+if S.pos.x == tx and S.pos.z == tz then return true end
+for _, axis in ipairs({ "x", "z" }) do
+local target = (axis == "x") and tx or tz
+local tries = 0
+while S.pos[axis] ~= target do
+if stopFlag then return false, "stopped at " .. fmt() end
+local fl = turtle.getFuelLevel()
+if fl ~= "unlimited" and fl < 50 and S.reuse and next(S.reuse) then
+topUp(math.min(refuelTarget(), fl + 2000), true)
+fl = turtle.getFuelLevel()
+end
+if fl ~= "unlimited" and fl < 1 then return false, "out of fuel at " .. fmt() end
+if watchStalled() then return false, "no progress (going in circles) at " .. fmt() end
+local f
+if axis == "x" then f = (target > S.pos.x) and 3 or 1
+else f = (target > S.pos.z) and 0 or 2 end
+face(f)
+
+
+if planned < CONFIG.pathfind and deadNear(S.pos.x + DX[f], S.pos.y, S.pos.z + DZ[f]) then
+planned = planned + 1
+local okW, why = findWay(tx, nil, tz)
+if okW then break end
+if isStop(why) then return false, why end
+end
+if not stepForward() then
+tries = tries + 1
+if tries > CONFIG.sidestep or not sidestep(f) then
+if planned >= CONFIG.pathfind then return false, "blocked at " .. fmt() end
+planned = planned + 1
+local okW, why = findWay(tx, nil, tz)
+if not okW then return false, "blocked at " .. fmt() .. " (" .. tostring(why) .. ")" end
+note("move", why)
+tries = 0
+watchStart(tx, nil, tz)
+end
+end
+sinceCheck = sinceCheck + 1
+if sinceCheck >= CONFIG.gpsEvery then
+sinceCheck = 0
+local fix = gpsCheck()
+if fix then send("result", { cmd = "gps", ok = true, msg = fix }) end
+end
+end
+end
+end
+if S.pos.x == tx and S.pos.z == tz then return true end
+return false, "could not reach " .. tx .. " " .. tz .. " (at " .. fmt() .. ")"
+end
+
+
+function gotoLocal(tx, ty, tz)
+for attempt = 1, CONFIG.pathfind + 1 do
+local ok, err = moveToXZ(tx, tz)
+if not ok then return false, err end
+local stuck = false
+while S.pos.y ~= ty do
+if stopFlag then return false, "stopped at " .. fmt() end
+local moved
+if S.pos.y > ty then moved = down() or (tryDig("down") and down())
+else moved = up() or (tryDig("up") and up()) end
+if not moved then stuck = true break end
+end
+if not stuck then return true, "arrived at " .. fmt() end
+
+
+if HOMEPROBE and HOMEPROBE.x == tx and HOMEPROBE.y == ty and HOMEPROBE.z == tz then
+return false, "home spot not free"
+end
+if attempt > CONFIG.pathfind then break end
+local okW, why = findWay(tx, ty, tz)
+if okW then return true, "arrived at " .. fmt() end
+if isStop(why) then return false, why end
+end
+return false, "could not reach " .. tx .. " " .. ty .. " " .. tz .. " (at " .. fmt() .. ")"
+end
+
+
+function climbToSky()
+
+local sky = CONFIG.skyY
+if CRUISE and CRUISE < sky then sky = CRUISE end
+task = (sky < CONFIG.skyY) and ("climbing to cruise height " .. sky) or "climbing to the sky highway"
+while S.pos.y < sky do
+if stopFlag then return false, "stopped" end
+if noFuel() then return false, "out of fuel" end
+if not up() and not (tryDig("up") and up()) then
+local ok, err = findWay(S.pos.x, nil, S.pos.z, sky)
+if not ok then return false, "no way up to the sky highway (" .. tostring(err) .. ")" end
+end
+end
+return true
+end
+
+
+function segmentCells(a, b)
+local cells = {}
+local dx, dy, dz = b[1] - a[1], b[2] - a[2], b[3] - a[3]
+local n = math.abs(dx) + math.abs(dy) + math.abs(dz)
+if (dx ~= 0 and 1 or 0) + (dy ~= 0 and 1 or 0) + (dz ~= 0 and 1 or 0) > 1 then return nil end
+local sx, sy, sz = (dx > 0 and 1) or (dx < 0 and -1) or 0, (dy > 0 and 1) or (dy < 0 and -1) or 0,
+(dz > 0 and 1) or (dz < 0 and -1) or 0
+for i = 1, n do cells[i] = { a[1] + sx * i, a[2] + sy * i, a[3] + sz * i } end
+return cells
+end
+
+
+
+function followRoute(points, label, reversed)
+local ok, err = gotoLocal(points[1][1], points[1][2], points[1][3])
+if not ok then return false, label .. ": cannot reach its start (" .. tostring(err) .. ")" end
+recStart()
+local repaired = false
+for i = 2, #points do
+if stopFlag then recStop() return false, "stopped" end
+local a, b = points[i - 1], points[i]
+task = label .. " " .. (i - 1) .. "/" .. (#points - 1)
+local cells = segmentCells(a, b)
+local blocked = cells == nil
+if cells then
+for _, c in ipairs(cells) do
+if not stepTo(c[1], c[2], c[3]) then blocked = true break end
+end
+end
+if blocked then
+local okW, why = findWay(b[1], b[2], b[3])
+if not okW then
+recStop()
+return false, label .. " is blocked near " .. fmt() .. " (" .. tostring(why) .. ")"
+end
+repaired = true
+end
+end
+local cellsWalked = recStop()
+if repaired and #cellsWalked > 1 then
+local pts = compressRoute(cellsWalked)
+if reversed then
+local r = {}
+for i = #pts, 1, -1 do r[#r + 1] = pts[i] end
+pts = r
+end
+EXIT = { points = pts, t = now() }
+send("exitroute", { route = routeToString(pts) })
+note("route", label .. " was blocked - found another way and saved it")
+end
+return true
+end
+
+function near(p, x, z, d) return p and math.abs(p[1] - x) + math.abs(p[3] - z) <= d end
+
+
+
+
+
+
+function isEndCore(s)
+s = tostring(s or ""):lower():gsub("[^%a]", "")
+return s:find("endautomata", 1, true) ~= nil
+end
+
+function warpCore()
+for _, side in ipairs({ "left", "right" }) do
+local t = peripheral.getType(side)
+if t and isEndCore(t) then return side end
+end
+end
+
+function coreSlot()
+for i = 1, 16 do
+local d = turtle.getItemDetail(i)
+if d and isEndCore(d.name) then return i end
+end
+end
+function hasCore() return warpCore() ~= nil or coreSlot() ~= nil end
+
+
+function canWarp()
+if warpCore() then return true end
+return coreSlot() ~= nil and S.coreKeepsPoints ~= false
+end
+
+
+
+function coreCheck()
+S.coreChecked = true
+local carried = (warpCore() == nil)
+local saved = withCore(function()
+local side = warpCore()
+local okM, m = pcall(peripheral.getMethods, side)
+if okM and type(m) == "table" then table.sort(m) S.coreMethods = m end
+return wcall("savePoint", "zz_keeptest") and true or false
+end)
+local keeps
+if carried and saved then
+
+keeps = withCore(function()
+local pts = wcall("getPoints")
+local found = false
+if type(pts) == "table" then
+for k, v in pairs(pts) do if v == "zz_keeptest" or k == "zz_keeptest" then found = true end end
+end
+wcall("deletePoint", "zz_keeptest")
+return found
+end) and true or false
+S.coreKeepsPoints = keeps
+elseif saved then
+withCore(function() return wcall("deletePoint", "zz_keeptest") end)
+end
+save()
+send("result", { cmd = "core", ok = true, msg = "End Automata Core (" .. (carried and "carried" or "equipped") ..
+") functions: " .. table.concat(S.coreMethods or { "?" }, ", ") })
+if carried and keeps == false then
+send("result", { cmd = "core", ok = false, msg = "the carried End Automata Core forgets its warp points when it " ..
+"is taken off - it cannot warp while carried (the Chunky upgrade always stays on)" })
+elseif carried and keeps then
+send("result", { cmd = "core", ok = true, msg = "the carried End Automata Core keeps its warp points - it is " ..
+"swapped in for every warp" })
+end
+end
+
+
+
+function withCore(fn)
+if warpCore() then return fn() end
+local slot = coreSlot()
+if not slot then return false, "no End Automata Core" end
+if modem ~= "left" and modem ~= "right" then return false, "the modem must be equipped to swap the core in" end
+
+SLOT_LOCK = true
+for _ = 1, 100 do if not TOPUP_RUNNING then break end sleep(0.05) end
+slot = coreSlot() or slot
+local sel = turtle.getSelectedSlot()
+turtle.select(slot)
+if not equipOn(modem) then turtle.select(sel) SLOT_LOCK = false return false, "could not equip the End Automata Core" end
+modemAttached = false
+for _ = 1, 10 do if warpCore() then break end sleep(0.1) end
+local res = { pcall(fn) }
+local mslot = findItemLike("modem")
+local back = false
+if mslot then
+turtle.select(mslot)
+back = equipOn(modem)
+end
+turtle.select(sel)
+sleep(0.1)
+pcall(rednet.open, modem)
+modemAttached = back and true or false
+SLOT_LOCK = false
+if not res[1] then return false, tostring(res[2]) end
+return res[2], res[3]
+end
+function wcall(m, ...)
+local side = warpCore()
+if not side then return nil, "no End Automata Core equipped" end
+local ok, a, b = pcall(peripheral.call, side, m, ...)
+if not ok then return nil, tostring(a) end
+return a, b
+end
+function warpSave(name)
+if not (S.pos and S.pos.x) then return false, "position unknown" end
+if not hasCore() then return false, "no End Automata Core" end
+if not canWarp() then return false, "the carried End Automata Core forgets its points - it cannot warp (the Chunky stays on)" end
+return withCore(function() return warpSaveNow(name) end)
+end
+function warpSaveNow(name)
+S.warps = S.warps or {}
+wcall("deletePoint", name)
+local ok, err = wcall("savePoint", name)
+if not ok and tostring(err):find("limit", 1, true) then
+
+local oldest, ot
+for n, w in pairs(S.warps) do
+if n:sub(1, 5) == "auto_" and (not ot or w.t < ot) then oldest, ot = n, w.t end
+end
+if oldest then wcall("deletePoint", oldest) S.warps[oldest] = nil end
+ok, err = wcall("savePoint", name)
+end
+if not ok then return false, "cannot save warp point: " .. tostring(err) end
+S.warps[name] = { x = S.pos.x, y = S.pos.y, z = S.pos.z, t = now() }
+save()
+return true, "warp point '" .. name .. "' saved at " .. fmt()
+end
+
+function warpTo(name)
+local w = S.warps and S.warps[name]
+if not w then return false, "no warp point called '" .. tostring(name) .. "'" end
+return withCore(function() return warpToNow(name, w) end)
+end
+function warpToNow(name, w)
+
+local pts = wcall("getPoints")
+if type(pts) == "table" then
+local found = false
+for k, v in pairs(pts) do if v == name or k == name then found = true end end
+if not found then
+S.warps[name] = nil
+save()
+return false, "warp point '" .. name .. "' is no longer in the core - forgotten"
+end
+end
+local cost = tonumber((wcall("estimateWarpCost", name)))
+local fuel = turtle.getFuelLevel()
+if fuel ~= "unlimited" and cost and cost > fuel - 50 then return false, "not enough fuel to warp" end
+local ok, err = wcall("warpToPoint", name)
+if not ok then return false, "warp failed: " .. tostring(err) end
+S.pos.x, S.pos.y, S.pos.z = w.x, w.y, w.z
+save()
+trailReset()
+return true, "warped to '" .. name .. "' (" .. w.x .. " " .. w.y .. " " .. w.z .. ")"
+end
+
+function bestWarpFor(tx, ty, tz)
+if not (S.warps and next(S.warps) and canWarp()) then return nil end
+local here = math.abs(tx - S.pos.x) + math.abs(tz - S.pos.z) + math.abs(ty - S.pos.y)
+local best, bd
+for n, w in pairs(S.warps) do
+local d = math.abs(tx - w.x) + math.abs(tz - w.z) + math.abs(ty - w.y)
+if not bd or d < bd then best, bd = n, d end
+end
+if best and bd + CONFIG.warpGain <= here then return best end
+end
+
+function warpRemember()
+if not canWarp() then return end
+
+if S.home and math.abs(S.home.x - S.pos.x) + math.abs(S.home.z - S.pos.z) + math.abs(S.home.y - S.pos.y) < 32 then
+return
+end
+S.warps = S.warps or {}
+for _, w in pairs(S.warps) do
+if math.abs(w.x - S.pos.x) + math.abs(w.z - S.pos.z) + math.abs(w.y - S.pos.y) < 32 then return end
+end
+local auto = 0
+for n in pairs(S.warps) do if n:sub(1, 5) == "auto_" then auto = auto + 1 end end
+while auto >= CONFIG.warpAutoMax do
+local oldest, ot
+for n, w in pairs(S.warps) do
+if n:sub(1, 5) == "auto_" and (not ot or w.t < ot) then oldest, ot = n, w.t end
+end
+if not oldest then break end
+wcall("deletePoint", oldest)
+S.warps[oldest] = nil
+auto = auto - 1
+end
+warpSave("auto_" .. S.pos.x .. "_" .. S.pos.z)
+end
+
+
+
+
+function travelOnce(tx, ty, tz)
+if math.abs(tx - S.pos.x) + math.abs(tz - S.pos.z) > CONFIG.skyMinDist and CRUISE_FOR ~= tx .. "," .. tz then
+requestKnowledge(tx, tz)
+end
+
+local wp = bestWarpFor(tx, ty, tz)
+if wp then
+local okW, msgW = warpTo(wp)
+note("warp", msgW)
+end
+local far = math.abs(tx - S.pos.x) + math.abs(tz - S.pos.z) > CONFIG.skyMinDist
+if not far then return gotoLocal(tx, ty, tz) end
+local route = EXIT and EXIT.points and #EXIT.points >= 2 and EXIT.points or nil
+local inside, outside = route and route[1], route and route[#route]
+local iAmIn = route and near(inside, S.pos.x, S.pos.z, CONFIG.exitNear)
+local targetIn = route and near(inside, tx, tz, CONFIG.exitNear)
+if iAmIn and not targetIn then
+local ok, err = followRoute(route, "exit route")
+if not ok then return false, err end
+end
+if targetIn and not iAmIn then
+
+local ok, err = climbToSky()
+if not ok then return false, err end
+ok, err = moveToXZ(outside[1], outside[3])
+if not ok then return false, err end
+ok, err = gotoLocal(outside[1], outside[2], outside[3])
+if not ok then return false, err end
+local rev = {}
+for i = #route, 1, -1 do rev[#rev + 1] = route[i] end
+ok, err = followRoute(rev, "way in", true)
+if not ok then return false, err end
+return gotoLocal(tx, ty, tz)
+end
+if math.abs(tx - S.pos.x) + math.abs(tz - S.pos.z) > CONFIG.skyMinDist then
+local ok, err = climbToSky()
+if not ok then return false, err end
+task = "sky highway to " .. tx .. " " .. tz
+ok, err = moveToXZ(tx, tz)
+if not ok then return false, err end
+end
+return gotoLocal(tx, ty, tz)
+end
+
+
+
+function withLadder(what, fn)
+local ok, err = fn()
+if ok or isStop(err) or isFinal(err) then return ok, err end
+
+
+addDead(S.pos.x, S.pos.y, S.pos.z)
+learnFlush()
+for _, n in ipairs(CONFIG.backoff) do
+if #trail <= 1 then break end
+note(what, tostring(err) .. " - going back " .. n .. " steps to try another way")
+task = "backing up " .. n .. " steps"
+if not backtrackSteps(n) then break end
+ok, err = fn()
+if ok or isStop(err) or isFinal(err) then return ok, err end
+end
+if S.pos.y < CONFIG.skyY - 2 then
+note(what, tostring(err) .. " - trying from the sky highway")
+local okS = climbToSky()
+if okS then
+ok, err = fn()
+if ok or isStop(err) or isFinal(err) then return ok, err end
+end
+end
+addDead(S.pos.x, S.pos.y, S.pos.z)
+learnFlush()
+return false, tostring(err) .. " (remembered as a dead end)"
+end
+
+local gotoPos
+gotoPos = function(tx, ty, tz)
+if not known() then
+return false, "position/facing unknown - use setpos or GPS LOCATE"
+end
+task = "going to " .. tx .. " " .. ty .. " " .. tz
+send("status")
+requestKnowledge(tx, tz)
+local startDist = math.abs(tx - S.pos.x) + math.abs(tz - S.pos.z)
+local ok, msg = withLadder("goto", function() return travelOnce(tx, ty, tz) end)
+if ok and startDist > CONFIG.skyMinDist then pcall(warpRemember) end
+return ok, msg
+end
+
+
+
+function goHome()
+if not S.home then return false, "no home set (SET HOME)" end
+local h = S.home
+HOMEPROBE = S.homeAuto and { x = h.x, y = h.y, z = h.z } or nil
+local okG, ok, msg = pcall(gotoPos, h.x, h.y, h.z)
+HOMEPROBE = nil
+if not okG then error(ok, 0) end
+if ok then
+trailReset()
+if S.homeAuto then S.homeAuto = nil save() end
+
+if canWarp() and not (S.warps and S.warps.home) then
+local okW = warpSave("home")
+if okW then msg = msg .. " (warp point 'home' saved - GO HOME teleports from now on)" end
+end
+return true, "home: " .. msg
+end
+if isStop(msg) then return false, msg end
+
+
+
+if S.homeAuto and (isFinal(msg) or (S.pos and S.pos.x and
+math.abs(S.pos.x - h.x) + math.abs(S.pos.y - h.y) + math.abs(S.pos.z - h.z) <= 3)) then
+send("homebad", { x = h.x, y = h.y, z = h.z })
+S.home, S.homeAuto = nil, nil
+save()
+return false, "the offered home " .. h.x .. " " .. h.y .. " " .. h.z .. " is not free - asked the base for another one"
+end
+if #trail > 1 then
+note("home", tostring(msg) .. " - retracing my path instead")
+local okB, errB = backtrack()
+if not okB then return false, errB end
+local ok2, msg2 = gotoLocal(h.x, h.y, h.z)
+if ok2 then trailReset() return true, "home (retraced the path)" end
+return false, msg2
+end
+return false, msg
+end
+
+
+
+function settle()
+for _ = 1, CONFIG.settleMax do
+if stopFlag then return end
+if turtle.detectDown() then return end
+if not down() then return end
+end
+end
+
+
+local surveyPoints
+
+
+
+function orderNearest(pts)
+local out, left = {}, {}
+for i, p in ipairs(pts) do left[i] = p end
+local cx, cz = S.pos.x, S.pos.z
+while #left > 0 do
+local bi, bd = 1, math.huge
+for i, p in ipairs(left) do
+local d = math.abs(p[1] - cx) + math.abs(p[2] - cz)
+if d < bd then bi, bd = i, d end
+end
+local p = table.remove(left, bi)
+out[#out + 1] = p
+cx, cz = p[1], p[2]
+end
+return out
+end
+
+function survey(x1, z1, x2, z2, r)
+if not known() then return false, "position/facing unknown - use GPS LOCATE" end
+r = math.max(1, math.min(16, math.floor(tonumber(r) or CONFIG.scanRadius)))
+if x1 > x2 then x1, x2 = x2, x1 end
+if z1 > z2 then z1, z2 = z2, z1 end
+local step = 2 * r + 1
+local points, row = {}, 0
+for z = z1 + r, z2 + r, step do
+local xs = {}
+for x = x1 + r, x2 + r, step do xs[#xs + 1] = x end
+if row % 2 == 1 then
+for i = 1, math.floor(#xs / 2) do xs[i], xs[#xs + 1 - i] = xs[#xs + 1 - i], xs[i] end
+end
+for _, x in ipairs(xs) do points[#points + 1] = { x, z } end
+row = row + 1
+end
+return surveyPoints(points, r)
+end
+
+
+surveyPoints = function(points, r)
+if not known() then return false, "position/facing unknown - use GPS LOCATE" end
+if #points > CONFIG.maxSurveyPoints then
+return false, "area too big (" .. #points .. " scans) - zoom in on the map"
+end
+if #points == 0 then return true, "nothing to survey here (already mapped)" end
+requestKnowledge(points[1][1], points[1][2])
+
+for i, p in ipairs(points) do
+if stopFlag then return false, "stopped after " .. (i - 1) .. " of " .. #points .. " scans" end
+
+if S.job then
+local left = {}
+for k = i, #points do left[#left + 1] = points[k] end
+S.job.left = left
+save()
+end
+local f = turtle.getFuelLevel()
+if f ~= "unlimited" and f < CONFIG.minFuel * 2 and S.reuse and next(S.reuse) then
+task = "refuelling (reusable fuel)"
+topUp(math.min(refuelTarget(), f + 2000), true)
+f = turtle.getFuelLevel()
+end
+if f ~= "unlimited" and f < CONFIG.minFuel then
+return false, "low fuel (" .. f .. ") after " .. (i - 1) .. " of " .. #points .. " scans"
+end
+task = "survey " .. i .. "/" .. #points
+send("status")
+local far = math.abs(p[1] - S.pos.x) + math.abs(p[2] - S.pos.z) > CONFIG.skyMinDist
+local ok, err = withLadder("survey", function()
+if far then
+
+local okT, errT = travelOnce(p[1], S.pos.y, p[2])
+if not okT and S.pos.x == p[1] and S.pos.z == p[2] then okT = true end
+if okT then pcall(warpRemember) end
+return okT, errT
+end
+return moveToXZ(p[1], p[2])
+end)
+if not ok then return false, err .. " (scan " .. i .. "/" .. #points .. ")" end
+
+for _ = 1, 400 do
+if stopFlag or turtle.detectDown() then break end
+if not down() then break end
+if S.pos.y <= -60 then break end
+if S.pos.y < CONFIG.skyY - 1 and not far then break end
+end
+settle()
+local okS, msg = scanHere(r)
+if not okS then return false, msg end
+task = "survey " .. i .. "/" .. #points
+end
+return true, "survey done: " .. #points .. " scans"
+end
+
+
+
+
+
+function slotOf(test)
+for i = 1, 16 do
+local d = turtle.getItemDetail(i)
+if d and test(d.name) then return i, d end
+end
+end
+function isDrive(n) return n == "computercraft:disk_drive" end
+function isFloppy(n) return n == "computercraft:disk" end
+function isPick(n) return n:find("_pickaxe", 1, true) ~= nil end
+function isFuel(n)
+return n:find("coal", 1, true) or n:find("charcoal", 1, true) or n:find("lava_bucket", 1, true)
+or n:find("blaze_rod", 1, true)
+end
+
+
+
+function sideInfo(side)
+local n = equippedName(side)
+if n then return (n:gsub("^[^:]*:", "")) end
+local ty = peripheral.getType(side)
+return ty and ("[" .. tostring(ty) .. "]") or "?"
+end
+
+gearString = function()
+local g = {}
+
+local l, r = sideInfo("left"), sideInfo("right")
+g[#g + 1] = "L=" .. l .. " R=" .. r
+local canTell = turtle.getEquippedLeft ~= nil
+if canTell and not (isChunkySide("left") or isChunkySide("right")) then g[#g + 1] = "NO CHUNKY" end
+local mname = canTell and equippedName(modem) or nil
+if mname and not mname:find("advanced", 1, true) and not mname:find("ender", 1, true) then
+g[#g + 1] = "WIRELESS modem (~64 blocks)"
+end
+if slotOf(isDrive) then g[#g + 1] = "drive" end
+if slotOf(isFloppy) then g[#g + 1] = "floppy" end
+if slotOf(isPick) then g[#g + 1] = "pick" end
+if slotOf(isFuel) then g[#g + 1] = "fuel" end
+if findItem(CONFIG.geoItem) then g[#g + 1] = "scanner" end
+local np = 0
+for _ in pairs(S.warps or {}) do np = np + 1 end
+if warpCore() then g[#g + 1] = "warp core (equipped, " .. np .. " points)"
+elseif coreSlot() then
+g[#g + 1] = "warp core (carried, " .. (S.coreKeepsPoints == false and "cannot warp while carried"
+or (np .. " points")) .. ")"
+end
+return table.concat(g, ",")
+end
+
+local N6 = { { 0, 1, 0 }, { 1, 0, 0 }, { -1, 0, 0 }, { 0, 0, 1 }, { 0, 0, -1 }, { 0, -1, 0 } }
+function adjacent(x, y, z)
+return math.abs(x - S.pos.x) + math.abs(y - S.pos.y) + math.abs(z - S.pos.z) == 1
+end
+
+function faceCell(x, y, z)
+local dx, dy, dz = x - S.pos.x, y - S.pos.y, z - S.pos.z
+if dy == 1 then return "top", turtle.placeUp, turtle.dropUp, turtle.suckUp, turtle.digUp end
+if dy == -1 then return "bottom", turtle.placeDown, turtle.dropDown, turtle.suckDown, turtle.digDown end
+if dx == 1 then face(3) elseif dx == -1 then face(1) elseif dz == 1 then face(0) else face(2) end
+return "front", turtle.place, turtle.drop, turtle.suck, turtle.dig
+end
+
+function approach(x, y, z, avoid)
+if adjacent(x, y, z) and not (avoid and S.pos.x == avoid[1] and S.pos.y == avoid[2] and S.pos.z == avoid[3]) then
+return true
+end
+local cells = {}
+for _, d in ipairs(N6) do
+local c = { x + d[1], y + d[2], z + d[3] }
+if not (avoid and c[1] == avoid[1] and c[2] == avoid[2] and c[3] == avoid[3]) then cells[#cells + 1] = c end
+end
+local function dist(c) return math.abs(c[1] - S.pos.x) + math.abs(c[2] - S.pos.y) + math.abs(c[3] - S.pos.z) end
+table.sort(cells, function(a, b) return dist(a) < dist(b) end)
+for i, c in ipairs(cells) do
+if stopFlag then return false end
+local ok = (i == 1) and gotoPos(c[1], c[2], c[3]) or gotoLocal(c[1], c[2], c[3])
+if ok then return true end
+end
+return false
+end
+
+function isTurtle(tid, x, y, z)
+if not adjacent(x, y, z) then return false end
+local side = faceCell(x, y, z)
+if peripheral.getType(side) ~= "turtle" then return false end
+local ok, id = pcall(peripheral.call, side, "getID")
+return ok and id == tid
+end
+
+
+
+function locate(tid, x, y, z, radius)
+if approach(x, y, z) and isTurtle(tid, x, y, z) then return x, y, z end
+if not findItem(CONFIG.geoItem) then
+return nil, "turtle " .. tid .. " is not at its last position - I need a Geo Scanner to search"
+end
+radius = math.max(16, math.min(128, math.floor(tonumber(radius) or 16)))
+local around = {}
+for dx = -radius, radius, 16 do
+for dz = -radius, radius, 16 do around[#around + 1] = { dx, dz } end
+end
+table.sort(around, function(a, b) return math.abs(a[1]) + math.abs(a[2]) < math.abs(b[1]) + math.abs(b[2]) end)
+for i, o in ipairs(around) do
+if stopFlag then return nil, "stopped" end
+if i > 1 then gotoPos(x + o[1], y, z + o[2]) end
+task = "searching for turtle " .. tid .. " (" .. i .. "/" .. #around .. ")"
+local data, r = scanRaw(CONFIG.scanRadius)
+if data then
+pcall(sendSummary, data, r)
+local found = {}
+for _, b in ipairs(data) do
+if type(b) == "table" and tostring(b.name):find("turtle", 1, true)
+and not ((b.x or 0) == 0 and (b.y or 0) == 0 and (b.z or 0) == 0) then
+found[#found + 1] = { S.pos.x + b.x, S.pos.y + b.y, S.pos.z + b.z }
+end
+end
+table.sort(found, function(a, b)
+return math.abs(a[1] - x) + math.abs(a[2] - y) + math.abs(a[3] - z)
+< math.abs(b[1] - x) + math.abs(b[2] - y) + math.abs(b[3] - z)
+end)
+for _, f in ipairs(found) do
+if approach(f[1], f[2], f[3]) and isTurtle(tid, f[1], f[2], f[3]) then return f[1], f[2], f[3] end
+end
+end
+end
+return nil, "turtle " .. tid .. " not found within " .. radius .. " blocks of " .. x .. " " .. y .. " " .. z
+end
+
+
+
+function reinstall(tid, lx, ly, lz)
+local dslot, fslot = slotOf(isDrive), slotOf(isFloppy)
+if not (dslot and fslot) then return false, "I need a Disk Drive and the install floppy" end
+local R = { S.pos.x, S.pos.y, S.pos.z }
+local moved = false
+for _, d in ipairs(N6) do
+local c = { R[1] + d[1], R[2] + d[2], R[3] + d[3] }
+if not (c[1] == lx and c[2] == ly and c[3] == lz) and stepTo(c[1], c[2], c[3]) then moved = true break end
+end
+if not moved then return false, "no room next to it for the Disk Drive" end
+local _, place, drop = faceCell(R[1], R[2], R[3])
+turtle.select(dslot)
+if not place() then turtle.select(1) return false, "could not place the Disk Drive" end
+turtle.select(slotOf(isFloppy) or fslot)
+local okDrop = drop(1)
+turtle.select(1)
+if not okDrop then return false, "could not put the floppy into the Disk Drive" end
+if not approach(lx, ly, lz, R) then return false, "cannot get to another side of it to switch it on" end
+local side = faceCell(lx, ly, lz)
+local okOn, on = pcall(peripheral.call, side, "isOn")
+if okOn and on then pcall(peripheral.call, side, "reboot") else pcall(peripheral.call, side, "turnOn") end
+task = "waiting for turtle " .. tid .. " to install itself"
+sleep(8)
+local msg = "turtle " .. tid .. " reinstalled and started at " .. lx .. " " .. ly .. " " .. lz
+if approach(R[1], R[2], R[3], { lx, ly, lz }) then
+local _, _, _, suck, dig = faceCell(R[1], R[2], R[3])
+suck()
+if slotOf(isPick) then
+if not withEquipped("_pickaxe", dig) then msg = msg .. " (could not pick the Disk Drive up)" end
+else
+msg = msg .. " (Disk Drive left at " .. R[1] .. " " .. R[2] .. " " .. R[3] .. " - I have no pickaxe)"
+end
+else
+msg = msg .. " (could not get back to the Disk Drive at " .. R[1] .. " " .. R[2] .. " " .. R[3] .. ")"
+end
+return true, msg
+end
+
+
+function supply(tid, lx, ly, lz)
+local _, _, drop = faceCell(lx, ly, lz)
+local gave = {}
+local fuelSlot = slotOf(isFuel)
+if fuelSlot then
+turtle.select(fuelSlot)
+if drop(math.max(1, math.floor(turtle.getItemCount(fuelSlot) / 2))) then gave[#gave + 1] = "fuel" end
+end
+local picks = 0
+for i = 1, 16 do
+local d = turtle.getItemDetail(i)
+if d and isPick(d.name) then picks = picks + d.count end
+end
+if picks >= 2 then
+turtle.select((slotOf(isPick)))
+if drop(1) then gave[#gave + 1] = "pick" end
+end
+turtle.select(1)
+if #gave == 0 then return false, "nothing to give (I need fuel, or 2 pickaxes to give one away)" end
+return true, "gave turtle " .. tid .. ": " .. table.concat(gave, " + "), table.concat(gave, ",")
+end
+
+
+
+
+
+function sweep(cx, cy, cz, radius, skip)
+if S.anchor then return false, "I am the ANCHOR - send another turtle" end
+if not findItem(CONFIG.geoItem) then return false, "I need a Geo Scanner to search" end
+if not (slotOf(isDrive) and slotOf(isFloppy)) then
+return false, "I need a Disk Drive and the install floppy to reinstall lost turtles"
+end
+radius = math.max(16, math.min(160, math.floor(tonumber(radius) or 96)))
+local skipSet, handled, rescued = {}, {}, {}
+for id in tostring(skip or ""):gmatch("%d+") do skipSet[tonumber(id)] = true end
+
+
+local SWEEP_FILE = "node_sweep" .. COPYSFX
+local key = cx .. "," .. cy .. "," .. cz .. "," .. radius
+local first = 1
+if fs.exists(SWEEP_FILE) then
+local h = fs.open(SWEEP_FILE, "r")
+local pr = textutils.unserialize(h.readAll() or "")
+h.close()
+if type(pr) == "table" and pr.key == key then
+first = (pr.done or 0) + 1
+handled = pr.handled or {}
+rescued = pr.rescued or {}
+for _, id in ipairs(rescued) do skipSet[id] = true end
+note("rescue", "continuing the search at spot " .. first)
+end
+end
+local function saveProgress(done)
+writeFile(SWEEP_FILE, { key = key, done = done, handled = handled, rescued = rescued })
+end
+skipSet[os.getComputerID()] = true
+local scanR = 16
+local spots = {}
+
+
+local step = 24
+for _, dy in ipairs({ 0, -30, 30 }) do
+for dx = -radius, radius, step do
+for dz = -radius, radius, step do
+spots[#spots + 1] = { cx + dx, cy + dy, cz + dz, math.abs(dx) + math.abs(dz) + math.abs(dy) * 2 }
+end
+end
+end
+table.sort(spots, function(a, b) return a[4] < b[4] end)
+local function finish(ok, msg) return ok, msg end
+for i = first, #spots do
+local sp = spots[i]
+if stopFlag then
+return finish(false, "stopped at spot " .. i .. "/" .. #spots .. " (" .. #rescued ..
+" rescued) - start the search again to continue from here")
+end
+task = "searching for lost turtles (" .. i .. "/" .. #spots .. ", found " .. #rescued .. ")"
+send("status")
+
+
+
+if math.abs(sp[1] - S.pos.x) + math.abs(sp[3] - S.pos.z) > CONFIG.skyMinDist then
+travelOnce(sp[1], S.pos.y, sp[3])
+end
+findWay(sp[1], sp[2], sp[3], nil, { h = 4, v = 12 })
+local data, r = scanRaw(scanR)
+if not data then data, r = scanRaw(8) end
+if data then
+pcall(sendSummary, data, r)
+for _, b in ipairs(data) do
+if type(b) == "table" and tostring(b.name):find("turtle", 1, true)
+and not ((b.x or 0) == 0 and (b.y or 0) == 0 and (b.z or 0) == 0) then
+local x, y, z = S.pos.x + b.x, S.pos.y + b.y, S.pos.z + b.z
+local k = memKey(x, y, z)
+
+
+if handled[k] ~= true and (handled[k] or 0) < 2 then
+local reached = approach(x, y, z)
+if reached then
+handled[k] = true
+elseif not stopFlag then
+handled[k] = (handled[k] or 0) + 1
+end
+if reached then
+local side = faceCell(x, y, z)
+local okId, id = pcall(peripheral.call, side, "getID")
+if okId and type(id) == "number" and not skipSet[id] then
+note("rescue", "found turtle " .. id .. " at " .. x .. " " .. y .. " " .. z .. " - reinstalling it")
+local ok, msg = reinstall(id, x, y, z)
+send("rescued", { target = id, mode = "install", ok = ok, msg = msg, at = { x = x, y = y, z = z } })
+skipSet[id] = true
+if ok then rescued[#rescued + 1] = id end
+saveProgress(i - 1)
+if not (slotOf(isDrive) and slotOf(isFloppy)) then
+goHome()
+return finish(#rescued > 0, "rescued " .. #rescued .. " turtle(s) - stopped: the Disk Drive or floppy is gone")
+end
+end
+end
+end
+end
+end
+end
+saveProgress(i)
+end
+if fs.exists(SWEEP_FILE) then fs.delete(SWEEP_FILE) end
+goHome()
+return finish(true, "search done: " .. #rescued .. " lost turtle(s) found and reinstalled" ..
+(#rescued > 0 and (" (" .. table.concat(rescued, ", ") .. ")") or ""))
+end
+
+function rescue(tid, x, y, z, mode, radius)
+if S.anchor then return false, "I am the ANCHOR - send another turtle" end
+task = "rescue: looking for turtle " .. tid
+local lx, ly, lz = locate(tid, x, y, z, radius)
+if not lx then return false, ly end
+local ok, msg, gave
+if mode == "supply" then ok, msg, gave = supply(tid, lx, ly, lz)
+else ok, msg = reinstall(tid, lx, ly, lz) end
+send("rescued", { target = tid, mode = mode, ok = ok, msg = msg, gave = gave,
+at = { x = lx, y = ly, z = lz } })
+if ok then goHome() end
+return ok, msg
+end
+
+
+
+
+
+
+
+
+
+
+
+function invSnapshot()
+local s = {}
+for i = 1, 16 do
+local d = turtle.getItemDetail(i)
+s[i] = d and { name = d.name, count = d.count } or nil
+end
+return s
+end
+function isTurtleItem(n) return n:find("computercraft:turtle", 1, true) ~= nil end
+function chestHasTurtle()
+local okI, inv = pcall(peripheral.hasType, "front", "inventory")
+local okT, isT = pcall(peripheral.hasType, "front", "turtle")
+if not (okI and inv) or (okT and isT) then return false end
+local okL, list = pcall(peripheral.call, "front", "list")
+for _, it in pairs(okL and list or {}) do if isTurtleItem(it.name) then return true end end
+return false
+end
+function build()
+task = "building a turtle"
+if not (slotOf(isDrive) and slotOf(isFloppy)) then return false, "I need a Disk Drive and the install floppy" end
+if not slotOf(isPick) then return false, "I need a pickaxe (to take my Disk Drive back)" end
+
+local found = false
+for _ = 1, 4 do
+if chestHasTurtle() then found = true break end
+right()
+end
+if not found then return false, "no chest with a turtle in it next to me (the base puts the parts there)" end
+
+local before = invSnapshot()
+for i = 1, 16 do
+if turtle.getItemCount(i) == 0 then
+turtle.select(i)
+if not turtle.suck() then break end
+end
+end
+turtle.select(1)
+
+
+local okL, rest = pcall(peripheral.call, "front", "list")
+local leftOver = okL and type(rest) == "table" and next(rest) ~= nil
+local after = invSnapshot()
+local added = {}
+for i = 1, 16 do
+local a, b = after[i], before[i]
+local n = a and (a.count - ((b and b.name == a.name) and b.count or 0)) or 0
+if n > 0 then added[i] = n end
+end
+local function giveBack(why)
+
+for i, n in pairs(added) do
+if turtle.getItemCount(i) > 0 then turtle.select(i) turtle.drop(math.min(n, turtle.getItemCount(i))) end
+end
+turtle.select(1)
+return false, why .. " - the parts are back in the chest"
+end
+if leftOver then return giveBack("not enough room in my inventory for all the parts") end
+local ts
+for i in pairs(added) do
+local d = turtle.getItemDetail(i)
+if d and isTurtleItem(d.name) then ts = i end
+end
+if not ts then return giveBack("no turtle came out of the chest") end
+
+right() right()
+if turtle.detect() then left() left() return giveBack("the spot for the new turtle (opposite the chest) is not free") end
+if turtle.detectUp() then left() left() return giveBack("the block above me is not free") end
+turtle.select(ts)
+if not turtle.place() then turtle.select(1) left() left() return giveBack("could not place the new turtle") end
+added[ts] = added[ts] - 1
+
+for i, n in pairs(added) do
+if n > 0 and turtle.getItemCount(i) > 0 then
+turtle.select(i)
+turtle.drop(math.min(n, turtle.getItemCount(i)))
+end
+end
+turtle.select(1)
+local okId, newId = pcall(peripheral.call, "front", "getID")
+
+if not up() then return false, "could not go up to place the Disk Drive (new turtle " .. tostring(newId) .. " is placed)" end
+if turtle.detect() then down() return false, "the block above the new turtle is not free (it is placed, not started)" end
+turtle.select(slotOf(isDrive))
+if not turtle.place() then turtle.select(1) down() return false, "could not place the Disk Drive" end
+turtle.select(slotOf(isFloppy))
+turtle.drop(1)
+turtle.select(1)
+down()
+
+task = "starting the new turtle " .. tostring(newId)
+local okOn, on = pcall(peripheral.call, "front", "isOn")
+if okOn and on then pcall(peripheral.call, "front", "reboot") else pcall(peripheral.call, "front", "turnOn") end
+sleep(12)
+
+local msg = "built turtle " .. tostring(newId)
+if up() then
+turtle.suck()
+if not withEquipped("_pickaxe", turtle.dig) then msg = msg .. " (could not take my Disk Drive back)" end
+down()
+else
+msg = msg .. " (could not get back up to my Disk Drive)"
+end
+turtle.select(1)
+return true, msg
+end
+
+
+
+
+function digUp(top)
+task = "mining up to the surface"
+local free, fails = 0, 0
+for _ = 1, 400 do
+if stopFlag then return false, "stopped at " .. fmt() end
+local y = S.pos and S.pos.y
+if top and y and y >= top and not turtle.detectUp() then return true, "at the surface: " .. fmt() end
+if not top and free >= 6 then return true, "in the open (6 free blocks above where I was): " .. fmt() end
+if y and y >= 318 then return true, "at the top of the world: " .. fmt() end
+if turtle.detectUp() then
+free = 0
+if not tryDig("up") then
+local okI, b = turtle.inspectUp()
+local name = okI and type(b) == "table" and tostring(b.name) or "?"
+local nearHome = S.home and S.pos and S.pos.x and math.abs(S.pos.x - S.home.x) + math.abs(S.pos.z - S.home.z) <
+(tonumber(CONFIG.digNearHome) or 24)
+return false, "cannot mine up through " .. name .. " at " .. fmt() ..
+(nearHome and " (too close to home - no digging there)"
+or (natural(name) and " (no pickaxe?)" or " (not a natural block - never dug)"))
+end
+end
+if up() then
+fails = 0
+if not turtle.detectUp() then free = free + 1 end
+else
+fails = fails + 1
+if fails >= 5 then return false, "cannot move up at " .. fmt() end
+end
+end
+return false, "still not at the surface after 400 blocks: " .. fmt()
+end
+
+function runJob(j)
+local a = j.args
+
+DIG_JOB = (j.cmd == "rescue" or j.cmd == "sweep" or j.cmd == "digup")
+
+
+if j.cmd == "home" and (S.stuck or a[1] == "dig") then DIG_JOB = true end
+if S.anchor and (j.cmd == "survey" or j.cmd == "surveypts") then
+return false, "I am the ANCHOR (I keep the base loaded) - turn ANCHOR off first"
+end
+if j.cmd == "goto" or j.cmd == "home" or j.cmd == "survey" or j.cmd == "surveypts" or j.cmd == "rescue"
+or j.cmd == "sweep" then
+verifyPose()
+end
+if j.cmd == "goto" then
+local x, y, z = tonumber(a[1]), tonumber(a[2]), tonumber(a[3])
+if not (x and y and z) then return false, "usage: goto x y z" end
+x, y, z = math.floor(x), math.floor(y), math.floor(z)
+return gotoPos(x, y, z)
+elseif j.cmd == "home" then
+return goHome()
+elseif j.cmd == "move" then
+local dir, n = tostring(a[1] or ""), tonumber(a[2]) or 1
+task = "move " .. dir
+for _ = 1, n do
+if stopFlag then return false, "stopped" end
+local ok
+if dir == "forward" then ok = fwd()
+elseif dir == "back" then ok = bck()
+elseif dir == "up" then ok = up()
+elseif dir == "down" then ok = down()
+elseif dir == "left" then left() ok = true
+elseif dir == "right" then right() ok = true
+else return false, "unknown direction " .. dir end
+if not ok then return false, "blocked (" .. dir .. ") at " .. fmt() end
+end
+return true, dir .. " x" .. n .. " -> " .. fmt()
+elseif j.cmd == "digup" then
+return digUp(tonumber(a[1]))
+elseif j.cmd == "locate" then
+task = "GPS"
+return gpsFix()
+elseif j.cmd == "scan" then
+return scanHere(a[1])
+elseif j.cmd == "survey" then
+local x1, z1, x2, z2 = tonumber(a[1]), tonumber(a[2]), tonumber(a[3]), tonumber(a[4])
+if not (x1 and z1 and x2 and z2) then return false, "usage: survey x1 z1 x2 z2 [radius]" end
+if type(j.left) == "table" and #j.left > 0 then
+return surveyPoints(orderNearest(j.left), math.max(1, math.min(16, math.floor(tonumber(a[5]) or CONFIG.scanRadius))))
+end
+return survey(x1, z1, x2, z2, a[5])
+elseif j.cmd == "rescue" then
+local tid, x, y, z = tonumber(a[1]), tonumber(a[2]), tonumber(a[3]), tonumber(a[4])
+if not (tid and x and y and z) then return false, "usage: rescue <id> <x> <y> <z> [install|supply]" end
+return rescue(tid, math.floor(x), math.floor(y), math.floor(z), a[5] == "supply" and "supply" or "install",
+tonumber(a[6]))
+elseif j.cmd == "warp" then
+return warpTo(tostring(a[1] or ""))
+elseif j.cmd == "sweep" then
+local cx, cy, cz = tonumber(a[1]), tonumber(a[2]), tonumber(a[3])
+if not (cx and cy and cz) then return false, "usage: sweep <x> <y> <z> [radius] [skip ids]" end
+return sweep(math.floor(cx), math.floor(cy), math.floor(cz), tonumber(a[4]), a[5])
+elseif j.cmd == "fuelup" then
+local x, y, z = tonumber(a[1]), tonumber(a[2]), tonumber(a[3])
+if not (x and y and z) then return false, "usage: fuelup x y z (the fuel chest)" end
+task = "going to the fuel chest"
+return fuelTrip(math.floor(x), math.floor(y), math.floor(z))
+elseif j.cmd == "surveypts" then
+
+local r = math.max(1, math.min(16, math.floor(tonumber(a[1]) or CONFIG.scanRadius)))
+local pts = {}
+for i = 2, #a - 1, 2 do
+local x, z = tonumber(a[i]), tonumber(a[i + 1])
+if x and z then pts[#pts + 1] = { math.floor(x), math.floor(z) } end
+end
+if not known() then return false, "position/facing unknown - use GPS LOCATE" end
+if type(j.left) == "table" and #j.left > 0 then pts = j.left end
+return surveyPoints(orderNearest(pts), r)
+end
+if j.cmd == "build" then
+if S.anchor then return false, "I am the ANCHOR - send another turtle" end
+return build()
+end
+if j.cmd == "core" then
+task = "checking the End Automata Core"
+coreCheck()
+return true, "End Automata Core: functions " .. table.concat(S.coreMethods or { "?" }, ", ") ..
+(warpCore() and "" or (S.coreKeepsPoints and " - keeps its points when carried"
+or " - FORGETS its points when carried: cannot warp"))
+end
+return false, "unknown command " .. tostring(j.cmd)
+end
+
+
+function installUpdate(code)
+if fs.exists("startup.old") then fs.delete("startup.old") end
+if fs.exists(MYPATH) then fs.copy(MYPATH, "startup.old") end
+local targets = { MYPATH }
+if MYPATH ~= "startup.lua" and fs.exists("startup.lua") then targets[2] = "startup.lua" end
+for _, path in ipairs(targets) do
+local h = fs.open(path, "w")
+h.write(code)
+h.close()
+end
+end
+
+
+function immediate(cmd, a)
+if cmd == "upd" then
+
+
+
+local ver, i, n = tostring(a[1]), tonumber(a[2]), tonumber(a[3])
+if not (i and n) then return nil, "quiet" end
+if UPD_READY and UPD_READY.ver == ver then return nil, "quiet" end
+if not UPD or UPD.ver ~= ver or UPD.n ~= n then UPD = { ver = ver, n = n, parts = {}, got = 0 } end
+UPD.last = os.clock()
+if not UPD.parts[i] then
+UPD.parts[i] = tostring(a[4] or "")
+UPD.got = UPD.got + 1
+end
+if UPD.got < UPD.n then return nil, "quiet" end
+local code = table.concat(UPD.parts)
+UPD = nil
+if codeHash(code) ~= ver then return false, "update arrived damaged - the base will send it again" end
+local fn, err = load(code, "node", "t", {})
+if not fn then return false, "update does not compile, not installed: " .. tostring(err) end
+if job then
+UPD_READY = { ver = ver, code = code }
+return true, "update ready - installs when the current job is done"
+end
+installUpdate(code)
+rebootSoon = true
+return true, "updated - restarting"
+elseif cmd == "warpsave" then
+if job then return false, "busy: " .. tostring(task) .. " (press STOP first)" end
+local name = tostring(a[1] or "")
+if name == "" then return false, "usage: warpsave <name>" end
+return warpSave(name)
+elseif cmd == "core" then
+if not hasCore() then return false, "no End Automata Core (equipped or in the inventory)" end
+if a[1] == "check" or not S.coreMethods then return nil end
+return true, "End Automata Core " .. (warpCore() and "equipped" or "carried") .. "; " ..
+(warpCore() and "warps" or (S.coreKeepsPoints and "keeps points - warps (swapped in)"
+or (S.coreKeepsPoints == false and "FORGETS points when taken off - cannot warp" or "not tested"))) ..
+"; functions: " .. table.concat(S.coreMethods or { "?" }, ", ")
+elseif cmd == "warps" then
+local o = {}
+for n, w in pairs(S.warps or {}) do o[#o + 1] = n .. " (" .. w.x .. " " .. w.y .. " " .. w.z .. ")" end
+return true, (#o > 0 and table.concat(o, ", ") or "no warp points") ..
+(warpCore() and "" or (coreSlot() and " - End Automata Core carried (swapped in to warp)"
+or " - no End Automata Core"))
+elseif cmd == "setting" then
+
+local name, raw = tostring(a[1] or ""), a[2]
+if name == "" or name == "key" or name == "protocol" or name == "baseName" then
+return false, "usage: setting <name> <value>  (key/protocol/baseName cannot be changed)"
+end
+if CONFIG[name] == nil then return false, "no setting called '" .. name .. "'" end
+local v = raw
+if raw == "true" then v = true elseif raw == "false" then v = false
+elseif tonumber(raw) then v = tonumber(raw) end
+if type(v) ~= type(CONFIG[name]) then
+return false, name .. " must be a " .. type(CONFIG[name]) .. " (now: " .. tostring(CONFIG[name]) .. ")"
+end
+CONFIG[name] = v
+local t = loadSettings()
+t[name] = v
+writeFile(SETTINGS_FILE, t)
+return true, name .. " = " .. tostring(v) .. " (kept across updates)"
+elseif cmd == "know" then
+
+
+for x, y, z, k, t in tostring(a[1] or ""):gmatch("(-?%d+),(-?%d+),(-?%d+),(%a+),(%d+)") do
+memWall(tonumber(x), tonumber(y), tonumber(z), k, "base", tonumber(t))
+end
+for x, y, z, t in tostring(a[2] or ""):gmatch("(-?%d+),(-?%d+),(-?%d+),(%d+)") do
+local k = memKey(x, y, z)
+if not DEAD[k] or DEAD[k].t < tonumber(t) then
+DEAD[k] = { x = tonumber(x), y = tonumber(y), z = tonumber(z), t = tonumber(t) }
+end
+end
+local pts = routeFromString(a[3])
+if #pts >= 2 then EXIT = { points = pts, t = tonumber(a[4]) or now() }
+elseif tostring(a[3] or "") == "none" then EXIT = nil end
+CRUISE = tonumber(a[5])
+knowReady = true
+return nil, "quiet"
+elseif cmd == "exitrec" then
+if not (S.pos and S.pos.x) then return false, "position unknown - use GPS LOCATE first" end
+recStart()
+S.recording = true
+return true, "recording the exit route: drive me out of the base into the open, then SAVE"
+elseif cmd == "exitsave" then
+if not S.recording then return false, "not recording - press START first" end
+S.recording = false
+local pts = compressRoute(recStop())
+if #pts < 2 then return false, "the route is too short" end
+EXIT = { points = pts, t = now() }
+send("exitroute", { route = routeToString(pts) })
+return true, "exit route saved: " .. #pts .. " corners, ends at " .. pts[#pts][1] .. " " ..
+pts[#pts][2] .. " " .. pts[#pts][3]
+elseif cmd == "ack" then
+outboxAck(tonumber(a[1]))
+return nil, "quiet"
+elseif cmd == "anchor" then
+S.anchor = (tostring(a[1]) == "on")
+save()
+return true, S.anchor and "I am the ANCHOR now: I stay here and keep this chunk loaded"
+or "not the anchor any more"
+elseif cmd == "ping" then return true, "pong"
+elseif cmd == "diag" then
+
+local function kb(f) return fs.exists(f) and (math.floor(fs.getSize(f) / 102.4) / 10) or 0 end
+local okF, free = pcall(fs.getFreeSpace, "/")
+local okC, cap = pcall(fs.getCapacity, "/")
+local parts = {
+"disk free " .. (okF and math.floor(free / 1024) or "?") .. " KB" ..
+((okC and cap) and (" of " .. math.floor(cap / 1024) .. " KB") or ""),
+"files KB: program " .. kb(MYPATH) .. (MYPATH ~= "startup.lua" and (" + startup " .. kb("startup.lua")) or "") ..
+", backup " .. kb("startup.old") .. ", state " .. kb(STATE_FILE) .. ", outbox " .. kb(OUTBOX_FILE) ..
+" (" .. outboxCount() .. " scans), trail " .. kb(TRAIL_FILE),
+"saved job: " .. ((type(S.job) == "table") and (tostring(S.job.cmd) .. ", resumed " .. tostring(S.job.resumes or 0) ..
+"x, " .. ((type(S.job.left) == "table") and (#S.job.left .. " spots left") or "")) or "none"),
+"starts: " .. tostring(S.boots or "?") .. (S.anchor and ", ANCHOR" or ""),
+"gear: " .. tostring(gearString and gearString() or "?"),
+}
+if writeErr then parts[#parts + 1] = "last save error: " .. writeErr end
+if fs.exists(CRASH_FILE) then parts[#parts + 1] = "crash file present" end
+return true, table.concat(parts, " | ")
+elseif cmd == "status" then return true, "status sent"
+elseif cmd == "dupstop" then
+
+DUP = true
+stopFlag = true
+os.queueEvent("node_stop")
+task = "DUPLICATE copy - stopped (break me)"
+local x, y, z = gpsRaw(2)
+if x then S.pos = { x = x, y = y, z = z, f = S.pos and S.pos.f } end
+return true, "stopped: I am a DUPLICATE copy of this turtle" .. (x and (" at " .. x .. " " .. y .. " " .. z) or "")
+elseif cmd == "becomecopy" then
+
+
+local k = tonumber(a[1])
+if not k or k < 1 then return false, "becomecopy needs a copy number" end
+DUP = true
+stopFlag = true
+os.queueEvent("node_stop")
+local name = (os.getComputerLabel() or ("Turtle " .. os.getComputerID())):gsub("%s*%[c%d+%]%s*$", "")
+name = name .. " [c" .. k .. "]"
+os.setComputerLabel(name)
+local own = { reuse = S.reuse, refuelDone = S.refuelDone,
+rebootWhy = "as a COPY of turtle #" .. os.getComputerID() .. " (now its own turtle)" }
+pcall(function()
+local h = fs.open("node_state_c" .. k, "w")
+h.write(textutils.serialize(own))
+h.close()
+end)
+rebootSoon = true
+return true, "I am a COPY of this turtle - now '" .. name .. "', restarting as a turtle of my own"
+elseif cmd == "dupfree" then
+DUP = false
+task = "idle"
+return true, "I am the real turtle again"
+elseif cmd == "stop" then
+stopFlag = true
+if S.job then S.job = nil end
+save()
+os.queueEvent("node_stop")
+return true, job and "stopping" or "stopped (idle)"
+elseif (cmd == "setpos" or cmd == "refuel") and job then
+
+
+return false, "busy: " .. tostring(task) .. " (press STOP first)"
+elseif cmd == "setpos" then
+local x, y, z, f = tonumber(a[1]), tonumber(a[2]), tonumber(a[3]), FACE[tostring(a[4] or ""):lower()]
+if not (x and y and z and f) then return false, "usage: setpos x y z north|south|east|west" end
+S.pos = { x = x, y = y, z = z, f = f }
+save()
+return true, "position set to " .. fmt() .. " facing " .. FNAME[f]
+elseif cmd == "homeoffer" then
+
+local x, y, z = tonumber(a[1]), tonumber(a[2]), tonumber(a[3])
+if S.home or not (x and y and z) then return nil, "quiet" end
+S.home = { x = math.floor(x), y = math.floor(y), z = math.floor(z) }
+S.homeAuto = true
+save()
+return true, "home set to " .. S.home.x .. " " .. S.home.y .. " " .. S.home.z ..
+" (next to another turtle's home - checked the first time I go there)"
+elseif cmd == "sethome" then
+S.homeAuto = nil
+local x, y, z = tonumber(a[1]), tonumber(a[2]), tonumber(a[3])
+if x and y and z then
+S.home = { x = math.floor(x), y = math.floor(y), z = math.floor(z) }
+save()
+return true, "home set to " .. S.home.x .. " " .. S.home.y .. " " .. S.home.z
+end
+gpsCheck()
+if not (S.pos and S.pos.x) then return false, "position unknown" end
+S.home = { x = S.pos.x, y = S.pos.y, z = S.pos.z }
+save()
+trailReset()
+local okW = select(1, warpSave("home"))
+return true, "home set to " .. fmt() .. " (here)" .. (okW and " + warp point 'home' (GO HOME teleports)" or "")
+elseif cmd == "refuel" then
+return doRefuel()
+elseif cmd == "drive" then
+
+if job then return false, "busy: " .. tostring(task) .. " - press STOP first" end
+local ok, msg = driveStep(tostring(a[1] or ""), a[2] == "force")
+
+
+driveLook(tostring(a[1]) == "look" and 3 or 1)
+return ok, msg
+end
+return nil
+end
+
+
+
+
+DRIVE_KEEP = { "chest", "barrel", "shulker", "computer", "turtle", "drive", "storage", "ae2:", "spawner",
+"furnace", "hopper", "dispenser", "dropper", "crate", "drawer", "monitor", "modem", "bed" }
+function driveKeep(name)
+local n = tostring(name):lower()
+for _, k in ipairs(DRIVE_KEEP) do if n:find(k, 1, true) then return true end end
+return false
+end
+
+
+function driveDig(d, force)
+local insp = (d == "u" and turtle.inspectUp) or (d == "d" and turtle.inspectDown) or turtle.inspect
+local dig = (d == "u" and turtle.digUp) or (d == "d" and turtle.digDown) or turtle.dig
+local okI, b = insp()
+if not okI or type(b) ~= "table" then return true, "nothing to dig" end
+local name = tostring(b.name)
+if driveKeep(name) then return false, "will not dig " .. name .. " (its items would be lost)" end
+local nearHome = S.home and S.pos and S.pos.x and math.abs(S.pos.x - S.home.x) + math.abs(S.pos.z - S.home.z) <
+(tonumber(CONFIG.digNearHome) or 24)
+if not force and (not natural(name) or nearHome) then
+return false, (nearHome and "close to home" or (name .. " is not a natural block")) ..
+" - DIG ANYWAY (two taps) if you are sure", "force"
+end
+if not findItemLike("_pickaxe") then return false, "no pickaxe in the inventory" end
+local okD = withEquipped("_pickaxe", dig) == true
+if not okD then return false, "could not dig " .. name end
+return true, "dug " .. name
+end
+
+function driveMove(d)
+ensureFuel()
+local mv = (d == "u" and turtle.up) or (d == "d" and turtle.down) or (d == "b" and turtle.back) or turtle.forward
+local att = (d == "u" and turtle.attackUp) or (d == "d" and turtle.attackDown) or turtle.attack
+local ok = mv()
+if not ok and d ~= "b" then pcall(att) sleep(0.3) ok = mv() end
+if not ok then
+if turtle.getFuelLevel() == 0 then return false, "no fuel" end
+return false, "blocked"
+end
+if d == "u" then moved(0, 1, 0) frameMove("u")
+elseif d == "d" then moved(0, -1, 0) frameMove("d")
+elseif d == "b" then
+if S.pos and S.pos.f then moved(-DX[S.pos.f], 0, -DZ[S.pos.f]) end
+frameMove("b")
+else
+if S.pos and S.pos.f then moved(DX[S.pos.f], 0, DZ[S.pos.f]) end
+frameMove("f")
+end
+S.stuck = nil
+return true, "moved"
+end
+function driveStep(act, force)
+task = "driven by hand"
+local m = { f = "f", b = "b", u = "u", d = "d" }
+if m[act] then return driveMove(m[act]) end
+if act == "l" then left() return true, "turned left" end
+if act == "r" then right() return true, "turned right" end
+if act == "around" then right() right() return true, "turned around" end
+
+local gd = ({ gon = 0, goe = 1, gos = 2, gow = 3 })[act]
+if gd then
+if not (S.pos and S.pos.f) then return false, "facing unknown - GPS LOCATE first" end
+local turns = (gd - S.pos.f) % 4
+if turns == 1 then right() elseif turns == 2 then right() right() elseif turns == 3 then left() end
+return driveStep("minef", force)
+end
+local dd = act:match("^dig([fud])$")
+if dd then return driveDig(dd, force) end
+local md = act:match("^mine([fud])$")
+if md then
+local okD, msgD, need = driveDig(md, force)
+if not okD then return false, msgD, need end
+for _ = 1, 4 do
+local okM = driveMove(md)
+if okM then return true, msgD .. ", moved" end
+local okD2 = driveDig(md, force)
+if not okD2 then break end
+end
+return false, msgD .. ", but could not move"
+end
+if act == "look" then return true, "looked around" end
+return false, "unknown drive step " .. act
+end
+
+
+function driveLook(r)
+if r == true then r = 3 end
+local function n(f) local ok, b = f() return ok and type(b) == "table" and tostring(b.name) or "air" end
+local v = { front = n(turtle.inspect), up = n(turtle.inspectUp), down = n(turtle.inspectDown) }
+local scan = r and r >= 1
+if scan and findItem(CONFIG.geoItem) then
+v.scanR = r
+local data = withScanner(function(sc)
+local res = sc.scan(r)
+if not res and r >= 3 then sleep(2.5) res = sc.scan(r) end
+return res
+end)
+if type(data) == "table" then
+local o = {}
+for _, b in ipairs(data) do
+if type(b) == "table" and b.name and not tostring(b.name):find("air", 1, true) then
+o[#o + 1] = b.x .. "," .. b.y .. "," .. b.z .. "," .. tostring(b.name):gsub("^minecraft:", "")
+end
+end
+v.scan = table.concat(o, ";")
+elseif r >= 3 then
+v.scanErr = "the scan did not work"
+end
+elseif scan and r >= 3 then
+v.scanErr = "no Geo Scanner - only front / up / down"
+end
+task = "idle"
+send("look", v)
+end
+
+
+
+
+
+
+
+function atHome()
+return S.home and S.pos and S.pos.x == S.home.x and S.pos.y == S.home.y and S.pos.z == S.home.z
+end
+function fuelChestSides(only)
+local list = {}
+for _, d in ipairs({ { "bottom", turtle.suckDown, turtle.dropDown }, { "top", turtle.suckUp, turtle.dropUp },
+{ "front", turtle.suck, turtle.drop } }) do
+local okI, inv = pcall(peripheral.hasType, d[1], "inventory")
+local okT, isT = pcall(peripheral.hasType, d[1], "turtle")
+if okI and inv and not (okT and isT) and (not only or only == d[1]) then list[#list + 1] = d end
+end
+return list
+end
+function fuelStation(only)
+local f0 = turtle.getFuelLevel()
+if f0 == "unlimited" or SLOT_LOCK or TOPUP_RUNNING then return nil end
+local goal = math.min(turtle.getFuelLimit(), tonumber(CONFIG.stationFuel) or 20000)
+if f0 >= goal then return nil end
+
+for i = 1, 16 do
+local d = turtle.getItemDetail(i)
+if d and S.reuse and S.reuse[d.name] then return nil end
+end
+local sides = fuelChestSides(only)
+if #sides == 0 then return false, only and "no chest there" or "no chest next to my home" end
+SLOT_LOCK = true
+local gotReuse = false
+local sel = turtle.getSelectedSlot()
+local function emptySlot() for i = 1, 16 do if turtle.getItemCount(i) == 0 then return i end end end
+for _, d in ipairs(sides) do
+local held = {}
+for _ = 1, 27 do
+if turtle.getFuelLevel() >= goal then break end
+local e = emptySlot()
+if not e then break end
+turtle.select(e)
+if not d[2](64) then break end
+local it = turtle.getItemDetail(e)
+S.reuse = S.reuse or {}
+
+local burnable = it and (isFuel(it.name) or S.reuse[it.name] or turtle.refuel(0))
+if burnable and it and not S.reuse[it.name] and not isFuel(it.name) then
+
+local c0 = turtle.getItemCount(e)
+if turtle.refuel(1) and turtle.getItemCount(e) >= c0 then S.reuse[it.name] = true save() end
+end
+if it and S.reuse[it.name] then
+gotReuse = true
+REUSE_SLOTS = nil
+elseif burnable then
+while turtle.getFuelLevel() < goal and turtle.refuel(1) do end
+local after = turtle.getItemDetail(e)
+if after and after.name == "minecraft:bucket" then d[3]() end
+else
+held[#held + 1] = e
+end
+if gotReuse then break end
+end
+for _, e in ipairs(held) do turtle.select(e) d[3]() end
+end
+turtle.select(sel)
+SLOT_LOCK = false
+
+if gotReuse and turtle.getFuelLevel() < goal then topUp(goal, true, 200) end
+local f1 = turtle.getFuelLevel()
+if gotReuse then
+return true, "took reusable fuel from the chest at home (kept it): " .. f0 .. " -> " .. f1 ..
+" - it keeps filling up by itself while idle"
+end
+if f1 > f0 then return true, "refuelled from the chest at home: " .. f0 .. " -> " .. f1 end
+return false, "the chest next to my home has no fuel"
+end
+
+
+
+
+function fuelTrip(cx, cy, cz)
+local spots = { { 0, 1, 0, "bottom" }, { 1, 0, 0 }, { -1, 0, 0 }, { 0, 0, 1 }, { 0, 0, -1 }, { 0, -1, 0, "top" } }
+local reached, lastErr
+for _, o in ipairs(spots) do
+if stopFlag then return false, "stopped" end
+local tx, ty, tz = cx + o[1], cy + o[2], cz + o[3]
+HOMEPROBE = { x = tx, y = ty, z = tz }
+local okG, ok, err = pcall(gotoPos, tx, ty, tz)
+HOMEPROBE = nil
+if not okG then error(ok, 0) end
+if isStop(err) then return false, err end
+if ok then reached = o break end
+lastErr = err
+end
+if not reached then return false, "could not get next to the fuel chest (" .. tostring(lastErr) .. ")" end
+local side = reached[4]
+if not side then
+
+local dx, dz = -reached[1], -reached[3]
+face((dz == 1 and 0) or (dx == -1 and 1) or (dz == -1 and 2) or 3)
+side = "front"
+end
+task = "refuelling at the fuel chest"
+send("status")
+local okS, got, msg = pcall(fuelStation, side)
+if not okS then SLOT_LOCK = false end
+local note = (not okS) and ("error: " .. tostring(got)) or (got == nil and "fuel was fine already" or tostring(msg))
+if S.home then
+local okH, msgH = goHome()
+return (okS and got ~= false) and okH, "fuel chest: " .. note .. "; " .. tostring(msgH)
+end
+return okS and got ~= false, "fuel chest: " .. note
+end
+
+
+
+
+function doRefuel()
+S.refuelDone = true
+do
+local before = turtle.getFuelLevel()
+local _, more = topUp(refuelTarget(), false, 200)
+local names = {}
+for n in pairs(S.reuse or {}) do names[#names + 1] = n:gsub("^.*:", "") end
+if before == "unlimited" then return true, "fuel is unlimited on this server - nothing to do" end
+local gained, uses, refused, secs = TOPUP.gained or 0, TOPUP.uses or 0, TOPUP.refused or 0, TOPUP.secs or 0
+local rate = secs > 0 and math.floor(gained / secs) or gained
+return true, "fuel " .. tostring(before) .. " -> " .. tostring(turtle.getFuelLevel()) ..
+" (" .. uses .. " uses" .. (refused > 0 and (", refused " .. refused .. "x") or "") ..
+", " .. string.format("%.1f", secs) .. " s = " .. rate .. " fuel/s)" ..
+(#names > 0 and ("; reusable fuel: " .. table.concat(names, ", ") ..
+(more and " - it keeps filling up by itself while idle" or "")) or "")
+end
+end
+
+function listener()
+while true do
+local id, m = rednet.receive(CONFIG.protocol)
+if type(m) == "table" and m.t == "cmd" and type(m.n) == "number"
+and (m.ses == nil or m.ses == SESSION)
+and (tonumber(m.copy) or 0) == (COPY or 0)
+and (not DUP or m.cmd == "dupfree" or m.cmd == "dupstop")
+and m.n > (S.lastN or 0) and m.sig == sign(CONFIG.key, m.t, m.n, m.cmd, m.args) then
+S.lastN = m.n
+save()
+baseId = id
+local a = type(m.args) == "table" and m.args or {}
+local okI, ok, msg = pcall(immediate, m.cmd, a)
+if not okI then ok, msg = false, "error in '" .. tostring(m.cmd) .. "': " .. tostring(ok) end
+if ok == nil and msg == "quiet" then
+
+elseif ok ~= nil then
+reply(m.cmd, ok, msg)
+if rebootSoon then
+S.rebootWhy = "after an update"
+save()
+sleep(1)
+os.reboot()
+end
+elseif job then
+reply(m.cmd, false, "busy: " .. task .. " (press STOP first)")
+else
+stopFlag = false
+job = { cmd = m.cmd, args = a }
+end
+end
+end
+end
+
+
+local RESUMABLE = { ["goto"] = true, home = true, survey = true, surveypts = true, rescue = true, sweep = true }
+
+
+
+function afterForcedStop()
+STEPPING, SLOT_LOCK, TOPUP_RUNNING = false, false, false
+if not findModemSide() and (modem == "left" or modem == "right") then
+local slot = findItemLike("modem")
+if slot then
+turtle.select(slot)
+equipOn(modem)
+sleep(0.2)
+end
+end
+pcall(rednet.open, modem)
+modemAttached = findModemSide() ~= nil
+turtle.select(1)
+if not S.recording then recStop() end
+pcall(chunkyFix, modem)
+pcall(gpsCheck)
+end
+
+
+
+
+
+function stopWatch()
+while not stopFlag do os.pullEvent("node_stop") end
+local t0 = os.clock()
+while os.clock() - t0 < 2 do sleep(0.1) end
+FORCE_STOP = true
+while true do
+local safe = not STEPPING and modemAttached and not SLOT_LOCK and not TOPUP_RUNNING
+if safe or os.clock() - t0 > 60 then return true end
+sleep(0.05)
+end
+end
+
+function worker()
+while true do
+if job then
+local j = job
+
+
+if RESUMABLE[j.cmd] and not stopFlag then
+S.job = { cmd = j.cmd, args = j.args, left = j.left, resumes = j.resumes or 0 }
+save()
+end
+
+
+if j.delay and not stopFlag then
+task = "restarted - continuing " .. j.cmd .. " in " .. j.delay .. " s"
+send("status")
+local t0 = os.clock()
+while os.clock() - t0 < j.delay and not stopFlag do sleep(0.25) end
+end
+local okRun, ok, msg
+if stopFlag then
+okRun, ok, msg = true, false, "stopped (before it started)"
+else
+local forced = false
+parallel.waitForAny(
+function() okRun, ok, msg = pcall(runJob, j) end,
+function() forced = stopWatch() end)
+if forced and okRun == nil then
+afterForcedStop()
+okRun, ok, msg = true, false, "stopped (forced) at " .. fmt()
+end
+end
+if not okRun then ok, msg = false, tostring(ok) end
+if FORCE_STOP then
+FORCE_STOP = false
+if not modemAttached or SLOT_LOCK or TOPUP_RUNNING then afterForcedStop() end
+end
+job, task = nil, DUP and "DUPLICATE copy - stopped (break me)" or "idle"
+DIG_JOB = false
+S.job = nil
+trailSave()
+if ok or tostring(msg):find("^stopped") then
+S.stuck = nil
+elseif j.cmd == "goto" or j.cmd == "home" or j.cmd == "move" or j.cmd == "survey"
+or j.cmd == "surveypts" or j.cmd == "rescue" then
+S.stuck = msg
+local fix = gpsCheck()
+if fix then msg = msg .. " (" .. fix .. ")" end
+end
+save()
+reply(j.cmd, ok and true or false, msg)
+if UPD_READY and not DUP then
+
+installUpdate(UPD_READY.code)
+UPD_READY = nil
+send("result", { cmd = "upd", ok = true, msg = "job done - update installed, restarting" })
+S.rebootWhy = "after an update"
+save()
+sleep(1)
+os.reboot()
+end
+else
+
+if not S.coreChecked and hasCore() and modemAttached then pcall(coreCheck) end
+
+local fs0 = turtle.getFuelLevel()
+if fs0 ~= "unlimited" and fs0 < (tonumber(CONFIG.lowFuel) or 2000) and atHome() and not job
+and (not STATION_AT or os.clock() - STATION_AT > 60) then
+STATION_AT = os.clock()
+local okS, got, msgS = pcall(fuelStation)
+if okS and got ~= nil and (got or msgS ~= STATION_SAID) then
+STATION_SAID = msgS
+send("result", { cmd = "fuel", ok = got, msg = msgS ..
+(got and "" or " - put coal (or other fuel) in a chest under, above or in front of my home") })
+end
+if not okS then SLOT_LOCK = false end
+end
+
+
+
+local fl = turtle.getFuelLevel()
+if not S.refuelDone and (S.reuse ~= nil or fl == "unlimited" or fl >= 1000) then
+S.refuelDone = true
+end
+if not S.refuelDone and not job and not SLOT_LOCK then
+local okR, okR2, msgR = pcall(doRefuel)
+S.refuelDone = true
+save()
+send("result", { cmd = "refuel", ok = okR and okR2 or false,
+msg = "first start - refuelled by myself: " .. tostring(okR and msgR or okR2) })
+end
+
+local f = turtle.getFuelLevel()
+if f ~= "unlimited" and S.reuse and next(S.reuse) and f < refuelTarget() then
+local gained = topUp(refuelTarget(), true, 40)
+if gained <= 0 then sleep(1) end
+else
+sleep(0.2)
+end
+end
+end
+end
+
+function heartbeat()
+send("hello", { resumed = S.resumedNote })
+if BOOTNOTE then send("result", { cmd = "boot", ok = true, msg = BOOTNOTE }) BOOTNOTE = nil end
+if CLEANNOTE then send("result", { cmd = "clean", ok = true, msg = CLEANNOTE }) CLEANNOTE = nil end
+do
+local side = warpCore() or (coreSlot() and "carried - swapped in for each warp")
+local n = 0
+for _ in pairs(S.warps or {}) do n = n + 1 end
+if side then
+send("result", { cmd = "warp", ok = true, msg = "End Automata Core found (" .. side .. "): " .. n ..
+" warp point(s)" .. ((S.warps and S.warps.home) and ", incl. 'home'" or " - no 'home' yet: press SET HOME at home, or GO HOME once") })
+end
+end
+if S.resumedNote then
+send("result", { cmd = "restart", ok = not CRASHED, msg = S.resumedNote })
+S.resumedNote = nil
+save()
+end
+
+if CRASHED then
+CRASHED = nil
+pcall(function() if fs.exists(CRASH_FILE) then
+local h = fs.open(CRASH_FILE, "r")
+local t = textutils.unserialize(h.readAll() or "") or {}
+h.close()
+t.err = nil
+writeFile(CRASH_FILE, t)
+end end)
+end
+local idleFor, sinceResend, sinceLearn = 0, 0, 0
+while true do
+sleep(CONFIG.heartbeat)
+S.alive = now()
+if not S.aliveSaved or S.alive - S.aliveSaved > 30000 then S.aliveSaved = S.alive save() end
+sinceResend = sinceResend + CONFIG.heartbeat
+sinceLearn = sinceLearn + CONFIG.heartbeat
+if not job and gearString then S.gear = gearString() end
+if sinceLearn >= CONFIG.learnEvery and modemAttached then
+sinceLearn = 0
+learnFlush()
+end
+if sinceResend >= CONFIG.resendEvery and outboxCount() > 0 and modemAttached then
+sinceResend = 0
+outboxResend()
+end
+
+if UPD and UPD.last and os.clock() - UPD.last > 6 and modemAttached then
+local miss = {}
+for k = 1, UPD.n do if not UPD.parts[k] then miss[#miss + 1] = k end end
+send("updmiss", { want = UPD.ver, missing = miss })
+UPD.last = os.clock()
+end
+if job then
+idleFor = 0
+else
+idleFor = idleFor + CONFIG.heartbeat
+if idleFor >= CONFIG.gpsIdle then
+idleFor = 0
+local fix = gpsCheck()
+if fix then send("result", { cmd = "gps", ok = true, msg = fix }) end
+end
+end
+send("status")
+end
+end
+
+term.clear()
+term.setCursorPos(1, 1)
+print("node: " .. (os.getComputerLabel() or ("Turtle " .. os.getComputerID())) ..
+"  id " .. os.getComputerID())
+print("modem: " .. modem .. "   position: " .. fmt())
+print("Waiting for commands from '" .. CONFIG.baseName .. "'...")
+if not known() then pcall(gpsFix) end
+
+
+
+if type(S.job) == "table" and RESUMABLE[S.job.cmd] then
+local sj = S.job
+sj.resumes = (sj.resumes or 0) + 1
+if sj.resumes > 5 then
+print("The last job (" .. sj.cmd .. ") restarted me 5 times - not continuing it.")
+S.resumedNote = "restarted - NOT continuing '" .. sj.cmd .. "' (it was interrupted 5 times)"
+S.job = nil
+else
+job = { cmd = sj.cmd, args = sj.args or {}, left = sj.left, resumes = sj.resumes, delay = 6 }
+local what = sj.cmd
+if type(sj.left) == "table" then what = what .. " (" .. #sj.left .. " spots left)" end
+print("Continuing the interrupted job: " .. what)
+S.resumedNote = "restarted - continuing the job: " .. what
+end
+save()
+end
+
+
+
+do
+local off = S.alive and math.floor((now() - S.alive) / 1000) or nil
+local why = S.rebootWhy or "by the game (chunk loaded again, server start or Ctrl+R)"
+BOOTNOTE = "started " .. why .. (off and (" - was off for about " .. off .. " s") or "") ..
+" - start #" .. ((S.boots or 0) + 1)
+S.boots = (S.boots or 0) + 1
+S.rebootWhy = nil
+save()
+end
+
+
+
+
+CRASH_FILE = "node_crash" .. COPYSFX
+if fs.exists(CRASH_FILE) then
+local h = fs.open(CRASH_FILE, "r")
+local t = textutils.unserialize(h.readAll() or "") or {}
+h.close()
+CRASHED = t
+S.resumedNote = (S.resumedNote and (S.resumedNote .. "; ") or "") ..
+"restarted after an ERROR: " .. tostring(t.err)
+end
+local okMain, errMain = pcall(parallel.waitForAny, listener, worker, heartbeat)
+if not okMain and tostring(errMain) ~= "Terminated" then
+local c = {}
+if fs.exists(CRASH_FILE) then
+local h = fs.open(CRASH_FILE, "r")
+c = textutils.unserialize(h.readAll() or "") or {}
+h.close()
+end
+local n = ((c.at and now() - c.at < 600000) and (c.n or 0) or 0) + 1
+writeFile(CRASH_FILE, { err = tostring(errMain), at = now(), n = n })
+printError("node.lua stopped with an error:")
+printError(tostring(errMain))
+local wait = math.min(60, 5 * n)
+print("Restarting in " .. wait .. " s (hold Ctrl+T to stay stopped)...")
+S.rebootWhy = "after an ERROR"
+save()
+sleep(wait)
+os.reboot()
+end

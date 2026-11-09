@@ -529,6 +529,13 @@ PneumaticCraft drone rides, turtle mapping/surveys, and an AE2 ME network view.
   nothing is written; temp file when there is room, else old out / new in (old kept in
   memory); binary "rb"/"wb". Then map saved + reboot. Default branch
   claude/computercraft-base-review-ihjtqw (upgrade.dat). tools/tests/upgrade_sim.lua.
+  SLIM (default): make_manifest also writes dist/<file> = tools/slim.py (comments, --[[ ]]
+  blocks, indentation, trailing spaces removed; strings / [[ ]] untouched; EVERY LINE KEPT
+  so game error line numbers match the full file) and lists them as "slim:<group> path size
+  sum dist/path"; upgrade takes those (`upgrade full` = commented files, saved; `upgrade
+  slim` back; an older upgrade.lua only reads the plain groups -> full files + the new
+  upgrade.lua, the next run goes slim). Base files 904 KB -> 656 KB. run_tests: every dist
+  file compiles (luac -s) to the SAME bytes as the full one, same line count.
 - Autostart: `startup.lua` (top level of the computer) finds inventory.lua
   in any folder and restarts it after a crash (inventory.lua raises an error
   on a crash, returns normally on Ctrl+T). inventory.lua turns off

@@ -84,6 +84,27 @@ def _():
     rc, out = run(["python3", "tools/make_manifest.py", "--check"])
     return rc == 0, out.strip()
 
+@check("upgrade", "slim copies (dist/) = the same code, the same lines")
+def _():
+    bad = []
+    tmp = os.path.join(ROOT, "tools", ".slimcheck")
+    for f in sorted(glob.glob(os.path.join(ROOT, "dist", "*.lua"))):
+        name = os.path.basename(f)
+        full = os.path.join(ROOT, name)
+        if not os.path.exists(full):
+            bad.append(name + ": no full file"); continue
+        r1, o1 = run(["luac5.3", "-s", "-o", tmp + "1", full])
+        r2, o2 = run(["luac5.3", "-s", "-o", tmp + "2", f])
+        if r1 or r2:
+            bad.append(name + ": " + (o1 + o2).strip()); continue
+        if open(tmp + "1", "rb").read() != open(tmp + "2", "rb").read():
+            bad.append(name + ": compiles to DIFFERENT code")
+        if open(full, "rb").read().count(b"\n") != open(f, "rb").read().count(b"\n"):
+            bad.append(name + ": line count differs")
+    for x in (tmp + "1", tmp + "2"):
+        if os.path.exists(x): os.remove(x)
+    return not bad, "\n".join(bad)
+
 @check("upgrade", "upgrade.lua on a fake disk + GitHub")
 def _():
     rc, out = run(["lua5.3", "tools/tests/upgrade_sim.lua", ROOT])
