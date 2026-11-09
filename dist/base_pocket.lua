@@ -71,6 +71,8 @@ end
 local function short(s, n) s = tostring(s or "") return #s > n and (s:sub(1, n - 1) .. ".") or s end
 function POCKET.status()
 local d = { base = os.getComputerLabel() or ("Base " .. os.getComputerID()), t = os.epoch("utc") }
+d.lost = #TT.lostList()
+d.party = TT.partyLine and TT.partyLine() or nil
 
 local counts, needs, list = {}, {}, {}
 for _, t in ipairs(TT.list()) do
@@ -218,6 +220,9 @@ TT.forget(t.id)
 return true, label .. " forgotten (its survey spots go to the others)"
 elseif a == "minedrop" then
 return MINE.drop(tonumber(args[1]))
+elseif a == "party" then
+if TT.party then return TT.partyStop("called back") end
+return TT.partyStart()
 elseif a == "allstop" or a == "allhome" then
 local n = 0
 for id, t in pairs(state.turtles) do

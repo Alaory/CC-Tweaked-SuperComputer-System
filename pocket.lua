@@ -334,6 +334,13 @@ function pageBots(d, y)
   end
   button(1, y, hw, "STOP ALL", C.bad, function() act("allstop") end, true)
   button(hw + 2, y, W - hw - 1, "ALL HOME", C.acc, function() act("allhome") end, true) y = y + 2
+  -- search party: everyone meets at the base, then they look for the lost ones
+  if d.party then
+    y = text(y, d.party, C.label)
+    button(1, y, W, "CALL BACK SEARCH", C.warn, function() act("party") end, true) y = y + 2
+  elseif (d.lost or 0) > 0 then
+    button(1, y, W, "FIND LOST TURTLES (" .. d.lost .. ")", C.acc, function() act("party") end, true) y = y + 2
+  end
   local list = {}
   for _, t in ipairs(d.turtles or {}) do list[#list + 1] = t end
   table.sort(list, function(a, b)

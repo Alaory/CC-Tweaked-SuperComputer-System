@@ -2509,6 +2509,13 @@ end
 -- SEARCH PARTY: one Geo Scanner look around - where are turtle blocks? (the base
 -- works out which lost turtle it is and sends the RESCUER to that exact block;
 -- the rescuer checks the ID before it touches a turtle)
+-- nothing above me in this scan (dx = dz = 0, dy > 0): I am at the surface / in the air
+function openSkyIn(data)
+  for _, b in ipairs(data) do
+    if type(b) == "table" and (b.x or 0) == 0 and (b.z or 0) == 0 and (b.y or 0) > 0 then return false end
+  end
+  return true
+end
 function findTurtles()
   task = "search party: looking around"
   if not findItem(CONFIG.geoItem) then return false, "I have no Geo Scanner - I only help by loading the area" end
@@ -2524,7 +2531,14 @@ function findTurtles()
     end
   end
   send("turtlesseen", { seen = seen })
-  return true, "looked around (radius " .. tostring(r) .. "): " .. #seen .. " turtle(s) seen"
+  -- the same scan goes onto the MAP (the party is far from home anyway) - only
+  -- with open sky above me: underground every column "ends" at the scan's top
+  local mapped = ""
+  if openSkyIn(data) then
+    local okS = pcall(sendSummary, data, r)
+    if okS then mapped = " + map updated" end
+  end
+  return true, "looked around (radius " .. tostring(r) .. "): " .. #seen .. " turtle(s) seen" .. mapped
 end
 
 function rescue(tid, x, y, z, mode, radius)

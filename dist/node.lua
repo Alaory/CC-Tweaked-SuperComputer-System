@@ -2509,6 +2509,13 @@ end
 
 
 
+
+function openSkyIn(data)
+for _, b in ipairs(data) do
+if type(b) == "table" and (b.x or 0) == 0 and (b.z or 0) == 0 and (b.y or 0) > 0 then return false end
+end
+return true
+end
 function findTurtles()
 task = "search party: looking around"
 if not findItem(CONFIG.geoItem) then return false, "I have no Geo Scanner - I only help by loading the area" end
@@ -2524,7 +2531,14 @@ seen[#seen + 1] = { x = S.pos.x + b.x, y = S.pos.y + b.y, z = S.pos.z + b.z }
 end
 end
 send("turtlesseen", { seen = seen })
-return true, "looked around (radius " .. tostring(r) .. "): " .. #seen .. " turtle(s) seen"
+
+
+local mapped = ""
+if openSkyIn(data) then
+local okS = pcall(sendSummary, data, r)
+if okS then mapped = " + map updated" end
+end
+return true, "looked around (radius " .. tostring(r) .. "): " .. #seen .. " turtle(s) seen" .. mapped
 end
 
 function rescue(tid, x, y, z, mode, radius)

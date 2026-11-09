@@ -1967,8 +1967,9 @@ function TT.partyStop(why)
     end
   end
   TT.party = nil
-  local msg = "Search party " .. (why or "called back") .. ": found " .. #P.found .. ", sent the rescuer to " ..
-              #P.located .. ", MISSING (deleted) " .. #P.missing
+  local msg = "Search party " .. (why or "called back") .. ": " .. #P.found .. " woke up, " ..
+              #P.located .. " found for the rescuer" .. (#TT.rescueQ > 0 and (" (" .. #TT.rescueQ .. " still to fetch)") or "") ..
+              ", MISSING (deleted / broken) " .. #P.missing
   pushNote("DONE", msg, C.good)
   if sysLog then sysLog(msg, "INFO") end
   return true, msg
@@ -2011,21 +2012,64 @@ function TT.partySeen(id, seen)
       if best then
         P.locatedSet[best.id] = true
         P.located[#P.located + 1] = best.id
-        local rescuer
-        for _, o in pairs(state.turtles) do if o.rescuerRole and TT.online(o) then rescuer = o end end
-        local ok, msg = TT.rescue(best.id, x, y, z, 6, rescuer)
+        -- the rescuer gets it in turn (TT.rescueQueueTick): a busy one finishes its
+        -- rescue first, the party goes on to the next lost turtle at once
+        TT.rescueQ[#TT.rescueQ + 1] = { id = best.id, x = x, y = y, z = z, at = os.clock() }
         local text = "Search party: " .. (best.label or ("#" .. best.id)) .. " found at " .. x .. " " .. y .. " " .. z ..
-                     (ok and (" - " .. msg) or (" - no rescuer could go (" .. tostring(msg) .. ") - get it yourself"))
+                     " - the rescuer goes there " .. (#TT.rescueQ > 1 and ("after " .. (#TT.rescueQ - 1) .. " other(s)") or "now")
         TT.log(best, text)
-        pushNote(ok and "DONE" or "WARNING", text, ok and C.good or C.warn)
-        if sysLog then sysLog(text, ok and "DONE" or "WARNING") end
+        pushNote("DONE", text, C.good)
+        if sysLog then sysLog(text, "DONE") end
+        TT.rescueQueueTick()
       end
     end
   end
 end
 
+-- turtles the search party found, waiting for the rescuer (one at a time: it
+-- goes, rescues - or finds the turtle gone: broken / deleted -> MISSING - goes
+-- home, then the next). Memory only.
+TT.rescueQ = {}
+function TT.rescueQueueTick()
+  local q = TT.rescueQ
+  if #q == 0 then return end
+  -- drop the ones that are back / marked MISSING / forgotten
+  local keep = {}
+  for _, e in ipairs(q) do
+    local t = state.turtles[e.id]
+    if t and not TT.online(t) and not t.missing then keep[#keep + 1] = e end
+  end
+  TT.rescueQ = keep
+  q = keep
+  if #q == 0 then return end
+  local r
+  for _, o in pairs(state.turtles) do if o.rescuerRole and TT.online(o) then r = o end end
+  local busyR = false
+  if r then
+    busyR = not (r.task == nil or r.task == "idle") or r.held
+    for _, o in pairs(state.turtles) do
+      if o.rescuer == r.id and not TT.online(o) and not o.missing and o.id ~= q[1].id then busyR = true end
+    end
+  end
+  if busyR then return end
+  local e = q[1]
+  local ok, msg = TT.rescue(e.id, e.x, e.y, e.z, 6, r)   -- (no permanent rescuer: the best free turtle)
+  local t = state.turtles[e.id]
+  if ok then
+    table.remove(q, 1)
+    TT.log(t, "Search party find: " .. msg)
+  elseif not e.told then
+    e.told = true
+    local text = "Found " .. (t.label or ("#" .. e.id)) .. " at " .. e.x .. " " .. e.y .. " " .. e.z ..
+                 " but no rescuer can go yet (" .. tostring(msg) .. ") - it waits; or get it yourself"
+    pushNote("WARNING", text, C.warn)
+    if sysLog then sysLog(text, "WARNING") end
+  end
+end
+
 -- comms worker, every 2 s
 function TT.partyTick()
+  pcall(TT.rescueQueueTick)                       -- (also after the party is back home)
   local P = TT.party
   if not P then return end
   local now = os.clock()

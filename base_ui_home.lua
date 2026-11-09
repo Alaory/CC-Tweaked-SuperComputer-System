@@ -82,6 +82,12 @@ function drawHomePage(G)
       acts[#acts + 1] = { "STOP ALL TURTLES", { kind = "quick", name = "allstop", count = 0 } }
       acts[#acts + 1] = { "ALL TURTLES HOME", { kind = "quick", name = "allhome", count = 0 } }
       acts[#acts + 1] = { "UPDATE TURTLES", { kind = "sysupdate", name = "all", count = 0 } }
+      -- the search party: all turtles meet at the base and look for the lost ones
+      if TT.party then
+        acts[#acts + 1] = { "CALL BACK SEARCH", { kind = "quick", name = "party", count = 0 } }
+      elseif #TT.lostList() > 0 then
+        acts[#acts + 1] = { "FIND LOST (" .. #TT.lostList() .. ")", { kind = "quick", name = "party", count = 0 } }
+      end
     end
     if #(droneOrder or {}) > 0 then
       acts[#acts + 1] = { "DRONE: TAKE ME TO BASE", { kind = "quick", name = "ride", args = { "base" }, count = 0 } }

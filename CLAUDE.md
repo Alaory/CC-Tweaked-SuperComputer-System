@@ -517,12 +517,19 @@ PneumaticCraft drone rides, turtle mapping/surveys, and an AE2 ME network view.
   order. Stages: meet (base, a line) -> travel (hops <= 128 toward the target, members side
   by side 24 apart across the way; next hop when all are within 6 of their goal or idle 20 s,
   max 300 s) -> ring1 (24 around the spot) -> ring2 (56) -> TT.markMissing. After EVERY stop
-  each member runs node job "findturtles" (Geo Scanner r 16/8, turtle blocks, not eggs) ->
+  each member runs node job "findturtles" (Geo Scanner r 16/8, turtle blocks, not eggs; the SAME scan
+  also goes onto the MAP via sendSummary when openSkyIn - nothing above the turtle; underground
+  scans would write a false surface; node_partymap.lua) ->
   "turtlesseen" -> TT.partySeen: a block with no online turtle on it, within 96 of a lost
   one's last spot = that turtle -> TT.rescue(id, exact x y z, 6, the permanent rescuer)
   (the rescuer checks the ID - isTurtle - before touching it). A lost one that reports
   (Chunky loaded its area) = found. End / no members -> all "home", summary note.
-  Memory only (a base restart ends it). test_party.lua.
+  Memory only (a base restart ends it). Finds go into TT.rescueQ: the rescuer gets them ONE AT
+  A TIME (TT.rescueQueueTick in partyTick, also after the party ended): busy (task / an
+  unfinished rescue) -> wait; back online / MISSING (broken, deleted) -> dropped; no rescuer can
+  go -> one WARNING, it keeps waiting. The party moves on to the next lost turtle at once.
+  Buttons: FLEET card, HOME quick action "FIND LOST (n)" / "CALL BACK SEARCH" (POCKET.act
+  "party" toggles), pocket BOTS "FIND LOST TURTLES (n)" (status d.lost / d.party). test_party.lua.
 - Permanent rescuer: t.rescuerRole (RESCUER button, saved in turtles.dat;
   base only). TT.patrolTick (comms worker) sends it to: no fuel (<20 for
   60 s), stuck (60 s idle), lost (silent CONFIG.turtles.rescueAfter, default

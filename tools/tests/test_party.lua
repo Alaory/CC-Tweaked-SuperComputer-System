@@ -78,3 +78,44 @@ CHECK(not state.turtles[1].party, "members are free again")
 local ok2, msg2 = TT.partyStart()
 CHECK(not ok2 or #TT.lostList() > 0, "no lost turtle: no party (" .. tostring(msg2) .. ")")
 TT.party = nil
+
+-- TWO finds while the rescuer is busy: the second WAITS for it (before: "no
+-- rescuer could go - get it yourself"), then the rescuer is sent there; a find
+-- that is gone by then (broken / deleted) is dropped
+do
+  state.turtles, state.tOut, TT.rescueQ = {}, {}, {}
+  T(9, { rescuerRole = true, gear = "L=x R=y,drive,floppy,pick,fuel,scanner" })
+  local X = T(31, { lastSeen = CLOCK - 9999, pos = { x = 100, y = 40, z = 0 } })
+  local Y = T(32, { lastSeen = CLOCK - 9999, pos = { x = 500, y = 40, z = 0 } })
+  local Z = T(33, { lastSeen = CLOCK - 9999, pos = { x = 900, y = 40, z = 0 } })
+  local sent = {}
+  local s0 = TT.send
+  TT.send = function(id, cmd, args, ...) if cmd == "rescue" then sent[#sent + 1] = args[1] end return s0(id, cmd, args, ...) end
+  TT.party = { targets = { 31, 32, 33 }, ti = 1, members = {}, goals = {}, seenAt = {}, located = {}, found = {},
+               foundSet = {}, missing = {}, done = {} }
+  TT.partySeen(1, { { x = 100, y = 40, z = 0 } })
+  CHECK(sent[1] == 31, "first find: the rescuer goes at once")
+  state.turtles[9].task = "rescue"                       -- busy with it
+  TT.partySeen(1, { { x = 500, y = 40, z = 0 } })
+  TT.partySeen(1, { { x = 900, y = 40, z = 0 } })
+  CHECK(#sent == 1 and #TT.rescueQ == 2, "busy rescuer: the other finds wait in line (" .. #TT.rescueQ .. ")")
+  TT.party = nil
+  state.turtles[9].task = "idle"
+  X.missing = os.epoch("utc")                            -- the first one turned out to be gone
+  Y.missing = os.epoch("utc")                            -- (and this one broken by a player meanwhile)
+  for _ = 1, 3 do CLOCK = CLOCK + 2 TT.partyTick() end
+  CHECK(sent[2] == 33, "rescuer free: the next one in line (a gone one skipped) (" .. tostring(sent[2]) .. ")")
+  CHECK(#TT.rescueQ == 0, "the line is empty")
+  TT.send = s0
+  -- the HOME quick action and the pocket start / call back the party
+  state.turtles[9].task = "idle"
+  T(1)
+  Z.missing = nil
+  local okA, msgA = POCKET.act("party", {})
+  CHECK(okA and TT.party, "FIND LOST (HOME / pocket) starts the search party: " .. tostring(msgA))
+  local okB = POCKET.act("party", {})
+  CHECK(okB and TT.party == nil, "tapped again: the party is called back")
+  local st = POCKET.status()
+  CHECK(st.lost == 1, "the pocket is told how many are lost (" .. tostring(st.lost) .. ")")
+  TT.party, TT.rescueQ = nil, {}
+end
