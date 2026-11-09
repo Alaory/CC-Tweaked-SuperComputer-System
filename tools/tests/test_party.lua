@@ -159,3 +159,33 @@ do
   local l = TT.lostList()
   CHECK(#l == 1 and l[1].id == 52, "rescue / search list: only the far one")
 end
+
+-- the lost turtle is UNDER GROUND: the members never go down to it (they tried,
+-- could not - no digging - and every trip failed); they stand on the surface
+do
+  state.turtles, state.tOut, TT.party, TT.rescueQ = {}, {}, nil, {}
+  CONFIG.drone.home = { x = 0, y = 40, z = 0 }           -- (the drone home is down inside the base)
+  T(9, { rescuerRole = true }) T(1, { pos = { x = 0, y = 70, z = 0 } }) T(2, { pos = { x = 1, y = 70, z = 0 } })
+  local U = T(61, { lastSeen = CLOCK - 99999, pos = { x = 1500, y = 12, z = 0 } })
+  local get0 = MAP.get
+  MAP.get = function(x, z) return 66, "minecraft:grass_block" end
+  local lowest = 999
+  local s0 = TT.send
+  TT.send = function(id, cmd, args, ...)
+    if cmd == "goto" then lowest = math.min(lowest, args[2]) end
+    return s0(id, cmd, args, ...)
+  end
+  TT.partyStart()
+  for _ = 1, 40 do
+    CLOCK = CLOCK + 25
+    for _, id in ipairs({ 1, 2, 9 }) do state.turtles[id].lastSeen = CLOCK end
+    TT.partyTick()
+    if not TT.party then break end
+  end
+  TT.send = s0
+  CHECK(lowest >= 69, "members stay above the ground (lowest goal Y " .. lowest .. ", ground 66) - not down at Y 12 / 40")
+  -- the members could not move at all (every trip failed): the lost turtle is NOT marked missing
+  CHECK(not U.missing, "nobody got there: NOT marked missing")
+  CHECK(TT.party == nil, "the party ended (could not get there) instead of hanging on")
+  MAP.get = get0
+end

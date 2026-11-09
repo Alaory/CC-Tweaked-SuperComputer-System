@@ -533,6 +533,12 @@ PneumaticCraft drone rides, turtle mapping/surveys, and an AE2 ME network view.
   one's last spot = that turtle -> TT.rescue(id, exact x y z, 6, the permanent rescuer)
   (the rescuer checks the ID - isTurtle - before touching it). A lost one that reports
   (Chunky loaded its area) = found. End / no members -> all "home", summary note.
+  GOALS ON THE SURFACE (TT.partyY: MAP.get top + 3, unknown ground -> the height they travel at):
+  meet / hops / rings never at the lost turtle's own Y or the drone home's Y (under ground / inside
+  the base: members tried to go DOWN, could not - no digging - every trip failed, an idle failed
+  trip counted as "arrived", the party raced to MISSING and went home). P.nearTarget (a member
+  within 64 of the spot) is needed for MISSING, else "could not get close" (P.unreached, not
+  missing); 3 rounds with nobody reaching a goal (P.stuckRounds) -> skip that one, WARNING.
   Memory only (a base restart ends it). Finds go into TT.rescueQ: the rescuer gets them ONE AT
   A TIME (TT.rescueQueueTick in partyTick, also after the party ended): busy (task / an
   unfinished rescue) -> wait; back online / MISSING (broken, deleted) -> dropped; no rescuer can

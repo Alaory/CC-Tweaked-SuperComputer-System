@@ -1991,6 +1991,15 @@ KNOW.load()
 TT.party = nil
 local PARTY_GAP, PARTY_HOP = 24, 128
 
+
+
+
+function TT.partyY(x, z, fallback)
+local top = MAP and MAP.get and MAP.get(math.floor(x), math.floor(z))
+if top then return top + 3 end
+return math.max(tonumber(fallback) or 70, 64)
+end
+
 local function flat(a, b) return math.abs(a.x - b.x) + math.abs(a.z - b.z) end
 
 
@@ -2036,7 +2045,8 @@ for k, id in ipairs(members) do
 local t = state.turtles[id]
 t.party = true
 if t.task and t.task ~= "idle" then TT.send(id, "stop", {}, true, true) end
-TT.party.goals[id] = { x = meet.x + (k - 1) * 2 - #members, y = meet.y, z = meet.z + 3 }
+local gx, gz = meet.x + (k - 1) * 2 - #members, meet.z + 3
+TT.party.goals[id] = { x = gx, y = TT.partyY(gx, gz, math.max(meet.y or 64, t.pos.y)), z = gz }
 end
 TT.partySendGoals()
 if sysLog then sysLog("Search party: " .. #members .. " turtle(s) look for " .. #order .. " lost one(s)", "INFO") end
@@ -2066,7 +2076,8 @@ end
 TT.party = nil
 local msg = "Search party " .. (why or "called back") .. ": " .. #P.found .. " woke up, " ..
 #P.located .. " found for the rescuer" .. (#TT.rescueQ > 0 and (" (" .. #TT.rescueQ .. " still to fetch)") or "") ..
-", MISSING (deleted / broken) " .. #P.missing
+", MISSING (deleted / broken) " .. #P.missing ..
+((P.unreached and #P.unreached > 0) and (", could not get to " .. #P.unreached) or "")
 pushNote("DONE", msg, C.good)
 if sysLog then sysLog(msg, "INFO") end
 return true, msg
@@ -2077,7 +2088,7 @@ local function partyTarget(P)
 while P.targets[P.ti] do
 local t = state.turtles[P.targets[P.ti]]
 if t and not t.missing and not TT.online(t) and not P.locatedSet[t.id] then return t end
-P.ti, P.stage = P.ti + 1, "travel"
+P.ti, P.stage, P.nearTarget, P.stuckRounds = P.ti + 1, "travel", nil, 0
 end
 end
 
@@ -2198,11 +2209,35 @@ local t = state.turtles[id]
 if not P.done[id] then
 local near = t.pos and t.pos.x and flat(t.pos, g) <= 6
 local idle = (t.task == nil or t.task == "idle") and now - P.sentAt > 20
+if near then P.reachedN = (P.reachedN or 0) + 1 end
 if near or idle then P.done[id] = true else all = false end
 end
 end
 if not all and now - P.sentAt < 300 then return end
+
+local T0 = P.targets[P.ti] and state.turtles[P.targets[P.ti]]
+if T0 and T0.pos and T0.pos.x then
+for _, mid in ipairs(P.members) do
+local m = state.turtles[mid]
+if m and m.pos and m.pos.x and flat(m.pos, T0.pos) <= 64 then P.nearTarget = true end
+end
+end
+
+if (P.reachedN or 0) == 0 and P.stage ~= "meet" then P.stuckRounds = (P.stuckRounds or 0) + 1
+else P.stuckRounds = 0 end
+P.reachedN = 0
 if P.stage == "meet" then P.stage = "travel" end
+if (P.stuckRounds or 0) >= 3 and T0 then
+
+P.unreached = P.unreached or {}
+P.unreached[#P.unreached + 1] = T0.id
+local text = "Search party: could not get to " .. (T0.label or ("#" .. T0.id)) .. " (no way through) - " ..
+"not marked missing; going on to the next one"
+TT.log(T0, text)
+pushNote("WARNING", text, C.warn)
+P.ti, P.stage, P.stuckRounds, P.nearTarget, P.phase = P.ti + 1, "travel", 0, nil, "next"
+P.scanNext = false
+end
 if P.scanNext then
 P.scanNext, P.scanned, P.phase, P.scanT = false, {}, "scan", now
 for _, id in ipairs(P.members) do TT.send(id, "findturtles", {}, true) end
@@ -2236,15 +2271,24 @@ local wx, wz = cx + dx / len * step, cz + dz / len * step
 local px, pz = -dz / len, dx / len
 for k, id in ipairs(P.members) do
 local off = (k - (n + 1) / 2) * PARTY_GAP
-P.goals[id] = { x = wx + px * off, y = math.max(cy, T.pos.y), z = wz + pz * off }
+local gx, gz = wx + px * off, wz + pz * off
+P.goals[id] = { x = gx, y = TT.partyY(gx, gz, cy), z = gz }
 end
 else
 
 P.stage = (P.stage == "ring1") and "ring2" or ((P.stage == "ring2") and "done" or "ring1")
 if P.stage == "done" then
+if P.nearTarget then
 
 TT.markMissing(T, "the search party")
 P.missing[#P.missing + 1] = T.id
+else
+
+P.unreached = P.unreached or {}
+P.unreached[#P.unreached + 1] = T.id
+TT.log(T, "Search party: could not get close to its last spot - not marked missing")
+end
+P.nearTarget = nil
 P.ti, P.stage = P.ti + 1, "travel"
 P.phase = "next"
 return
@@ -2253,7 +2297,8 @@ local r = (P.stage == "ring1") and 24 or 56
 local ring = { { r, 0 }, { -r, 0 }, { 0, r }, { 0, -r }, { r, r }, { -r, -r }, { r, -r }, { -r, r } }
 for k, id in ipairs(P.members) do
 local o = ring[(k - 1) % #ring + 1]
-P.goals[id] = { x = T.pos.x + o[1], y = T.pos.y, z = T.pos.z + o[2] }
+local gx, gz = T.pos.x + o[1], T.pos.z + o[2]
+P.goals[id] = { x = gx, y = TT.partyY(gx, gz, math.max(cy, T.pos.y)), z = gz }
 end
 end
 P.phase, P.scanNext = "move", true
