@@ -143,6 +143,19 @@ PneumaticCraft drone rides, turtle mapping/surveys, and an AE2 ME network view.
   the turtle reports a task after a reload; no patrol/survey batches; any
   non-quiet command, or a survey you start
   (MAP.queueSurvey), releases it; TT.available still lists held turtles. A resumed job waits 6 s first.
+- DUPLICATE TURTLES (a server crash while a turtle crosses into the next chunk leaves
+  SEVERAL turtles with one id: same program, items AND the same disk - they all hear its
+  rednet messages). node.lua: SESSION (random, memory only) in every report (m.ses);
+  a cmd with m.ses for another copy is ignored; "dupstop" -> DUP (stops, takes no jobs,
+  writeFile refuses - the shared disk belongs to the real one, no updates, GPS position
+  reported, m.dup); "dupfree" undoes it. Base TT.dupSeen (before the lastN check): two
+  sessions that each spoke after the other appeared (a restart's old session goes silent)
+  = copies; t.mainSes = not already DUP, nearest its home; the others get dupstop with
+  THEIR ses (every 15 s until m.dup); their reports never touch t; t.dups -> TT.dupText
+  (turtle card, FLEET needs list, pocket, away report) + one WARNING / sysLog. While
+  copies exist TT.send adds ses = t.mainSes (never otherwise - a restarted turtle must not
+  be locked out). Gone 10 min -> forgotten. miner.lua does not do this yet.
+  test_dups.lua, node_dup.lua.
 - node.lua never just ends: the main parallel.waitForAny is in a pcall; an
   error is written to `node_crash`, the turtle reboots (5 s, longer when it
   keeps crashing) and tells the base ("restarted after an ERROR: ..." in the

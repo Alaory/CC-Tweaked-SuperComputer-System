@@ -227,6 +227,92 @@ function TT.find(word)
 end
 
 -- a message from a turtle (status every few seconds, results of commands)
+-- DUPLICATES (a server crash while a turtle crosses into the next chunk can
+-- leave several turtles with ONE id - same program, same items, same disk).
+-- node.lua sends a SESSION (new on every start) with every report. Two
+-- sessions that keep talking at the same time (each spoke after the other
+-- appeared - a normal restart's old session goes silent) = copies: one stays
+-- THE turtle (t.mainSes: one not already stopped, nearest its home), every
+-- other gets "dupstop" meant only for it, and its reports never touch t
+-- (t.dups = where the copies are). TT.sess[id][ses] = {first, seen, pos, dup}.
+TT.sess = {}
+function TT.dupSeen(t, id, m)
+  local now = os.clock()
+  local S = TT.sess[id] or {}
+  TT.sess[id] = S
+  local s = S[m.ses]
+  if not s then s = { first = now } S[m.ses] = s end
+  s.seen, s.dup = now, m.dup and true or nil
+  if type(m.pos) == "table" and m.pos.x then s.pos = m.pos end
+  for k, v in pairs(S) do if now - v.seen > 600 then S[k] = nil end end
+  local alive, n = {}, 0
+  for k, v in pairs(S) do
+    for k2, v2 in pairs(S) do
+      if k ~= k2 and now - v.seen < 120 and now - v2.seen < 120
+         and v.seen > v2.first + 2 and v2.seen > v.first + 2 then
+        if not alive[k] then alive[k] = true n = n + 1 end
+      end
+    end
+  end
+  if n == 0 then
+    -- one copy: this is the turtle (after a restart: its new session)
+    t.mainSes = m.ses
+    if t.dups then
+      t.dups = nil
+      TT.listDirty = true
+      TT.log(t, "No extra copies any more")
+    end
+    return false
+  end
+  if not (t.mainSes and alive[t.mainSes] and not (S[t.mainSes] or {}).dup) then
+    local best, bd
+    for k in pairs(alive) do
+      local v = S[k]
+      local d = (v.dup and 1e9 or 0)
+      if t.home and v.pos then
+        d = d + math.abs(v.pos.x - t.home.x) + math.abs((v.pos.y or 0) - (t.home.y or 0)) + math.abs(v.pos.z - t.home.z)
+      end
+      if not bd or d < bd then best, bd = k, d end
+    end
+    t.mainSes = best
+  end
+  local dups = {}
+  for k in pairs(alive) do
+    if k ~= t.mainSes then dups[#dups + 1] = { ses = k, pos = S[k].pos, dup = S[k].dup } end
+  end
+  local was = t.dups and #t.dups or 0
+  t.dups = dups
+  if #dups > was then
+    TT.listDirty = true
+    local where = {}
+    for _, d in ipairs(dups) do
+      where[#where + 1] = d.pos and fmtPos(d.pos.x, d.pos.y, d.pos.z) or "?"
+    end
+    local msg = (t.label or ("Turtle " .. id)) .. " exists " .. (#dups + 1) .. " TIMES (server crash copy). " ..
+                "Extra copies stopped at " .. table.concat(where, ", ") .. " - break them (they are copies)"
+    pushNote("WARNING", msg, C.warn)
+    if sysLog then sysLog(msg, "WARNING") end
+    TT.log(t, msg)
+  end
+  if m.ses ~= t.mainSes then
+    if not m.dup and (not s.stopAt or now - s.stopAt > 15) then
+      s.stopAt = now
+      TT.send(id, "dupstop", {}, true, true, m.ses)
+    end
+    return true                                     -- a copy's report: not this turtle's
+  end
+  return false
+end
+
+-- "N extra copies at x y z, ... - break them" (nil when it has none)
+function TT.dupText(t)
+  if not (t.dups and #t.dups > 0) then return nil end
+  local where = {}
+  for _, d in ipairs(t.dups) do where[#where + 1] = d.pos and fmtPos(d.pos.x, d.pos.y, d.pos.z) or "?" end
+  return (#t.dups == 1 and "1 COPY" or (#t.dups .. " COPIES")) .. " of it (server crash), stopped at " ..
+         table.concat(where, ", ") .. " - break them"
+end
+
 function TT.receive(id, m)
   if type(m) ~= "table" or type(m.n) ~= "number" or type(m.t) ~= "string" then return end
   if m.sig ~= TT.sign(CONFIG.turtles.key, m.t, m.n) then
@@ -242,6 +328,7 @@ function TT.receive(id, m)
   end
   if m.mine then return MINE.receive(id, m) end      -- a mining-dimension team turtle (miner.lua)
   local t = TT.get(id)
+  if type(m.ses) == "string" and TT.dupSeen(t, id, m) then return end   -- an extra COPY of this id
   if m.n <= (t.lastN or 0) then return end           -- old / replayed message
   t.lastN = m.n
   local prevSeen = t.lastSeen
@@ -1632,15 +1719,18 @@ function TT.stopTick()
   end
 end
 
-function TT.send(id, cmd, args, quiet, again)
+-- ses: only the copy with this session obeys (duplicates); while an id HAS
+-- copies every command goes to the real one (t.mainSes) only
+function TT.send(id, cmd, args, quiet, again, ses)
   local n = os.epoch("utc")
   if n <= state.tLastN then n = state.tLastN + 1 end
   state.tLastN = n
   local a = {}
   for i, v in ipairs(args or {}) do a[i] = v end
-  state.tOut[#state.tOut + 1] = { id = id, msg = { t = "cmd", n = n, cmd = cmd, args = a,
-                                    sig = TT.sign(CONFIG.turtles.key, "cmd", n, cmd, a) } }
   local t = state.turtles[id]
+  if not ses and t and t.dups and #t.dups > 0 then ses = t.mainSes end
+  state.tOut[#state.tOut + 1] = { id = id, msg = { t = "cmd", n = n, cmd = cmd, args = a, ses = ses,
+                                    sig = TT.sign(CONFIG.turtles.key, "cmd", n, cmd, a) } }
   -- any command you give (not the quiet automatic ones) ends a STOP hold
   if t and t.held and cmd ~= "stop" and not quiet then t.held = nil TT.listDirty = true end
   if cmd == "stop" and t and not again then

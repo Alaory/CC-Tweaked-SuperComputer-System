@@ -232,7 +232,17 @@ if fs.exists(STATE_FILE) then
 end
 -- save a table to a file; a failure is reported, never stops the program
 local writeErr = nil
+-- DUPLICATES: a server crash while a turtle crosses into the next chunk can
+-- leave SEVERAL turtles with this ID (one chunk saved before the move, one
+-- after). They all hear messages for this ID and SHARE this disk. Every start
+-- picks a SESSION (memory only) that goes with every report; a command meant
+-- for one copy carries its session. A copy the base calls a duplicate (DUP,
+-- "dupstop") stops, never writes the shared files, takes no jobs.
+SESSION = tostring(math.random(100000, 999999)) .. "-" .. tostring(os.epoch("utc") % 100000)
+DUP = false
+
 function writeFile(path, value)
+  if DUP then return false end                 -- (the shared disk belongs to the real one)
   local ok, text = pcall(textutils.serialize, value)
   if not ok then
     writeErr = "cannot save " .. path .. ": " .. tostring(text)
@@ -374,6 +384,8 @@ function send(t, extra)
   for k, v in pairs(extra or {}) do m[k] = v end
   m.t, m.n = t, n
   m.sig = sign(CONFIG.key, t, n)
+  m.ses = SESSION
+  if DUP then m.dup = true end
   m.label = os.getComputerLabel() or ("Turtle " .. os.getComputerID())
   local fuel = turtle.getFuelLevel()
   m.fuel = fuel
@@ -2820,6 +2832,19 @@ function immediate(cmd, a)
     if fs.exists(CRASH_FILE) then parts[#parts + 1] = "crash file present" end
     return true, table.concat(parts, " | ")
   elseif cmd == "status" then return true, "status sent"
+  elseif cmd == "dupstop" then
+    -- I am an extra copy (server crash): stop for good, say where I really am
+    DUP = true
+    stopFlag = true
+    os.queueEvent("node_stop")
+    task = "DUPLICATE copy - stopped (break me)"
+    local x, y, z = gpsRaw(2)
+    if x then S.pos = { x = x, y = y, z = z, f = S.pos and S.pos.f } end
+    return true, "stopped: I am a DUPLICATE copy of this turtle" .. (x and (" at " .. x .. " " .. y .. " " .. z) or "")
+  elseif cmd == "dupfree" then
+    DUP = false
+    task = "idle"
+    return true, "I am the real turtle again"
   elseif cmd == "stop" then
     stopFlag = true
     if S.job then S.job = nil end            -- never continue it after a reload
@@ -3132,6 +3157,8 @@ function listener()
   while true do
     local id, m = rednet.receive(CONFIG.protocol)
     if type(m) == "table" and m.t == "cmd" and type(m.n) == "number"
+       and (m.ses == nil or m.ses == SESSION)          -- (meant for another copy of this ID)
+       and (not DUP or m.cmd == "dupfree" or m.cmd == "dupstop")
        and m.n > (S.lastN or 0) and m.sig == sign(CONFIG.key, m.t, m.n, m.cmd, m.args) then
       S.lastN = m.n
       save()
@@ -3234,7 +3261,7 @@ function worker()
         FORCE_STOP = false
         if not modemAttached or SLOT_LOCK or TOPUP_RUNNING then afterForcedStop() end
       end
-      job, task = nil, "idle"
+      job, task = nil, DUP and "DUPLICATE copy - stopped (break me)" or "idle"
       DIG_JOB = false                            -- only during rescue trips
       S.job = nil                                -- finished, failed or stopped: forget it
       trailSave()
@@ -3248,7 +3275,7 @@ function worker()
       end
       save()
       reply(j.cmd, ok and true or false, msg)
-      if UPD_READY then
+      if UPD_READY and not DUP then
         -- an update arrived during the job: install it now
         installUpdate(UPD_READY.code)
         UPD_READY = nil

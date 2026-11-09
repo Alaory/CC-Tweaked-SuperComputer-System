@@ -1,6 +1,9 @@
 -- The map is read in the background: scans during loading wait and are added
 -- afterwards, nothing is saved before it is read, CLEAR MAP waits, the load
 -- pauses between files (map worker only), node.lua loads the same with pauses.
+-- (this test is about loading, not disk room: the program files - ~900 KB of the
+-- 1 MB - do not count here, or the 30x30 scans no longer fit on the computer)
+CODE_SIZE = 0
 local function scanAt(x, z, top)
   local cols = {}
   for i = 1, 17 * 17 do cols[i] = { top or 0, 1 } end

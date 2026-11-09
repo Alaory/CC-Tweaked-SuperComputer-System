@@ -21,6 +21,7 @@ function drawFleet(x, y, w, h, list)
     if key == "stuck" or key == "nofuel" or key == "still" or key == "missing" or (key == "idle" and c == C.warn) then
       need[#need + 1] = { t = t, lab = lab, c = c, why = why }
     end
+    if TT.dupText(t) then need[#need + 1] = { t = t, lab = "HAS COPIES", c = C.warn, why = TT.dupText(t) } end
     local f = tonumber(t.fuel)
     if f and TT.online(t) then
       fuelSum = fuelSum + f
@@ -195,7 +196,9 @@ function drawTurtlesPage(G)
   stat(rix + 3 * (q + 2), y0 + 3, q, "TASK", t.task or "idle", t.task and t.task ~= "idle" and C.warn or C.text)
   stat(rix + 4 * (q + 2), y0 + 3, q, "ITEMS", tostring(t.items or "?"))
   local sKey, sLab, sCol, sWhy = TT.status(t)
-  if sKey ~= "idle" and sKey ~= "busy" and sKey ~= "held" then
+  if TT.dupText(t) then
+    text(rix, y0 + 5, trunc(TT.dupText(t), riw), C.warn, C.panel)
+  elseif sKey ~= "idle" and sKey ~= "busy" and sKey ~= "held" then
     text(rix, y0 + 5, trunc(sLab .. ": " .. sWhy, riw), sCol, C.panel)
   elseif CODE and TT.online(t) and TT.outdated(t) then
     local msg = (t.updReady == CODE.ver) and ("Has " .. TT.verName(CODE.ver) .. " ready - installs when its job is done")

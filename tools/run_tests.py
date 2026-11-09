@@ -120,6 +120,11 @@ def _():
     rc, out = run(["lua5.3", "tools/tests/node_drive.lua", "node.lua"])
     return rc == 0, out.strip()
 
+@check("node", "duplicate copies (node_dup.lua)")
+def _():
+    rc, out = run(["lua5.3", "tools/tests/node_dup.lua", "node.lua"])
+    return rc == 0, out.strip()
+
 @check("node", "MINE UP (node_digup.lua)")
 def _():
     rc, out = run(["lua5.3", "tools/tests/node_digup.lua", "node.lua"])

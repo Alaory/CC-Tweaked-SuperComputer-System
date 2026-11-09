@@ -79,6 +79,9 @@ function POCKET.status()
     if key == "stuck" or key == "nofuel" or key == "still" or key == "missing" then
       needs[#needs + 1] = { id = t.id, label = short(t.label, 12), lab = lab, why = short(why, 60) }
     end
+    if TT.dupText(t) then
+      needs[#needs + 1] = { id = t.id, label = short(t.label, 12), lab = "HAS COPIES", why = short(TT.dupText(t), 60) }
+    end
     if #list < 40 then
       list[#list + 1] = { id = t.id, label = short(t.label, 12), lab = lab, key = key, fuel = tonumber(t.fuel),
                           pick = tostring(t.gear or ""):find("pick", 1, true) and true or nil,
