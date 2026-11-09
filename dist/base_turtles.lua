@@ -888,6 +888,13 @@ TT.updWaiting = true
 return
 end
 local now = os.clock()
+
+
+if forced then
+local left = false
+for _, t in pairs(state.turtles) do if TT.online(t) and TT.outdated(t) then left = true break end end
+if not left then TT.updateForce = nil end
+end
 local busy = 0
 for id, t0 in pairs(TT.sending) do
 local t = state.turtles[id]
@@ -923,7 +930,7 @@ end
 function TT.forceUpdate()
 pcall(TT.codeLoad, true)
 if not CODE then return nil end
-TT.updateForce = os.clock() + 600
+TT.updateForce = os.clock() + 3600
 local n = 0
 for _, t in pairs(state.turtles) do
 if TT.online(t) and TT.outdated(t) then
@@ -955,8 +962,10 @@ if all and n > 1 then setToast("All " .. n .. " turtles run " .. TT.verName(CODE
 end
 
 
+
+
 function TT.outdated(t)
-return CODE ~= nil and t.ver ~= nil and t.ver ~= "?" and t.ver ~= CODE.ver
+return CODE ~= nil and t.ver ~= nil and t.ver ~= CODE.ver
 end
 
 

@@ -888,6 +888,13 @@ function TT.updateTick()
     return
   end
   local now = os.clock()
+  -- UPDATE TURTLES goes on until every online turtle has it (not a fixed 10
+  -- minutes: with retries the last ones never got it while you played)
+  if forced then
+    local left = false
+    for _, t in pairs(state.turtles) do if TT.online(t) and TT.outdated(t) then left = true break end end
+    if not left then TT.updateForce = nil end
+  end
   local busy = 0
   for id, t0 in pairs(TT.sending) do
     local t = state.turtles[id]
@@ -923,7 +930,7 @@ end
 function TT.forceUpdate()
   pcall(TT.codeLoad, true)
   if not CODE then return nil end
-  TT.updateForce = os.clock() + 600
+  TT.updateForce = os.clock() + 3600           -- (ends as soon as all have it - TT.updateTick)
   local n = 0
   for _, t in pairs(state.turtles) do
     if TT.online(t) and TT.outdated(t) then
@@ -955,8 +962,10 @@ function TT.updated(t, oldVer)
 end
 
 -- is this turtle's program older than the base's node.lua?
+-- ("?" = it could not read its own program file, e.g. started from a floppy: it
+-- gets the update too - installing it writes startup.lua, then the version is known)
 function TT.outdated(t)
-  return CODE ~= nil and t.ver ~= nil and t.ver ~= "?" and t.ver ~= CODE.ver
+  return CODE ~= nil and t.ver ~= nil and t.ver ~= CODE.ver
 end
 
 -- the install floppy: a disk in a Disk Drive on this computer gets the

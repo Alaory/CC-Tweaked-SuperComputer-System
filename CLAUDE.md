@@ -117,7 +117,7 @@ PneumaticCraft drone rides, turtle mapping/surveys, and an AE2 ME network view.
 - Turtle updates: every new node.lua gets a number (v1, v2 ... in
   turtle_versions.dat). TT.updateTick (comms worker) updates up to 3 turtles at a
   time (TT.sending; t.updState sending/ready/retry + t.updNote for the screen;
-  runs when autoUpdate is on, or 10 min after UPDATE TURTLES = TT.forceUpdate: button,
+  runs when autoUpdate is on, or after UPDATE TURTLES = TT.forceUpdate UNTIL every online turtle has it (max 1 h; a fixed 10 min left the last ones out); version "?" counts as outdated: button,
   console `update` (it did NOT force before), pocket "updateall"; busy turtles that
   already hold it get STOP (no hold) and install at once; list label UPDATE WAITS /
   UPDATE AFTER JOB / UPDATE QUEUED); a busy turtle keeps the update (UPD_READY) and installs it after its

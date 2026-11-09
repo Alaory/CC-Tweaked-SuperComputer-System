@@ -100,6 +100,9 @@ function codeHash(str)
   return string.format("%08x%08x", h1, h2)
 end
 local MYPATH = (shell and shell.getRunningProgram and shell.getRunningProgram()) or "startup.lua"
+-- (started from a floppy / another name: its own copy is startup.lua - else the
+-- version is "?"; the base sends "?" turtles the update, which writes startup.lua)
+if not fs.exists(MYPATH) and fs.exists("startup.lua") then MYPATH = "startup.lua" end
 local MYVER = "?"
 if fs.exists(MYPATH) then
   local h = fs.open(MYPATH, "r")

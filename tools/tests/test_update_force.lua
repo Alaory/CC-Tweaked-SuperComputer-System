@@ -41,3 +41,35 @@ CHECK(MINE.units[90] == nil and msg:find("new loader", 1, true), "mine drop <loa
 -- miner.lua: miners leave a loader that is silent 10 min when a new one says hello
 local src = io.open(SRC_DIR .. "/miner.lua"):read("a")
 CHECK(src:find('os.clock() - (LEADER_SEEN or 0) > 600', 1, true), "miner.lua: joins a new loader after 10 min")
+
+-- MANY turtles that each miss the first try (scanning: the modem is off) -> a
+-- retry 2 min later each. Before: UPDATE TURTLES forced only 10 minutes, the
+-- last ones never got it while you played. Now: until every online turtle has
+-- it (max 1 h). A turtle reporting version "?" gets it too.
+state.turtles, TT.sending, state.tOut = {}, {}, {}
+TT.updWaiting = false
+for id = 21, 30 do T(id) end
+T(31, { ver = "?" })
+local pushes, sentAt = {}, {}
+local realPush = TT.pushCode
+TT.pushCode = function(id)
+  pushes[id] = (pushes[id] or 0) + 1
+  sentAt[id] = CLOCK
+  return true
+end
+handleCommand("update")
+for _ = 1, 20 * 30 do                                  -- 20 minutes, a tick every 2 s
+  CLOCK = CLOCK + 2
+  for id, t in pairs(state.turtles) do
+    t.lastSeen = os.clock()                            -- (all online)
+    if pushes[id] and pushes[id] >= 2 and sentAt[id] and CLOCK - sentAt[id] > 10 then t.ver = "NEWVER" end
+  end
+  TT.updateTick()
+end
+TT.pushCode = realPush
+local left = {}
+for id, t in pairs(state.turtles) do if t.ver ~= "NEWVER" then left[#left + 1] = id end end
+table.sort(left)
+CHECK(#left == 0, "UPDATE TURTLES: every turtle updated, also after 10 min (left: " .. table.concat(left, ",") .. ")")
+CHECK(pushes[31], "a turtle with version '?' gets the update too")
+CHECK(not TT.updateForce, "all done: the forced update ends by itself")
