@@ -266,3 +266,28 @@ do
   CHECK(FACTORY.leaving == nil, "it left: the factory goes on")
   TT.send = send0
 end
+
+-- SPEED: everything in stock -> the builder gets "build" within 2 checks (3 s
+-- apart while busy; before: parts / crafting / export = 3 checks 10 s apart),
+-- and after a build only 5 s + the free spot, not 2 minutes
+do
+  setup("stock")
+  local sentBuild
+  local send0 = TT.send
+  TT.send = function(id, c, ...) if c == "build" then sentBuild = true end return send0(id, c, ...) end
+  local ticks = 0
+  for _ = 1, 10 do
+    CLOCK = CLOCK + 3
+    for _, t in pairs(state.turtles) do t.lastSeen = CLOCK end
+    FACTORY.tick()
+    ticks = ticks + 1
+    if sentBuild then break end
+  end
+  TT.send = send0
+  -- (the first ~10 s = the idle check interval; the job then runs parts -> export ->
+  -- build in ONE check)
+  CHECK(sentBuild and ticks * 3 <= 12, "parts in stock: build sent after " .. ticks * 3 .. " s")
+  FACTORY.result(1, true, "built turtle 77")
+  CHECK(FACTORY.waitUntil - os.clock() <= 5, "after a build: only a short wait (then the free spot decides)")
+  CHECK(tostring(FACTORY.last.msg):find(" in %d+ s"), "the build time is written down (" .. tostring(FACTORY.last.msg) .. ")")
+end

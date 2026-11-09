@@ -336,7 +336,10 @@ end
 -- comms worker (every 2 s; the real work every 10 s)
 local lastTick = -100
 function FACTORY.tick()
-  if os.clock() - lastTick < 10 then return end
+  -- every 10 s; every 3 s while a build runs or the new turtle is leaving (a step
+  -- that has nothing to wait for goes straight on - one turtle took ~10 min)
+  local busy = FACTORY.job or FACTORY.leaving
+  if os.clock() - lastTick < (busy and 3 or 10) then return end
   lastTick = os.clock()
   local j = FACTORY.job
   if not j and FACTORY.leaving then
@@ -352,6 +355,10 @@ function FACTORY.tick()
       away = false
     end
     if (t and away and TT.online(t)) or os.clock() - L.at > 1200 or (L.id == nil and os.clock() - L.at > 120) then
+      if t and away and sysLog then
+        sysLog("Factory: " .. (t.label or ("#" .. L.id)) .. " left the build spot after " ..
+               math.floor(os.clock() - L.at) .. " s", "INFO")
+      end
       if t and not away then
         pushNote("WARNING", "Turtle factory: the new turtle " .. (t.label or ("#" .. L.id)) ..
                  " did not leave the build spot in 20 minutes - move it, the next build waits for the spot", C.warn)
@@ -383,7 +390,7 @@ function FACTORY.tick()
       return
     end
     FACTORY.homeless = nil
-    FACTORY.job = { step = "parts", t = os.epoch("utc"), builder = b.id }
+    FACTORY.job = { step = "parts", t = os.epoch("utc"), builder = b.id, started = os.epoch("utc") }
     save()
     j = FACTORY.job
   end
@@ -434,15 +441,19 @@ function FACTORY.tick()
       return
     end
     FACTORY.lastMissing = nil
-    -- order what is not in stock
+    -- order what is not in stock; all in stock: straight on (no extra wait)
+    local ordered = false
     for _, r in ipairs(rows) do
       if r.have < r.part.count then
         local ok, err = craftME(r.part.name, r.part.count - r.have)
         if not ok then return fail("AE2 could not start crafting " .. r.part.what .. ": " .. tostring(err)) end
+        ordered = true
       end
     end
-    setStep("crafting", "AE2 is crafting the parts")
-  elseif j.step == "crafting" then
+    setStep(ordered and "crafting" or "export", ordered and "AE2 is crafting the parts" or nil)
+    if ordered then return end
+  end
+  if j.step == "crafting" then
     local ready = true
     for _, p in ipairs(FACTORY.parts()) do
       if (variants(p.name)) < p.count then ready = false end
@@ -553,11 +564,13 @@ function FACTORY.result(id, ok, msg)
   if not j or j.builder ~= id then return end
   if not ok then return fail("the builder: " .. tostring(msg)) end
   local newId = tonumber(tostring(msg):match("built turtle (%d+)"))
+  local took = j.started and math.floor((os.epoch("utc") - j.started) / 1000) or nil
   FACTORY.job = nil
   FACTORY.fails = 0
   FACTORY.built = (FACTORY.built or 0) + 1
-  FACTORY.last = { t = os.epoch("utc"), ok = true, msg = msg, id = newId }
-  FACTORY.waitUntil = os.clock() + 120                 -- the next one in 2 min (it moves away first)
+  FACTORY.last = { t = os.epoch("utc"), ok = true, msg = msg .. (took and (" in " .. took .. " s") or ""), id = newId }
+  FACTORY.leftAt = os.clock()
+  FACTORY.waitUntil = os.clock() + 5                   -- (was 2 min: the spot check below does that job)
   FACTORY.leaving = { id = newId, at = os.clock() }    -- (and only once it has left the build spot)
   save()
   if sysLog then sysLog("Factory: " .. tostring(msg), "DONE") end

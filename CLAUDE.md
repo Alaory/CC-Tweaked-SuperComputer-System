@@ -391,7 +391,10 @@ PneumaticCraft drone rides, turtle mapping/surveys, and an AE2 ME network view.
   back with importItem) -> building (TT.send builder "build"; result via
   TT.receive -> FACTORY.result, "built turtle <id>"); then FACTORY.leaving: no next build
   until the new turtle is >= 2 blocks from the builder's home (home offer at once, then
-  "home" every 60 s; 20 min -> warning). Builder = FACTORY.builder
+  "home" every 60 s; 20 min -> warning). SPEED: FACTORY.tick every 3 s while a job or
+  leaving runs (else 10 s); all parts in stock -> parts -> export -> "build" in ONE check;
+  after a build waitUntil 5 s (was 2 min); FACTORY.last.msg "... in N s", sysLog "left the
+  build spot after N s" (one turtle per ~10 min before). Builder = FACTORY.builder
   or the rescuer; needs Disk Drive + install floppy + pickaxe. node.lua build():
   turns until the chest holding a turtle item is in front, sucks it empty (only
   the delta vs invSnapshot goes on), places the turtle on the OPPOSITE side,
