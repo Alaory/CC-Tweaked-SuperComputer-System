@@ -15,10 +15,20 @@
 --        floppy + a pickaxe - the rescue kit): it places the new turtle,
 --        gives it the parts, starts it from the floppy - node.lua installs
 --        itself, equips its modem and Chunky, refuels and reports here.
+--   TAUGHT RECIPES (modpacks change recipes, so none are written in here): a
+--   CRAFTER turtle (a crafting table equipped, home next to the factory chest)
+--   learns a recipe when you lay the ingredients in its 3x3 grid and press
+--   LEARN RECIPE (FACTORY.recipes, recipes.dat: [item] = { grid = 9 names,
+--   count }). A part neither in stock nor craftable by AE2 is then made by the
+--   crafter: FACTORY.plan works out the crafts (ingredients from stock, AE2
+--   patterns or other taught recipes), "tcwait" orders / waits for the
+--   ingredients, puts EXACTLY those into the factory chest, "tcraft" = the
+--   crafter crafts and puts the result back, it goes into AE2.
 --   `factory` on the computer: status, part check, setup.
 
-FACTORY = { job = nil, builder = nil, chest = nil, fails = 0, last = nil }
+FACTORY = { job = nil, builder = nil, chest = nil, fails = 0, last = nil, crafter = nil, recipes = {} }
 local FILE = "factory.dat"
+local RECIPE_FILE = "recipes.dat"
 
 local function cfg(k, default)
   local f = CONFIG.factory
@@ -31,8 +41,10 @@ FACTORY.cfg = cfg
 
 local function save()
   saveFileSafe(FILE, serialSmall({ job = FACTORY.job, builder = FACTORY.builder, chest = FACTORY.chest,
-                                    fails = FACTORY.fails, last = FACTORY.last, built = FACTORY.built }))
+                                    fails = FACTORY.fails, last = FACTORY.last, built = FACTORY.built,
+                                    crafter = FACTORY.crafter }))
 end
+local function saveRecipes() saveFileSafe(RECIPE_FILE, serialSmall(FACTORY.recipes)) end
 FACTORY.save = save
 do
   if fs.exists(FILE) then
@@ -42,7 +54,14 @@ do
     if type(t) == "table" then
       FACTORY.job, FACTORY.builder, FACTORY.chest = t.job, t.builder, t.chest
       FACTORY.fails, FACTORY.last, FACTORY.built = t.fails or 0, t.last, t.built
+      FACTORY.crafter = t.crafter
     end
+  end
+  if fs.exists(RECIPE_FILE) then
+    local h = fs.open(RECIPE_FILE, "r")
+    local t = h and textutils.unserialize(h.readAll() or "")
+    if h then h.close() end
+    if type(t) == "table" then FACTORY.recipes = t end
   end
 end
 
@@ -131,6 +150,79 @@ function FACTORY.check()
     if not ok then missing[#missing + 1] = p end
   end
   return rows, missing
+end
+
+-- ===== TAUGHT RECIPES and the CRAFTER turtle =====
+-- the crafter: the one you chose, else the only online turtle with a crafting table
+function FACTORY.crafterTurtle()
+  local id = tonumber(FACTORY.crafter)
+  if id then return state.turtles[id] end
+  for _, t in pairs(state.turtles) do
+    if type(t.gear) == "string" and t.gear:find("crafter", 1, true) then return t end
+  end
+end
+-- the crafter learned a recipe (TT.receive "recipe")
+function FACTORY.learned(id, r)
+  if type(r.out) ~= "string" or type(r.grid) ~= "table" then return end
+  local grid = {}
+  for k = 1, 9 do grid[k] = (type(r.grid[k]) == "string") and r.grid[k] or "" end
+  FACTORY.recipes[r.out] = { grid = grid, count = math.max(1, tonumber(r.count) or 1), at = os.epoch("utc"), by = id }
+  saveRecipes()
+  local t = state.turtles[id]
+  pushNote("DONE", "Recipe learned: " .. prettify(r.out) .. " (" .. FACTORY.recipes[r.out].count ..
+           " per craft) - the factory makes it when AE2 cannot", C.good)
+  if sysLog then sysLog("Recipe learned by " .. (t and t.label or ("#" .. id)) .. ": " .. r.out, "DONE") end
+end
+function FACTORY.forget(name)
+  if not FACTORY.recipes[name] then return false end
+  FACTORY.recipes[name] = nil
+  saveRecipes()
+  return true
+end
+-- the ingredients of one craft: { [name] = count }
+function FACTORY.ingredients(r)
+  local need = {}
+  for _, n in ipairs(r.grid) do if n ~= "" then need[n] = (need[n] or 0) + 1 end end
+  return need
+end
+-- what it takes to have `count` of `name`: AE2 crafts (orders), taught crafts
+-- (in order: ingredients first) and what cannot be made. avail = stock not yet
+-- planned for (shared between the parts). depth limits loops in recipes.
+function FACTORY.plan(name, count, avail, out, depth)
+  out = out or { ae = {}, crafts = {}, missing = {} }
+  avail = avail or {}
+  depth = depth or 0
+  if avail[name] == nil then avail[name] = meCount(name) end
+  local use = math.min(avail[name], count)
+  avail[name] = avail[name] - use
+  local need = count - use
+  if need <= 0 then return out end
+  local r = FACTORY.recipes[name]
+  if depth > 6 then out.missing[#out.missing + 1] = name return out end
+  if meCraftable(name) then
+    out.ae[name] = (out.ae[name] or 0) + need
+  elseif r then
+    local times = math.ceil(need / r.count)
+    for ing, per in pairs(FACTORY.ingredients(r)) do FACTORY.plan(ing, per * times, avail, out, depth + 1) end
+    while times > 0 do                                   -- (one craft call: at most 64)
+      local n = math.min(64, times)
+      out.crafts[#out.crafts + 1] = { name = name, times = n }
+      times = times - n
+    end
+  else
+    out.missing[#out.missing + 1] = name
+  end
+  return out
+end
+-- why the crafter cannot work now (nil = it can)
+function FACTORY.crafterBlocked()
+  local c = FACTORY.crafterTurtle()
+  if not c then return "no crafter turtle (a turtle with a crafting table) - SETTINGS > FACTORY" end
+  if not TT.online(c) then return c.label .. " (crafter) is offline" end
+  if not (type(c.gear) == "string" and c.gear:find("crafter", 1, true)) then
+    return c.label .. " has no crafting table equipped"
+  end
+  return nil
 end
 
 -- the turtles that count for the fleet size (MISSING ones do not)
@@ -225,16 +317,42 @@ function FACTORY.tick()
   if j.step == "parts" then
     local rows, missing = FACTORY.check()
     if #missing > 0 then
+      -- TAUGHT recipes: can the crafter make what AE2 cannot? (ingredients from
+      -- stock, AE2 patterns or other taught recipes)
+      local plan, cblock
+      if next(FACTORY.recipes) then
+        plan = { ae = {}, crafts = {}, missing = {} }
+        local avail = {}
+        for _, p in ipairs(missing) do FACTORY.plan(p.name, p.count, avail, plan) end
+        cblock = (#plan.crafts > 0) and FACTORY.crafterBlocked() or nil
+        j.rounds = (j.rounds or 0) + 1
+        if j.rounds > 30 then return fail("the taught recipes do not make the missing parts (wrong recipe?) - type  factory") end
+        if #plan.missing == 0 and #plan.crafts > 0 and not cblock then
+          for name, n in pairs(plan.ae) do
+            local ok, err = craftME(name, n)
+            if not ok then return fail("AE2 could not start crafting " .. prettify(name) .. ": " .. tostring(err)) end
+          end
+          FACTORY.lastMissing = nil
+          j.tq = plan.crafts
+          setStep("tcwait", "getting the ingredients for the crafter")
+          return
+        end
+      end
       local names = {}
       for _, p in ipairs(missing) do names[#names + 1] = p.what end
+      if plan and #plan.missing > 0 then
+        names = {}
+        for _, n in ipairs(plan.missing) do names[#names + 1] = prettify(n) end
+      end
+      FACTORY.lastCrafter = cblock
       FACTORY.job = nil
       FACTORY.waitUntil = os.clock() + 1800
       FACTORY.lastMissing = missing
       save()
       if not FACTORY.toldMissing or os.clock() - FACTORY.toldMissing > 3600 then
         FACTORY.toldMissing = os.clock()
-        pushNote("WARNING", "Turtle factory: AE2 has no pattern (and none in stock) for: " .. table.concat(names, ", ") ..
-                 " - type  factory  on the computer for the list", C.warn)
+        pushNote("WARNING", "Turtle factory: no stock, no AE2 pattern and no taught recipe for: " .. table.concat(names, ", ") ..
+                 (cblock and (" (" .. cblock .. ")") or "") .. " - type  factory  on the computer for the list", C.warn)
       end
       return
     end
@@ -291,6 +409,60 @@ function FACTORY.tick()
     if not (b and TT.online(b)) then return fail("the builder turtle is offline") end
     TT.send(b.id, "build", {})
     setStep("building", "the builder is putting the turtle together")
+  elseif j.step == "tcwait" then
+    -- the next taught craft: its ingredients in stock? then exactly those into
+    -- the chest and the crafter crafts
+    local c = j.tq and j.tq[1]
+    if not c then return setStep("parts") end
+    local r = FACTORY.recipes[c.name]
+    if not r then return fail("the recipe for " .. prettify(c.name) .. " was forgotten") end
+    local need = FACTORY.ingredients(r)
+    local waited = os.epoch("utc") - (j.t or 0) > 1800000
+    for ing, per in pairs(need) do
+      if meCount(ing) < per * c.times then
+        if waited then return fail(prettify(ing) .. " for " .. prettify(c.name) .. " did not arrive within 30 minutes") end
+        return
+      end
+    end
+    local why = FACTORY.crafterBlocked()
+    if why then
+      if waited then return fail(why) end
+      return
+    end
+    local cr = FACTORY.crafterTurtle()
+    if cr.task and cr.task ~= "idle" then return end
+    -- it works at its home (next to the factory chest)
+    if cr.home and not (cr.pos and cr.pos.x == cr.home.x and cr.pos.y == cr.home.y and cr.pos.z == cr.home.z) then
+      if not FACTORY.crafterSent or os.clock() - FACTORY.crafterSent > 120 then
+        FACTORY.crafterSent = os.clock()
+        TT.send(cr.id, "home", {}, true)
+      end
+      return
+    end
+    local list = chestList()
+    if not list then return fail("cannot read the factory chest " .. tostring(FACTORY.chest)) end
+    if next(list) then return fail("the factory chest is not empty - it must only be used by the factory") end
+    j.exported = {}
+    for ing, per in pairs(need) do
+      local n = per * c.times
+      local okI, it = callx(bridge, "getItem", { name = ing })
+      if okI and special(it) then
+        return fail("the " .. prettify(ing) .. " in your ME system looks like your OWN one (enchanted, renamed or used) - not taken")
+      end
+      local filter = { name = ing, count = n }
+      if okI and type(it) == "table" and it.fingerprint then filter.fingerprint = it.fingerprint end
+      local ok, r2 = transfer(bridge, { "exportItem" }, FACTORY.chest, filter)
+      local moved = ok and numOf(r2) or 0
+      j.exported[ing] = (j.exported[ing] or 0) + moved
+      if moved < n then return fail("could not put " .. prettify(ing) .. " into the factory chest (" .. moved .. "/" .. n .. ")") end
+    end
+    j.crafter = cr.id
+    TT.send(cr.id, "craft", { table.concat(r.grid, ","), c.times })
+    setStep("tcraft", "the crafter makes " .. prettify(c.name))
+  elseif j.step == "tcraft" then
+    if os.epoch("utc") - (j.t or 0) > 300000 then
+      fail("the crafter did not finish within 5 minutes - look at it (its log on the TURTLES tab)")
+    end
   elseif j.step == "building" then
     if os.epoch("utc") - (j.t or 0) > 600000 then
       fail("the builder did not finish within 10 minutes - look at it (its log on the TURTLES tab)")
@@ -314,11 +486,33 @@ function FACTORY.result(id, ok, msg)
   pushNote("DONE", "Turtle factory: " .. tostring(msg) .. " - it installs itself and reports in a moment", C.good)
 end
 
+-- the crafter answered (TT.receive: result of "craft")
+function FACTORY.craftResult(id, ok, msg)
+  local j = FACTORY.job
+  if not j or j.step ~= "tcraft" or j.crafter ~= id then return end
+  if not ok then return fail("the crafter: " .. tostring(msg)) end
+  -- everything in the chest now came from the craft (the item + leftovers like
+  -- empty buckets): into the ME network
+  local left = {}
+  for _, it in pairs(chestList() or {}) do
+    local okT, okM, r = pcall(transfer, bridge, { "importItem" }, FACTORY.chest, { name = it.name, count = it.count })
+    local moved = (okT and okM) and (numOf(r) or 0) or 0
+    if moved < (it.count or 0) then left[#left + 1] = prettify(it.name) end
+  end
+  j.exported = nil
+  local c = table.remove(j.tq or {}, 1)
+  if sysLog then sysLog("Factory: the crafter " .. tostring(msg), "INFO") end
+  if #left > 0 then return fail("the ME network did not take " .. table.concat(left, ", ") .. " from the factory chest") end
+  setStep((j.tq and #j.tq > 0) and "tcwait" or "parts",
+          c and ("made " .. prettify(c.name)) or nil)
+end
+
 -- one line for the screen
 function FACTORY.statusLine()
   local j = FACTORY.job
   if j then
     local what = { parts = "checking the parts", crafting = "AE2 is crafting the parts",
+                   tcwait = "getting ingredients for the crafter", tcraft = "the crafter is crafting",
                    export = "putting the parts into the chest", building = "the builder is at work" }
     return "building turtle " .. (FACTORY.fleet() + 1) .. ": " .. (what[j.step] or j.step), C.good
   end

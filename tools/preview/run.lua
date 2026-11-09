@@ -10,11 +10,21 @@ dofile(here .. "/cc_stub.lua")
 PERIPHS = W0
 PERIPHS.right.obj = MONITOR
 -- the program's own files take room on the computer (what is copied into the game)
-for _, f in ipairs({ "inventory.lua", "node.lua" }) do
-  local h = io.open(SRC_DIR .. "/" .. f) if h then CODE_SIZE = CODE_SIZE + #h:read("a") h:close() end
+-- (the SLIM copies from dist/ - that is what `upgrade` installs - else the full file)
+local function codeSize(f)
+  local h = io.open(SRC_DIR .. "/dist/" .. f) or io.open(SRC_DIR .. "/" .. f)
+  if not h then return 0 end
+  local n = #h:read("a")
+  h:close()
+  return n
 end
+for _, f in ipairs({ "inventory.lua", "node.lua", "store.lua", "startup.lua", "upgrade.lua" }) do CODE_SIZE = CODE_SIZE + codeSize(f) end
 local ls = popen('ls "' .. SRC_DIR .. '"/base_*.lua')
-for f in ls:lines() do local h = io.open(f) CODE_SIZE = CODE_SIZE + #h:read("a") h:close() end
+for f in ls:lines() do
+  local name = f:match("([^/]+)$")
+  if name ~= "base_config.lua" then CODE_SIZE = CODE_SIZE + codeSize(name) end
+end
+CODE_SIZE = CODE_SIZE + 12000                          -- (base_config.lua, the owner's own)
 ls:close()
 if getenv("PRE") then dofile(getenv("PRE")) end   -- set-up before the program loads
 local env = _ENV

@@ -2187,6 +2187,7 @@ if slotOf(isFloppy) then g[#g + 1] = "floppy" end
 if slotOf(isPick) then g[#g + 1] = "pick" end
 if slotOf(isFuel) then g[#g + 1] = "fuel" end
 if findItem(CONFIG.geoItem) then g[#g + 1] = "scanner" end
+if canCraft and canCraft() then g[#g + 1] = "crafter" end
 local np = 0
 for _ in pairs(S.warps or {}) do np = np + 1 end
 if warpCore() then g[#g + 1] = "warp core (equipped, " .. np .. " points)"
@@ -2489,6 +2490,136 @@ local okL, list = pcall(peripheral.call, "front", "list")
 for _, it in pairs(okL and list or {}) do if isTurtleItem(it.name) then return true end end
 return false
 end
+
+
+
+
+
+
+GRID = { 1, 2, 3, 5, 6, 7, 9, 10, 11 }
+ISGRID = {}
+for _, s in ipairs(GRID) do ISGRID[s] = true end
+function canCraft() return type(turtle.craft) == "function" end
+
+function learnRecipe()
+if not canCraft() then return false, "I have no crafting table equipped (I am not a crafty turtle)" end
+for i = 1, 16 do
+local d = turtle.getItemDetail(i)
+if d and not ISGRID[i] then
+return false, "only my 3x3 grid (slots 1-3, 5-7, 9-11) may hold the ingredients - slot " .. i .. " has " .. d.name
+end
+end
+local grid, any = {}, false
+for k, s in ipairs(GRID) do
+local d = turtle.getItemDetail(s)
+grid[k] = d and d.name or ""
+if d then any = true end
+end
+if not any then return false, "put the ingredients into my 3x3 grid first (like a crafting table)" end
+turtle.select(16)
+local ok, err = turtle.craft(1)
+turtle.select(1)
+if not ok then return false, "these items in this layout make nothing" .. (err and (" (" .. tostring(err) .. ")") or "") end
+local out = turtle.getItemDetail(16)
+if not out then
+for i = 1, 16 do
+local d = not ISGRID[i] and turtle.getItemDetail(i)
+if d then out = d break end
+end
+end
+if not out then return false, "crafted, but I cannot see what came out" end
+send("recipe", { recipe = { out = out.name, count = out.count, grid = grid } })
+return true, "learned: this layout makes " .. out.count .. " x " .. out.name .. " - take the items out of me"
+end
+
+
+
+function craftRecipe(gridText, times)
+task = "crafting"
+if not canCraft() then return false, "I have no crafting table equipped" end
+times = math.max(1, math.min(64, math.floor(tonumber(times) or 1)))
+local want, k = {}, 0
+for name in (tostring(gridText or "") .. ","):gmatch("([^,]*),") do
+k = k + 1
+if GRID[k] and name ~= "" then want[GRID[k]] = name end
+end
+if not next(want) then return false, "no recipe given" end
+for i = 1, 16 do
+if turtle.getItemCount(i) > 0 then return false, "I must be EMPTY to craft - take the items out of me" end
+end
+
+local found = false
+for _ = 1, 4 do
+local okL, l = pcall(peripheral.call, "front", "list")
+if okL and type(l) == "table" and next(l) then found = true break end
+right()
+end
+if not found then return false, "no chest with the ingredients next to me" end
+for i = 1, 16 do
+turtle.select(i)
+if not turtle.suck() then break end
+end
+local function allBack(why)
+for i = 1, 16 do
+if turtle.getItemCount(i) > 0 then turtle.select(i) turtle.drop() end
+end
+turtle.select(1)
+return false, why .. " - everything is back in the chest"
+end
+
+local fixed = {}
+local function freeSlot(skip)
+for pass = 1, 2 do
+for i = 16, 1, -1 do
+if turtle.getItemCount(i) == 0 and not fixed[i] and i ~= skip and (pass == 2 or not want[i]) then return i end
+end
+end
+end
+for _, s in ipairs(GRID) do
+local t = want[s]
+local d = turtle.getItemDetail(s)
+if d and (d.name ~= t or d.count > times) then
+local f = freeSlot(s)
+if not f then return allBack("no room to sort the ingredients") end
+turtle.select(s)
+turtle.transferTo(f, (d.name == t) and (d.count - times) or d.count)
+end
+if t then
+for _ = 1, 32 do
+if turtle.getItemCount(s) >= times then break end
+local src
+for i = 1, 16 do
+if i ~= s and not fixed[i] then
+local dd = turtle.getItemDetail(i)
+if dd and dd.name == t then src = i break end
+end
+end
+if not src then return allBack("not enough " .. t .. " in the chest") end
+turtle.select(src)
+turtle.transferTo(s, times - turtle.getItemCount(s))
+end
+if turtle.getItemCount(s) < times then return allBack("not enough " .. t .. " in the chest") end
+end
+fixed[s] = true
+end
+for i = 1, 16 do
+if not ISGRID[i] and turtle.getItemCount(i) > 0 then turtle.select(i) turtle.drop() end
+end
+turtle.select(16)
+local ok, err = turtle.craft(times)
+if not ok then return allBack("the craft did not work (" .. tostring(err or "wrong recipe?") .. ")") end
+local made = {}
+for i = 1, 16 do
+local d = turtle.getItemDetail(i)
+if d and not ISGRID[i] then made[#made + 1] = d.count .. " " .. d.name end
+end
+for i = 1, 16 do
+if turtle.getItemCount(i) > 0 then turtle.select(i) turtle.drop() end
+end
+turtle.select(1)
+return true, "crafted " .. table.concat(made, ", ")
+end
+
 function build()
 task = "building a turtle"
 if not (slotOf(isDrive) and slotOf(isFloppy)) then return false, "I need a Disk Drive and the install floppy" end
@@ -2692,7 +2823,9 @@ if not known() then return false, "position/facing unknown - use GPS LOCATE" end
 if type(j.left) == "table" and #j.left > 0 then pts = j.left end
 return surveyPoints(orderNearest(pts), r)
 end
-if j.cmd == "build" then
+if j.cmd == "craft" then
+return craftRecipe(a[1], a[2])
+elseif j.cmd == "build" then
 if S.anchor then return false, "I am the ANCHOR - send another turtle" end
 return build()
 end
@@ -2893,6 +3026,9 @@ if not (x and y and z and f) then return false, "usage: setpos x y z north|south
 S.pos = { x = x, y = y, z = z, f = f }
 save()
 return true, "position set to " .. fmt() .. " facing " .. FNAME[f]
+elseif cmd == "learnrecipe" then
+if job then return false, "busy: " .. tostring(task) .. " (press STOP first)" end
+return learnRecipe()
 elseif cmd == "homeoffer" then
 
 local x, y, z = tonumber(a[1]), tonumber(a[2]), tonumber(a[3])

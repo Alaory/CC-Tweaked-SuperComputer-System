@@ -399,6 +399,21 @@ PneumaticCraft drone rides, turtle mapping/surveys, and an AE2 ME network view.
   factory chest (tap = next EMPTY chest <= 54 slots on the cable), builder (tap = next
   turtle / automatic = the rescuer), status (tap = try again). Console `factory
   [chest <name>|builder <id>|build|stop]`; FLEET card line "Factory".
+- TAUGHT RECIPES (modpacks change recipes: none written in the code). CRAFTER turtle =
+  a crafting table equipped (node gear "crafter"; FACTORY.crafter or automatic = the one
+  with "crafter"), home next to the factory chest. SETTINGS > FACTORY "Teach a recipe" /
+  `factory learn` -> node learnRecipe: only the 3x3 grid (GRID 1-3,5-7,9-11) may hold
+  items, craft(1) into slot 16, sends "recipe" {out, count, grid[9]} -> FACTORY.learned
+  (recipes.dat). Factory "parts": parts neither in stock nor AE2-craftable -> FACTORY.plan
+  (stock shared via avail, AE2-craftable ingredients ordered, other taught recipes first,
+  depth 6, <= 64 crafts per call; plan.missing named) -> "tcwait" (ingredients in stock,
+  crafter idle + at home; EXACT export to the empty chest, j.exported) -> crafter "craft"
+  {grid, times} -> node craftRecipe (must be EMPTY, finds the chest by turning, sucks,
+  lays out exactly, extras back, craft, ALL back into the chest; any failure -> all back)
+  -> "tcraft" -> FACTORY.craftResult imports the chest into AE2 -> next craft / "parts"
+  (j.rounds > 30 = wrong recipe -> fail). `factory recipes|forget <item>|crafter <id>`.
+  The preview stub counts the SLIM program sizes (dist/) as the computer's used space.
+  test_factory.lua (taught), node_craft.lua.
 - SCHEMATICS (base_schem.lua SCHEM, stage 1 of the builder turtles): Create's
   Schematic and Quill `.nbt` (= vanilla structure format, also Minecraft's own
   structure pieces) dragged onto the base computer's screen -> uiLoop

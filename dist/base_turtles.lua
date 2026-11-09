@@ -552,6 +552,8 @@ setToast(t.label .. " got " .. (CODE and TT.verName(CODE.ver) or "the update") .
 end
 elseif m.t == "look" then
 TT.lookIn(t, m)
+elseif m.t == "recipe" then
+if FACTORY and type(m.recipe) == "table" then pcall(FACTORY.learned, id, m.recipe) end
 elseif m.t == "result" then
 if m.cmd == "drive" then
 t.driveMsg = { ok = m.ok, msg = tostring(m.msg), at = os.clock() }
@@ -561,6 +563,7 @@ end
 if m.cmd == "fuelup" and TT.fuelTrip and TT.fuelTrip.id == id then TT.fuelTrip = nil end
 if m.cmd == "surveypts" and MAP.batchResult then pcall(MAP.batchResult, id, m.ok) end
 if m.cmd == "build" and FACTORY then pcall(FACTORY.result, id, m.ok, m.msg) end
+if m.cmd == "craft" and FACTORY then pcall(FACTORY.craftResult, id, m.ok, m.msg) end
 if m.cmd == "restart" and not m.ok and sysLog then sysLog(t.label .. ": " .. tostring(m.msg), "ERROR") end
 TT.log(t, (m.ok and "Done: " or "Failed: ") .. tostring(m.msg))
 if not m.ok then setToast(t.label .. ": " .. tostring(m.msg), C.warn, 6) end

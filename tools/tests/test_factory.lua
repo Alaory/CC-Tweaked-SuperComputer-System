@@ -136,3 +136,60 @@ TT.send = send0
 CHECK(FACTORY.job == nil and table.concat(sent2, ","):find("home"), "builder away: sent home, no build yet")
 state.turtles[1].home = nil
 CHECK(FACTORY.blocked() and FACTORY.blocked():find("no home"), "builder without a home: told")
+
+-- TAUGHT recipe: no Chunky in stock and no AE2 pattern, but the CRAFTER learned
+-- it (8 iron around an ender pearl). Iron is out of stock but AE2 can craft it.
+do
+  local ME, CRAFTABLE, CRAFTS, CHEST = setup("missing")
+  ME["minecraft:iron_ingot"], ME["minecraft:ender_pearl"] = 0, 1
+  CRAFTABLE["minecraft:iron_ingot"] = true
+  state.turtles[3] = { id = 3, label = "Crafty", log = {}, lastN = 0, fuel = 9000, pos = { x = 1, y = 70, z = 0 },
+                       home = { x = 1, y = 70, z = 0 }, task = "idle", lastSeen = os.clock(),
+                       gear = "L=wireless_modem_advanced R=crafting_table,crafter" }
+  FACTORY.recipes = {}
+  FACTORY.learned(3, { out = "advancedperipherals:chunk_controller", count = 1,
+    grid = { "minecraft:iron_ingot", "minecraft:iron_ingot", "minecraft:iron_ingot", "minecraft:iron_ingot",
+             "minecraft:ender_pearl", "minecraft:iron_ingot", "minecraft:iron_ingot", "minecraft:iron_ingot",
+             "minecraft:iron_ingot" } })
+  CHECK(FACTORY.recipes["advancedperipherals:chunk_controller"], "learned recipe kept")
+  CONFIG.factory.target = 4                             -- (3 turtles now: the crafter counts too)
+  local sent, craftArgs = {}, nil
+  local send0 = TT.send
+  TT.send = function(id, c, a, ...) sent[#sent + 1] = id .. ":" .. c if c == "craft" then craftArgs = a end return send0(id, c, a, ...) end
+  local built = false
+  for step = 1, 20 do
+    CLOCK = CLOCK + 11
+    for _, t in pairs(state.turtles) do t.lastSeen = CLOCK end
+    FACTORY.tick()
+    if step == 2 then ME["minecraft:iron_ingot"] = 8 end           -- AE2 finished the iron
+    local j = FACTORY.job
+    if j and j.step == "tcraft" and CHEST["minecraft:iron_ingot"] == 8 then
+      -- the crafter does its job: the ingredients become one Chunky in the chest
+      CHEST["minecraft:iron_ingot"], CHEST["minecraft:ender_pearl"] = 0, 0
+      CHEST["advancedperipherals:chunk_controller"] = 1
+      FACTORY.craftResult(3, true, "crafted 1 advancedperipherals:chunk_controller")
+    end
+    if j and j.step == "building" and not built then
+      built = true
+      for k in pairs(CHEST) do CHEST[k] = nil end
+      FACTORY.result(1, true, "built turtle 11")
+    end
+  end
+  TT.send = send0
+  local s = table.concat(sent, ",")
+  local orderedIron = false
+  for _, n in ipairs(CRAFTS) do if n == "minecraft:iron_ingot" then orderedIron = true end end
+  CHECK(orderedIron, "taught: AE2 was asked for the iron (an ingredient it can craft)")
+  CHECK(s:find("3:craft", 1, true) and craftArgs and craftArgs[1]:find("minecraft:ender_pearl", 1, true) and craftArgs[2] == 1,
+        "taught: the crafter got the recipe (" .. s .. ")")
+  CHECK(built and FACTORY.last and FACTORY.last.id == 11, "taught: the turtle was built with the crafted Chunky")
+  CHECK(ME["minecraft:ender_pearl"] == 0 and ME["minecraft:iron_ingot"] == 0, "taught: exactly the ingredients were used")
+  -- the planner on its own: nested taught recipes, and something nobody can make
+  FACTORY.recipes["minecraft:ender_pearl"] = { grid = { "", "", "", "", "minecraft:gold_ingot", "", "", "", "" }, count = 1 }
+  ME["minecraft:ender_pearl"], ME["minecraft:gold_ingot"] = 0, 0
+  local p = FACTORY.plan("advancedperipherals:chunk_controller", 1, {})
+  CHECK(#p.crafts == 2 and p.crafts[1].name == "minecraft:ender_pearl" and p.crafts[2].name == "advancedperipherals:chunk_controller",
+        "plan: the ingredient's own recipe first")
+  CHECK(#p.missing == 1 and p.missing[1] == "minecraft:gold_ingot", "plan: what nobody can make is named")
+  FACTORY.recipes = {}
+end

@@ -141,6 +141,34 @@ for i, v in ipairs(ids) do if v == (FACTORY.builder or false) then idx = i end e
 FACTORY.builder = ids[(idx - 1 + (dir or 1)) % #ids + 1] or nil
 FACTORY.save()
 end },
+{ kind = "custom", label = "Crafter turtle", hint = "a turtle with a CRAFTING TABLE, home next to the factory chest - makes what AE2 cannot",
+get = function()
+local c = FACTORY.crafterTurtle()
+if FACTORY.crafter then return c and (c.label .. " #" .. c.id) or ("#" .. tostring(FACTORY.crafter)) end
+return c and ("automatic: " .. c.label) or "automatic (no turtle with a crafting table yet)"
+end,
+next = function(dir)
+local ids = { false }
+for _, t in ipairs(TT.list()) do
+if type(t.gear) == "string" and t.gear:find("crafter", 1, true) then ids[#ids + 1] = t.id end
+end
+local idx = 1
+for i, v in ipairs(ids) do if v == (FACTORY.crafter or false) then idx = i end end
+FACTORY.crafter = ids[(idx - 1 + (dir or 1)) % #ids + 1] or nil
+FACTORY.save()
+end },
+{ kind = "custom", label = "Teach a recipe", hint = "put the ingredients in the crafter's 3x3 grid (slots 1-3, 5-7, 9-11) like a crafting table, then tap",
+get = function()
+local n = 0
+for _ in pairs(FACTORY.recipes) do n = n + 1 end
+return n .. " known - tap = LEARN"
+end,
+next = function()
+local c = FACTORY.crafterTurtle()
+if not c or not TT.online(c) then setToast("No crafter turtle online (a turtle with a crafting table)", C.warn, 6) return end
+TT.send(c.id, "learnrecipe", {})
+setToast(c.label .. " crafts once and learns what the items in its grid make ...", C.label, 5)
+end },
 { kind = "custom", label = "Factory", hint = "what it is doing (type  factory  for the parts list)",
 get = function() return (FACTORY.statusLine()) end,
 next = function() FACTORY.fails, FACTORY.waitUntil = 0, nil FACTORY.save() setToast("Factory: trying again", C.label, 4) end },

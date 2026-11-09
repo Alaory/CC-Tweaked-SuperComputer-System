@@ -56,6 +56,7 @@ HELP = {
 " drive <id>   steer a turtle with the keyboard: W A S D, SPACE up, SHIFT down",
 " mine [drop|forget] <id>   mining turtles: drop = a lost miner out of its team",
 " factory [chest <name>|builder <id>|build|stop]   build turtles from AE2 parts",
+" factory recipes|learn|forget <item>|crafter <id>   recipes TAUGHT to a crafting turtle",
 " schem [<name>|delete <name>]   Create schematics (drag a .nbt onto this screen)",
 " pocket [unpair <id>]   the paired pocket computers (run pocket.lua on one to pair)",
 " turtle <id> warps / warp <name> / warpsave <name>   End Automata Core teleports",
@@ -621,7 +622,37 @@ end
 elseif cmd == "factory" then
 
 local sub = (words[2] or ""):lower()
-if sub == "chest" then
+if sub == "recipes" then
+local any = false
+for name, r in pairs(FACTORY.recipes) do
+any = true
+local ing = {}
+for n, c in pairs(FACTORY.ingredients(r)) do ing[#ing + 1] = c .. " " .. prettify(n) end
+say(" " .. prettify(name) .. " (" .. name .. ") x" .. r.count .. " <- " .. table.concat(ing, ", "))
+end
+if not any then say("No taught recipes. SETTINGS > FACTORY: Teach a recipe (or  factory learn ).") end
+elseif sub == "learn" then
+local c = FACTORY.crafterTurtle()
+if not c or not TT.online(c) then say("No crafter turtle online (a turtle with a crafting table equipped).")
+else
+TT.send(c.id, "learnrecipe", {})
+say(c.label .. " crafts the items in its 3x3 grid once and learns what they make.")
+end
+elseif sub == "forget" and words[3] then
+local name = words[3]
+if not FACTORY.recipes[name] then
+for n in pairs(FACTORY.recipes) do if prettify(n):lower() == table.concat(words, " ", 3):lower() then name = n end end
+end
+say(FACTORY.forget(name) and ("Recipe forgotten: " .. name) or ("No recipe for '" .. words[3] .. "' (see  factory recipes )"))
+elseif sub == "crafter" then
+local t = words[3] and TT.find(words[3])
+if not t then say("Usage: factory crafter <turtle id>   (a turtle with a crafting table, home next to the factory chest)")
+else
+FACTORY.crafter = t.id
+FACTORY.save()
+say("Crafter: " .. t.label .. ". Its home must be next to the factory chest.")
+end
+elseif sub == "chest" then
 if words[3] then
 if not peripheral.isPresent(words[3]) then
 say("No '" .. words[3] .. "' on the cable. Type  factory chest  to see the chests.")
