@@ -403,8 +403,11 @@ PneumaticCraft drone rides, turtle mapping/surveys, and an AE2 ME network view.
   fuel): node.lua chargeFromCell(target) at the start of topUp (any side with chargeTurtle;
   no core / empty cell = nothing; tells the base once, S.cellUsed); miner.lua (m18) tries
   it first in burnCoal. A miner keeps a cell only if it was in it at START (S.own).
-  node_cell.lua. Core digBlock (digs with the SELECTED item - maybe enchanted tools, costs
-  fuel + cooldown, setFuelConsumptionRate) is NOT used yet: waiting for the owner's tests.
+  node_cell.lua. NEVER use the core's digBlock / useOnBlock: tested in game (End Automata
+  on the right, deepslate emerald ore in front, pickaxe selected) - the turtle MINES ITSELF
+  (it drops as an item). The core's peripheral type is "end_automata" (+ "automata"), not
+  "endAutomata" as the docs say - find it by "automata" in the type. The server does not
+  allow enchanted tools as turtle upgrades (no silk touch / fortune for turtles).
 - TAUGHT RECIPES (modpacks change recipes: none written in the code). CRAFTER turtle =
   a crafting table equipped (node gear "crafter"; FACTORY.crafter or automatic = the one
   with "crafter"), home next to the factory chest. SETTINGS > FACTORY "Teach a recipe" /
