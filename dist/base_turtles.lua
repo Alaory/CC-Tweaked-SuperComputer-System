@@ -1531,13 +1531,29 @@ end
 if o.homeOffer and o.id ~= t.id then taken[o.homeOffer] = true end
 end
 table.sort(homes, function(a, b) return a.id < b.id end)
+
+
+
+if FACTORY and FACTORY.chest then
+for _, f in ipairs({ FACTORY.builderTurtle and FACTORY.builderTurtle(), FACTORY.crafterTurtle and FACTORY.crafterTurtle() }) do
+if f and f.home and f.home.x then
+for _, d in ipairs({ { 1, 0, 0 }, { -1, 0, 0 }, { 0, 0, 1 }, { 0, 0, -1 }, { 0, 1, 0 }, { 0, -1, 0 } }) do
+taken[(f.home.x + d[1]) .. "," .. (f.home.y + d[2]) .. "," .. (f.home.z + d[3])] = true
+end
+end
+end
+end
 local bad = t.homeBad or {}
+
+
+for _, step in ipairs({ 1, 2 }) do
 for _, o in ipairs(homes) do
 local h = o.home
 for _, d in ipairs({ { 1, 0 }, { -1, 0 }, { 0, 1 }, { 0, -1 } }) do
-local x, y, z = h.x + d[1], h.y, h.z + d[2]
+local x, y, z = h.x + d[1] * step, h.y, h.z + d[2] * step
 local k = x .. "," .. y .. "," .. z
 if not taken[k] and not bad[k] then return x, y, z end
+end
 end
 end
 end

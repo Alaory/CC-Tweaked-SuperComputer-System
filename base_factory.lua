@@ -339,6 +339,35 @@ function FACTORY.tick()
   if os.clock() - lastTick < 10 then return end
   lastTick = os.clock()
   local j = FACTORY.job
+  if not j and FACTORY.leaving then
+    -- the turtle just built stands on the build spot: get it out of the way first
+    -- (a home offer at once, then home), the next build only when the spot is free
+    local L = FACTORY.leaving
+    local t = L.id and state.turtles[L.id]
+    local b = builderTurtle()
+    local away = true
+    if t and t.pos and t.pos.x and b and b.home and b.home.x then
+      away = math.abs(t.pos.x - b.home.x) + math.abs(t.pos.y - b.home.y) + math.abs(t.pos.z - b.home.z) >= 2
+    elseif t then
+      away = false
+    end
+    if (t and away and TT.online(t)) or os.clock() - L.at > 1200 or (L.id == nil and os.clock() - L.at > 120) then
+      if t and not away then
+        pushNote("WARNING", "Turtle factory: the new turtle " .. (t.label or ("#" .. L.id)) ..
+                 " did not leave the build spot in 20 minutes - move it, the next build waits for the spot", C.warn)
+        FACTORY.waitUntil = os.clock() + 600
+      end
+      FACTORY.leaving = nil
+      save()
+    elseif t and TT.online(t) then
+      if not t.home then t.homeOfferAt = nil                  -- (a home offer at once)
+      elseif not L.sent or os.clock() - L.sent > 60 then
+        L.sent = os.clock()
+        TT.send(t.id, "home", {}, true)
+      end
+    end
+    return
+  end
   if not j then
     if FACTORY.waitUntil and os.clock() < FACTORY.waitUntil then return end
     if FACTORY.blocked() then return end
@@ -529,6 +558,7 @@ function FACTORY.result(id, ok, msg)
   FACTORY.built = (FACTORY.built or 0) + 1
   FACTORY.last = { t = os.epoch("utc"), ok = true, msg = msg, id = newId }
   FACTORY.waitUntil = os.clock() + 120                 -- the next one in 2 min (it moves away first)
+  FACTORY.leaving = { id = newId, at = os.clock() }    -- (and only once it has left the build spot)
   save()
   if sysLog then sysLog("Factory: " .. tostring(msg), "DONE") end
   pushNote("DONE", "Turtle factory: " .. tostring(msg) .. " - it installs itself and reports in a moment", C.good)
@@ -566,6 +596,7 @@ function FACTORY.statusLine()
   end
   local why = FACTORY.blocked()
   if why then return why, (why:find("^off") or why:find("^fleet complete")) and C.dim or C.warn end
+  if FACTORY.leaving then return "waiting for the new turtle to leave the build spot", C.label end
   if FACTORY.lastMissing then return "waiting for AE2 patterns - type  factory", C.warn end
   if FACTORY.waitUntil and os.clock() < FACTORY.waitUntil then return "next try in a moment", C.dim end
   return "ready", C.good

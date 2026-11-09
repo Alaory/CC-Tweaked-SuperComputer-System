@@ -221,7 +221,9 @@ PneumaticCraft drone rides, turtle mapping/surveys, and an AE2 ME network view.
   (only where turtle.getEquippedLeft/Right exist).
 - Homes (TT.homeTick, comms worker): a turtle without a home is offered one
   ("homeoffer"): next to another turtle's home, +-1 in X or Z, not a home /
-  offer / spot it reported bad. The turtle checks it the first time it goes
+  offer / spot it reported bad, never next to the factory builder's / crafter's home
+  (the chest + the BUILD SPOT: a new turtle offered the build spot as its home never
+  left it); none free one block away -> two blocks away. The turtle checks it the first time it goes
   home (HOMEPROBE: no digging, no retries - isFinal); blocked -> "homebad"
   -> next offer. Idle for CONFIG.turtles.idleHome s (default 120, 0 = off)
   away from home -> sent home (not held / anchor / stuck / needed by a big
@@ -387,7 +389,9 @@ PneumaticCraft drone rides, turtle mapping/surveys, and an AE2 ME network view.
   (craftME, wait <= 30 min) -> export (EXACT counts into FACTORY.chest, a chest
   on the cable next to the builder; j.exported; on any failure exactly those go
   back with importItem) -> building (TT.send builder "build"; result via
-  TT.receive -> FACTORY.result, "built turtle <id>"). Builder = FACTORY.builder
+  TT.receive -> FACTORY.result, "built turtle <id>"); then FACTORY.leaving: no next build
+  until the new turtle is >= 2 blocks from the builder's home (home offer at once, then
+  "home" every 60 s; 20 min -> warning). Builder = FACTORY.builder
   or the rescuer; needs Disk Drive + install floppy + pickaxe. node.lua build():
   turns until the chest holding a turtle item is in front, sucks it empty (only
   the delta vs invSnapshot goes on), places the turtle on the OPPOSITE side,

@@ -45,6 +45,7 @@ local function setup(mode)
             lastSeen = os.clock(), rescuerRole = true, home = { x = 0, y = 70, z = 0 } },
     [2] = { id = 2, label = "S2", log = {}, lastN = 0, fuel = 9000, pos = { x = 5, y = 70, z = 0 }, task = "idle", lastSeen = os.clock() } }
   FACTORY.job, FACTORY.fails, FACTORY.waitUntil, FACTORY.built, FACTORY.last, FACTORY.lastMissing = nil, 0, nil, 0, nil, nil
+  FACTORY.leaving = nil
   FACTORY.chest, FACTORY.builder = "minecraft:chest_9", nil
   return ME, CRAFTABLE, CRAFTS, CHEST
 end
@@ -238,3 +239,30 @@ CHECK(SETTINGS["factory.fuel"] == "minecraft:charcoal", "factory fuel: saved as 
 handleCommand("factory fuel reset")
 fp = FACTORY.parts()[6]
 CHECK(fp.name == "minecraft:coal_block" and fp.count == 16, "factory fuel reset: back to 16 coal blocks")
+
+-- the NEW turtle stands on the build spot: never offered it as its home, sent
+-- home, and the next build waits until it has left the spot
+do
+  setup("stock")
+  CONFIG.factory.target = 9
+  FACTORY.job = { step = "building", builder = 1, t = os.epoch("utc") }
+  FACTORY.result(1, true, "built turtle 40")           -- (builder 1, home 0 70 0)
+  state.turtles[40] = { id = 40, label = "New", log = {}, lastN = 0, fuel = 900, pos = { x = 0, y = 70, z = 1 },
+                        task = "idle", lastSeen = CLOCK }
+  local x, y, z = TT.homeSpot(state.turtles[40])
+  CHECK(x and not (math.abs(x) + math.abs(z) <= 1 and y == 70), "no home offered next to the builder (" ..
+        tostring(x) .. "," .. tostring(y) .. "," .. tostring(z) .. ")")
+  state.turtles[40].home = { x = 30, y = 70, z = 30 }
+  local sent = {}
+  local send0 = TT.send
+  TT.send = function(id, c, ...) sent[#sent + 1] = id .. ":" .. c return send0(id, c, ...) end
+  FACTORY.waitUntil = nil
+  for _ = 1, 3 do CLOCK = CLOCK + 11 for _, t in pairs(state.turtles) do t.lastSeen = CLOCK end FACTORY.tick() end
+  CHECK(table.concat(sent, ","):find("40:home", 1, true), "the new turtle is sent home")
+  CHECK(FACTORY.job == nil and not table.concat(sent, ","):find("1:build", 1, true), "no next build while it is on the spot")
+  CHECK(FACTORY.statusLine():find("leave", 1, true), "the status says why it waits")
+  state.turtles[40].pos = { x = 12, y = 70, z = 12 }        -- it has gone
+  for _ = 1, 3 do CLOCK = CLOCK + 11 for _, t in pairs(state.turtles) do t.lastSeen = CLOCK end FACTORY.tick() end
+  CHECK(FACTORY.leaving == nil, "it left: the factory goes on")
+  TT.send = send0
+end
