@@ -514,6 +514,7 @@ end
 pcall(TT.updateTick)
 pcall(TT.stopTick)
 pcall(TT.patrolTick)
+pcall(TT.partyTick)
 pcall(TT.homeTick)
 pcall(TT.avoidTick)
 pcall(TT.stallTick)

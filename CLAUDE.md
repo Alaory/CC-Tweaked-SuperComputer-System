@@ -490,6 +490,19 @@ PneumaticCraft drone rides, turtle mapping/surveys, and an AE2 ME network view.
   the overworld (the pocket's GPS there is not an overworld place). WELCOME BACK
   goes to the pocket too. tools/tests/test_pocket.lua runs the real pocket.lua
   against the base (DUMP=1 prints the screens).
+- SEARCH PARTY (TT.party, base_turtles.lua; FLEET card SEARCH PARTY / CALL BACK PARTY,
+  console `party [stop]`): members = online, fuel > 2000, not anchor / rescuer / held
+  (t.party: no survey batches - TT.available -, no idle-home, idleWhy says so); jobs
+  stopped (no hold). Targets = TT.lostList (offline, not MISSING, pos known), nearest-next
+  order. Stages: meet (base, a line) -> travel (hops <= 128 toward the target, members side
+  by side 24 apart across the way; next hop when all are within 6 of their goal or idle 20 s,
+  max 300 s) -> ring1 (24 around the spot) -> ring2 (56) -> TT.markMissing. After EVERY stop
+  each member runs node job "findturtles" (Geo Scanner r 16/8, turtle blocks, not eggs) ->
+  "turtlesseen" -> TT.partySeen: a block with no online turtle on it, within 96 of a lost
+  one's last spot = that turtle -> TT.rescue(id, exact x y z, 6, the permanent rescuer)
+  (the rescuer checks the ID - isTurtle - before touching it). A lost one that reports
+  (Chunky loaded its area) = found. End / no members -> all "home", summary note.
+  Memory only (a base restart ends it). test_party.lua.
 - Permanent rescuer: t.rescuerRole (RESCUER button, saved in turtles.dat;
   base only). TT.patrolTick (comms worker) sends it to: no fuel (<20 for
   60 s), stuck (60 s idle), lost (silent CONFIG.turtles.rescueAfter, default

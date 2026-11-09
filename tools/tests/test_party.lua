@@ -1,0 +1,80 @@
+-- SEARCH PARTY: all free turtles meet at the base, travel together to each lost
+-- turtle, look around (Geo Scanner); a switched-off one they SEE -> the rescuer is
+-- sent to its exact block; one that wakes up (its area loaded) = found; one that
+-- is gone (deleted by a crash) -> MISSING; then everyone home.
+local HOME = { x = 0, y = 64, z = 0 }
+CONFIG.drone.home = HOME
+state.turtles, state.tOut = {}, {}
+TT.party = nil
+local function T(id, f)
+  local t = { id = id, label = "T" .. id, log = {}, lastN = 0, fuel = 50000, pos = { x = 0, y = 64, z = 0 }, task = "idle",
+              lastSeen = CLOCK, seenEpoch = os.epoch("utc"), home = { x = id, y = 64, z = 0 } }
+  for k, v in pairs(f or {}) do t[k] = v end
+  state.turtles[id] = t
+  return t
+end
+T(1) T(2) T(3)
+T(9, { rescuerRole = true, gear = "L=x R=y,drive,floppy,pick,fuel,scanner" })
+local A = T(21, { lastSeen = CLOCK - 9999, pos = { x = 300, y = 40, z = 0 } })      -- switched off, still there
+local B = T(22, { lastSeen = CLOCK - 9999, pos = { x = 300, y = 64, z = 200 } })    -- wakes up when the area loads
+local C = T(23, { lastSeen = CLOCK - 9999, pos = { x = -200, y = 64, z = 50 } })    -- deleted
+local OFF = { [21] = true, [22] = true, [23] = true }
+local rescues, goals, homes = {}, {}, {}
+local send0 = TT.send
+TT.send = function(id, cmd, args, ...)
+  local t = state.turtles[id]
+  if cmd == "goto" and t then
+    goals[#goals + 1] = { id = id, x = args[1], z = args[3] }
+    t.pos = { x = args[1], y = args[2], z = args[3] }               -- (gets there at once)
+    t.task = "idle"
+  elseif cmd == "findturtles" and t then
+    local seen = {}
+    if math.abs(t.pos.x - 300) + math.abs(t.pos.z - 0) <= 40 then seen[1] = { x = 300, y = 40, z = 0 } end
+    TT.partySeen(id, seen)
+  elseif cmd == "rescue" then
+    rescues[#rescues + 1] = { by = id, target = args[1], x = args[2], y = args[3], z = args[4] }
+  elseif cmd == "home" then
+    homes[id] = true
+  end
+  return send0(id, cmd, args, ...)
+end
+local ok, msg = TT.partyStart()
+CHECK(ok, "party starts: " .. tostring(msg))
+CHECK(TT.party and #TT.party.members == 3, "3 members (not the rescuer)")
+CHECK(TT.available()[1] == nil, "members get no survey work while in the party")
+local spread = false
+for step = 1, 400 do
+  CLOCK = CLOCK + 2
+  for id, t in pairs(state.turtles) do if not OFF[id] then t.lastSeen = CLOCK end end
+  -- B wakes up once a party member is near its spot
+  if OFF[22] then
+    for _, id in ipairs((TT.party or {}).members or {}) do
+      local p = state.turtles[id].pos
+      if math.abs(p.x - 300) + math.abs(p.z - 200) <= 60 then OFF[22] = nil B.lastSeen = CLOCK end
+    end
+  end
+  -- side by side while travelling: two goals of one hop 24 blocks apart
+  if TT.party and TT.party.stage == "travel" and TT.party.goals then
+    local g1, g2 = TT.party.goals[1], TT.party.goals[2]
+    if g1 and g2 and math.abs(math.sqrt((g1.x - g2.x) ^ 2 + (g1.z - g2.z) ^ 2) - 24) < 1 then spread = true end
+  end
+  TT.partyTick()
+  if not TT.party then break end
+end
+TT.send = send0
+CHECK(TT.party == nil, "the party finished")
+CHECK(spread, "they travel side by side, 24 blocks apart")
+local r = rescues[1]
+CHECK(r and r.by == 9 and r.target == 21 and r.x == 300 and r.y == 40 and r.z == 0,
+      "A seen switched off: the RESCUER is sent to its exact block")
+local foundB = false
+for _, l in ipairs(B.log) do if tostring(l.msg or l):find("is back", 1, true) then foundB = true end end
+CHECK(foundB or TT.online(B), "B woke up when the party came: found")
+CHECK(C.missing, "C was deleted: MISSING after the search")
+CHECK(not A.missing and not B.missing, "A and B are not marked missing")
+CHECK(homes[1] and homes[2] and homes[3], "everyone is sent home at the end")
+CHECK(not state.turtles[1].party, "members are free again")
+-- nobody lost: refused
+local ok2, msg2 = TT.partyStart()
+CHECK(not ok2 or #TT.lostList() > 0, "no lost turtle: no party (" .. tostring(msg2) .. ")")
+TT.party = nil

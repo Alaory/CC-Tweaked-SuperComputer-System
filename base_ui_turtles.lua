@@ -78,6 +78,12 @@ function drawFleet(x, y, w, h, list)
     end
     my = my + 1
   end
+  -- the search party (all turtles looking for the lost ones together)
+  local pl = TT.partyLine and TT.partyLine()
+  if pl then
+    for _, l in ipairs(wrap(pl, iw, 2)) do text(ix, my, l, C.label, C.panel) my = my + 1 end
+    my = my + 1
+  end
   -- what needs you (tap = select)
   text(ix, my, #need > 0 and ("NEEDS A LOOK (" .. #need .. ")") or "NOTHING NEEDS YOU", #need > 0 and C.warn or C.good, C.panel)
   local ny = my + 1
@@ -128,8 +134,13 @@ function drawTurtlesPage(G)
     text(lx + 2, bottom - 1, trunc(msg, leftW - 4), col, C.panel)
   end
   -- lost turtles nobody knows the position of: search around the base
-  actButton(lx + 2, bottom - 4, leftW - 4, 2, "FIND LOST TURTLES (search around the base)",
-            { kind = "findlost", name = "all", count = 0 }, true)
+  local hw = math.floor((leftW - 5) / 2)
+  actButton(lx + 2, bottom - 4, hw, 2, "FIND LOST AROUND BASE", { kind = "findlost", name = "all", count = 0 }, true)
+  if TT.party then
+    actButton(lx + 3 + hw, bottom - 4, leftW - 5 - hw, 2, "CALL BACK PARTY", { kind = "party", name = "stop", count = 0 })
+  else
+    actButton(lx + 3 + hw, bottom - 4, leftW - 5 - hw, 2, "SEARCH PARTY", { kind = "party", name = "start", count = 0 }, true)
+  end
   if #list == 0 then
     text(ix, y0 + 3, "Waiting for turtles...", C.dim, C.panel)
     text(ix, y0 + 4, trunc("Run node.lua on a turtle (same key).", iw), C.dim, C.panel)

@@ -58,6 +58,7 @@ HELP = {
 " factory [chest <name>|builder <id>|build|stop]   build turtles from AE2 parts",
 " factory recipes|learn|forget <item>|crafter <id>   recipes TAUGHT to a crafting turtle",
 " factory fuel [<item> [count]|reset]   the fuel a new turtle gets (default 16 coal blocks)",
+" party [stop]          SEARCH PARTY: all free turtles look for the lost ones together; the rescuer fetches them",
 " schem [<name>|delete <name>]   Create schematics (drag a .nbt onto this screen)",
 " pocket [unpair <id>]   the paired pocket computers (run pocket.lua on one to pair)",
 " turtle <id> warps / warp <name> / warpsave <name>   End Automata Core teleports",
@@ -213,6 +214,21 @@ if words[2] then
 say(denyPlayer(words[2]) and (words[2] .. " removed from the list") or (words[2] .. " was not on the list"))
 else say("Usage: deny <player>") end
 
+elseif cmd == "party" then
+
+if words[2] == "stop" then
+local ok, msg = TT.partyStop("called back")
+say(ok and msg or "No search party is out.")
+elseif TT.party then
+say(TT.partyLine())
+say("party stop  calls it back (everyone goes home)")
+else
+local lost = TT.lostList()
+say(#lost .. " lost turtle(s) (offline, last spot known):")
+for _, t in ipairs(lost) do say("  " .. t.label .. " #" .. t.id .. " at " .. fmtPos(t.pos.x, t.pos.y, t.pos.z)) end
+local ok, msg = TT.partyStart()
+say(msg)
+end
 elseif cmd == "findlost" then
 local radius = tonumber(words[2])
 local x, y, z = tonumber(words[3]), tonumber(words[4]), tonumber(words[5])

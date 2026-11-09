@@ -134,6 +134,7 @@ local q = MAP and MAP.queue
 if not (t.pos and t.pos.x) then return "position unknown - press GPS LOCATE", C.warn end
 if t.anchor then return "anchor - keeps the base loaded", C.purple end
 if t.rescuerRole then return "rescuer - waits for a turtle in trouble", C.warn end
+if t.party then return "in the SEARCH PARTY - waits for the others", C.label end
 if fuel and fuel < minFuel then
 return "fuel " .. fuel .. " is below " .. minFuel .. " - " ..
 ((CONFIG.turtles.fuelChest and CONFIG.turtles.fuelChest.x) and "waiting for the fuel chest"
@@ -552,6 +553,8 @@ setToast(t.label .. " got " .. (CODE and TT.verName(CODE.ver) or "the update") .
 end
 elseif m.t == "look" then
 TT.lookIn(t, m)
+elseif m.t == "turtlesseen" then
+pcall(TT.partySeen, id, m.seen)
 elseif m.t == "recipe" then
 if FACTORY and type(m.recipe) == "table" then pcall(FACTORY.learned, id, m.recipe) end
 elseif m.t == "result" then
@@ -1608,7 +1611,7 @@ elseif low and fc and fc.x and (not t.fuelTripAt or now - t.fuelTripAt > 600) th
 low = "wait"
 end
 local wait = low and 10 or idleHome
-if low ~= "wait" and idleHome > 0 and idle and t.home and t.pos and t.pos.x and not t.held and not t.anchor
+if low ~= "wait" and idleHome > 0 and idle and t.home and t.pos and t.pos.x and not t.held and not t.anchor and not t.party
 and not t.stuck and not t.rescuer and now - t.idleSince > wait
 and (not t.idleHomeAt or now - t.idleHomeAt > 600) then
 local away = math.abs(t.pos.x - t.home.x) + math.abs(t.pos.y - t.home.y) + math.abs(t.pos.z - t.home.z)
@@ -1711,7 +1714,7 @@ function TT.available()
 local list = {}
 for id, t in pairs(state.turtles) do
 if TT.online(t) and t.pos and t.pos.x and (t.task == nil or t.task == "idle") and not t.anchor
-and not t.rescuerRole then
+and not t.rescuerRole and not t.party then
 list[#list + 1] = id
 end
 end
@@ -1852,3 +1855,253 @@ end
 
 
 KNOW.load()
+
+
+
+
+
+
+
+
+
+
+
+
+TT.party = nil
+local PARTY_GAP, PARTY_HOP = 24, 128
+
+local function flat(a, b) return math.abs(a.x - b.x) + math.abs(a.z - b.z) end
+
+
+function TT.lostList()
+local out = {}
+for _, t in pairs(state.turtles) do
+if not TT.online(t) and not t.missing and t.pos and t.pos.x then out[#out + 1] = t end
+end
+return out
+end
+
+function TT.partyStart()
+if TT.party then return false, "a search party is already out (type  search stop  to call it back)" end
+local lost = TT.lostList()
+if #lost == 0 then return false, "no lost turtle (offline, last spot known) to look for" end
+local meet = CONFIG.drone and CONFIG.drone.home or state.basePos
+if not (meet and meet.x) then return false, "base position unknown (CONFIG.drone.home)" end
+local members = {}
+for id, t in pairs(state.turtles) do
+local fuel = tonumber(t.fuel) or 0
+if TT.online(t) and t.pos and t.pos.x and not t.anchor and not t.rescuerRole and not t.held and fuel > 2000 then
+members[#members + 1] = id
+end
+end
+if #members == 0 then return false, "no free turtle (online, fuel > 2000, not the anchor / rescuer)" end
+table.sort(members)
+
+local order, from = {}, { x = meet.x, z = meet.z }
+while #lost > 0 do
+local bi, bd
+for i, t in ipairs(lost) do
+local d = flat(t.pos, from)
+if not bd or d < bd then bi, bd = i, d end
+end
+local t = table.remove(lost, bi)
+order[#order + 1] = t.id
+from = t.pos
+end
+TT.party = { members = members, targets = order, ti = 1, found = {}, missing = {}, located = {},
+seenAt = {}, locatedSet = {}, foundSet = {}, phase = "move", stage = "meet", goals = {}, t0 = os.clock(), started = os.clock() }
+for k, id in ipairs(members) do
+local t = state.turtles[id]
+t.party = true
+if t.task and t.task ~= "idle" then TT.send(id, "stop", {}, true, true) end
+TT.party.goals[id] = { x = meet.x + (k - 1) * 2 - #members, y = meet.y, z = meet.z + 3 }
+end
+TT.partySendGoals()
+if sysLog then sysLog("Search party: " .. #members .. " turtle(s) look for " .. #order .. " lost one(s)", "INFO") end
+return true, #members .. " turtle(s) meet at the base, then look for " .. #order .. " lost turtle(s)"
+end
+
+
+function TT.partySendGoals()
+local P = TT.party
+P.sentAt, P.done = os.clock(), {}
+for id, g in pairs(P.goals) do
+TT.send(id, "goto", { math.floor(g.x), math.floor(g.y), math.floor(g.z) }, true)
+end
+end
+
+function TT.partyStop(why)
+local P = TT.party
+if not P then return false end
+for _, id in ipairs(P.members) do
+local t = state.turtles[id]
+if t then
+t.party = nil
+TT.send(id, "stop", {}, true, true)
+TT.send(id, "home", {}, true)
+end
+end
+TT.party = nil
+local msg = "Search party " .. (why or "called back") .. ": found " .. #P.found .. ", sent the rescuer to " ..
+#P.located .. ", MISSING (deleted) " .. #P.missing
+pushNote("DONE", msg, C.good)
+if sysLog then sysLog(msg, "INFO") end
+return true, msg
+end
+
+
+local function partyTarget(P)
+while P.targets[P.ti] do
+local t = state.turtles[P.targets[P.ti]]
+if t and not t.missing and not TT.online(t) and not P.locatedSet[t.id] then return t end
+P.ti, P.stage = P.ti + 1, "travel"
+end
+end
+
+
+function TT.partySeen(id, seen)
+local P = TT.party
+if not (P and type(seen) == "table") then return end
+P.scanned = P.scanned or {}
+P.scanned[id] = true
+P.locatedSet = P.locatedSet or {}
+for _, b in ipairs(seen) do
+local x, y, z = tonumber(b.x), tonumber(b.y), tonumber(b.z)
+local busy = false
+for _, o in pairs(state.turtles) do
+if TT.online(o) and o.pos and o.pos.x and math.abs(o.pos.x - x) + math.abs(o.pos.y - y) + math.abs(o.pos.z - z) <= 1 then busy = true end
+end
+local k = x and (x .. "," .. y .. "," .. z)
+if x and not busy and not P.seenAt[k] then
+P.seenAt[k] = true
+
+local best, bd
+for _, tid in ipairs(P.targets) do
+local t = state.turtles[tid]
+if t and not TT.online(t) and not t.missing and not P.locatedSet[tid] and t.pos and t.pos.x then
+local d = math.abs(t.pos.x - x) + math.abs(t.pos.z - z)
+if d <= 96 and (not bd or d < bd) then best, bd = t, d end
+end
+end
+if best then
+P.locatedSet[best.id] = true
+P.located[#P.located + 1] = best.id
+local rescuer
+for _, o in pairs(state.turtles) do if o.rescuerRole and TT.online(o) then rescuer = o end end
+local ok, msg = TT.rescue(best.id, x, y, z, 6, rescuer)
+local text = "Search party: " .. (best.label or ("#" .. best.id)) .. " found at " .. x .. " " .. y .. " " .. z ..
+(ok and (" - " .. msg) or (" - no rescuer could go (" .. tostring(msg) .. ") - get it yourself"))
+TT.log(best, text)
+pushNote(ok and "DONE" or "WARNING", text, ok and C.good or C.warn)
+if sysLog then sysLog(text, ok and "DONE" or "WARNING") end
+end
+end
+end
+end
+
+
+function TT.partyTick()
+local P = TT.party
+if not P then return end
+local now = os.clock()
+P.locatedSet = P.locatedSet or {}
+
+local live = {}
+for _, id in ipairs(P.members) do
+local t = state.turtles[id]
+if t and TT.online(t) then live[#live + 1] = id else if t then t.party = nil end P.goals[id] = nil end
+end
+P.members = live
+if #live == 0 then return TT.partyStop("ended - no turtle left in it") end
+
+for _, tid in ipairs(P.targets) do
+local t = state.turtles[tid]
+if t and TT.online(t) and not P.foundSet[tid] then
+P.foundSet[tid] = true
+P.found[#P.found + 1] = tid
+local text = "Search party: " .. (t.label or ("#" .. tid)) .. " is back (the party loaded its area)"
+TT.log(t, text)
+pushNote("DONE", text, C.good)
+end
+end
+if P.phase == "move" then
+
+local all = true
+for id, g in pairs(P.goals) do
+local t = state.turtles[id]
+if not P.done[id] then
+local near = t.pos and t.pos.x and flat(t.pos, g) <= 6
+local idle = (t.task == nil or t.task == "idle") and now - P.sentAt > 20
+if near or idle then P.done[id] = true else all = false end
+end
+end
+if not all and now - P.sentAt < 300 then return end
+if P.stage == "meet" then P.stage = "travel" end
+if P.scanNext then
+P.scanNext, P.scanned, P.phase, P.scanT = false, {}, "scan", now
+for _, id in ipairs(P.members) do TT.send(id, "findturtles", {}, true) end
+return
+end
+P.phase = "next"
+end
+if P.phase == "scan" then
+local all = true
+for _, id in ipairs(P.members) do if not (P.scanned or {})[id] then all = false end end
+if not all and now - P.scanT < 45 then return end
+P.phase = "next"
+end
+
+local T = partyTarget(P)
+if not T then return TT.partyStop("finished") end
+local n = #P.members
+local cx, cy, cz = 0, 0, 0
+for _, id in ipairs(P.members) do
+local p = state.turtles[id].pos
+cx, cy, cz = cx + p.x, cy + p.y, cz + p.z
+end
+cx, cy, cz = cx / n, cy / n, cz / n
+P.goals = {}
+if P.stage == "travel" and math.abs(T.pos.x - cx) + math.abs(T.pos.z - cz) > 30 then
+
+local dx, dz = T.pos.x - cx, T.pos.z - cz
+local len = math.sqrt(dx * dx + dz * dz)
+local step = math.min(PARTY_HOP, len)
+local wx, wz = cx + dx / len * step, cz + dz / len * step
+local px, pz = -dz / len, dx / len
+for k, id in ipairs(P.members) do
+local off = (k - (n + 1) / 2) * PARTY_GAP
+P.goals[id] = { x = wx + px * off, y = math.max(cy, T.pos.y), z = wz + pz * off }
+end
+else
+
+P.stage = (P.stage == "ring1") and "ring2" or ((P.stage == "ring2") and "done" or "ring1")
+if P.stage == "done" then
+
+TT.markMissing(T, "the search party")
+P.missing[#P.missing + 1] = T.id
+P.ti, P.stage = P.ti + 1, "travel"
+P.phase = "next"
+return
+end
+local r = (P.stage == "ring1") and 24 or 56
+local ring = { { r, 0 }, { -r, 0 }, { 0, r }, { 0, -r }, { r, r }, { -r, -r }, { r, -r }, { -r, r } }
+for k, id in ipairs(P.members) do
+local o = ring[(k - 1) % #ring + 1]
+P.goals[id] = { x = T.pos.x + o[1], y = T.pos.y, z = T.pos.z + o[2] }
+end
+end
+P.phase, P.scanNext = "move", true
+TT.partySendGoals()
+end
+
+
+function TT.partyLine()
+local P = TT.party
+if not P then return nil end
+local T = P.targets[P.ti] and state.turtles[P.targets[P.ti]]
+local what = (P.stage == "meet") and "meeting at the base"
+or (P.stage == "travel") and ("on the way to " .. (T and T.label or "?"))
+or ("searching around " .. (T and T.label or "?"))
+return "SEARCH PARTY (" .. #P.members .. "): " .. what .. " - " .. (P.ti - 1) .. "/" .. #P.targets ..
+" done, found " .. #P.found + #P.located .. ", missing " .. #P.missing
+end

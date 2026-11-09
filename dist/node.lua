@@ -2470,6 +2470,27 @@ return finish(true, "search done: " .. #rescued .. " lost turtle(s) found and re
 (#rescued > 0 and (" (" .. table.concat(rescued, ", ") .. ")") or ""))
 end
 
+
+
+
+function findTurtles()
+task = "search party: looking around"
+if not findItem(CONFIG.geoItem) then return false, "I have no Geo Scanner - I only help by loading the area" end
+local data, r = scanRaw(16)
+if not data then data, r = scanRaw(8) end
+if not data then return false, "the scan did not work" end
+local seen = {}
+for _, b in ipairs(data) do
+local n = type(b) == "table" and tostring(b.name) or ""
+if n:find("turtle", 1, true) and not n:find("egg", 1, true) and not n:find("scute", 1, true)
+and not ((b.x or 0) == 0 and (b.y or 0) == 0 and (b.z or 0) == 0) and #seen < 20 then
+seen[#seen + 1] = { x = S.pos.x + b.x, y = S.pos.y + b.y, z = S.pos.z + b.z }
+end
+end
+send("turtlesseen", { seen = seen })
+return true, "looked around (radius " .. tostring(r) .. "): " .. #seen .. " turtle(s) seen"
+end
+
 function rescue(tid, x, y, z, mode, radius)
 if S.anchor then return false, "I am the ANCHOR - send another turtle" end
 task = "rescue: looking for turtle " .. tid
@@ -2846,6 +2867,8 @@ return surveyPoints(orderNearest(pts), r)
 end
 if j.cmd == "craft" then
 return craftRecipe(a[1], a[2])
+elseif j.cmd == "findturtles" then
+return findTurtles()
 elseif j.cmd == "build" then
 if S.anchor then return false, "I am the ANCHOR - send another turtle" end
 return build()

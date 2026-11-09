@@ -514,6 +514,7 @@ function commsWorker()
       pcall(TT.updateTick)               -- turtle program updates, one turtle at a time
       pcall(TT.stopTick)                 -- STOP again until the turtle answers
       pcall(TT.patrolTick)               -- the rescue turtle: send it where it is needed
+      pcall(TT.partyTick)                -- the SEARCH PARTY: all turtles look for the lost ones together
       pcall(TT.homeTick)                 -- homes for new turtles; idle turtles go home
       pcall(TT.avoidTick)                -- turtles keep away from other players
       pcall(TT.stallTick)                -- a turtle hung in its job is stopped

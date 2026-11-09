@@ -118,6 +118,10 @@ function handleTouch(tx, ty)
             if sysLog then sysLog("Base restarted from the SYSTEM tab", "INFO") end
             if baseExit then pcall(baseExit, nil) end
             os.reboot()
+          elseif a.kind == "party" then
+            local ok, msg
+            if a.name == "stop" then ok, msg = TT.partyStop("called back") else ok, msg = TT.partyStart() end
+            setToast(msg or "", ok and C.good or C.warn, 8)
           elseif a.kind == "findlost" then
             local ok, msg = TT.findLost()
             setToast(msg, ok and C.good or C.warn, 8)
