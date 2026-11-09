@@ -122,6 +122,16 @@ end
 
 
 
+
+
+function TT.factoryRole(t)
+if not (t and FACTORY) then return nil end
+local ok, b = pcall(function() return FACTORY.builderTurtle and FACTORY.builderTurtle() end)
+if ok and b == t then return "builder" end
+local ok2, c = pcall(function() return FACTORY.crafterTurtle and FACTORY.crafterTurtle() end)
+if ok2 and c == t then return "crafter" end
+return nil
+end
 local QUIET_TASK = { "waiting", "refuel", "gps", "install" }
 local TROUBLE_TASK = { "backing up", "retracing", "planning a route", "following a planned route" }
 function TT.stillFor(t)
@@ -135,6 +145,8 @@ if not (t.pos and t.pos.x) then return "position unknown - press GPS LOCATE", C.
 if t.anchor then return "anchor - keeps the base loaded", C.purple end
 if t.rescuerRole then return "rescuer - waits for a turtle in trouble", C.warn end
 if t.party then return "in the SEARCH PARTY - waits for the others", C.label end
+local fr = TT.factoryRole(t)
+if fr then return "factory " .. fr .. " - stays at the factory (no surveys)", C.label end
 if fuel and fuel < minFuel then
 return "fuel " .. fuel .. " is below " .. minFuel .. " - " ..
 ((CONFIG.turtles.fuelChest and CONFIG.turtles.fuelChest.x) and "waiting for the fuel chest"
@@ -1616,7 +1628,7 @@ and not t.stuck and not t.rescuer and now - t.idleSince > wait
 and (not t.idleHomeAt or now - t.idleHomeAt > 600) then
 local away = math.abs(t.pos.x - t.home.x) + math.abs(t.pos.y - t.home.y) + math.abs(t.pos.z - t.home.z)
 local needed = false
-if MAP.queue and not t.rescuerRole and not low then
+if MAP.queue and not t.rescuerRole and not low and not TT.factoryRole(t) then
 queueIds = queueIds or MAP.queue.ids or TT.available()
 for _, qid in ipairs(queueIds) do
 if qid == id and not (MAP.queue.excluded and MAP.queue.excluded[id]) then needed = true end
@@ -1714,7 +1726,7 @@ function TT.available()
 local list = {}
 for id, t in pairs(state.turtles) do
 if TT.online(t) and t.pos and t.pos.x and (t.task == nil or t.task == "idle") and not t.anchor
-and not t.rescuerRole and not t.party then
+and not t.rescuerRole and not t.party and not TT.factoryRole(t) then
 list[#list + 1] = id
 end
 end
@@ -1890,11 +1902,12 @@ if not (meet and meet.x) then return false, "base position unknown (CONFIG.drone
 local members = {}
 for id, t in pairs(state.turtles) do
 local fuel = tonumber(t.fuel) or 0
-if TT.online(t) and t.pos and t.pos.x and not t.anchor and not t.rescuerRole and not t.held and fuel > 2000 then
+if TT.online(t) and t.pos and t.pos.x and not t.anchor and not t.rescuerRole and not t.held and fuel > 2000
+and not TT.factoryRole(t) then
 members[#members + 1] = id
 end
 end
-if #members == 0 then return false, "no free turtle (online, fuel > 2000, not the anchor / rescuer)" end
+if #members == 0 then return false, "no free turtle (online, fuel > 2000, not the anchor / rescuer / factory turtles)" end
 table.sort(members)
 
 local order, from = {}, { x = meet.x, z = meet.z }

@@ -1294,6 +1294,7 @@ local t = state.turtles[id]
 local free = t and TT.online(t) and t.pos and t.pos.x and (t.task == nil or t.task == "idle") and not t.anchor
 and not (q.excluded and q.excluded[id])
 and not t.rescuerRole and not t.held
+and not TT.factoryRole(t)
 local fuel = t and tonumber(t.fuel)
 if t then t.packWait = nil end
 if free and t.queueAt and os.clock() - t.queueAt < 15 then free = false busy = true end
@@ -1311,7 +1312,8 @@ elseif not (t.pos and t.pos.x) then w = "position unknown"
 elseif t.task and t.task ~= "idle" then w = "busy"
 elseif t.held or (q.excluded and q.excluded[id]) then w = "STOPPED - give it a command first"
 elseif fuel and fuel < minFuel then w = "fuel " .. fuel .. " (needs " .. minFuel .. ")"
-elseif t.anchor then w = "anchor" elseif t.rescuerRole then w = "rescuer" end
+elseif t.anchor then w = "anchor" elseif t.rescuerRole then w = "rescuer"
+elseif TT.factoryRole(t) then w = "factory " .. TT.factoryRole(t) end
 if w then why[#why + 1] = (t.label or ("#" .. id)) .. ": " .. w end
 end
 if free then anyFree = true end

@@ -410,7 +410,9 @@ PneumaticCraft drone rides, turtle mapping/surveys, and an AE2 ME network view.
   used pickaxe stopped the factory). Parts count only plain ones (own only -> missing / AE2
   crafts a fresh one); exported by the plain fingerprint. `factory` prints the parts FIRST
   and status / "Last try" LAST (the reason had scrolled off the screen). The builder must be AT HOME (else sent home first); a builder whose
-  inventory is too full gives everything back (parts left in the chest). 3 failures in a row -> stops until `factory build`. SETTINGS > FACTORY: fleet size,
+  inventory is too full gives everything back (parts left in the chest). 3 failures in a row -> stops until `factory build`. FACTORY TURTLES STAY HOME: TT.factoryRole(t)
+  (the builder - hand-picked or the rescuer - and the crafter) -> no survey batches (TT.available,
+  nextBatch), no search party, idleWhy "factory builder - stays at the factory". SETTINGS > FACTORY: fleet size,
   factory chest (tap = next EMPTY chest OR BARREL <= 54 slots on the cable, never FACTORY.reserved = the
   AE2 buffer / give / take / curios / fluid buffer), builder (tap = next
   turtle / automatic = the rescuer), status (tap = try again). Console `factory

@@ -291,3 +291,28 @@ do
   CHECK(FACTORY.waitUntil - os.clock() <= 5, "after a build: only a short wait (then the free spot decides)")
   CHECK(tostring(FACTORY.last.msg):find(" in %d+ s"), "the build time is written down (" .. tostring(FACTORY.last.msg) .. ")")
 end
+
+-- the factory turtles stay at the factory: a HAND-PICKED builder and the crafter
+-- get no survey batches, no search party, and say why they are idle
+do
+  setup("stock")
+  state.turtles[1].rescuerRole = nil
+  state.turtles[3] = { id = 3, label = "Crafty", log = {}, lastN = 0, fuel = 9000, pos = { x = 1, y = 70, z = 0 },
+                       task = "idle", lastSeen = os.clock(), gear = "crafter" }
+  FACTORY.builder, FACTORY.crafter = 1, nil
+  local avail = table.concat(TT.available(), ",")
+  CHECK(avail == "2", "factory builder + crafter get no survey work (available: " .. avail .. ")")
+  CHECK(TT.factoryRole(state.turtles[1]) == "builder" and TT.factoryRole(state.turtles[3]) == "crafter"
+        and TT.factoryRole(state.turtles[2]) == nil, "factory roles found")
+  CHECK(tostring((TT.idleWhy(state.turtles[1]))):find("factory builder", 1, true), "idle reason names the factory builder")
+  for _, t in pairs(state.turtles) do t.lastSeen = os.clock() end
+  state.turtles[9] = { id = 9, label = "Lost", log = {}, lastN = 0, fuel = 9000, pos = { x = 200, y = 70, z = 0 },
+                       task = "idle", lastSeen = os.clock() - 100000 }
+  CONFIG.drone = CONFIG.drone or {}
+  CONFIG.drone.home = CONFIG.drone.home or { x = 0, y = 70, z = 0 }
+  local ok = pcall(TT.partyStart)
+  CHECK(not state.turtles[1].party and not state.turtles[3].party, "factory turtles never join the search party")
+  pcall(TT.partyStop)
+  state.turtles[3], state.turtles[9] = nil, nil
+  FACTORY.builder = nil
+end

@@ -1294,6 +1294,7 @@ function MAP.feedSurvey()
     local free = t and TT.online(t) and t.pos and t.pos.x and (t.task == nil or t.task == "idle") and not t.anchor
                  and not (q.excluded and q.excluded[id])      -- stopped by the owner
                  and not t.rescuerRole and not t.held         -- the rescuer stays free; STOPPED stays stopped
+                 and not TT.factoryRole(t)                    -- the factory builder / crafter stays at the factory
     local fuel = t and tonumber(t.fuel)
     if t then t.packWait = nil end                -- (set again below while it waits for its pack)
     if free and t.queueAt and os.clock() - t.queueAt < 15 then free = false busy = true end
@@ -1311,7 +1312,8 @@ function MAP.feedSurvey()
       elseif t.task and t.task ~= "idle" then w = "busy"
       elseif t.held or (q.excluded and q.excluded[id]) then w = "STOPPED - give it a command first"
       elseif fuel and fuel < minFuel then w = "fuel " .. fuel .. " (needs " .. minFuel .. ")"
-      elseif t.anchor then w = "anchor" elseif t.rescuerRole then w = "rescuer" end
+      elseif t.anchor then w = "anchor" elseif t.rescuerRole then w = "rescuer"
+      elseif TT.factoryRole(t) then w = "factory " .. TT.factoryRole(t) end
       if w then why[#why + 1] = (t.label or ("#" .. id)) .. ": " .. w end
     end
     if free then anyFree = true end
