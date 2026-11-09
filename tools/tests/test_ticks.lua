@@ -69,6 +69,7 @@ for round = 1, 40 do
     state.online = { stranger = true }
     state.players = { state.players[2] }
     AWAY.lastSeen = os.epoch("utc") - 3600000
+    AWAY.offSince = os.epoch("utc") - 3600000       -- (offline for an hour, seen by this run of the base)
   end
   if round % 8 == 0 then
     for _, pg in ipairs(PAGES) do

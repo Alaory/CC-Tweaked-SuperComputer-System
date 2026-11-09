@@ -34,13 +34,56 @@ pushNote = push0
 -- offline, but the map is still loading: away mode waits
 online = {} refreshPlayers(true)
 AWAY.lastSeen = os.epoch("utc") - 3600000
+AWAY.offSince = nil
 local loaded = MAP.loaded
 MAP.loaded = false
+AWAY.tick()
+CLOCK = CLOCK + 400
+refreshPlayers(true)
 AWAY.tick()
 CHECK(not AWAY.on, "away mode waits until the map is read")
 MAP.loaded = true
 AWAY.tick()
-CHECK(AWAY.on, "away mode starts once the map is read")
+CHECK(AWAY.on, "away mode starts once the map is read (offline 5+ min in this run)")
+
+-- the base was OFF 10 hours (chunk unloaded); it starts when you log in, reads
+-- lastSeen = 10 h ago, and counts you as offline for one tick before it sees
+-- you. Before: away mode started at once and reported "Away 1 s". Now: no
+-- away mode, no report - only the "base was off" message (box + chat)
+AWAY.on, AWAY.since, AWAY.offSince, AWAY.startChecked = false, nil, nil, nil
+AWAY.lastSeen = os.epoch("utc") - 36000000
+local nowB = os.epoch("utc")
+BASE_ALIVE = { offs = { { from = nowB - 36000000, to = nowB - 3000, why = "unloaded" } } }
+local said, told = {}, {}
+local push1, tell1 = pushNote, chatTell
+pushNote = function(title, msg) said[#said + 1] = tostring(title) .. ": " .. tostring(msg) end
+chatTell = function(who, msg) told[#told + 1] = tostring(msg) end
+online = {} refreshPlayers(true)
+AWAY.tick()                                          -- (offline for one tick)
+CLOCK = CLOCK + 2
+online = { "Alaory" } refreshPlayers(true)
+AWAY.tick()
+local report, offMsg = false, false
+for _, m in ipairs(said) do
+  if m:find("WELCOME BACK", 1, true) then report = true end
+  if m:find("OFF for", 1, true) then offMsg = true end
+end
+CHECK(not report, "after 10 h with the base off: no 'Away 1 s' report")
+CHECK(offMsg, "...but the 'base was OFF for 10 h' message")
+local chatOff = false
+for _, m in ipairs(told) do if m:find("OFF for", 1, true) then chatOff = true end end
+CHECK(chatOff, "...also in chat")
+-- a real absence (base running): the report comes, with the right time
+AWAY.on, AWAY.since, AWAY.offSince = false, nil, nil
+said, told = {}, {}
+online = {} refreshPlayers(true)
+for i = 1, 200 do CLOCK = CLOCK + 2 if i % 15 == 0 then refreshPlayers(true) end AWAY.tick() end   -- 400 s offline
+CHECK(AWAY.on, "away mode on after 5 min offline")
+CLOCK = CLOCK + 3600
+online = { "Alaory" } refreshPlayers(true)
+AWAY.tick()
+CHECK(#told > 0 and not tostring(told[1]):find("Away 1 s", 1, true), "a real absence: reported, not 'Away 1 s' (" .. tostring(told[1]) .. ")")
+pushNote, chatTell = push1, tell1
 MAP.loaded = loaded
 
 -- storage helpers on the cable

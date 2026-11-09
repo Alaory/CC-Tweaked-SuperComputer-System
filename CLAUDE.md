@@ -368,7 +368,11 @@ PneumaticCraft drone rides, turtle mapping/surveys, and an AE2 ME network view.
   warnings since "away mode on", "Needs you" list) -> box (USER_ACTION), chat
   to the owner (up to 6 lines), SYSTEM tab card WHILE YOU WERE AWAY, sysLog,
   `away` console command. away.dat keeps it over restarts. SETTINGS > AWAY.
-  Unknown owner state (no detector / old data) -> nothing changes. Online = the
+  START needs THIS run of the base to see the owner offline for `after` (AWAY.offSince, memory
+  only) - the saved lastSeen made a base that was off 10 h start away mode one tick before it
+  saw the owner -> "Away 1 s". A report shorter than `after` is not sent. The "base was OFF"
+  message (within 10 min of a base start) also goes to chat; an offline tick does not cancel
+  it. Unknown owner state (no detector / old data) -> nothing changes. Online = the
   owner is in getOnlinePlayers (state.online from refreshPlayers(full)) - NOT just
   an entry in state.players (the owner is always added there, even offline: that
   kept away mode from ever starting). Base OFF longer than `after` right before

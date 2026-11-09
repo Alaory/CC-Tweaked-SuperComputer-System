@@ -177,6 +177,17 @@ function AWAY.start()
   save()
 end
 function AWAY.back()
+  -- a few seconds / minutes only (e.g. you counted as offline while the base was
+  -- starting): no report - before, "Away 1 s" came after a 10-hour absence
+  local short = (os.epoch("utc") - (AWAY.since or 0)) / 1000 < (tonumber(AWAY.cfg("after", 300)) or 300)
+  if short then
+    AWAY.on = false
+    if AWAY.autoOn then AWAY.autoOn = nil MAP.setAuto(false) end
+    if AWAY.page and state.page == "map" then state.page = AWAY.page end
+    AWAY.page = nil
+    save()
+    return
+  end
   local lines = AWAY.report()
   AWAY.last = { t = os.epoch("utc"), lines = lines }
   AWAY.on = false
@@ -261,21 +272,30 @@ function AWAY.tick()
       if o and o.to and o.from and now - o.to < 600000 and o.to - o.from > after then
         local was = USER_ACTION
         USER_ACTION = true
-        pcall(pushNote, "WHILE YOU WERE AWAY", "The base was OFF for " .. fmtSpan((o.to - o.from) / 1000) ..
+        local msg = "The base was OFF for " .. fmtSpan((o.to - o.from) / 1000) ..
               " - nothing could run (" .. tostring(o.why or "unloaded") .. "). If its chunk unloads when you log off, " ..
-              "keep it loaded (a chunk loader at the base) so away mode can work.", C.warn, 300)
+              "keep it loaded (a chunk loader at the base) so away mode can work."
+        pcall(pushNote, "WHILE YOU WERE AWAY", msg, C.warn, 300)
         USER_ACTION = was
+        if state.owner and AWAY.cfg("chat", true) and chatTell then pcall(chatTell, state.owner, msg) end
       end
     end
     AWAY.lastSeen = now
+    AWAY.offSince = nil
     if AWAY.on then AWAY.back() end
     return
   end
   if online == nil then return end                      -- cannot tell (yet): change nothing
-  AWAY.startChecked = true                              -- (known offline: no "base was off" box later)
+  -- (offline does NOT end the "base was off" check: right after a start the
+  -- player list may say offline for a tick - the message only comes within 10
+  -- min of the base starting anyway)
   AWAY.lastSeen = AWAY.lastSeen or now
+  -- away = THIS run of the base saw you offline for `after` seconds. (Not the
+  -- saved lastSeen: after the base was off for hours, it counted you as away at
+  -- once - one tick before it saw you online -> "Away 1 s".)
+  AWAY.offSince = AWAY.offSince or now
   -- (not before the map is read: the "before" numbers would be 0)
-  if not AWAY.on and MAP.loaded and (now - AWAY.lastSeen) / 1000 > (tonumber(AWAY.cfg("after", 300)) or 300) then
+  if not AWAY.on and MAP.loaded and (now - AWAY.offSince) / 1000 > (tonumber(AWAY.cfg("after", 300)) or 300) then
     AWAY.start()
   end
   if AWAY.on then
