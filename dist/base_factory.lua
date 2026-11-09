@@ -367,6 +367,16 @@ end
 FACTORY.leaving = nil
 save()
 elseif t and TT.online(t) then
+
+
+if not L.told and os.clock() - L.at > 180 then
+L.told = true
+local why = L.why or (not (t.pos and t.pos.x) and "it has no GPS position")
+or (not t.home and "it has no home yet") or "it did not move (no answer)"
+pushNote("WARNING", "Turtle factory: " .. (t.label or ("#" .. L.id)) .. " cannot leave the build spot - " ..
+why .. ". It needs a free way out (2+ blocks of air from the build spot); turtles never dig near home.", C.warn)
+if sysLog then sysLog("Factory: new turtle stuck on the build spot - " .. why, "WARNING") end
+end
 if not t.home then t.homeOfferAt = nil
 elseif not L.sent or os.clock() - L.sent > 60 then
 L.sent = os.clock()
@@ -609,7 +619,10 @@ return "building turtle " .. (FACTORY.fleet() + 1) .. ": " .. (what[j.step] or j
 end
 local why = FACTORY.blocked()
 if why then return why, (why:find("^off") or why:find("^fleet complete")) and C.dim or C.warn end
-if FACTORY.leaving then return "waiting for the new turtle to leave the build spot", C.label end
+if FACTORY.leaving then
+local why = FACTORY.leaving.why
+return "waiting for the new turtle to leave the build spot" .. (why and (" - " .. why) or ""), why and C.warn or C.label
+end
 if FACTORY.lastMissing then return "waiting for AE2 patterns - type  factory", C.warn end
 if FACTORY.waitUntil and os.clock() < FACTORY.waitUntil then return "next try in a moment", C.dim end
 return "ready", C.good

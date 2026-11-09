@@ -261,6 +261,41 @@ do
   CHECK(table.concat(sent, ","):find("40:home", 1, true), "the new turtle is sent home")
   CHECK(FACTORY.job == nil and not table.concat(sent, ","):find("1:build", 1, true), "no next build while it is on the spot")
   CHECK(FACTORY.statusLine():find("leave", 1, true), "the status says why it waits")
+  -- the home trip fails (walls around the build spot): after 3 min you are told why
+  do
+    local m = { t = "result", cmd = "home", ok = false, msg = "no way found to 30 70 30", n = os.epoch("utc") + 5000 }
+    m.sig = TT.sign(CONFIG.turtles.key, m.t, m.n)
+    TT.receive(40, m)
+  end
+  local notes0 = #(NOTES or {})
+  local said
+  local push0 = pushNote
+  pushNote = function(kind, msg, ...) if tostring(msg):find("cannot leave the build spot", 1, true) then said = msg end
+                                      return push0(kind, msg, ...) end
+  for _ = 1, 20 do CLOCK = CLOCK + 11 for _, t in pairs(state.turtles) do t.lastSeen = CLOCK end FACTORY.tick() end
+  pushNote = push0
+  CHECK(said and said:find("no way found", 1, true), "stuck on the build spot: you are told why (" .. tostring(said) .. ")")
+  CHECK(FACTORY.statusLine():find("no way found", 1, true), "the status line says why too")
+  -- the new turtle gets the turtle program update AT ONCE, even while you play
+  -- (the builder's floppy may hold an old one); others still wait
+  do
+    local code0, cfg0, own0 = CODE, CONFIG.turtles.autoUpdate, AWAY.ownerOnline
+    CODE = { ver = "NEWVER", pieces = { "a" }, text = "x" }
+    CONFIG.turtles.autoUpdate = true
+    AWAY.ownerOnline = function() return true end
+    local aw0 = AWAY.on AWAY.on = false
+    TT.codeSeenVer, TT.codeSeenAt = CODE.ver, os.clock()
+    TT.sending = {}
+    for _, t in pairs(state.turtles) do t.ver, t.updReady, t.updRetry = "OLD", nil, nil end
+    local pushed = {}
+    local pc0 = TT.pushCode
+    TT.pushCode = function(id) pushed[#pushed + 1] = id return true end
+    TT.updateTick()
+    TT.pushCode = pc0
+    CHECK(#pushed == 1 and pushed[1] == 40, "while you play only the new turtle is updated (" .. table.concat(pushed, ",") .. ")")
+    CODE, CONFIG.turtles.autoUpdate, AWAY.ownerOnline, AWAY.on = code0, cfg0, own0, aw0
+    TT.sending = {}
+  end
   state.turtles[40].pos = { x = 12, y = 70, z = 12 }        -- it has gone
   for _ = 1, 3 do CLOCK = CLOCK + 11 for _, t in pairs(state.turtles) do t.lastSeen = CLOCK end FACTORY.tick() end
   CHECK(FACTORY.leaving == nil, "it left: the factory goes on")

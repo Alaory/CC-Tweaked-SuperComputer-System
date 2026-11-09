@@ -397,7 +397,11 @@ PneumaticCraft drone rides, turtle mapping/surveys, and an AE2 ME network view.
   "home" every 60 s; 20 min -> warning). SPEED: FACTORY.tick every 3 s while a job or
   leaving runs (else 10 s); all parts in stock -> parts -> export -> "build" in ONE check;
   after a build waitUntil 5 s (was 2 min); FACTORY.last.msg "... in N s", sysLog "left the
-  build spot after N s" (one turtle per ~10 min before). Builder = FACTORY.builder
+  build spot after N s" (one turtle per ~10 min before). Still on the spot after 3 min -> one WARNING
+  with WHY (FACTORY.leaving.why = its failed home/goto result, else no GPS / no home / no answer) +
+  status line; the build spot needs a free way out (turtles never dig near home). The new turtle
+  (FACTORY.leaving.id) gets the turtle program update AT ONCE even while the owner plays
+  (TT.updateTick `only`): the builder's floppy may hold an old node.lua. Builder = FACTORY.builder
   or the rescuer; needs Disk Drive + install floppy + pickaxe. node.lua build():
   turns until the chest holding a turtle item is in front, sucks it empty (only
   the delta vs invSnapshot goes on), places the turtle on the OPPOSITE side,

@@ -578,6 +578,9 @@ end
 if m.cmd == "fuelup" and TT.fuelTrip and TT.fuelTrip.id == id then TT.fuelTrip = nil end
 if m.cmd == "surveypts" and MAP.batchResult then pcall(MAP.batchResult, id, m.ok) end
 if m.cmd == "build" and FACTORY then pcall(FACTORY.result, id, m.ok, m.msg) end
+
+if FACTORY and FACTORY.leaving and FACTORY.leaving.id == id and not m.ok
+and (m.cmd == "home" or m.cmd == "goto") then FACTORY.leaving.why = tostring(m.msg) end
 if m.cmd == "craft" and FACTORY then pcall(FACTORY.craftResult, id, m.ok, m.msg) end
 if m.cmd == "restart" and not m.ok and sysLog then sysLog(t.label .. ": " .. tostring(m.msg), "ERROR") end
 TT.log(t, (m.ok and "Done: " or "Failed: ") .. tostring(m.msg))
@@ -900,10 +903,16 @@ if not CONFIG.turtles.autoUpdate and not forced then return end
 
 if TT.codeSeenVer ~= CODE.ver then TT.codeSeenVer, TT.codeSeenAt = CODE.ver, os.clock() end
 TT.updWaiting = false
+
+
+local only
+if FACTORY and FACTORY.leaving and FACTORY.leaving.id then only = FACTORY.leaving.id end
 if not forced and CONFIG.turtles.updateWhenAway ~= false and AWAY and not AWAY.on
 and AWAY.ownerOnline() == true and os.clock() - TT.codeSeenAt < 7200 then
 TT.updWaiting = true
-return
+if not only then return end
+else
+only = nil
 end
 local now = os.clock()
 
@@ -931,7 +940,7 @@ end
 for _, t in ipairs(TT.list()) do
 if busy >= 3 then break end
 if TT.online(t) and TT.outdated(t) and t.updReady ~= CODE.ver and not TT.sending[t.id]
-and (not t.updRetry or now > t.updRetry) then
+and (not t.updRetry or now > t.updRetry) and (not only or t.id == only) then
 TT.pushCode(t.id)
 TT.sending[t.id], t.updState = now, "sending"
 busy = busy + 1
