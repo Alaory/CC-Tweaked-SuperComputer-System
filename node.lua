@@ -428,6 +428,11 @@ end
 -- back to the paused job. Survey batches are not kept: the base hands out survey
 -- work again once the turtle is idle. STOP forgets the paused job.
 HAND, LAST_HAND, NEXT_JOB, DRIVE_NEXT = false, -1000, nil, nil
+-- only TRAVEL and SCAN jobs may be paused: a build / craft / rescue (a Disk Drive is
+-- placed) / fuel-up / warp cut halfway would leave parts, a drive or fuel lying around
+PAUSABLE = { ["goto"] = true, home = true, survey = true, surveypts = true, findturtles = true,
+             digup = true, move = true, scan = true, locate = true }
+function canPause() return job ~= nil and PAUSABLE[job.cmd] == true end
 function pauseForHand()
   if not job then return end
   local j = job
@@ -3185,6 +3190,9 @@ function immediate(cmd, a)
     -- DRIVE page: one quick step by hand (never waits long), then what I see
     if job then
       if not HAND then return false, "busy: " .. tostring(task) .. " - press STOP first" end
+      if not canPause() then
+        return false, "busy: " .. tostring(task) .. " - it finishes this first (it cannot stop halfway), then try again"
+      end
       local was = task
       pauseForHand()
       DRIVE_NEXT = { act = tostring(a[1] or ""), force = a[2] == "force" }
@@ -3484,14 +3492,15 @@ function listener()
           sleep(1)
           os.reboot()
         end
-      elseif job and m.hand == true then
+      elseif job and m.hand == true and canPause() then
         -- YOUR command: the job pauses, yours goes next
         local was = task
         pauseForHand()
         NEXT_JOB = { cmd = m.cmd, args = a }
         reply(m.cmd, true, "paused '" .. tostring(was) .. "' - doing your " .. m.cmd .. " now")
       elseif job then
-        reply(m.cmd, false, "busy: " .. task .. " (press STOP first)")
+        reply(m.cmd, false, "busy: " .. task .. (m.hand == true and " - it finishes this first (it cannot stop halfway), then try again"
+                                                  or " (press STOP first)"))
       else
         if m.hand ~= true then S.paused = nil end      -- (a new order from the base replaces it)
         stopFlag = false

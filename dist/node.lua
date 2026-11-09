@@ -428,6 +428,11 @@ end
 
 
 HAND, LAST_HAND, NEXT_JOB, DRIVE_NEXT = false, -1000, nil, nil
+
+
+PAUSABLE = { ["goto"] = true, home = true, survey = true, surveypts = true, findturtles = true,
+digup = true, move = true, scan = true, locate = true }
+function canPause() return job ~= nil and PAUSABLE[job.cmd] == true end
 function pauseForHand()
 if not job then return end
 local j = job
@@ -3185,6 +3190,9 @@ elseif cmd == "drive" then
 
 if job then
 if not HAND then return false, "busy: " .. tostring(task) .. " - press STOP first" end
+if not canPause() then
+return false, "busy: " .. tostring(task) .. " - it finishes this first (it cannot stop halfway), then try again"
+end
 local was = task
 pauseForHand()
 DRIVE_NEXT = { act = tostring(a[1] or ""), force = a[2] == "force" }
@@ -3484,14 +3492,15 @@ save()
 sleep(1)
 os.reboot()
 end
-elseif job and m.hand == true then
+elseif job and m.hand == true and canPause() then
 
 local was = task
 pauseForHand()
 NEXT_JOB = { cmd = m.cmd, args = a }
 reply(m.cmd, true, "paused '" .. tostring(was) .. "' - doing your " .. m.cmd .. " now")
 elseif job then
-reply(m.cmd, false, "busy: " .. task .. " (press STOP first)")
+reply(m.cmd, false, "busy: " .. task .. (m.hand == true and " - it finishes this first (it cannot stop halfway), then try again"
+or " (press STOP first)"))
 else
 if m.hand ~= true then S.paused = nil end
 stopFlag = false

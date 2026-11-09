@@ -110,3 +110,25 @@ STORE.helpers = { [33] = { id = 33 } }               -- only 33 answered
 local nK = STORE.kickSilent()
 CHECK(nK == 1 and reboots[1] == 60, "the silent helper (on, not answering) is restarted - only that one")
 CHECK(STORE.kickSilent() == 0, "not again within 10 minutes")
+
+-- the WHILE YOU WERE AWAY report: what the factory built, turtles found again, turtles
+-- marked MISSING overnight (you left them working all night)
+do
+  state.turtles = {
+    [1] = { id = 1, label = "Old", log = {}, lastSeen = CLOCK, pos = { x = 0, y = 70, z = 0 } },
+    [2] = { id = 2, label = "Lost", log = {}, lastSeen = CLOCK - 99999, pos = { x = 900, y = 70, z = 0 } },
+    [3] = { id = 3, label = "Goner", log = {}, lastSeen = CLOCK - 99999, pos = { x = 2000, y = 70, z = 0 } } }
+  FACTORY.built = 5
+  AWAY.start()
+  FACTORY.built = 7                                      -- 2 built overnight
+  state.turtles[2].lastSeen = CLOCK                      -- found again
+  state.turtles[3].missing = os.epoch("utc")             -- marked missing
+  state.turtles[8] = { id = 8, label = "New1", log = {}, lastSeen = CLOCK, pos = { x = 1, y = 70, z = 0 } }
+  local all = {}
+  for _, l in ipairs(AWAY.report()) do all[#all + 1] = l.t end
+  local txt = table.concat(all, " | ")
+  CHECK(txt:find("Factory: built 2 new turtle", 1, true), "report: what the factory built (" .. txt .. ")")
+  CHECK(txt:find("Found again: Lost", 1, true), "report: turtles found again")
+  CHECK(txt:find("MISSING", 1, true) and txt:find("Goner", 1, true), "report: turtles marked missing overnight")
+  AWAY.on = false
+end

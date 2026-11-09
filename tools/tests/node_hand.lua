@@ -39,7 +39,7 @@ local RAN, DRIVEN = {}, {}
 function runJob(j)
   RAN[#RAN + 1] = j.cmd
   task = j.cmd
-  if j.cmd == "goto" or j.cmd == "surveypts" then
+  if j.cmd == "goto" or j.cmd == "surveypts" or j.cmd == "build" then
     while not stopFlag do coroutine.yield("job") end
     return false, "stopped at here"
   end
@@ -56,6 +56,7 @@ function immediate(cmd, a)
   elseif cmd == "drive" then
     if job then
       if not HAND then return false, "busy" end
+      if not canPause() then return false, "busy - it finishes this first" end
       local was = task
       pauseForHand()
       DRIVE_NEXT = { act = tostring(a[1] or ""), force = a[2] == "force" }
@@ -135,5 +136,19 @@ run(4)
 CLOCK = CLOCK + 200
 run(4)
 CHECK(not job and task == "idle", "paused survey: idle afterwards (the base hands out survey work again)")
+-- a BUILD (or craft / rescue) is never paused: it would leave parts / a drive lying around
+cmd("build", {})
+run(3)
+CHECK(job and job.cmd == "build", "the build runs")
+cmd("home", {}, true)
+run(3)
+CHECK(job and job.cmd == "build" and not stopFlag, "your GO HOME does NOT cut the build halfway")
+CHECK(lastResult("home") and lastResult("home").ok == false and tostring(lastResult("home").msg):find("finishes this first", 1, true),
+      "you are told it finishes first (" .. tostring(lastResult("home") and lastResult("home").msg) .. ")")
+cmd("drive", { "f" }, true)
+run(3)
+CHECK(job and job.cmd == "build" and not stopFlag, "a DRIVE step does not cut the build either")
+cmd("stop", {})
+run(4)
 print(FAILS == 0 and "PASS" or ("FAILED " .. FAILS))
 os.exit(FAILS == 0 and 0 or 1)

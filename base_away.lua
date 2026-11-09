@@ -64,16 +64,19 @@ local function copy(t)
 end
 -- what we compare against when you are back
 local function snapshot()
-  local s = { mine = {}, ovN = MAP.ovN or 0, up = 0, all = 0, offs = #((BASE_ALIVE or {}).offs or {}) }
+  local s = { mine = {}, ovN = MAP.ovN or 0, up = 0, all = 0, offs = #((BASE_ALIVE or {}).offs or {}),
+              built = (FACTORY and FACTORY.built) or 0, missing = {}, offline = {} }
   for dim, team in pairs(MINE and MINE.teams() or {}) do
     if #team.miners > 0 then
       local T = MINE.totals(team)
       s.mine[dim] = { ores = T.ores, ci = tonumber(T.ci) or 0, got = copy(T.got) }
     end
   end
-  for _, t in pairs(state.turtles) do
+  for id, t in pairs(state.turtles) do
     s.all = s.all + 1
     if CODE and t.ver == CODE.ver then s.up = s.up + 1 end
+    if t.missing then s.missing[#s.missing + 1] = id
+    elseif not TT.online(t) then s.offline[#s.offline + 1] = id end
   end
   return s
 end
@@ -121,6 +124,21 @@ function AWAY.report()
     if CODE and t.ver == CODE.ver then up = up + 1 end
   end
   if up > (s.up or 0) then add("Turtle program: " .. (up - (s.up or 0)) .. " turtle(s) updated (" .. up .. "/" .. all .. ")", C.good) end
+  -- the fleet: new turtles from the factory, turtles lost and found
+  local built = ((FACTORY and FACTORY.built) or 0) - (s.built or 0)
+  if built > 0 then add("Factory: built " .. built .. " new turtle(s) - " .. all .. " turtles now", C.good) end
+  local wasMissing, wasOff = {}, {}
+  for _, id in ipairs(s.missing or {}) do wasMissing[id] = true end
+  for _, id in ipairs(s.offline or {}) do wasOff[id] = true end
+  local back, gone = {}, {}
+  for id, t in pairs(state.turtles) do
+    local name = t.label or ("#" .. id)
+    if (wasOff[id] or wasMissing[id]) and TT.online(t) then back[#back + 1] = name end
+    if t.missing and not wasMissing[id] then gone[#gone + 1] = name end
+  end
+  table.sort(back) table.sort(gone)
+  if #back > 0 then add("Found again: " .. table.concat(back, ", "), C.good) end
+  if #gone > 0 then add("Marked MISSING (not found where they were): " .. table.concat(gone, ", "), C.warn) end
   -- base off
   local offs = (BASE_ALIVE or {}).offs or {}
   local nOff, tOff = 0, 0

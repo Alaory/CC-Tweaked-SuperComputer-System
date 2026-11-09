@@ -144,7 +144,9 @@ PneumaticCraft drone rides, turtle mapping/surveys, and an AE2 ME network view.
   after); task "waiting - paused '<cmd>' for your commands (back to it in N s)" (QUIET_TASK);
   resumeAfter (120 s) after your LAST command -> back to the job (survey / surveypts / findturtles:
   just idle - the base hands survey work out again). Automatic orders while busy: refused as before.
-  STOP forgets the paused job. Idle top-up (also the first refuel) stops as soon as a job comes
+  STOP forgets the paused job. Only PAUSABLE jobs (goto home survey surveypts findturtles digup
+  move scan locate - canPause) are paused; build / craft / rescue (a placed Disk Drive) / fuelup /
+  warp / core finish first ("it finishes this first, then try again"). Idle top-up (also the first refuel) stops as soon as a job comes
   in (topUp idleStart). node_hand.lua (real listener + worker as coroutines), test_drive.lua.
 - STOP (node.lua): clears the saved job at once (no resume after a reload);
   a job that ignores it for 2 s is cut off (FORCE_STOP: no new move/turn;
@@ -386,7 +388,8 @@ PneumaticCraft drone rides, turtle mapping/surveys, and an AE2 ME network view.
   fuel at 3x lowFuel (homeTick), map saved every 30 min. Turtle updates wait
   while the owner is online (CONFIG.turtles.updateWhenAway, max 2 h,
   TT.updWaiting; UPDATE TURTLES forces). Back -> AWAY.report() (time away,
-  map growth, mining per dim with top items, updates, base off times, system
+  map growth, mining per dim with top items, updates, factory builds (snap.built), turtles found
+  again / marked MISSING while away (snap.offline / snap.missing), base off times, system
   warnings since "away mode on", "Needs you" list) -> box (USER_ACTION), chat
   to the owner (up to 6 lines), SYSTEM tab card WHILE YOU WERE AWAY, sysLog,
   `away` console command. away.dat keeps it over restarts. SETTINGS > AWAY.

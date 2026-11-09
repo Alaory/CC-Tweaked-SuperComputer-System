@@ -504,6 +504,7 @@ d.setCount(1)
 d.setAction("pneumaticcraft:drone_condition_entity")
 return d.evaluateCondition()
 end)
+pcall(d.abortAction)
 pcall(d.clearWhitelistText)
 if ok and type(r) == "boolean" then dr.condOK = true return r end
 if not dr.condOK then
