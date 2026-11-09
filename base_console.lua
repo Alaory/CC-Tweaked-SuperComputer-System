@@ -58,6 +58,7 @@ HELP = {
   " factory [chest <name>|builder <id>|build|stop]   build turtles from AE2 parts",
   " factory recipes|learn|forget <item>|crafter <id>   recipes TAUGHT to a crafting turtle",
   " factory fuel [<item> [count]|reset]   the fuel a new turtle gets (default 16 coal blocks)",
+  " factory items [<item>]   every version of an item in AE2 (default: the turtle) - plain or yours",
   " party [stop]          SEARCH PARTY: all free turtles look for the lost ones together; the rescuer fetches them",
   " schem [<name>|delete <name>]   Create schematics (drag a .nbt onto this screen)",
   " pocket [unpair <id>]   the paired pocket computers (run pocket.lua on one to pair)",
@@ -639,7 +640,36 @@ function handleCommand(line)
   elseif cmd == "factory" then
     -- the turtle factory: setup, part check, status
     local sub = (words[2] or ""):lower()
-    if sub == "fuel" then
+    if sub == "items" then
+      -- every VERSION of an item in AE2 and what the ME Bridge says about it (does a
+      -- picked-up turtle show its computer ID? is it seen as YOURS = never taken?)
+      local name = words[3] or FACTORY.cfg("turtle", "computercraft:turtle_advanced")
+      local list
+      if bridge and type(bridge.getItems) == "function" then
+        local ok, r = pcall(bridge.getItems, { name = name })
+        if ok and type(r) == "table" then list = r end
+      end
+      if not list then
+        local ok, it = callx(bridge, "getItem", { name = name })
+        list = (ok and type(it) == "table") and { it } or {}
+      end
+      say(#list .. " version(s) of " .. name .. " in AE2:")
+      for i, it in ipairs(list) do
+        if i > 8 then say("  ...") break end
+        local keys = {}
+        for _, key in ipairs({ "components", "nbt" }) do
+          if type(it[key]) == "table" then
+            for k, v in pairs(it[key]) do
+              local vs = type(v) == "table" and "{..}" or tostring(v)
+              keys[#keys + 1] = tostring(k):gsub("^minecraft:", "") .. "=" .. vs:sub(1, 12)
+            end
+          end
+        end
+        say(string.format("  %d x %s  %s", tonumber(it.amount or it.count) or 0,
+            FACTORY.special(it) and "YOURS (never taken)" or "plain",
+            (#keys > 0) and table.concat(keys, " ") or "(no details given)"))
+      end
+    elseif sub == "fuel" then
       -- the fuel a new turtle gets (saved in settings.dat - base_config.lua is not changed)
       local item, n = words[3], tonumber(words[4])
       if item == "reset" then
