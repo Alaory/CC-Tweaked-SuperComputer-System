@@ -225,6 +225,7 @@ function drawMiningPage(G)
       "3. Put the LOADER on the SURFACE where mining starts, facing the way to mine; run  miner  (role l).",
       "4. Put the miners on the surface next to the loader - in the SAME chunk; type  miner here  on each.",
       "5. They join the loader by themselves. Then press START TEAM here.",
+      "6. One more miner LATER, while they work: put it next to the loader (same chunk), type  miner here .",
     }
     for i, s in ipairs(lines) do text(4, y0 + 2 + i, trunc(s, W - 6), i == 1 and C.text or C.dim, C.panel) end
     return

@@ -333,7 +333,17 @@ PneumaticCraft drone rides, turtle mapping/surveys, and an AE2 ME network view.
   team2drop/team3drop/team5drop/team3dropalive (DROPIDX = which miner). The loader
   answers ready/needlayer/unloadreq from a non-member (isMember) with the team list,
   and sends it to a dropped miner directly - an alive dropped miner leaves. S.dropped
-  keeps it from joining again until a NEW FIELD (newTeamPlan clears it). A lost LOADER: MINE.drop forgets it; miners (m15) leave a loader silent 10 min
+  keeps it from joining again until a NEW FIELD (newTeamPlan clears it). JOIN A RUNNING TEAM
+  (m19; minesim team2join / team3join / team2joincaves / team2joinfar): "minerhere" carries the
+  miner's pos (minerHere); the loader, plan running + phase "work" (a crossing: it asks again),
+  pos within CONFIG.joinRange (40, x and z) of the current chunk's middle (further off its area is
+  not loaded - the loader's Chunky only), team not full, not dropped -> APPENDED to S.team, NOT
+  sorted: shaft / lane / height come from the place in the list, so nobody else's change; layers
+  come from the loader's queue anyway; the team waits for its "ready" before the next crossing.
+  Refused -> one note per reason + "joinno" {why} (the miner notes it). Miner: a new plan with
+  ci > 0 -> S.lateFor -> J.late: CHUNK_LOCK off until it is INSIDE the team's chunk. A paused
+  field: joiners are appended too (sorting shifted everybody's number mid-field); newTeamPlan
+  sorts by ID again. A lost LOADER: MINE.drop forgets it; miners (m15) leave a loader silent 10 min
   (LEADER_SEEN) when another one says loaderhere. MINE.drop(id) (console
   `mine drop` and a DROP button on the MINING tab for a miner gone 20+ min). Unloading: one miner at the station at a time
   (S.stationUse, 6 min max); each miner needs its own `miner station` (the

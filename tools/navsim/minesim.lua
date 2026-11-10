@@ -698,6 +698,36 @@ while T < maxT do
     MINE.units[DROPPED] = nil
     io.write(string.format("** miner %d DELETED at %.0f s (chunk %d) - mine drop sent\n", DROPPED, T, CI_DROP))
   end
+  -- a NEW miner is put down while the team is at work (scenario "join"): it must be taken
+  -- into the running team at the END of the list (nobody's number changes) and mine along.
+  -- "joinfar": it stands too far from the chunk the team works in - refused, told why.
+  if SCEN:find("join") and not JOINED and lu and ENVS.loader.S and ENVS.loader.S.plan
+     and ENVS.loader.S.plan.ci >= 2 and ENVS.loader.S.plan.phase == "work" and T > 1200 then
+    local P = ENVS.loader.S.plan
+    JOINED, CI_JOIN, T_JOIN = 19, P.ci, T
+    TEAM_BEFORE = table.concat(ENVS.loader.S.team, ",")
+    local jx, jz = math.floor(l.pos.x / 16) * 16 + 8, math.floor(l.pos.z / 16) * 16 + 8
+    if SCEN:find("joinfar") then
+      ENVS.loader.CONFIG.joinRange = 2
+      jx, jz = jx + 6, jz + 6
+    end
+    local nm = newTurtle(JOINED, "miner", jx, LY + 3, jz, LF, {
+      [1] = { name = "computercraft:wireless_modem_advanced", count = 1 },
+      [2] = { name = "advancedperipherals:geo_scanner", count = 1 },
+      [3] = { name = "sophisticatedstorage:netherite_shulker_box", count = 1, contents = {} },
+      [4] = { name = "minecraft:coal", count = 32 },
+    }, "advancedperipherals:end_automata_core", "minecraft:netherite_pickaxe")
+    nm.points.station = { x = STATION.x, y = STATION.y, z = STATION.z }
+    nm.files.miner_state = textutils.serialize({ role = "miner", key = KEY, dim = "overworld",
+      pos = { x = nm.pos.x, y = nm.pos.y, z = nm.pos.z, f = LF },
+      station = { x = STATION.x, y = STATION.y, z = STATION.z, f = 1 } })
+    local env = envFor(nm)
+    ENVS[JOINED] = env
+    cos[#cos + 1] = { co = coroutine.create(assert(load(SRC, "miner.lua", "t", env))), wake = T, u = nm }
+    if not SCEN:find("joinfar") then MINERS[#MINERS + 1] = JOINED MS[#MS + 1] = nm end
+    io.write(string.format("** a NEW miner %d put down at %d,%d,%d at %.0f s (team in chunk %d, team %s)\n",
+                           JOINED, nm.pos.x, nm.pos.y, nm.pos.z, T, CI_JOIN, TEAM_BEFORE))
+  end
   -- the Import Bus drains the shulker in front of the station
   local sh = SHULKERS[key(DUMP.x, DUMP.y, DUMP.z)]
   if sh then
@@ -882,6 +912,32 @@ end
 if SCEN:find("silentback") then
   local LS = ENVS.loader.S
   if not LS.running then fail("the team stayed paused after the silent miner came back: " .. tostring(LS.err)) end
+end
+if SCEN:find("join") then
+  if not JOINED then fail("the join scenario never got to put the new miner down") end
+  local LS = ENVS.loader.S
+  local team = table.concat(LS.team or {}, ",")
+  io.write("** after the join: loader at chunk " .. tostring(LS.plan and LS.plan.ci) .. " (was " .. tostring(CI_JOIN) ..
+           "), team " .. team .. " (before: " .. tostring(TEAM_BEFORE) .. ")\n")
+  if SCEN:find("joinfar") then
+    if team ~= TEAM_BEFORE then fail("a miner too far away was taken into the running team (" .. team .. ")") end
+    local told = false
+    for _, e in ipairs(MINE.units[LOADER] and MINE.units[LOADER].log or {}) do
+      if tostring(e.msg):find("too far away", 1, true) then told = true end
+    end
+    if not told then fail("the loader did not say why the far miner cannot join") end
+  else
+    if team ~= TEAM_BEFORE .. "," .. JOINED then
+      fail("the new miner is not at the END of the running team (" .. team .. " - before " .. TEAM_BEFORE .. ")")
+    end
+    local ju = MINE.units[JOINED]
+    local ores = ju and ju.stats and ju.stats.ores or 0
+    io.write("** the new miner mined " .. ores .. " ores since it joined\n")
+    if ores < 20 then fail("the new miner did not mine along (" .. ores .. " ores)") end
+  end
+  if not LS.plan or LS.plan.ci < CI_JOIN + 3 then
+    fail("the team did not go on after the join (chunk " .. tostring(LS.plan and LS.plan.ci) .. ", was " .. tostring(CI_JOIN) .. ")")
+  end
 end
 if DROPPED then
   local P = ENVS.loader.S.plan

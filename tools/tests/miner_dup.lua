@@ -69,6 +69,7 @@ local oldHandle = handle
 inbox[#inbox + 1] = { 4, { t = "loaderhere", n = 1, sig = "sig", dim = "overworld", to = 100009, from = 4 }, "basemine" }
 local sentTo = {}
 function sendTeam(to, t) sentTo[#sentTo + 1] = { to = to, t = t } end
+function minerHere(to) sendTeam(to, "minerhere") end      -- (miner.lua m19: "minerhere" with its position)
 listen(0.01)
 CHECK(#sentTo == 0, "a team message for copy 1 of my id is ignored")
 inbox[#inbox + 1] = { 4, { t = "loaderhere", n = 2, sig = "sig", dim = "overworld", from = 200004 }, "basemine" }

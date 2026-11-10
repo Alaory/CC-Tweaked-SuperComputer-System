@@ -344,6 +344,12 @@ itself otherwise, so give it plenty of coal blocks if there is no endless item.
 4. Put the **miners on the surface next to the loader, in the same chunk** and run `miner here`
    on each (with GPS in the dimension just press Enter).
 5. They join the loader by themselves. Press **START TEAM** on TURTLES > MINING.
+6. **One more miner later, while the team is working:** do step 2 with it, then put it next to the
+   loader (within 40 blocks of the middle of the chunk the team works in) and run `miner here`.
+   The loader takes it into the running team as the last miner; the others keep their shafts and
+   lanes, and the team waits for it before the next crossing. Too far away, or during a crossing:
+   the loader says so in the team's LOG and it joins as soon as it can. (Loader and the new miner
+   need miner.lua m19 or newer.)
 
 Optional lines in `base_config.lua`:
 ```lua

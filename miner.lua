@@ -61,6 +61,8 @@ CONFIG = {
   fuelItems  = { "*mining_dim_core*" },
   wantMax    = 64,            -- max blocks of a CONFIG.want type per layer
   maxMiners  = 5,             -- miners per loader (team)
+  joinRange  = 40,            -- a miner joining a RUNNING team must stand this close (blocks, x and z)
+                              -- to the middle of the chunk the team works in
   -- items thrown away (exact names; "*x" = ends in x)
   junk = { "minecraft:cobblestone", "minecraft:cobbled_deepslate", "minecraft:stone", "minecraft:deepslate",
            "minecraft:dirt", "minecraft:gravel", "minecraft:sand", "minecraft:red_sand", "minecraft:andesite",
@@ -78,7 +80,7 @@ CONFIG = {
 }
 
 STATE_FILE = "miner_state"
-MYVER = "m18"            -- shown on the screen and the base (MINING tab)
+MYVER = "m19"            -- shown on the screen and the base (MINING tab)
 DX = { [0] = 0, 1, 0, -1 }
 DZ = { [0] = -1, 0, 1, 0 }
 FNAME = { [0] = "north", "east", "south", "west" }
@@ -307,6 +309,12 @@ function sendTeam(to, t, extra)
   if to then pcall(rednet.send, to % 100000, m, CONFIG.team) else pcall(rednet.broadcast, m, CONFIG.team) end
 end
 
+JOIN_SAID = {}            -- loader: why a miner could not join yet (said once per reason)
+-- what a miner says to find a loader: with its position (joining a running team needs it)
+function minerHere(to)
+  local p = S.pos
+  sendTeam(to, "minerhere", { pos = (p and p.x) and { x = p.x, y = p.y, z = p.z } or nil })
+end
 -- is this turtle in my team (the loader's list)?
 function isMember(id)
   for _, t in ipairs(S.team or {}) do if t == id then return true end end
@@ -378,10 +386,44 @@ function handle(id, m, proto)
         local inTeam = false
         for _, t in ipairs(S.team) do if t == id then inTeam = true end end
         -- (one taken out with  mine drop  only joins again on a NEW FIELD)
-        if not inTeam and not (S.plan and S.running) and #S.team < CONFIG.maxMiners
-           and not (S.plan and S.dropped and S.dropped[id]) then
+        local can = not inTeam and #S.team < CONFIG.maxMiners
+                    and not (S.plan and S.dropped and S.dropped[id])
+        if can and S.plan and S.running then
+          -- JOINING A RUNNING TEAM: it goes to the END of the list - nobody else's number
+          -- (shaft, lane, height) changes; it gets its own. Only while the team WORKS
+          -- (not in a crossing - it asks again), and only when it stands near the chunk
+          -- the team is in (its area is loaded there; further away it would freeze).
+          local P = S.plan
+          local why, text
+          if P.phase ~= "work" then
+            why = "wait"
+          else
+            local cx, cz = chunkAt(P, P.ci)
+            local mx, mz = center(cx, cz)
+            local p, R = m.pos, tonumber(CONFIG.joinRange) or 40
+            if type(p) ~= "table" or not tonumber(p.x) or not tonumber(p.z) then
+              why, text = "old", "it runs an old miner.lua (or has no position) - copy the new miner.lua onto it"
+            elseif math.abs(p.x - mx) > R or math.abs(p.z - mz) > R then
+              why, text = "far", "it is too far away - put it within " .. R .. " blocks of " .. mx .. ", " .. mz ..
+                                 " (the chunk the team works in now)"
+            end
+          end
+          if not why then
+            S.team[#S.team + 1] = id                     -- (NOT sorted: the others keep their numbers)
+            P.ready[id] = nil
+            JOIN_SAID[id] = nil
+            save()
+            note("Miner " .. id .. " joined the RUNNING team as miner " .. #S.team .. " (chunk " .. P.ci ..
+                 ") - the team waits for it before the next crossing")
+            inTeam = true
+          elseif text and JOIN_SAID[id] ~= why then
+            JOIN_SAID[id] = why
+            note("Miner " .. id .. " wants to join but cannot yet: " .. text)
+            sendTeam(id, "joinno", { why = text })
+          end
+        elseif can then
           S.team[#S.team + 1] = id
-          table.sort(S.team)
+          if not S.plan then table.sort(S.team) end      -- (a paused field: the numbers stay as they are)
           save()
           note("Miner " .. id .. " joined the team (" .. #S.team .. ")")
           inTeam = true
@@ -430,14 +472,24 @@ function handle(id, m, proto)
         save()
       end
       if m.t == "loaderhere" and not S.leader then
-        sendTeam(id, "minerhere")
+        minerHere(id)
+      elseif m.t == "joinno" and not S.leader then
+        -- the loader's team is running and I cannot join yet: say why (once)
+        if S.joinNo ~= m.why then
+          S.joinNo = m.why
+          note("Cannot join loader " .. id .. "'s running team yet: " .. tostring(m.why))
+        end
       elseif m.t == "team" and (not S.leader or S.leader == id) then
         local mine = false
         for _, t in ipairs(m.team or {}) do if t == MYTID then mine = true end end
         if mine then
           if S.leader ~= id then note("In the team of loader " .. id) end
           S.leader, S.team = id, m.team
+          S.joinNo = nil
           local newPlan = m.plan and (not S.tp or S.tp.id ~= m.plan.id)
+          -- a field that is already under way (I joined late / missed its start): I may
+          -- travel INTO the chunk the team is in (the chunk lock starts once I am there)
+          if newPlan and (tonumber(m.plan.ci) or 0) > 0 then S.lateFor = m.plan.id end
           S.tp = m.plan or nil
           if not m.plan then S.job = nil end
           S.running = (m.plan and m.plan.running) and true or false
@@ -1844,7 +1896,8 @@ function newJob(tp, ci)
   local mx, mz = center(cx, cz)
   local mine = ci > 0 and not isTransit(tp, ci) and not (S.station and nearStation(mx, mz, CONFIG.noMine))
   S.job = { ci = ci, phase = (k == 1) and "tunnel" or (mine and "layers" or "lane"), li = 1, mine = mine,
-            plan = tp.id }
+            plan = tp.id, late = (S.lateFor == tp.id) or nil }
+  S.lateFor = nil
   save()
 end
 -- one piece of the miner's work; false, why = stop
@@ -1877,7 +1930,10 @@ function teamStep()
   -- at work: stay inside this chunk (crossing: the step over is allowed)
   CHUNK_LOCK = (J.phase ~= "ready") and { cx, cz } or nil
   -- the start chunk: the miners may stand next to it at the start
-  if ci == 0 and (math.floor(S.pos.x / 16) ~= cx or math.floor(S.pos.z / 16) ~= cz) then CHUNK_LOCK = nil end
+  -- joined a running team: on my way INTO its chunk the lock is off; once inside it holds
+  local outside = math.floor(S.pos.x / 16) ~= cx or math.floor(S.pos.z / 16) ~= cz
+  if (ci == 0 or J.late) and outside then CHUNK_LOCK = nil end
+  if J.late and not outside then J.late = nil save() end
   if J.phase == "tunnel" then
     -- miner 1: the main tunnel at yt (+ the block above it for the loader)
     setTask(isTransit(tp, ci) and ("moving away from the unload station (chunk " .. ci .. ")")
@@ -2042,6 +2098,7 @@ function sendPlan()
 end
 function newTeamPlan()
   if #(S.team or {}) == 0 then return false, "no miners in the team yet" end
+  table.sort(S.team)                                -- (a new field: numbered by ID again)
   gpsCheck()
   local f = gpsFacing()
   if f then S.pos.f = f end
@@ -2222,7 +2279,7 @@ function minerRun()
     if not S.leader and os.clock() - lastHello > 5 then
       lastHello = os.clock()
       equipTool("modem")
-      sendTeam(nil, "minerhere")
+      minerHere(nil)
     end
     if (not S.running and not crossingDue()) or not S.leader or not S.tp then
       equipTool("modem")
