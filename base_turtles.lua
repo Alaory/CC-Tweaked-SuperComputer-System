@@ -2072,9 +2072,17 @@ end
 function TT.partySendGoals()
   local P = TT.party
   P.sentAt, P.done = os.clock(), {}
+  -- how long this round may take: the LONGEST trip at ~1.5 blocks/s (up to the sky
+  -- highway, across, down) + 4 min; never under 5 min. (A fixed 300 s cut off every
+  -- trip over ~700 blocks: the next orders were refused "busy", 3 such rounds =
+  -- "could not get to" for every far-away turtle.)
+  local far = 0
   for id, g in pairs(P.goals) do
+    local t = state.turtles[id]
+    if t and t.pos and t.pos.x then far = math.max(far, math.abs(t.pos.x - g.x) + math.abs(t.pos.z - g.z)) end
     TT.send(id, "goto", { math.floor(g.x), math.floor(g.y), math.floor(g.z) }, true)
   end
+  P.limit = math.max(300, far / 1.5 + 240)
 end
 
 function TT.partyStop(why)
@@ -2223,12 +2231,20 @@ function TT.partyTick()
       local t = state.turtles[id]
       if not P.done[id] then
         local near = t.pos and t.pos.x and flat(t.pos, g) <= 6
-        local idle = (t.task == nil or t.task == "idle") and now - P.sentAt > 20
-        if near then P.reachedN = (P.reachedN or 0) + 1 end
-        if near or idle then P.done[id] = true else all = false end
+        local idleNow = (t.task == nil or t.task == "idle")
+        local idle = idleNow and now - P.sentAt > 20
+        -- arrived = near its spot AND the trip is over (sideways it is "near" while still
+        -- coming down from the sky highway: the look order then hit a busy turtle);
+        -- 8 s first: its report that the trip started is on its way
+        if (near and idleNow and now - P.sentAt > 8) or idle then
+          P.done[id] = true
+          if near then P.reachedN = (P.reachedN or 0) + 1 end
+        else
+          all = false
+        end
       end
     end
-    if not all and now - P.sentAt < 300 then return end
+    if not all and now - P.sentAt < (P.limit or 300) then return end
     -- did anybody really get to (near) the lost turtle's area? (loads it: wakes it)
     local T0 = P.targets[P.ti] and state.turtles[P.targets[P.ti]]
     if T0 and T0.pos and T0.pos.x then
@@ -2266,9 +2282,17 @@ function TT.partyTick()
     P.phase = "next"
   end
   if P.phase == "scan" then
+    -- done = it is IDLE again: looking = going down to the ground, the scan, climbing
+    -- back up (~70 s from the sky highway). Before, 45 s: the next trip was sent while it
+    -- still climbed - refused "busy". (15 s first: its report that it started is on its way;
+    -- a member without a Geo Scanner answers at once and is idle too.)
     local all = true
-    for _, id in ipairs(P.members) do if not (P.scanned or {})[id] then all = false end end
-    if not all and now - P.scanT < 45 then return end
+    for _, id in ipairs(P.members) do
+      local t = state.turtles[id]
+      local idle = t and (t.task == nil or t.task == "idle")
+      if not (idle and now - P.scanT > 15) then all = false end
+    end
+    if not all and now - P.scanT < 240 then return end
     P.phase = "next"
   end
   -- what next: the next hop / ring / target

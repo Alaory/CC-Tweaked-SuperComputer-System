@@ -534,8 +534,12 @@ PneumaticCraft drone rides, turtle mapping/surveys, and an AE2 ME network view.
   stopped (no hold). Targets = TT.lostList (offline, not MISSING, pos known), nearest-next
   order. Stages: meet (base, a line) -> STRAIGHT to ring1 (24 around the spot; the owner's idea:
   the turtles' own SKY HIGHWAY does the long way - the old 128-block side-by-side hops stopped
-  them in unmapped hills) -> ring2 (56) -> TT.markMissing; next stage when all are within 6 of
-  their goal or idle 20 s, max 300 s. After EVERY stop
+  them in unmapped hills) -> ring2 (56) -> TT.markMissing. TIMING (test_party "REAL TIMING"):
+  arrived = within 6 (x/z) of its goal AND idle again (sideways it is "near" while still coming
+  down from Y 150) after 8 s, or idle 20 s (a failed trip); a round may take P.limit = longest
+  trip / 1.5 + 240 s, min 300 (a fixed 300 s cut off every trip over ~700 blocks: orders refused
+  "busy", 3 rounds = "could not get to"); the look is over when every member is idle again after
+  15 s, max 240 s (was 45 s: down + scan + back up takes ~70 s). After EVERY stop
   each member runs node job "findturtles" [floor = lost turtle's Y + 2; none at the meet]: drops
   straight DOWN to just above the ground (detectDown, no digging, never below floor, max 250),
   scans there, climbs back up (Geo Scanner r 16/8, turtle blocks, not eggs; the SAME scan

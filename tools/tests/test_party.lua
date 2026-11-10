@@ -215,3 +215,56 @@ do
   CHECK(TT.partyY(500, 500, 70) >= 133, "a cliff 4 blocks away (130): above the cliff (" .. TT.partyY(500, 500, 70) .. ")")
   MAP.get, MAP.getOverview = get0, ov0
 end
+
+-- REAL TIMING: a lost turtle 3000 blocks away - the trip takes ~20 min over the sky
+-- highway, looking (down, scan, back up) ~70 s. The party must WAIT for that: never
+-- send an order to a turtle that is still busy (it would be refused), never give up
+-- with "could not get to", and mark MISSING only after really having been there.
+do
+  state.turtles, state.tOut, TT.party, TT.rescueQ = {}, {}, nil, {}
+  CONFIG.drone.home = { x = 0, y = 64, z = 0 }
+  T(9, { rescuerRole = true })
+  T(1) T(2)
+  local F = T(71, { lastSeen = CLOCK - 99999, pos = { x = 3000, y = 30, z = 0 } })
+  local busySends, notes = 0, {}
+  local W = {}                                             -- [id] = { goal / lookUntil }
+  local s0, push0 = TT.send, pushNote
+  pushNote = function(kind, msg, ...) notes[#notes + 1] = tostring(msg) return push0(kind, msg, ...) end
+  TT.send = function(id, cmd, args, ...)
+    local t = state.turtles[id]
+    if (cmd == "goto" or cmd == "findturtles") and t and (id == 1 or id == 2) then
+      if t.task ~= "idle" then busySends = busySends + 1 return s0(id, cmd, args, ...) end   -- (refused in the game)
+      if cmd == "goto" then W[id] = { goal = { x = args[1], y = args[2], z = args[3] } } t.task = "goto"
+      else W[id] = { lookUntil = CLOCK + 70, seenAt = CLOCK + 35 } t.task = "search party: going down to look" end
+    end
+    return s0(id, cmd, args, ...)
+  end
+  TT.partyStart()
+  local ticks = 0
+  for _ = 1, 2000 do
+    ticks = ticks + 1
+    CLOCK = CLOCK + 5
+    for _, id in ipairs({ 1, 2, 9 }) do
+      local t, w = state.turtles[id], W[id]
+      t.lastSeen = CLOCK
+      if w and w.goal then                                 -- ~2.4 blocks/s
+        local dx, dz = w.goal.x - t.pos.x, w.goal.z - t.pos.z
+        local d = math.abs(dx) + math.abs(dz)
+        if d <= 12 then t.pos = { x = w.goal.x, y = w.goal.y, z = w.goal.z } t.task = "idle" W[id] = nil
+        else t.pos = { x = t.pos.x + dx / d * 12, y = 150, z = t.pos.z + dz / d * 12 } end
+      elseif w and w.lookUntil then
+        if w.seenAt and CLOCK >= w.seenAt then w.seenAt = nil TT.partySeen(id, {}) end
+        if CLOCK >= w.lookUntil then t.task = "idle" W[id] = nil end
+      end
+    end
+    TT.partyTick()
+    if not TT.party then break end
+  end
+  TT.send, pushNote = s0, push0
+  local gaveUp = false
+  for _, n in ipairs(notes) do if n:find("could not get to", 1, true) then gaveUp = true end end
+  CHECK(TT.party == nil, "far away: the party finished (" .. ticks * 5 .. " s)")
+  CHECK(busySends == 0, "far away: no order sent to a turtle that was still busy (" .. busySends .. " refused)")
+  CHECK(not gaveUp, "far away: it did not give up half way (\"could not get to\")")
+  CHECK(F.missing, "far away: they got there, it was gone -> MISSING")
+end
