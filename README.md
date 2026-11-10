@@ -9,31 +9,25 @@ mapping turtles and a map of the world.
 
 ---
 
-## Contents
+## 📑 Contents
 
-- [What it does](#what-it-does)
-- [What you need](#what-you-need)
-- [Installation](#installation)
-- [Updating](#updating)
-- [Configuration](#configuration)
-- [Turtles](#turtles)
-- [Drones](#drones)
-- [ME / Curios](#me--curios)
-- [While you are away](#while-you-are-away)
-- [Turtle factory](#turtle-factory)
-- [Pocket remote](#pocket-remote)
-- [Schematics (builder turtles)](#schematics-builder-turtles)
-- [Mining dimension teams](#mining-dimension-teams)
-- [The map](#the-map)
-- [Chat commands](#chat-commands)
-- [Console commands](#console-commands)
-- [Themes & the message log](#themes--the-message-log)
-- [Tips & troubleshooting](#tips--troubleshooting)
-- [Files](#files)
+- [ What it does](#-what-it-does)
+- [🧰 What you need](#-what-you-need)
+- [🚀 Installation](#-installation)
+- [⚙️ Configuration](#️-configuration)
+- [🐢 Turtles](#-turtles)
+- [🚁 Drones](#-drones)
+- [📦 ME / Curios](#-me--curios)
+- [🗺️ The map](#️-the-map)
+- [💬 Chat commands](#-chat-commands)
+- [⌨️ Console commands](#️-console-commands)
+- [🎨 Themes & the message log](#-themes--the-message-log)
+- [💡 Tips & troubleshooting](#-tips--troubleshooting)
+- [📁 Files](#-files)
 
 ---
 
-## What it does
+##  What it does
 
 The monitor starts on **HOME**: a status line, every page as a big button with a line saying
 what it is for, and **quick actions** (stop all turtles, all home, update turtles, find lost
