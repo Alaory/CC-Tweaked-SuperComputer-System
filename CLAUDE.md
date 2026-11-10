@@ -794,6 +794,15 @@ setPlaceFluidBlocks setAction getAction abortAction isActionDone forgetTarget ge
 setCraftingGrid set/getVariable setSignText setSignBack setRequiresTool getDroneName
 getOwnerName getOwnerID setCheckLineOfSight setAllowStandbyPickup. test_drones.lua (cond = true).
 
+**Drones - MOVING TARGETS (a player / a turtle; test_drones "a MOVING target"):** the target
+was read ONCE; by the time the drone went there it had left and the old spot was unloaded -
+teleports refused, hops toward nothing, the rider brought back. Now destLive(dr) (kind "player",
+or dest.turtle = id: the fly-to-turtle button; resolveDest gives the turtle's pos NOW + 1 while
+it is online, else the stored x y z): stepGoto follows it - travelTo(..., track): hopTowards
+re-reads the target before every hop; a refused first teleport + the target moved > 8 -> ONE
+teleport to where it is now before the "air above / hops" logic; after the hops fresh(); after
+arriving it looks again and goes on if the target is > 12 away (max 4 times).
+
 **Drones (PneumaticCraft):** teleport costs ~10,000 mL (~0.85 bar) even when it
 fails; flying costs no air. Passenger watch: dr.rider (set after pickup) is checked BEFORE EVERY MOVE
 (riderGoneNow in droneMoveTo) and every 2 s while moving (riderLeft): logged off (not in

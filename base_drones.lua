@@ -345,7 +345,20 @@ function resolveDest(dr)
   local d = dr and (dr.mdest or dr.dest)
   if not d then return nil, "no destination chosen" end
   if d.kind == "player" then return playerPos(d.name) end
+  -- a TURTLE: where it is NOW (it keeps moving while the drone is on its way; its own
+  -- Chunky keeps the place it is at loaded - the place it WAS may not be loaded any more)
+  if d.turtle and state.turtles then
+    local t = state.turtles[d.turtle]
+    if t and t.pos and t.pos.x and TT and TT.online and TT.online(t) then
+      return math.floor(t.pos.x), math.floor(t.pos.y) + 1, math.floor(t.pos.z)
+    end
+  end
   return d.x, d.y, d.z
+end
+-- does this drone's destination MOVE (a player / a turtle)?
+function destLive(dr)
+  local d = dr and (dr.mdest or dr.dest)
+  return d ~= nil and (d.kind == "player" or d.turtle ~= nil)
 end
 
 -- what kind of destination a drone has, for the screen
@@ -635,7 +648,7 @@ function droneXYZ(dr)
   return parsePos((type(a) == "number") and { a, b, c } or a)
 end
 -- far + not loaded: teleport in hops high above the terrain until close
-local function hopTowards(dr, x, z)
+local function hopTowards(dr, x, z, track)
   local L, hy = CONFIG.drone.hopLength or 160, CONFIG.drone.hopY or 200
   local minL = 48
   local logged = false
@@ -644,6 +657,11 @@ local function hopTowards(dr, x, z)
     if dr.abort then return false, "stopped" end
     local px, _, pz = droneXYZ(dr)
     if not px then return false, "the drone's position is unknown" end
+    -- a moving target (player / turtle): every hop heads for where it is NOW
+    if track then
+      local nx, _, nz = track()
+      if type(nx) == "number" and type(nz) == "number" then x, z = nx, nz end
+    end
     local dx, dz = x - px, z - pz
     local dist = math.sqrt(dx * dx + dz * dz)
     if dist <= L then return true end
@@ -708,8 +726,18 @@ end
 
 -- loaded = true: the target is next to a player (players keep their own area
 -- loaded), so a refused teleport means a blocked spot, never "not loaded"
-function travelTo(dr, x, y, z, spots, noFly, loaded)
+-- track = function() -> x, y, z of a MOVING target now (a player / a turtle), or nil
+function travelTo(dr, x, y, z, spots, noFly, loaded, track)
   dr.lastSpot = nil
+  -- the target moved while we tried: go on with where it is now
+  local function fresh()
+    if not track then return false end
+    local nx, ny, nz = track()
+    if type(nx) ~= "number" then return false end
+    local moved = math.abs(nx - x) + math.abs(nz - z) + math.abs(ny - y) > 8
+    x, y, z = nx, ny, nz
+    return moved
+  end
   local act = travelAction()
   local SPOTS = spots or SPOTS
   -- not enough air for a teleport (+ reserve): fly - flying costs no air
@@ -728,6 +756,17 @@ function travelTo(dr, x, y, z, spots, noFly, loaded)
         return true
       end
       if err ~= "did not get there" then return false, err end
+      -- refused - and the target has MOVED on meanwhile (the old spot is not loaded any
+      -- more): straight to where it is now, once, before anything else
+      if fresh() then
+        droneLog(dr, "The target moved on - teleporting to where it is now: " .. fmtPos(x, y, z))
+        local ok2, err2 = droneMoveTo(dr, act, x + f[1], y + f[2], z + f[3], CONFIG.drone.travelTimeout)
+        if ok2 then
+          dr.lastSpot = { x = x + f[1], y = y + f[2], z = z + f[3] }
+          return true
+        end
+        if err2 ~= "did not get there" then return false, err2 end
+      end
       -- refused: blocked (a cave, a turtle in the way) or not loaded? The air
       -- high above the spot is always free, so a teleport there tells which:
       -- it works = loaded (the spot was just blocked) -> carry on from up
@@ -744,8 +783,9 @@ function travelTo(dr, x, y, z, spots, noFly, loaded)
         if okA then droneLog(dr, "Above the spot - the area is loaded, the spot itself was blocked") end
       end
       if not above then
-        local okH, errH = hopTowards(dr, x, z)
+        local okH, errH = hopTowards(dr, x, z, track)
         if not okH then return false, errH end
+        fresh()                                    -- (the last stretch: to where it is now)
       end
     end
   end
@@ -818,7 +858,33 @@ function stepGoto(dr, text, getPos, yOff, loaded)
     if not x then return false, y end
     local isLoaded = loaded
     if type(loaded) == "function" then isLoaded = loaded() end
-    return travelTo(dr, x, y + (yOff or 0), z, nil, nil, isLoaded)
+    if not destLive(dr) then return travelTo(dr, x, y + (yOff or 0), z, nil, nil, isLoaded) end
+    -- a MOVING target (a player / a turtle): by the time the drone gets there it may have
+    -- left - the old spot is then in unloaded land. Follow it: every hop and every refused
+    -- teleport uses where it is NOW, and after arriving the drone looks once more and
+    -- goes on if it moved away (at most 4 times - a target that never stops).
+    local function track()
+      local nx, ny, nz = getPos()
+      if type(nx) ~= "number" then return nil end
+      return nx, ny + (yOff or 0), nz
+    end
+    local ok, err
+    for try = 1, 4 do
+      local tx, ty, tz = track()
+      if not tx then
+        if try == 1 then return false, y end
+        break                                      -- (cannot be found right now: keep what we have)
+      end
+      ok, err = travelTo(dr, tx, ty, tz, nil, nil, isLoaded, track)
+      if not ok and (err == "stopped" or err == "passenger got off" or err == "the drone disconnected"
+                     or err == "low on air") then return false, err end
+      local nx, ny, nz = track()
+      local moved = nx and (math.abs(nx - tx) + math.abs(nz - tz) > 12 or math.abs(ny - ty) > 12)
+      if ok and not moved then return true end
+      if not moved then return ok, err end         -- (it stands still and cannot be reached)
+      droneLog(dr, "The target moved on to " .. fmtPos(nx, ny, nz) .. " - following (" .. try .. "/4)")
+    end
+    return ok, err
   end }
 end
 

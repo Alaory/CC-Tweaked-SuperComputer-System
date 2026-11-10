@@ -5,7 +5,7 @@ local HOME = { x = 0, y = 70, z = 0 }
 local W                                   -- this scenario's world
 local function world(opts)
   W = { pos = { x = 2, y = 70, z = 0 }, P = opts.players, carry = nil, act = nil, aborts = 0,
-        grab = opts.grab, miss = opts.miss, stuckExport = opts.stuckExport or 0, detLag = opts.detLag, tps = {}, hang = opts.hang or 1, short = opts.short or 0, unreachable = opts.unreachable or 1e9, homeRefused = opts.homeRefused or 0 }
+        grab = opts.grab, miss = opts.miss, refuse = opts.refuse, stuckExport = opts.stuckExport or 0, detLag = opts.detLag, tps = {}, hang = opts.hang or 1, short = opts.short or 0, unreachable = opts.unreachable or 1e9, homeRefused = opts.homeRefused or 0 }
   os.pullEventRaw = function()
     CLOCK = CLOCK + 0.3
     if W.act and CLOCK >= W.doneAt then
@@ -23,7 +23,7 @@ local function world(opts)
           if W.carry then W.P[W.carry] = { x = t.x, y = t.y, z = t.z } end
           W.carry = nil
         end
-      elseif t.x >= W.unreachable then
+      elseif t.x >= W.unreachable or (W.refuse and W.refuse(t)) then
         -- refused: not loaded
       elseif t.x == HOME.x and math.abs(t.z - HOME.z) < 8 and W.homeRefused > 0 then
         W.homeRefused = W.homeRefused - 1
@@ -245,3 +245,46 @@ dr = world({ players = { Bob = { x = 300, y = 70, z = 0 }, Alaory = { x = 0, y =
 dr.dest = { kind = "player", name = "Alaory" }
 runMission(dr, { kind = "ferry", passenger = "Bob" })
 CHECK(dr.mission.state == "failed" and dr.rider == nil and dr.mission.steps[1].status == "fail", "ask the drone: a missed grab is noticed at once")
+
+-- ===== a MOVING target: the drone goes to where it is NOW =====
+-- to a TURTLE that has moved on: when the ride was ordered it was at 1000,0 - by the time
+-- the drone goes there it is at 1000,600 and its old area is not loaded any more (every
+-- teleport there is refused). Before: the drone kept trying the old spot.
+do
+  local online0 = TT.online
+  TT.online = function() return true end
+  dr = world({ players = { Bob = { x = 2, y = 70, z = 0 } }, cond = true,
+               refuse = function(t) return math.abs(t.x - 1000) <= 40 and math.abs(t.z) <= 40 end })
+  state.turtles[55] = { id = 55, label = "Runner", log = {}, pos = { x = 1000, y = 69, z = 0 } }
+  local dest = { kind = "coords", name = "Runner", x = 1000, y = 70, z = 0, turtle = 55 }
+  state.turtles[55].pos = { x = 1000, y = 69, z = 600 }          -- (it moved on meanwhile)
+  runMission(dr, { kind = "ferry", passenger = "Bob", dest = dest })
+  CHECK(dr.mission.state == "done", "moved turtle: the ride is done (" .. tostring(dr.mission.err) .. ")")
+  CHECK(W.P.Bob and math.abs(W.P.Bob.x - 1000) <= 3 and math.abs(W.P.Bob.z - 600) <= 3,
+        "moved turtle: Bob is let off where the turtle is NOW (" .. tostring(W.P.Bob and (W.P.Bob.x .. "," .. W.P.Bob.z)) .. ")")
+  local old = 0
+  for _, t in ipairs(W.tps) do if math.abs(t.x - 1000) <= 40 and math.abs(t.z) <= 40 then old = old + 1 end end
+  CHECK(old == 0, "moved turtle: no teleport wasted on the old (unloaded) spot (" .. old .. ")")
+  state.turtles[55] = nil
+  TT.online = online0
+end
+
+-- to a PLAYER who keeps walking: Alaory is at 1000,0 when the drone leaves and walks to
+-- 1000,300 while it is on its way (the place she left is not loaded any more)
+do
+  local walked = false
+  dr = world({ players = { Bob = { x = 2, y = 70, z = 0 }, Alaory = { x = 1000, y = 70, z = 0 } }, cond = true,
+               refuse = function(t)
+                 -- (the first teleport toward her: she walks off - her old place unloads)
+                 if not walked and W.carry == "Bob" and t.x > 500 then
+                   walked = true
+                   W.P.Alaory = { x = 1000, y = 70, z = 300 }
+                 end
+                 return walked and math.abs(t.x - 1000) <= 40 and math.abs(t.z) <= 40
+               end })
+  dr.dest = { kind = "player", name = "Alaory" }
+  runMission(dr, { kind = "ferry", passenger = "Bob" })
+  CHECK(dr.mission.state == "done", "walking player: the ride is done (" .. tostring(dr.mission.err) .. ")")
+  CHECK(W.P.Bob and math.abs(W.P.Bob.x - 1000) <= 4 and math.abs(W.P.Bob.z - 300) <= 4,
+        "walking player: Bob is let off where Alaory is NOW (" .. tostring(W.P.Bob and (W.P.Bob.x .. "," .. W.P.Bob.z)) .. ")")
+end

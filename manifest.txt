@@ -8,9 +8,9 @@ base base_chat.lua 15022 e4046699
 base base_console.lua 54373 35f45158
 base base_curios.lua 6020 3e56460a
 base base_devices.lua 11417 b1426ca4
-base base_drones.lua 65816 2ecc29e6
+base base_drones.lua 69192 a2f3f4da
 base base_factory.lua 29067 3107e2f3
-base base_input.lua 23874 03a5221b
+base base_input.lua 23969 f8a7d8a2
 base base_map.lua 61218 b536a321
 base base_me.lua 89921 28708a0c
 base base_mining.lua 11283 b3f0e9ee
@@ -50,9 +50,9 @@ slim:base base_chat.lua 11113 6559fc82 dist/base_chat.lua
 slim:base base_console.lua 45269 5a7f6d72 dist/base_console.lua
 slim:base base_curios.lua 3601 10dc6ee3 dist/base_curios.lua
 slim:base base_devices.lua 8034 3a91ff63 dist/base_devices.lua
-slim:base base_drones.lua 43773 5967ad86 dist/base_drones.lua
+slim:base base_drones.lua 45675 dfc52897 dist/base_drones.lua
 slim:base base_factory.lua 21394 27d62fd0 dist/base_factory.lua
-slim:base base_input.lua 16902 0aa99b5d dist/base_input.lua
+slim:base base_input.lua 16917 1cdd0eeb dist/base_input.lua
 slim:base base_map.lua 39512 09fec8cb dist/base_map.lua
 slim:base base_me.lua 64784 af616b6a dist/base_me.lua
 slim:base base_mining.lua 8463 ef70f30d dist/base_mining.lua
