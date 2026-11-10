@@ -21,7 +21,9 @@
 
 
 local REPO = "Alaory/CC-Tweaked-SuperComputer-System"
-local DEFAULT_BRANCH = "claude/computercraft-base-review-ihjtqw"
+local DEFAULT_BRANCH = "main"
+
+local FALLBACK_BRANCH = "claude/computercraft-base-review-ihjtqw"
 local SAVE = "upgrade.dat"
 
 
@@ -105,18 +107,23 @@ log(saved.full and "From now on the FULL files (with comments) - getting them no
 or "From now on the SLIM files (no comments, ~30% smaller) - getting them now.")
 end
 local checkOnly = args[1] == "check"
-local branch = saved.branch or DEFAULT_BRANCH
 
+
+local tryBranches = saved.branch and { saved.branch } or { DEFAULT_BRANCH, FALLBACK_BRANCH }
+local branch, sha, base, man, err
+for _, b in ipairs(tryBranches) do
+branch = b
 
 log("Asking GitHub for the newest version of " .. branch .. " ...")
-local sha = get("https://api.github.com/repos/" .. REPO .. "/commits/" .. textutils.urlEncode(branch),
+sha = get("https://api.github.com/repos/" .. REPO .. "/commits/" .. textutils.urlEncode(branch),
 { Accept = "application/vnd.github.sha", ["User-Agent"] = "cc-base-upgrade" })
 if sha then sha = sha:match("^%s*(%x+)%s*$") end
 local ref = sha or branch
-local base = "https://raw.githubusercontent.com/" .. REPO .. "/" .. ref .. "/"
+base = "https://raw.githubusercontent.com/" .. REPO .. "/" .. ref .. "/"
 
-
-local man, err = get(base .. "manifest.txt")
+man, err = get(base .. "manifest.txt")
+if man then break end
+end
 if not man then log("Could not read the file list: " .. tostring(err)) return false end
 local group = whichGroup()
 local list = {}

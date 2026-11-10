@@ -34,11 +34,21 @@ os.queueEvent = function() end
 os.pullEvent = function() end
 local SHA = "abcdef1234567"
 local BROKEN
+-- main and the work branch are two versions; MAIN_EMPTY = main has no file list yet (before the merge)
+local SHA_MAIN = "1111111aaaaaaa"
+local MAIN_EMPTY, ASKED, FROM = false, {}, {}
 http = { get = function(o)
   local url = type(o) == "table" and o.url or o
-  if url:find("api.github.com", 1, true) then return { readAll = function() return SHA .. "\n" end, close = function() end } end
-  CHECK(url:find("/" .. SHA .. "/", 1, true), "files come from the exact version: " .. url)
-  local name = url:match("/" .. SHA .. "/(.+)$")
+  if url:find("api.github.com", 1, true) then
+    local br = url:match("/commits/(.+)$")
+    ASKED[#ASKED + 1] = br
+    return { readAll = function() return ((br == "main") and SHA_MAIN or SHA) .. "\n" end, close = function() end }
+  end
+  local sha = url:match("githubusercontent%.com/[^/]+/[^/]+/(%x+)/")
+  CHECK(sha == SHA or sha == SHA_MAIN, "files come from an exact version: " .. url)
+  FROM[sha or "?"] = (FROM[sha or "?"] or 0) + 1
+  if sha == SHA_MAIN and MAIN_EMPTY then return nil, "404" end
+  local name = url:match("/" .. sha .. "/(.+)$")
   local s = readReal(name)
   if not s then return nil, "404" end
   if name == BROKEN then s = s:sub(1, #s - 10) end
@@ -128,6 +138,27 @@ table.sort(names)
 CHECK(ok and table.concat(names, ",") == "pocket.lua,upgrade.dat,upgrade.lua", "pocket gets pocket.lua + upgrade.lua: " .. table.concat(names, ","))
 CHECK(DISK["pocket.lua"] == slimOf("pocket.lua"), "the pocket gets the slim pocket.lua")
 pocket = nil
+
+-- WHICH BRANCH: main first; while main has no file list yet (before the merge) the work
+-- branch; a branch you chose (upgrade branch <name>) is the only one asked
+do
+  fresh()
+  ASKED, FROM, MAIN_EMPTY = {}, {}, false
+  local okM = upgrade({})
+  CHECK(okM and ASKED[1] == "main" and #ASKED == 1 and (FROM[SHA] or 0) == 0, "after the merge: everything comes from main (" .. table.concat(ASKED, ",") .. ")")
+  fresh()
+  ASKED, FROM, MAIN_EMPTY = {}, {}, true
+  local okF, _, logF = upgrade({})
+  CHECK(okF and ASKED[1] == "main" and ASKED[2] and ASKED[2]:find("claude/", 1, true),
+        "before the merge (main has no file list): the work branch is used (" .. table.concat(ASKED, ",") .. ")")
+  CHECK(DISK["base/base_map.lua"] == slimOf("base_map.lua"), "... and the files are installed from it")
+  fresh()
+  upgrade({ "branch", "mybranch" })
+  ASKED, FROM, MAIN_EMPTY = {}, {}, false
+  upgrade({})
+  CHECK(#ASKED == 1 and ASKED[1] == "mybranch", "a branch you chose is the only one asked (" .. table.concat(ASKED, ",") .. ")")
+  MAIN_EMPTY = false
+end
 
 print((FAILS == 0 and "PASS" or "FAIL") .. " (" .. N .. " checks, " .. FAILS .. " failed)")
 os.exit(FAILS == 0 and 0 or 1)

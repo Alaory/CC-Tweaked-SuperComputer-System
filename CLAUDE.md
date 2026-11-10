@@ -658,8 +658,10 @@ PneumaticCraft drone rides, turtle mapping/surveys, and an AE2 ME network view.
   tools/make_manifest.py` (run_tests fails when it is stale). Only changed files; every
   download must match size + checksum (upgradeHash = make_manifest h) and compile, else
   nothing is written; temp file when there is room, else old out / new in (old kept in
-  memory); binary "rb"/"wb". Then map saved + reboot. Default branch
-  claude/computercraft-base-review-ihjtqw (upgrade.dat). tools/tests/upgrade_sim.lua.
+  memory); binary "rb"/"wb". Then map saved + reboot. Branch: the one chosen with `upgrade
+  branch` (upgrade.dat), else "main" - and while main has no manifest.txt (before the merge) the
+  work branch claude/computercraft-base-review-ihjtqw (FALLBACK_BRANCH; works before and after).
+  README.md has NO emojis (the owner's wish) and installs with wget from main. tools/tests/upgrade_sim.lua.
   SLIM (default): make_manifest also writes dist/<file> = tools/slim.py (comments, --[[ ]]
   blocks, indentation, trailing spaces removed; strings / [[ ]] untouched; EVERY LINE KEPT
   so game error line numbers match the full file) and lists them as "slim:<group> path size

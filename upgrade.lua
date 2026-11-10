@@ -18,10 +18,12 @@
 -- base_config.lua and data files are never touched. Bytes are written as they
 -- are ("wb"), exactly like dragging the file in.
 -- First time (on the computer's shell, Ctrl+T stops the base program):
---   wget https://raw.githubusercontent.com/Alaory/CC-Tweaked-SuperComputer-System/<branch>/upgrade.lua upgrade.lua
+--   wget https://raw.githubusercontent.com/Alaory/CC-Tweaked-SuperComputer-System/main/upgrade.lua upgrade.lua
 
 local REPO = "Alaory/CC-Tweaked-SuperComputer-System"
-local DEFAULT_BRANCH = "claude/computercraft-base-review-ihjtqw"
+local DEFAULT_BRANCH = "main"
+-- (until the work branch is merged, main has no file list yet: then this one is used)
+local FALLBACK_BRANCH = "claude/computercraft-base-review-ihjtqw"
 local SAVE = "upgrade.dat"
 
 -- checksum (the same in tools/make_manifest.py)
@@ -105,18 +107,23 @@ local function run(o)
         or "From now on the SLIM files (no comments, ~30% smaller) - getting them now.")
   end
   local checkOnly = args[1] == "check"
-  local branch = saved.branch or DEFAULT_BRANCH
-
-  -- 1. the exact version (commit) of that branch, so all files match
-  log("Asking GitHub for the newest version of " .. branch .. " ...")
-  local sha = get("https://api.github.com/repos/" .. REPO .. "/commits/" .. textutils.urlEncode(branch),
-                  { Accept = "application/vnd.github.sha", ["User-Agent"] = "cc-base-upgrade" })
-  if sha then sha = sha:match("^%s*(%x+)%s*$") end
-  local ref = sha or branch
-  local base = "https://raw.githubusercontent.com/" .. REPO .. "/" .. ref .. "/"
-
-  -- 2. the file list
-  local man, err = get(base .. "manifest.txt")
+  -- the branch you chose (upgrade branch <name>), else main - and while main has no
+  -- file list yet (before the merge), the work branch
+  local tryBranches = saved.branch and { saved.branch } or { DEFAULT_BRANCH, FALLBACK_BRANCH }
+  local branch, sha, base, man, err
+  for _, b in ipairs(tryBranches) do
+    branch = b
+    -- 1. the exact version (commit) of that branch, so all files match
+    log("Asking GitHub for the newest version of " .. branch .. " ...")
+    sha = get("https://api.github.com/repos/" .. REPO .. "/commits/" .. textutils.urlEncode(branch),
+              { Accept = "application/vnd.github.sha", ["User-Agent"] = "cc-base-upgrade" })
+    if sha then sha = sha:match("^%s*(%x+)%s*$") end
+    local ref = sha or branch
+    base = "https://raw.githubusercontent.com/" .. REPO .. "/" .. ref .. "/"
+    -- 2. the file list
+    man, err = get(base .. "manifest.txt")
+    if man then break end
+  end
   if not man then log("Could not read the file list: " .. tostring(err)) return false end
   local group = whichGroup()
   local list = {}
