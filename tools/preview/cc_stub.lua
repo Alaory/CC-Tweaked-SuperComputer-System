@@ -94,7 +94,7 @@ function fs.list(d)
   return out
 end
 function fs.open(p, mode)
-  if mode == "r" then
+  if mode == "r" or mode == "rb" then
     local text = FILES[p]
     if not text then local f = io.open(SRC .. "/" .. p, "r") if not f then return nil end text = f:read("a") f:close() end
     local pos = 1
@@ -109,7 +109,7 @@ function fs.open(p, mode)
            close = function()
              local t = table.concat(buf)
              if #t > fs.getFreeSpace(p) + #(FILES[p] or "") then error("Out of space") end
-             if mode == "a" then t = (FILES[p] or "") .. t end      -- append
+             if mode == "a" or mode == "ab" then t = (FILES[p] or "") .. t end      -- append
              FILES[p] = t
            end }
 end
@@ -171,7 +171,10 @@ end
 rednet = { open = function() end, host = function() end, send = function() end }
 http = nil
 shell = nil
-keys = {}
+-- CC:Tweaked (1.16+) key codes (GLFW)
+keys = { w = 87, a = 65, s = 83, d = 68, q = 81, c = 67, x = 88, f = 70, r = 82, v = 86, h = 72, t = 84, g = 71,
+         space = 32, leftShift = 340, rightShift = 344, up = 265, down = 264, left = 263, right = 262,
+         backspace = 259, enter = 257 }
 printError = print
 print = function() end   -- keep the load quiet
 

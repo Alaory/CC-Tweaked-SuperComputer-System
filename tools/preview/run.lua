@@ -1,6 +1,7 @@
 -- usage: lua run.lua <srcdir> <out.txt> <page> [scenario]
 SRC_DIR, OUT, PAGE, SCEN = arg[1], arg[2], arg[3] or "inventory", arg[4]
 local getenv, popen = os.getenv, io.popen
+local REALEXIT = os.exit
 REALCLOCK, LABEL, GETENV = os.clock, getenv("LABEL") or "", getenv
 local here = arg[0]:match("^(.*)/") or "."
 dofile(here .. "/world.lua")
@@ -9,26 +10,37 @@ dofile(here .. "/cc_stub.lua")
 PERIPHS = W0
 PERIPHS.right.obj = MONITOR
 -- the program's own files take room on the computer (what is copied into the game)
-for _, f in ipairs({ "inventory.lua", "node.lua" }) do
-  local h = io.open(SRC_DIR .. "/" .. f) if h then CODE_SIZE = CODE_SIZE + #h:read("a") h:close() end
+-- (the SLIM copies from dist/ - that is what `upgrade` installs - else the full file)
+local function codeSize(f)
+  local h = io.open(SRC_DIR .. "/dist/" .. f) or io.open(SRC_DIR .. "/" .. f)
+  if not h then return 0 end
+  local n = #h:read("a")
+  h:close()
+  return n
 end
+for _, f in ipairs({ "inventory.lua", "node.lua", "store.lua", "startup.lua", "upgrade.lua" }) do CODE_SIZE = CODE_SIZE + codeSize(f) end
 local ls = popen('ls "' .. SRC_DIR .. '"/base_*.lua')
-for f in ls:lines() do local h = io.open(f) CODE_SIZE = CODE_SIZE + #h:read("a") h:close() end
+for f in ls:lines() do
+  local name = f:match("([^/]+)$")
+  if name ~= "base_config.lua" then CODE_SIZE = CODE_SIZE + codeSize(name) end
+end
+CODE_SIZE = CODE_SIZE + 12000                          -- (base_config.lua, the owner's own)
 ls:close()
 if getenv("PRE") then dofile(getenv("PRE")) end   -- set-up before the program loads
 local env = _ENV
 local MODULES = {
   "base_config", "base_devices", "base_theme", "base_state", "base_storage",
-  "base_me", "base_players", "base_drones", "base_turtles", "base_map", "base_console",
+  "base_me", "base_curios", "base_players", "base_drones", "base_turtles", "base_mining", "base_away", "base_factory", "base_schem", "base_pocket", "base_store", "base_map", "base_console",
   "base_chat", "base_ui_core", "base_ui_inventory", "base_ui_players",
-  "base_ui_storage", "base_ui_me", "base_ui_drone", "base_ui_turtles", "base_ui_map",
-  "base_ui_chat", "base_ui_events", "base_input", "base_workers",
+  "base_ui_storage", "base_ui_me", "base_ui_drone", "base_ui_turtles", "base_ui_mining", "base_ui_drive", "base_ui_home", "base_ui_map",
+  "base_ui_chat", "base_ui_events", "base_ui_system", "base_ui_settings", "base_input", "base_workers",
 }
 for _, name in ipairs(MODULES) do
   local fn, err = loadfile(SRC_DIR .. "/" .. name .. ".lua", "t", env)
   if not fn then error(err) end
   fn()
 end
+if MAP and MAP.loadNow and not GETENV("MAPLOADING") then MAP.loadNow() end   -- (the base does this in the map worker)
 buildWindow()
 refreshInventory()
 refreshPlayers(true)
@@ -38,8 +50,25 @@ state.page = PAGE
 -- sample turtles
 state.turtles[7] = { id = 7, label = "Scout1", log = {}, lastN = 0, fuel = 4210, pos = { x = -5280, y = 60, z = 10830, f = "north" }, task = "idle", lastSeen = CLOCK - 2 }
 state.turtles[9] = { id = 9, label = "Miner2", log = {}, lastN = 0, fuel = 120, pos = { x = -5100, y = 12, z = 10700, f = "east" }, task = "survey", lastSeen = CLOCK - 90 }
-if SCEN and SCEN ~= "" then dofile(SCEN) end
-draw()
+-- tests (tools/tests/*.lua): CHECK(condition, what) records a failure; the run
+-- ends with exit code 1 and the list when any check failed or the test errored
+FAILS, CHECKS = {}, 0
+function CHECK(cond, msg)
+  CHECKS = CHECKS + 1
+  if not cond then FAILS[#FAILS + 1] = tostring(msg) end
+  return cond
+end
+if SCEN and SCEN ~= "" then
+  local okS, errS = pcall(dofile, SCEN)
+  if not okS then FAILS[#FAILS + 1] = "ERROR: " .. tostring(errS) end
+end
+local okD, errD = pcall(draw)
+if not okD then FAILS[#FAILS + 1] = "DRAW ERROR: " .. tostring(errD) end
+if #FAILS > 0 then
+  for _, f in ipairs(FAILS) do io.stderr:write("FAIL: " .. f .. "\n") end
+  REALEXIT(1)
+end
+if getenv("TESTMODE") then io.stderr:write("PASS (" .. CHECKS .. " checks)\n") end
 local f = io.open(OUT, "w")
 for y = 1, H do local t, fg, bg = MONITOR.getLine(y) f:write(t, "\n", fg, "\n", bg, "\n") end
 f:close()

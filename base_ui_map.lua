@@ -56,10 +56,12 @@ function drawMapPage(G)
   local fgGrid = blitc(C.head)
   -- the map image is rebuilt only when the map data or the view changed;
   -- otherwise the rows from last time are put on the screen again
-  local key = table.concat({ MAP.version, V.cx, V.cz, V.zoom, V.rot or 0, g.mx0, g.my0, g.mw, g.mh }, ",")
+  -- (new scans alone: at most every 5 s - with many turtles scanning the map
+  -- changes all the time; moving / zooming the map redraws at once)
+  local key = table.concat({ V.cx, V.cz, V.zoom, V.rot or 0, g.mx0, g.my0, g.mw, g.mh }, ",")
   local cache = state.mapImage
-  if not cache or cache.key ~= key then
-    cache = { key = key, rows = {} }
+  if not cache or cache.key ~= key or (cache.ver ~= MAP.version and os.clock() - cache.t >= 5) then
+    cache = { key = key, rows = {}, ver = MAP.version, t = os.clock() }
     local B = MAP.basis()
     local zx, zy = V.zoom, V.zoom * 1.5
     local cxs, czs = V.cx, V.cz
@@ -80,9 +82,9 @@ function drawMapPage(G)
         local hgt, blk
         if not zoomedOut then hgt, blk = detail(wx, wz) end
         if not hgt then hgt, blk = overview(wx, wz) end
-        -- far out a cell covers many chunks: look at a few more of them, so
+        -- far out a cell covers 2x2 chunks or more: look at a few more of them, so
         -- a partly scanned area does not show as scattered dots
-        if not hgt and V.zoom >= 64 then
+        if not hgt and V.zoom >= 32 then
           local hz = floor(V.zoom / 2)
           hgt, blk = overview(wx + hz, wz)
           if not hgt then hgt, blk = overview(wx, wz + hz) end
@@ -111,9 +113,10 @@ function drawMapPage(G)
   end
   addHit(g.mx0, g.my0, g.mw, g.mh, "mapcell")
   -- nothing mapped at all yet: say how to start
-  if (MAP.ovN or 0) == 0 and #MAP.order == 0 then
-    local m1 = "Nothing mapped yet."
-    local m2 = "Select a turtle with a Geo Scanner, then SURVEY (right)."
+  if not MAP.loaded or ((MAP.ovN or 0) == 0 and #MAP.order == 0) then
+    local m1 = MAP.loaded and "Nothing mapped yet." or "Loading the map ..."
+    local m2 = MAP.loaded and "Select a turtle with a Geo Scanner, then SURVEY (right)."
+               or "(from the floppies and helper computers - everything else works meanwhile)"
     local cy = g.my0 + math.floor(g.mh / 2) - 3
     text(g.mx0 + math.floor((g.mw - #m1) / 2), cy, m1, C.text, C.bg)
     text(g.mx0 + math.max(0, math.floor((g.mw - #m2) / 2)), cy + 1, trunc(m2, g.mw), C.dim, C.bg)
@@ -126,6 +129,18 @@ function drawMapPage(G)
   text(g.mx0, midY, cLeft, C.text, C.empty)
   text(g.mx0 + g.mw - 1, midY, cRight, C.text, C.empty)
 
+  -- the WORK AREA (SETTINGS > MAP): its edge, so you see where the turtles may go
+  local ax1, az1, ax2, az2 = MAP.area()
+  if ax1 then
+    local stepA = math.max(1, V.zoom)
+    local function mark(x, z)
+      local sx, sy = toScreen(g, V, x, z)
+      if sx then text(sx, sy, "+", C.warn, C.bg) end
+    end
+    local n = 0
+    for x = ax1, ax2, stepA do mark(x, az1) mark(x, az2) n = n + 1 if n > 4000 then break end end
+    for z = az1, az2, math.max(1, math.floor(stepA * 1.5)) do mark(ax1, z) mark(ax2, z) n = n + 1 if n > 8000 then break end end
+  end
   -- overlays: ores, base, players, drones, turtles, selection
   local h = CONFIG.drone.home
   if h then
@@ -161,31 +176,31 @@ function drawMapPage(G)
   end
 
   ------------------------------------------------ right column: view controls
-  card(rx, y0, rw, 15, "VIEW")
-  actButton(rx + rw - 15, y0 + 1, 13, 1, "CLEAR MAP", { kind = "mapclear", name = "map", count = 0 })
+  card(rx, y0, rw, 17, "VIEW")
+  actButton(rx + rw - 15, y0 + 1, 13, 2, "CLEAR MAP", { kind = "mapclear", name = "map", count = 0 })
   kv(rix, y0 + 3, riw, "Centre", V.cx .. ", " .. V.cz)
   kv(rix, y0 + 4, riw, "Chunks (overview)", tostring(MAP.ovN))
   kv(rix, y0 + 5, riw, "Chunks (detail)", tostring(#MAP.order))
 
   local bw = math.floor((riw - 3) / 4)
   local b1 = y0 + 7
-  drawButton(rix,                b1, bw, 1, "\27",  C.empty, C.text, "mpan", { -1, 0 })
-  drawButton(rix + bw + 1,       b1, bw, 1, "\24",  C.empty, C.text, "mpan", { 0, -1 })
-  drawButton(rix + 2 * (bw + 1), b1, bw, 1, "\25",  C.empty, C.text, "mpan", { 0, 1 })
-  drawButton(rix + 3 * (bw + 1), b1, bw, 1, "\26",  C.empty, C.text, "mpan", { 1, 0 })
-  local b2 = y0 + 9
-  drawButton(rix,                b2, bw, 1, "ZOOM -", C.empty, C.text, "mzoom", 1)
-  drawButton(rix + bw + 1,       b2, bw, 1, "ZOOM +", C.empty, C.text, "mzoom", -1)
-  drawButton(rix + 2 * (bw + 1), b2, bw * 2 + 1, 1, "ROTATE", C.empty, C.text, "mrot")
-  local b3 = y0 + 11
+  drawButton(rix,                b1, bw, 2, "\27",  C.empty, C.text, "mpan", { -1, 0 })
+  drawButton(rix + bw + 1,       b1, bw, 2, "\24",  C.empty, C.text, "mpan", { 0, -1 })
+  drawButton(rix + 2 * (bw + 1), b1, bw, 2, "\25",  C.empty, C.text, "mpan", { 0, 1 })
+  drawButton(rix + 3 * (bw + 1), b1, bw, 2, "\26",  C.empty, C.text, "mpan", { 1, 0 })
+  local b2 = y0 + 10
+  drawButton(rix,                b2, bw, 2, "ZOOM -", C.empty, C.text, "mzoom", 1)
+  drawButton(rix + bw + 1,       b2, bw, 2, "ZOOM +", C.empty, C.text, "mzoom", -1)
+  drawButton(rix + 2 * (bw + 1), b2, bw * 2 + 1, 2, "ROTATE", C.empty, C.text, "mrot")
+  local b3 = y0 + 13
   text(rix, b3, "CENTRE ON", C.dim, C.panel)
   local cw = math.floor((riw - 2) / 3)
-  drawButton(rix,                b3 + 1, cw, 1, "BASE",   C.empty, C.text, "mcenter", "base")
-  drawButton(rix + cw + 1,       b3 + 1, cw, 1, "TURTLE", C.empty, C.text, "mcenter", "turtle")
-  drawButton(rix + 2 * (cw + 1), b3 + 1, cw, 1, "ME",     C.empty, C.text, "mcenter", "me")
+  drawButton(rix,                b3 + 1, cw, 2, "BASE",   C.empty, C.text, "mcenter", "base")
+  drawButton(rix + cw + 1,       b3 + 1, cw, 2, "TURTLE", C.empty, C.text, "mcenter", "turtle")
+  drawButton(rix + 2 * (cw + 1), b3 + 1, cw, 2, "ME",     C.empty, C.text, "mcenter", "me")
 
   ------------------------------------------------ selected block
-  local sy0 = y0 + 16
+  local sy0 = y0 + 18
   card(rx, sy0, rw, 7, "SELECTED")
   if sel then
     local hgt, blk = MAP.get(sel.x, sel.z)
@@ -207,12 +222,12 @@ function drawMapPage(G)
 
   ------------------------------------------------ turtle actions
   local ty0 = sy0 + 8
-  card(rx, ty0, rw, 10, "TURTLE")
+  card(rx, ty0, rw, 11, "TURTLE")
   local t = state.tSel and state.turtles[state.tSel]
   if not t then
     text(rix, ty0 + 3, trunc("Select a turtle on the TURTLES tab", riw), C.dim, C.panel)
     if next(state.turtles) then
-      actButton(rix, ty0 + 8, riw, 1, "SURVEY: ALL TURTLES (" .. #TT.available() .. ")",
+      actButton(rix, ty0 + 8, riw, 2, "SURVEY: ALL TURTLES (" .. #TT.available() .. ")",
                 { kind = "surveyall", name = "all", count = 0 }, true)
     end
   else
@@ -226,23 +241,42 @@ function drawMapPage(G)
     drawButton(rix + 2 * (tw + 1), ty0 + 5, riw - 2 * (tw + 1), 2, "STOP ALL", C.bad, C.ink, "tstopall")
     local hw = math.floor((riw - 1) / 2)
     local nfree = #TT.available()
-    actButton(rix, ty0 + 8, hw, 1, "SURVEY: ALL (" .. nfree .. ")",
+    actButton(rix, ty0 + 8, hw, 2, "SURVEY: ALL (" .. nfree .. ")",
               { kind = "surveyall", name = "all", count = 0 }, true)
-    actButton(rix + hw + 1, ty0 + 8, riw - hw - 1, 1, "SURVEY: THIS ONE",
+    actButton(rix + hw + 1, ty0 + 8, riw - hw - 1, 2, "SURVEY: THIS ONE",
               { kind = "survey", name = tostring(t.id), count = 0 }, true)
   end
 
-  ------------------------------------------------ a big survey in progress
-  local ly = ty0 + 11
-  local frac, total, sent, skipped = MAP.surveyProgress()
-  if frac then
+  ------------------------------------------------ a survey in progress / auto-map
+  local ly = ty0 + 12
+  local frac, total, sent, skipped, again = MAP.surveyProgress()
+  local q = MAP.queue
+  if frac and not q.auto then
     card(rx, ly, rw, 7, "BIG SURVEY")
-    drawButton(rix + riw - 8, ly + 1, 8, 1, "STOP", C.bad, C.ink, "mqstop")
+    drawButton(rix + riw - 8, ly + 1, 8, 2, "STOP", C.bad, C.ink, "mqstop")
     barW(rix, ly + 3, riw, math.floor(frac * riw + 0.5), C.good)
     text(rix, ly + 4, trunc(string.format("%d%% of %s spots", math.floor(frac * 100), compact(total)), riw), C.text, C.panel)
-    text(rix, ly + 5, trunc(string.format("%s sent, %s mapped before", compact(sent), compact(skipped)), riw),
-         C.dim, C.panel)
+    text(rix, ly + 5, trunc(string.format("%s sent, %s mapped before", compact(sent), compact(skipped)) ..
+         ((again or 0) > 0 and (", " .. again .. " to redo") or ""), riw), C.dim, C.panel)
+    text(rix, ly + 6, trunc(MAP.auto.on and "Auto-map goes on after this one" or "", riw), C.dim, C.panel)
     ly = ly + 8
+  else
+    -- auto-map: always a survey running, spiralling out from the base
+    local on = MAP.auto.on
+    card(rx, ly, rw, 6, "AUTO-MAP")
+    drawButton(rix + riw - 10, ly + 1, 10, 2, on and "ON" or "OFF", on and C.good or C.empty,
+               on and C.ink or C.text, "mauto")
+    local radius = math.floor(MAP.autoRadius())
+    local line1, col1
+    if not on then line1, col1 = "Off - turtles only survey when you tell them", C.dim
+    elseif MAP.auto.done then line1, col1 = "Done: the whole world is surveyed", C.good
+    elseif MAP.full then line1, col1 = "Paused: the map floppies are full - add an EMPTY floppy", C.warn
+    elseif q and q.auto then line1, col1 = "Surveying from the base outward", C.good
+    else line1, col1 = "Waiting for a free turtle", C.dim end
+    text(rix, ly + 3, trunc(line1, riw), col1, C.panel)
+    text(rix, ly + 4, trunc("Done around the base: " .. radius .. " blocks" ..
+         (q and q.auto and (again or 0) > 0 and (", " .. again .. " to redo") or ""), riw), C.dim, C.panel)
+    ly = ly + 7
   end
 
   ------------------------------------------------ what the colours mean

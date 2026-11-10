@@ -48,9 +48,17 @@ local CONFIG = {
   -- Dig through NATURAL blocks when stuck. Needs a pickaxe ITEM in the
   -- inventory (it is swapped in for a moment, like the Geo Scanner).
   dig       = false,
-  digOk     = { "stone", "dirt", "grass_block", "gravel", "sand", "deepslate", "tuff",
-                "andesite", "diorite", "granite", "netherrack", "leaves", "snow", "clay",
-                "moss", "mud", "calcite", "basalt", "blackstone", "cobblestone", "podzol" },
+  -- blocks a turtle may dig (with a pickaxe it carries): NATURAL blocks only,
+  -- matched by their exact name (the part after "minecraft:"), "*x" = ends in x.
+  -- Never player-built things (bricks, planks, smooth/polished stone, glass ...).
+  digOk     = { "stone", "dirt", "grass_block", "coarse_dirt", "rooted_dirt", "podzol", "mycelium",
+                "gravel", "sand", "red_sand", "clay", "mud", "moss_block", "snow", "snow_block",
+                "deepslate", "tuff", "andesite", "diorite", "granite", "calcite", "dripstone_block",
+                "netherrack", "basalt", "blackstone", "soul_sand", "soul_soil", "end_stone",
+                "*_leaves", "*_ore", "terracotta", "*_terracotta" },
+  digNearHome = 24,          -- never dig this close (blocks, x and z) to my home - the base
+  baseAt    = "",            -- "x,y,z" of the BASE (sent by the base) ...
+  noDigBase = 96,            -- ... NOTHING is dug within this many blocks (x and z) of it, by any job
   geoItem   = "advancedperipherals:geo_scanner",
   scanRadius = 8,            -- 8 = free scan (17x17x17); the base can ask for another
   minFuel   = 200,           -- a survey stops below this fuel level
@@ -58,7 +66,16 @@ local CONFIG = {
   lowFuel   = 2000,          -- at home below this: take fuel from a chest next to home
   stationFuel = 20000,       -- ... and fill up to this
   maxSurveyPoints = 400,
+  resumeAfter = 120,         -- YOUR command paused a job: back to it after this many s without one
 }
+
+-- A COPY of a turtle (a server crash left several turtles with one id) gets its
+-- own name "<label> [c<n>]" from the base ("becomecopy"). The label lives in the
+-- turtle BLOCK, not on the (shared) disk - so each copy knows which one it is,
+-- also after restarts, and keeps its own files (node_state_c<n> ...). The base
+-- treats it as turtle n*100000 + id; messages carry m.copy = n.
+COPY = tonumber((os.getComputerLabel() or ""):match("%[c(%d+)%]%s*$"))
+COPYSFX = COPY and ("_c" .. COPY) or ""
 
 -- Per-turtle settings that survive updates, e.g. { dig = true }. Updates from
 -- the base replace this program, never node_settings. (key, protocol and
@@ -86,6 +103,9 @@ function codeHash(str)
   return string.format("%08x%08x", h1, h2)
 end
 local MYPATH = (shell and shell.getRunningProgram and shell.getRunningProgram()) or "startup.lua"
+-- (started from a floppy / another name: its own copy is startup.lua - else the
+-- version is "?"; the base sends "?" turtles the update, which writes startup.lua)
+if not fs.exists(MYPATH) and fs.exists("startup.lua") then MYPATH = "startup.lua" end
 local MYVER = "?"
 if fs.exists(MYPATH) then
   local h = fs.open(MYPATH, "r")
@@ -211,7 +231,7 @@ rednet.open(modem)
 ---------------------------------------------------------------------
 -- saved state: position, facing, home, last command number
 ---------------------------------------------------------------------
-local STATE_FILE = "node_state"
+local STATE_FILE = "node_state" .. COPYSFX
 local S = { pos = nil, home = nil, lastN = 0 }
 local outboxAck, outboxResend, outboxCount   -- scan outbox (defined further down)
 local moveCount = 0            -- every real move (for the progress watchdog)
@@ -226,7 +246,17 @@ if fs.exists(STATE_FILE) then
 end
 -- save a table to a file; a failure is reported, never stops the program
 local writeErr = nil
+-- DUPLICATES: a server crash while a turtle crosses into the next chunk can
+-- leave SEVERAL turtles with this ID (one chunk saved before the move, one
+-- after). They all hear messages for this ID and SHARE this disk. Every start
+-- picks a SESSION (memory only) that goes with every report; a command meant
+-- for one copy carries its session. A copy the base calls a duplicate (DUP,
+-- "dupstop") stops, never writes the shared files, takes no jobs.
+SESSION = tostring(math.random(100000, 999999)) .. "-" .. tostring(os.epoch("utc") % 100000)
+DUP = false
+
 function writeFile(path, value)
+  if DUP then return false end                 -- (the shared disk belongs to the real one)
   local ok, text = pcall(textutils.serialize, value)
   if not ok then
     writeErr = "cannot save " .. path .. ": " .. tostring(text)
@@ -266,7 +296,7 @@ function known() return S.pos ~= nil and S.pos.x ~= nil and S.pos.f ~= nil end
 -- forward/back/up/down/turn is counted there. That frame never depends on GPS,
 -- so retracing is always physically right - even if the world coordinates
 -- were wrong on the way out. GO HOME retraces this first.
-local TRAIL_FILE = "node_trail"
+local TRAIL_FILE = "node_trail" .. COPYSFX
 local trail, trailIdx, trailDirty = {}, {}, 0
 local T = { x = 0, y = 0, z = 0, f = 0 }          -- position/facing in the trail frame
 function trailRebuild()
@@ -368,6 +398,9 @@ function send(t, extra)
   for k, v in pairs(extra or {}) do m[k] = v end
   m.t, m.n = t, n
   m.sig = sign(CONFIG.key, t, n)
+  m.ses = SESSION
+  m.copy = COPY
+  if DUP then m.dup = true end
   m.label = os.getComputerLabel() or ("Turtle " .. os.getComputerID())
   local fuel = turtle.getFuelLevel()
   m.fuel = fuel
@@ -387,6 +420,45 @@ function send(t, extra)
   m.rec = S.recording and (S.recCount or 1) or nil
   m.waiting = outboxCount and outboxCount() or 0
   pcall(rednet.send, baseId, m, CONFIG.protocol)
+end
+
+-- YOUR commands go first: a job running when you give one (DRIVE, GO HOME, GOTO ...
+-- - the base marks them m.hand) is PAUSED: stopped, kept in S.paused, your command
+-- runs at once, and after resumeAfter s without another command of yours it goes
+-- back to the paused job. Survey batches are not kept: the base hands out survey
+-- work again once the turtle is idle. STOP forgets the paused job.
+HAND, LAST_HAND, NEXT_JOB, DRIVE_NEXT = false, -1000, nil, nil
+-- only TRAVEL and SCAN jobs may be paused: a build / craft / rescue (a Disk Drive is
+-- placed) / fuel-up / warp cut halfway would leave parts, a drive or fuel lying around
+PAUSABLE = { ["goto"] = true, home = true, survey = true, surveypts = true, findturtles = true,
+             digup = true, move = true, scan = true, locate = true }
+function canPause() return job ~= nil and PAUSABLE[job.cmd] == true end
+function pauseForHand()
+  if not job then return end
+  local j = job
+  local sj = type(S.job) == "table" and S.job or {}
+  -- (already paused for an earlier command of yours: THAT job is the one to go back to,
+  --  not your own command that is running now)
+  if S.paused then
+    stopFlag = true
+    S.job = nil
+    save()
+    os.queueEvent("node_stop")
+    return
+  end
+  S.paused = { cmd = j.cmd, args = j.args or {}, left = sj.left or j.left, task = task,
+               -- survey work: the base hands it out again once idle (the batch is reclaimed)
+               idleAfter = (j.cmd == "survey" or j.cmd == "surveypts" or j.cmd == "findturtles") or nil }
+  stopFlag = true
+  S.job = nil
+  save()
+  os.queueEvent("node_stop")
+end
+function pausedTask()
+  local p = S.paused
+  if not p then return nil end
+  local left = math.max(0, math.floor((tonumber(CONFIG.resumeAfter) or 120) - (os.clock() - LAST_HAND)))
+  return "waiting - paused '" .. tostring(p.cmd) .. "' for your commands (back to it in " .. left .. " s)"
 end
 
 function reply(cmd, ok, msg)
@@ -437,6 +509,13 @@ end
 function ensureFuel()
   local f = turtle.getFuelLevel()
   if f == "unlimited" or f >= 20 then return end
+  -- a NEW turtle sent off before its first refuel (e.g. off the factory's build
+  -- spot): fill up to FIRST_FUEL now (finds reusable fuel too), the rest later
+  if not S.refuelDone and not SLOT_LOCK then
+    pcall(doRefuel, true)
+    save()
+    if turtle.getFuelLevel() >= 20 then return end
+  end
   if S.reuse and next(S.reuse) then
     topUp(math.min(refuelTarget(), f + 2000), true)
     if turtle.getFuelLevel() >= 20 then return end
@@ -594,12 +673,34 @@ local TOPUP = {}       -- the last top-up: gained, uses, refused, seconds (for t
 -- SLOT_LOCK = someone is equipping; TOPUP_RUNNING = a top-up is selecting slots
 SLOT_LOCK, TOPUP_RUNNING = false, false
 local REUSE_SLOTS      -- the slots holding reusable fuel last time (saves looking at all 16)
+-- ENERGY CELLS: an automata core (Advanced Peripherals) turns the FE in a
+-- charged item the turtle carries into fuel (chargeTurtle). Tried first; no
+-- core / no cell / empty cell = nothing happens. Returns the fuel gained.
+function chargeFromCell(target)
+  local f0 = turtle.getFuelLevel()
+  if f0 == "unlimited" or not target or f0 >= target then return 0 end
+  for _, side in ipairs({ "left", "right" }) do
+    local okW, p = pcall(peripheral.wrap, side)
+    if okW and type(p) == "table" and type(p.chargeTurtle) == "function" then
+      local ok, got = pcall(p.chargeTurtle, target - f0)
+      got = ok and tonumber(got) or 0
+      if got > 0 then
+        if not S.cellUsed then S.cellUsed = true send("result", { cmd = "fuel", ok = true,
+          msg = "charged " .. got .. " fuel from an energy cell (FE) - cells are used first from now on" }) end
+        return got
+      end
+    end
+  end
+  return 0
+end
 function topUp(target, onlyReusable, budget)
   local f0 = turtle.getFuelLevel()
   if f0 == "unlimited" or SLOT_LOCK then return 0, false end
   TOPUP_RUNNING = true
+  local idleStart = (job == nil)                 -- (started idle: a job that comes in goes first)
   local limit = turtle.getFuelLimit()
   target = math.min(target or limit, limit)
+  pcall(chargeFromCell, target)                  -- (an energy cell first: FE -> fuel)
   S.reuse = S.reuse or {}
   local t0, calls, refused, sel, learnt = os.clock(), 0, 0, turtle.getSelectedSlot(), false
   -- the slots to use: the remembered reusable ones, else all 16 looked at once
@@ -628,6 +729,8 @@ function topUp(target, onlyReusable, budget)
       local dead = false
       while turtle.getFuelLevel() < target do
         if (budget and calls >= budget) or (job and stopFlag) or SLOT_LOCK then stop = true break end
+        -- an order came in while it filled up: go now (it fills up the rest later)
+        if idleStart and job and turtle.getFuelLevel() >= 20 then stop = true break end
         local before = turtle.getFuelLevel()
         local ok = turtle.refuel(1)
         calls = calls + 1
@@ -925,15 +1028,33 @@ function withEquipped(part, fn)
 end
 
 function natural(name)
-  name = tostring(name)
+  local id = tostring(name):match(":(.+)$") or tostring(name)
   for _, n in ipairs(CONFIG.digOk) do
-    if name:find(n, 1, true) then return true end
+    if n:sub(1, 1) == "*" then
+      local suf = n:sub(2)
+      if id:sub(-#suf) == suf then return true end
+    elseif id == n then return true end
   end
   return false
 end
 
+-- the base's no-dig zone (CONFIG.baseAt / noDigBase, sent by the base): true = in it
+function inBaseZone()
+  if not (S.pos and S.pos.x) then return true end              -- position unknown: never dig
+  local bx, bz = tostring(CONFIG.baseAt or ""):match("^(-?%d+),%-?%d+,(-?%d+)$")
+  bx, bz = tonumber(bx), tonumber(bz)
+  local r = tonumber(CONFIG.noDigBase) or 96
+  if bx and r > 0 and math.abs(S.pos.x - bx) <= r and math.abs(S.pos.z - bz) <= r then return true end
+  -- and around my own home (a square now: the x+z diamond left the corners of the base open)
+  local h = tonumber(CONFIG.digNearHome) or 24
+  if S.home and math.abs(S.pos.x - S.home.x) < h and math.abs(S.pos.z - S.home.z) < h then return true end
+  return false
+end
 tryDig = function(dir)
-  if not CONFIG.dig then return false end
+  -- digging: when it is switched on (setting dig), and always on rescue trips
+  if not (CONFIG.dig or DIG_JOB) then return false end
+  -- never at the base / near home - no job overrides this
+  if inBaseZone() then return false end
   -- never dig into or next to a home spot that is being checked
   if HOMEPROBE and S.pos and math.abs(S.pos.x - HOMEPROBE.x) + math.abs(S.pos.y - HOMEPROBE.y) +
      math.abs(S.pos.z - HOMEPROBE.z) <= 2 then return false end
@@ -1155,7 +1276,7 @@ end
 
 -- Scans are kept here until the base confirms it stored them (it may be
 -- offline when the owner left the server). Re-sent from the heartbeat.
-local OUTBOX_FILE = "node_outbox"
+local OUTBOX_FILE = "node_outbox" .. COPYSFX
 local outbox = {}
 if fs.exists(OUTBOX_FILE) then
   local h = fs.open(OUTBOX_FILE, "r")
@@ -1377,10 +1498,16 @@ function astar(sx, sy, sz, tx, ty, tz, goalY, near)
     end
     return k
   end
-  local g, X, Y, Z, parent, closed = {}, {}, {}, {}, {}, {}
+  -- HD[k] = the last sideways direction on the way to k: changing it costs a
+  -- turn (as slow as a step), so straight routes are preferred. h is weighted
+  -- a hair (1.001): among equally good cells the one nearer the goal goes
+  -- first - far fewer cells looked at.
+  local g, X, Y, Z, parent, closed, HD = {}, {}, {}, {}, {}, {}, {}
   local sk = key(sx, sy, sz)
   g[sk], X[sk], Y[sk], Z[sk], parent[sk] = 0, sx, sy, sz, false
-  push(h(sx, sy, sz), sk)
+  -- facing (0 +z, 1 -x, 2 -z, 3 +x) -> D6 index (1 +x, 2 -x, 3 +z, 4 -z)
+  HD[sk] = S.pos and S.pos.f and ({ [0] = 3, 2, 4, 1 })[S.pos.f] or nil
+  push(h(sx, sy, sz) * 1.001, sk)
   local D6 = { { 1, 0, 0 }, { -1, 0, 0 }, { 0, 0, 1 }, { 0, 0, -1 }, { 0, 1, 0 }, { 0, -1, 0 } }
   local expanded = 0
   while hn > 0 do
@@ -1402,7 +1529,7 @@ function astar(sx, sy, sz, tx, ty, tz, goalY, near)
         os.queueEvent("nav_yield")
         os.pullEvent("nav_yield")
       end
-      for _, d in ipairs(D6) do
+      for di, d in ipairs(D6) do
         local nx, ny, nz = x + d[1], y + d[2], z + d[3]
         if nx >= minX and nx <= maxX and ny >= minY and ny <= maxY and nz >= minZ and nz <= maxZ then
           local mk = memKey(nx, ny, nz)
@@ -1414,10 +1541,17 @@ function astar(sx, sy, sz, tx, ty, tz, goalY, near)
             if not closed[nk] then
               local step = 1 + extra + (deadCost[mk] or 0)
               if not ty and not goalY and d[2] < 0 then step = step + 0.5 end  -- don't sink into caves
+              -- a sideways step in a new direction = one turn (opposite = two)
+              local hd = HD[k]
+              if di <= 4 and hd and hd ~= di then
+                step = step + (((hd == 1 and di == 2) or (hd == 2 and di == 1) or (hd == 3 and di == 4)
+                                or (hd == 4 and di == 3)) and 0.8 or 0.4)
+              end
               local ng = g[k] + step
               if g[nk] == nil or ng < g[nk] then
                 g[nk], X[nk], Y[nk], Z[nk], parent[nk] = ng, nx, ny, nz, k
-                push(ng + h(nx, ny, nz), nk)
+                HD[nk] = (di <= 4) and di or hd
+                push(ng + h(nx, ny, nz) * 1.001, nk)
               end
             end
           end
@@ -2137,6 +2271,7 @@ gearString = function()
   if slotOf(isPick) then g[#g + 1] = "pick" end
   if slotOf(isFuel) then g[#g + 1] = "fuel" end
   if findItem(CONFIG.geoItem) then g[#g + 1] = "scanner" end
+  if canCraft and canCraft() then g[#g + 1] = "crafter" end
   local np = 0
   for _ in pairs(S.warps or {}) do np = np + 1 end
   if warpCore() then g[#g + 1] = "warp core (equipped, " .. np .. " points)"
@@ -2304,7 +2439,7 @@ function sweep(cx, cy, cz, radius, skip)
   for id in tostring(skip or ""):gmatch("%d+") do skipSet[tonumber(id)] = true end
   -- progress is saved after every spot: the same search started again
   -- (after a STOP or a restart) continues where it was
-  local SWEEP_FILE = "node_sweep"
+  local SWEEP_FILE = "node_sweep" .. COPYSFX
   local key = cx .. "," .. cy .. "," .. cz .. "," .. radius
   local first = 1
   if fs.exists(SWEEP_FILE) then
@@ -2398,6 +2533,59 @@ function sweep(cx, cy, cz, radius, skip)
                       (#rescued > 0 and (" (" .. table.concat(rescued, ", ") .. ")") or ""))
 end
 
+-- SEARCH PARTY: one Geo Scanner look around - where are turtle blocks? (the base
+-- works out which lost turtle it is and sends the RESCUER to that exact block;
+-- the rescuer checks the ID before it touches a turtle)
+-- nothing above me in this scan (dx = dz = 0, dy > 0): I am at the surface / in the air
+function openSkyIn(data)
+  for _, b in ipairs(data) do
+    if type(b) == "table" and (b.x or 0) == 0 and (b.z or 0) == 0 and (b.y or 0) > 0 then return false end
+  end
+  return true
+end
+function findTurtles(floor)
+  task = "search party: looking around"
+  if not findItem(CONFIG.geoItem) then return false, "I have no Geo Scanner - I only help by loading the area" end
+  -- in the air above the spot: drop straight down to just above the ground (stops at the
+  -- first block below - no digging; never below `floor`), look there, then back up
+  local went = 0
+  if floor and S.pos and S.pos.y then
+    task = "search party: going down to look"
+    while went < 250 and S.pos.y - 1 >= floor and not turtle.detectDown() and not stopFlag do
+      if not down() then break end
+      went = went + 1
+    end
+    task = "search party: looking around"
+  end
+  local data, r = scanRaw(16)
+  if not data then data, r = scanRaw(8) end
+  if not data then return false, "the scan did not work" end
+  local seen = {}
+  for _, b in ipairs(data) do
+    local n = type(b) == "table" and tostring(b.name) or ""
+    if n:find("turtle", 1, true) and not n:find("egg", 1, true) and not n:find("scute", 1, true)
+       and not ((b.x or 0) == 0 and (b.y or 0) == 0 and (b.z or 0) == 0) and #seen < 20 then
+      seen[#seen + 1] = { x = S.pos.x + b.x, y = S.pos.y + b.y, z = S.pos.z + b.z }
+    end
+  end
+  send("turtlesseen", { seen = seen })
+  -- the same scan goes onto the MAP (the party is far from home anyway) - only
+  -- with open sky above me: underground every column "ends" at the scan's top
+  local mapped = ""
+  if openSkyIn(data) then
+    local okS = pcall(sendSummary, data, r)
+    if okS then mapped = " + map updated" end
+  end
+  -- back up to where it was (the next spot is reached through the air)
+  local back = 0
+  while back < went and not stopFlag do
+    if not up() then break end
+    back = back + 1
+  end
+  return true, "looked around (radius " .. tostring(r) .. (went > 0 and (", " .. went .. " blocks down") or "") ..
+               "): " .. #seen .. " turtle(s) seen" .. mapped
+end
+
 function rescue(tid, x, y, z, mode, radius)
   if S.anchor then return false, "I am the ANCHOR - send another turtle" end
   task = "rescue: looking for turtle " .. tid
@@ -2415,8 +2603,291 @@ end
 ---------------------------------------------------------------------
 -- commands
 ---------------------------------------------------------------------
+-- BUILD a new turtle (the base's factory). Layout at my home:
+--   the parts chest next to me (the one holding a turtle item - found by
+--   turning round), the spot on the OTHER side of me free (the new turtle
+--   goes there), the block above me and the one above the new turtle free.
+-- I carry a Disk Drive + the install floppy + a pickaxe (the rescue kit).
+-- The new turtle gets everything that came out of the chest (gear, fuel); it
+-- boots from my drive above it, installs node.lua and reports to the base.
+function invSnapshot()
+  local s = {}
+  for i = 1, 16 do
+    local d = turtle.getItemDetail(i)
+    s[i] = d and { name = d.name, count = d.count } or nil
+  end
+  return s
+end
+function isTurtleItem(n) return n:find("computercraft:turtle", 1, true) ~= nil end
+function chestHasTurtle()
+  local okI, inv = pcall(peripheral.hasType, "front", "inventory")
+  local okT, isT = pcall(peripheral.hasType, "front", "turtle")
+  if not (okI and inv) or (okT and isT) then return false end
+  local okL, list = pcall(peripheral.call, "front", "list")
+  for _, it in pairs(okL and list or {}) do if isTurtleItem(it.name) then return true end end
+  return false
+end
+-- ===== CRAFTING (a crafty turtle: a crafting table equipped) =====
+-- Recipes are TAUGHT, not written here (modpacks change them): you lay the
+-- ingredients in my 3x3 grid, LEARN RECIPE crafts once and the base keeps
+-- "this layout makes X". The factory then puts exactly the ingredients into
+-- the chest next to me and sends "craft": I take them, lay them out, craft and
+-- put everything back into the chest (the base stores it in AE2).
+GRID = { 1, 2, 3, 5, 6, 7, 9, 10, 11 }
+ISGRID = {}
+for _, s in ipairs(GRID) do ISGRID[s] = true end
+function canCraft() return type(turtle.craft) == "function" end
+
+function learnRecipe()
+  if not canCraft() then return false, "I have no crafting table equipped (I am not a crafty turtle)" end
+  for i = 1, 16 do
+    local d = turtle.getItemDetail(i)
+    if d and not ISGRID[i] then
+      return false, "only my 3x3 grid (slots 1-3, 5-7, 9-11) may hold the ingredients - slot " .. i .. " has " .. d.name
+    end
+  end
+  local grid, any = {}, false
+  for k, s in ipairs(GRID) do
+    local d = turtle.getItemDetail(s)
+    grid[k] = d and d.name or ""
+    if d then any = true end
+  end
+  if not any then return false, "put the ingredients into my 3x3 grid first (like a crafting table)" end
+  turtle.select(16)
+  local ok, err = turtle.craft(1)
+  turtle.select(1)
+  if not ok then return false, "these items in this layout make nothing" .. (err and (" (" .. tostring(err) .. ")") or "") end
+  local out = turtle.getItemDetail(16)
+  if not out then
+    for i = 1, 16 do
+      local d = not ISGRID[i] and turtle.getItemDetail(i)
+      if d then out = d break end
+    end
+  end
+  if not out then return false, "crafted, but I cannot see what came out" end
+  send("recipe", { recipe = { out = out.name, count = out.count, grid = grid } })
+  return true, "learned: this layout makes " .. out.count .. " x " .. out.name .. " - take the items out of me"
+end
+
+-- the factory's "craft": gridText = the 9 grid item names ("" = empty), times
+-- = how many crafts (<= 64). I must be EMPTY (never mix your items in).
+function craftRecipe(gridText, times)
+  task = "crafting"
+  if not canCraft() then return false, "I have no crafting table equipped" end
+  times = math.max(1, math.min(64, math.floor(tonumber(times) or 1)))
+  local want, k = {}, 0
+  for name in (tostring(gridText or "") .. ","):gmatch("([^,]*),") do
+    k = k + 1
+    if GRID[k] and name ~= "" then want[GRID[k]] = name end
+  end
+  if not next(want) then return false, "no recipe given" end
+  for i = 1, 16 do
+    if turtle.getItemCount(i) > 0 then return false, "I must be EMPTY to craft - take the items out of me" end
+  end
+  -- the chest with the ingredients: turn until it is in front
+  local found = false
+  for _ = 1, 4 do
+    local okL, l = pcall(peripheral.call, "front", "list")
+    if okL and type(l) == "table" and next(l) then found = true break end
+    right()
+  end
+  if not found then return false, "no chest with the ingredients next to me" end
+  for i = 1, 16 do
+    turtle.select(i)
+    if not turtle.suck() then break end
+  end
+  local function allBack(why)
+    for i = 1, 16 do
+      if turtle.getItemCount(i) > 0 then turtle.select(i) turtle.drop() end
+    end
+    turtle.select(1)
+    return false, why .. " - everything is back in the chest"
+  end
+  -- lay it out: every grid slot exactly `times` of its item, nothing else anywhere
+  local fixed = {}
+  local function freeSlot(skip)
+    for pass = 1, 2 do
+      for i = 16, 1, -1 do
+        if turtle.getItemCount(i) == 0 and not fixed[i] and i ~= skip and (pass == 2 or not want[i]) then return i end
+      end
+    end
+  end
+  for _, s in ipairs(GRID) do
+    local t = want[s]
+    local d = turtle.getItemDetail(s)
+    if d and (d.name ~= t or d.count > times) then
+      local f = freeSlot(s)
+      if not f then return allBack("no room to sort the ingredients") end
+      turtle.select(s)
+      turtle.transferTo(f, (d.name == t) and (d.count - times) or d.count)
+    end
+    if t then
+      for _ = 1, 32 do
+        if turtle.getItemCount(s) >= times then break end
+        local src
+        for i = 1, 16 do
+          if i ~= s and not fixed[i] then
+            local dd = turtle.getItemDetail(i)
+            if dd and dd.name == t then src = i break end
+          end
+        end
+        if not src then return allBack("not enough " .. t .. " in the chest") end
+        turtle.select(src)
+        turtle.transferTo(s, times - turtle.getItemCount(s))
+      end
+      if turtle.getItemCount(s) < times then return allBack("not enough " .. t .. " in the chest") end
+    end
+    fixed[s] = true
+  end
+  for i = 1, 16 do                                 -- (more than needed: back)
+    if not ISGRID[i] and turtle.getItemCount(i) > 0 then turtle.select(i) turtle.drop() end
+  end
+  turtle.select(16)
+  local ok, err = turtle.craft(times)
+  if not ok then return allBack("the craft did not work (" .. tostring(err or "wrong recipe?") .. ")") end
+  local made = {}
+  for i = 1, 16 do
+    local d = turtle.getItemDetail(i)
+    if d and not ISGRID[i] then made[#made + 1] = d.count .. " " .. d.name end
+  end
+  for i = 1, 16 do
+    if turtle.getItemCount(i) > 0 then turtle.select(i) turtle.drop() end
+  end
+  turtle.select(1)
+  return true, "crafted " .. table.concat(made, ", ")
+end
+
+function build()
+  task = "building a turtle"
+  if not (slotOf(isDrive) and slotOf(isFloppy)) then return false, "I need a Disk Drive and the install floppy" end
+  if not slotOf(isPick) then return false, "I need a pickaxe (to take my Disk Drive back)" end
+  -- the parts chest: turn until it is in front
+  local found = false
+  for _ = 1, 4 do
+    if chestHasTurtle() then found = true break end
+    right()
+  end
+  if not found then return false, "no chest with a turtle in it next to me (the base puts the parts there)" end
+  -- take everything out of it; only what came from the chest goes into the new turtle
+  local before = invSnapshot()
+  for i = 1, 16 do
+    if turtle.getItemCount(i) == 0 then
+      turtle.select(i)
+      if not turtle.suck() then break end
+    end
+  end
+  turtle.select(1)
+  -- something left in the chest (my inventory was too full): the new turtle
+  -- would miss parts - all back, nothing built
+  local okL, rest = pcall(peripheral.call, "front", "list")
+  local leftOver = okL and type(rest) == "table" and next(rest) ~= nil
+  local after = invSnapshot()
+  local added = {}
+  for i = 1, 16 do
+    local a, b = after[i], before[i]
+    local n = a and (a.count - ((b and b.name == a.name) and b.count or 0)) or 0
+    if n > 0 then added[i] = n end
+  end
+  local function giveBack(why)
+    -- (before the new turtle is placed: the parts back into the chest)
+    for i, n in pairs(added) do
+      if turtle.getItemCount(i) > 0 then turtle.select(i) turtle.drop(math.min(n, turtle.getItemCount(i))) end
+    end
+    turtle.select(1)
+    return false, why .. " - the parts are back in the chest"
+  end
+  if leftOver then return giveBack("not enough room in my inventory for all the parts") end
+  local ts
+  for i in pairs(added) do
+    local d = turtle.getItemDetail(i)
+    if d and isTurtleItem(d.name) then ts = i end
+  end
+  if not ts then return giveBack("no turtle came out of the chest") end
+  -- the build spot: the other side of me
+  right() right()
+  if turtle.detect() then left() left() return giveBack("the spot for the new turtle (opposite the chest) is not free") end
+  if turtle.detectUp() then left() left() return giveBack("the block above me is not free") end
+  turtle.select(ts)
+  if not turtle.place() then turtle.select(1) left() left() return giveBack("could not place the new turtle") end
+  added[ts] = added[ts] - 1
+  -- its gear and fuel: into it
+  for i, n in pairs(added) do
+    if n > 0 and turtle.getItemCount(i) > 0 then
+      turtle.select(i)
+      turtle.drop(math.min(n, turtle.getItemCount(i)))
+    end
+  end
+  turtle.select(1)
+  local okId, newId = pcall(peripheral.call, "front", "getID")
+  -- my Disk Drive above it, with the install floppy
+  if not up() then return false, "could not go up to place the Disk Drive (new turtle " .. tostring(newId) .. " is placed)" end
+  if turtle.detect() then down() return false, "the block above the new turtle is not free (it is placed, not started)" end
+  turtle.select(slotOf(isDrive))
+  if not turtle.place() then turtle.select(1) down() return false, "could not place the Disk Drive" end
+  turtle.select(slotOf(isFloppy))
+  turtle.drop(1)
+  turtle.select(1)
+  down()
+  -- switch it on: it boots from the floppy, installs node.lua and starts it
+  task = "starting the new turtle " .. tostring(newId)
+  local okOn, on = pcall(peripheral.call, "front", "isOn")
+  if okOn and on then pcall(peripheral.call, "front", "reboot") else pcall(peripheral.call, "front", "turnOn") end
+  sleep(12)
+  -- my drive and floppy back
+  local msg = "built turtle " .. tostring(newId)
+  if up() then
+    turtle.suck()                                      -- the floppy
+    if not withEquipped("_pickaxe", turtle.dig) then msg = msg .. " (could not take my Disk Drive back)" end
+    down()
+  else
+    msg = msg .. " (could not get back up to my Disk Drive)"
+  end
+  turtle.select(1)
+  return true, msg
+end
+
+-- MINE UP: straight up to the surface, digging NATURAL blocks only (tryDig: with
+-- its pickaxe, never near home, never anything built). top = the surface height
+-- from the base's map (+1); unknown: up until 6 free blocks in a row (open air)
+function digUp(top)
+  task = "mining up to the surface"
+  local free, fails = 0, 0
+  for _ = 1, 400 do
+    if stopFlag then return false, "stopped at " .. fmt() end
+    local y = S.pos and S.pos.y
+    if top and y and y >= top and not turtle.detectUp() then return true, "at the surface: " .. fmt() end
+    if not top and free >= 6 then return true, "in the open (6 free blocks above where I was): " .. fmt() end
+    if y and y >= 318 then return true, "at the top of the world: " .. fmt() end
+    if turtle.detectUp() then
+      free = 0
+      if not tryDig("up") then
+        local okI, b = turtle.inspectUp()
+        local name = okI and type(b) == "table" and tostring(b.name) or "?"
+        local nearHome = S.home and S.pos and S.pos.x and math.abs(S.pos.x - S.home.x) + math.abs(S.pos.z - S.home.z) <
+                         (tonumber(CONFIG.digNearHome) or 24)
+        return false, "cannot mine up through " .. name .. " at " .. fmt() ..
+               (nearHome and " (too close to home - no digging there)"
+                or (natural(name) and " (no pickaxe?)" or " (not a natural block - never dug)"))
+      end
+    end
+    if up() then
+      fails = 0
+      if not turtle.detectUp() then free = free + 1 end
+    else
+      fails = fails + 1                       -- falling gravel / a mob: dig and try again
+      if fails >= 5 then return false, "cannot move up at " .. fmt() end
+    end
+  end
+  return false, "still not at the surface after 400 blocks: " .. fmt()
+end
+
 function runJob(j)
   local a = j.args
+  -- rescue trips dig their way through natural blocks (with a pickaxe)
+  DIG_JOB = (j.cmd == "rescue" or j.cmd == "sweep" or j.cmd == "digup")
+  -- STUCK (the last trip failed) or "home dig": on the way home it may dig through
+  -- NATURAL blocks too (with its pickaxe; never near home, never anything built)
+  if j.cmd == "home" and (S.stuck or a[1] == "dig") then DIG_JOB = true end
   if S.anchor and (j.cmd == "survey" or j.cmd == "surveypts") then
     return false, "I am the ANCHOR (I keep the base loaded) - turn ANCHOR off first"
   end
@@ -2447,6 +2918,8 @@ function runJob(j)
       if not ok then return false, "blocked (" .. dir .. ") at " .. fmt() end
     end
     return true, dir .. " x" .. n .. " -> " .. fmt()
+  elseif j.cmd == "digup" then
+    return digUp(tonumber(a[1]))
   elseif j.cmd == "locate" then
     task = "GPS"
     return gpsFix()
@@ -2487,6 +2960,14 @@ function runJob(j)
     if type(j.left) == "table" and #j.left > 0 then pts = j.left end     -- continuing after a restart
     return surveyPoints(orderNearest(pts), r)
   end
+  if j.cmd == "craft" then
+    return craftRecipe(a[1], a[2])
+  elseif j.cmd == "findturtles" then
+    return findTurtles(tonumber(a[1]))
+  elseif j.cmd == "build" then
+    if S.anchor then return false, "I am the ANCHOR - send another turtle" end
+    return build()
+  end
   if j.cmd == "core" then
     task = "checking the End Automata Core"
     coreCheck()
@@ -2497,16 +2978,40 @@ function runJob(j)
   return false, "unknown command " .. tostring(j.cmd)
 end
 
--- write a new program over this one (the old one is kept as startup.old)
+-- write a new program over this one (the old one is kept as startup.old).
+-- SAFE ORDER: the new program goes into a temp file first and is checked (complete?);
+-- only then the files are swapped. Opening the program itself for writing EMPTIES it -
+-- on a full disk the write then failed and left the turtle without a program.
+-- Any problem = error(), the running program stays as it is.
 function installUpdate(code)
+  local TMP = "startup.new"
+  local function writeTmp()
+    if fs.exists(TMP) then fs.delete(TMP) end
+    local h = fs.open(TMP, "w")
+    if not h then return false end
+    local ok = pcall(h.write, code)
+    pcall(h.close)
+    return ok and fs.exists(TMP) and fs.getSize(TMP) >= #code
+  end
+  if not writeTmp() then
+    -- no room: the old backup goes, then once more
+    if fs.exists("startup.old") then fs.delete("startup.old") end
+    if not writeTmp() then
+      if fs.exists(TMP) then fs.delete(TMP) end
+      error("update NOT installed: the disk is too full to write it (" .. tostring(fs.getFreeSpace("/")) ..
+            " bytes free, " .. #code .. " needed) - the old program keeps running", 0)
+    end
+  end
   if fs.exists("startup.old") then fs.delete("startup.old") end
-  if fs.exists(MYPATH) then fs.copy(MYPATH, "startup.old") end
-  local targets = { MYPATH }
-  if MYPATH ~= "startup.lua" and fs.exists("startup.lua") then targets[2] = "startup.lua" end
-  for _, path in ipairs(targets) do
-    local h = fs.open(path, "w")
-    h.write(code)
-    h.close()
+  if fs.exists(MYPATH) then fs.move(MYPATH, "startup.old") end     -- (a move needs no room)
+  fs.move(TMP, MYPATH)
+  if MYPATH ~= "startup.lua" and fs.exists("startup.lua") then
+    -- (started from another file name: startup.lua gets it too, as before)
+    pcall(function()
+      fs.delete("startup.lua")
+      fs.copy(MYPATH, "startup.lua")
+    end)
+    if not fs.exists("startup.lua") then pcall(fs.copy, "startup.old", "startup.lua") end
   end
 end
 
@@ -2635,7 +3140,41 @@ function immediate(cmd, a)
     if fs.exists(CRASH_FILE) then parts[#parts + 1] = "crash file present" end
     return true, table.concat(parts, " | ")
   elseif cmd == "status" then return true, "status sent"
+  elseif cmd == "dupstop" then
+    -- I am an extra copy (server crash): stop for good, say where I really am
+    DUP = true
+    stopFlag = true
+    os.queueEvent("node_stop")
+    task = "DUPLICATE copy - stopped (break me)"
+    local x, y, z = gpsRaw(2)
+    if x then S.pos = { x = x, y = y, z = z, f = S.pos and S.pos.f } end
+    return true, "stopped: I am a DUPLICATE copy of this turtle" .. (x and (" at " .. x .. " " .. y .. " " .. z) or "")
+  elseif cmd == "becomecopy" then
+    -- I am an extra copy: become a turtle of my own - a tagged name (kept in the
+    -- turtle block), my own files, then a restart (finds its place by GPS)
+    local k = tonumber(a[1])
+    if not k or k < 1 then return false, "becomecopy needs a copy number" end
+    DUP = true                                   -- (nothing more into the shared files)
+    stopFlag = true
+    os.queueEvent("node_stop")
+    local name = (os.getComputerLabel() or ("Turtle " .. os.getComputerID())):gsub("%s*%[c%d+%]%s*$", "")
+    name = name .. " [c" .. k .. "]"
+    os.setComputerLabel(name)
+    local own = { reuse = S.reuse, refuelDone = S.refuelDone,
+                  rebootWhy = "as a COPY of turtle #" .. os.getComputerID() .. " (now its own turtle)" }
+    pcall(function()
+      local h = fs.open("node_state_c" .. k, "w")
+      h.write(textutils.serialize(own))
+      h.close()
+    end)
+    rebootSoon = true
+    return true, "I am a COPY of this turtle - now '" .. name .. "', restarting as a turtle of my own"
+  elseif cmd == "dupfree" then
+    DUP = false
+    task = "idle"
+    return true, "I am the real turtle again"
   elseif cmd == "stop" then
+    S.paused, NEXT_JOB, DRIVE_NEXT = nil, nil, nil   -- (a STOP is a stop: no going back to it)
     stopFlag = true
     if S.job then S.job = nil end            -- never continue it after a reload
     save()
@@ -2651,6 +3190,9 @@ function immediate(cmd, a)
     S.pos = { x = x, y = y, z = z, f = f }
     save()
     return true, "position set to " .. fmt() .. " facing " .. FNAME[f]
+  elseif cmd == "learnrecipe" then
+    if job then return false, "busy: " .. tostring(task) .. " (press STOP first)" end
+    return learnRecipe()
   elseif cmd == "homeoffer" then
     -- the base offers a home (next to another turtle's): taken only if I have none
     local x, y, z = tonumber(a[1]), tonumber(a[2]), tonumber(a[3])
@@ -2677,8 +3219,142 @@ function immediate(cmd, a)
     return true, "home set to " .. fmt() .. " (here)" .. (okW and " + warp point 'home' (GO HOME teleports)" or "")
   elseif cmd == "refuel" then
     return doRefuel()
+  elseif cmd == "drive" then
+    -- DRIVE page: one quick step by hand (never waits long), then what I see
+    if job then
+      if not HAND then return false, "busy: " .. tostring(task) .. " - press STOP first" end
+      if not canPause() then
+        return false, "busy: " .. tostring(task) .. " - it finishes this first (it cannot stop halfway), then try again"
+      end
+      local was = task
+      pauseForHand()
+      DRIVE_NEXT = { act = tostring(a[1] or ""), force = a[2] == "force" }
+      return true, "paused '" .. tostring(was) .. "' - your step comes right after"
+    end
+    local ok, msg = driveStep(tostring(a[1] or ""), a[2] == "force")
+    -- after every step it looks again: SCAN AROUND = radius 3, a step = radius 1
+    -- (with a Geo Scanner: left / right / behind too)
+    driveLook(tostring(a[1]) == "look" and 3 or 1)
+    return ok, msg
   end
   return nil
+end
+
+-- ===== DRIVE: the owner steers the turtle by hand (base DRIVE page) =====
+-- blocks a hand-dig never breaks (inventories, computers, machines): their items
+-- would spill or get lost
+DRIVE_KEEP = { "chest", "barrel", "shulker", "computer", "turtle", "drive", "storage", "ae2:", "spawner",
+               "furnace", "hopper", "dispenser", "dropper", "crate", "drawer", "monitor", "modem", "bed" }
+function driveKeep(name)
+  local n = tostring(name):lower()
+  for _, k in ipairs(DRIVE_KEEP) do if n:find(k, 1, true) then return true end end
+  return false
+end
+-- dig in direction d ("f" / "u" / "d"): natural blocks; anything else only with
+-- force (DIG ANYWAY on the base), never inventories / computers
+function driveDig(d, force)
+  local insp = (d == "u" and turtle.inspectUp) or (d == "d" and turtle.inspectDown) or turtle.inspect
+  local dig = (d == "u" and turtle.digUp) or (d == "d" and turtle.digDown) or turtle.dig
+  local okI, b = insp()
+  if not okI or type(b) ~= "table" then return true, "nothing to dig" end
+  local name = tostring(b.name)
+  if driveKeep(name) then return false, "will not dig " .. name .. " (its items would be lost)" end
+  local nearHome = S.home and S.pos and S.pos.x and math.abs(S.pos.x - S.home.x) + math.abs(S.pos.z - S.home.z) <
+                   (tonumber(CONFIG.digNearHome) or 24)
+  if not force and (not natural(name) or nearHome) then
+    return false, (nearHome and "close to home" or (name .. " is not a natural block")) ..
+                  " - DIG ANYWAY (two taps) if you are sure", "force"
+  end
+  if not findItemLike("_pickaxe") then return false, "no pickaxe in the inventory" end
+  local okD = withEquipped("_pickaxe", dig) == true
+  if not okD then return false, "could not dig " .. name end
+  return true, "dug " .. name
+end
+-- one try to move (a mob in the way: hit it once and try again), no long waits
+function driveMove(d)
+  ensureFuel()
+  local mv = (d == "u" and turtle.up) or (d == "d" and turtle.down) or (d == "b" and turtle.back) or turtle.forward
+  local att = (d == "u" and turtle.attackUp) or (d == "d" and turtle.attackDown) or turtle.attack
+  local ok = mv()
+  if not ok and d ~= "b" then pcall(att) sleep(0.3) ok = mv() end
+  if not ok then
+    if turtle.getFuelLevel() == 0 then return false, "no fuel" end
+    return false, "blocked"
+  end
+  if d == "u" then moved(0, 1, 0) frameMove("u")
+  elseif d == "d" then moved(0, -1, 0) frameMove("d")
+  elseif d == "b" then
+    if S.pos and S.pos.f then moved(-DX[S.pos.f], 0, -DZ[S.pos.f]) end
+    frameMove("b")
+  else
+    if S.pos and S.pos.f then moved(DX[S.pos.f], 0, DZ[S.pos.f]) end
+    frameMove("f")
+  end
+  S.stuck = nil
+  return true, "moved"
+end
+function driveStep(act, force)
+  task = "driven by hand"
+  local m = { f = "f", b = "b", u = "u", d = "d" }
+  if m[act] then return driveMove(m[act]) end
+  if act == "l" then left() return true, "turned left" end
+  if act == "r" then right() return true, "turned right" end
+  if act == "around" then right() right() return true, "turned around" end
+  -- go north / east / south / west (a tapped block on the base's grid): face it, then dig if needed + go
+  local gd = ({ gon = 0, goe = 1, gos = 2, gow = 3 })[act]
+  if gd then
+    if not (S.pos and S.pos.f) then return false, "facing unknown - GPS LOCATE first" end
+    local turns = (gd - S.pos.f) % 4
+    if turns == 1 then right() elseif turns == 2 then right() right() elseif turns == 3 then left() end
+    return driveStep("minef", force)
+  end
+  local dd = act:match("^dig([fud])$")
+  if dd then return driveDig(dd, force) end
+  local md = act:match("^mine([fud])$")
+  if md then
+    local okD, msgD, need = driveDig(md, force)
+    if not okD then return false, msgD, need end
+    for _ = 1, 4 do                                  -- falling sand / gravel: dig again
+      local okM = driveMove(md)
+      if okM then return true, msgD .. ", moved" end
+      local okD2 = driveDig(md, force)
+      if not okD2 then break end
+    end
+    return false, msgD .. ", but could not move"
+  end
+  if act == "look" then return true, "looked around" end
+  return false, "unknown drive step " .. act
+end
+-- what I see: front / up / down (always), and with look=true a Geo Scanner scan
+-- of radius 3 around me (compact "dx,dy,dz,name;..." in world directions)
+function driveLook(r)
+  if r == true then r = 3 end                        -- (older callers)
+  local function n(f) local ok, b = f() return ok and type(b) == "table" and tostring(b.name) or "air" end
+  local v = { front = n(turtle.inspect), up = n(turtle.inspectUp), down = n(turtle.inspectDown) }
+  local scan = r and r >= 1
+  if scan and findItem(CONFIG.geoItem) then
+    v.scanR = r
+    local data = withScanner(function(sc)
+      local res = sc.scan(r)
+      if not res and r >= 3 then sleep(2.5) res = sc.scan(r) end   -- (a step does not wait for the cooldown)
+      return res
+    end)
+    if type(data) == "table" then
+      local o = {}
+      for _, b in ipairs(data) do
+        if type(b) == "table" and b.name and not tostring(b.name):find("air", 1, true) then
+          o[#o + 1] = b.x .. "," .. b.y .. "," .. b.z .. "," .. tostring(b.name):gsub("^minecraft:", "")
+        end
+      end
+      v.scan = table.concat(o, ";")
+    elseif r >= 3 then
+      v.scanErr = "the scan did not work"
+    end
+  elseif scan and r >= 3 then
+    v.scanErr = "no Geo Scanner - only front / up / down"
+  end
+  task = "idle"
+  send("look", v)
 end
 
 -- ===== fuel chest at home =====
@@ -2799,12 +3475,16 @@ end
 
 -- REFUEL: every slot, like before; a reusable item is used again and again (up
 -- to 10 s here - the rest it does by itself while idle). A new turtle does
--- this once by itself (worker), so nobody has to press REFUEL.
-function doRefuel()
+-- this once by itself (worker), so nobody has to press REFUEL - only up to
+-- FIRST_FUEL: enough to get out of the way (a new turtle stands on the factory's
+-- build spot); the rest it fills up by itself while idle, wherever it waits.
+FIRST_FUEL = 1000
+function doRefuel(first)
   S.refuelDone = true
   do
     local before = turtle.getFuelLevel()
-    local _, more = topUp(refuelTarget(), false, 200)
+    local _, more = topUp(first and math.min(refuelTarget(), FIRST_FUEL) or refuelTarget(), false, first and 2000 or 200)
+    if first then more = more or (S.reuse and next(S.reuse) ~= nil) end
     local names = {}
     for n in pairs(S.reuse or {}) do names[#names + 1] = n:gsub("^.*:", "") end
     if before == "unlimited" then return true, "fuel is unlimited on this server - nothing to do" end
@@ -2822,12 +3502,18 @@ function listener()
   while true do
     local id, m = rednet.receive(CONFIG.protocol)
     if type(m) == "table" and m.t == "cmd" and type(m.n) == "number"
+       and (m.ses == nil or m.ses == SESSION)          -- (meant for another copy of this ID)
+       and (tonumber(m.copy) or 0) == (COPY or 0)        -- (for the copy with that tag only)
+       and (not DUP or m.cmd == "dupfree" or m.cmd == "dupstop")
        and m.n > (S.lastN or 0) and m.sig == sign(CONFIG.key, m.t, m.n, m.cmd, m.args) then
       S.lastN = m.n
       save()
       baseId = id
       local a = type(m.args) == "table" and m.args or {}
+      HAND = m.hand == true and m.cmd ~= "stop"
+      if HAND then LAST_HAND = os.clock() end
       local okI, ok, msg = pcall(immediate, m.cmd, a)
+      HAND = false
       if not okI then ok, msg = false, "error in '" .. tostring(m.cmd) .. "': " .. tostring(ok) end
       if ok == nil and msg == "quiet" then
         -- handled, nothing to say
@@ -2839,9 +3525,17 @@ function listener()
           sleep(1)
           os.reboot()
         end
+      elseif job and m.hand == true and canPause() then
+        -- YOUR command: the job pauses, yours goes next
+        local was = task
+        pauseForHand()
+        NEXT_JOB = { cmd = m.cmd, args = a }
+        reply(m.cmd, true, "paused '" .. tostring(was) .. "' - doing your " .. m.cmd .. " now")
       elseif job then
-        reply(m.cmd, false, "busy: " .. task .. " (press STOP first)")
+        reply(m.cmd, false, "busy: " .. task .. (m.hand == true and " - it finishes this first (it cannot stop halfway), then try again"
+                                                  or " (press STOP first)"))
       else
+        if m.hand ~= true then S.paused = nil end      -- (a new order from the base replaces it)
         stopFlag = false
         job = { cmd = m.cmd, args = a }
       end
@@ -2924,7 +3618,8 @@ function worker()
         FORCE_STOP = false
         if not modemAttached or SLOT_LOCK or TOPUP_RUNNING then afterForcedStop() end
       end
-      job, task = nil, "idle"
+      job, task = nil, DUP and "DUPLICATE copy - stopped (break me)" or "idle"
+      DIG_JOB = false                            -- only during rescue trips
       S.job = nil                                -- finished, failed or stopped: forget it
       trailSave()
       if ok or tostring(msg):find("^stopped") then
@@ -2937,15 +3632,50 @@ function worker()
       end
       save()
       reply(j.cmd, ok and true or false, msg)
-      if UPD_READY then
+      -- paused for YOUR command: that one now
+      if NEXT_JOB then
+        job, NEXT_JOB, stopFlag = NEXT_JOB, nil, false
+      elseif DRIVE_NEXT then
+        local d = DRIVE_NEXT
+        DRIVE_NEXT, stopFlag = nil, false
+        local okD, okS, msgS = pcall(driveStep, d.act, d.force)
+        pcall(driveLook, d.act == "look" and 3 or 1)
+        reply("drive", okD and okS or false, okD and msgS or tostring(okS))
+      end
+      if S.paused and not job then task = pausedTask() or task end
+      if UPD_READY and not DUP and not job then
         -- an update arrived during the job: install it now
-        installUpdate(UPD_READY.code)
+        local okU, errU = pcall(installUpdate, UPD_READY.code)
         UPD_READY = nil
-        send("result", { cmd = "upd", ok = true, msg = "job done - update installed, restarting" })
-        S.rebootWhy = "after an update"
+        if okU then
+          send("result", { cmd = "upd", ok = true, msg = "job done - update installed, restarting" })
+          S.rebootWhy = "after an update"
+          save()
+          sleep(1)
+          os.reboot()
+        else
+          -- (not installed - e.g. the disk is full: the old program keeps running)
+          send("result", { cmd = "upd", ok = false, msg = tostring(errU) })
+        end
+      end
+    elseif S.paused then
+      -- a job paused for YOUR commands: back to it after resumeAfter s without one
+      if os.clock() - LAST_HAND >= (tonumber(CONFIG.resumeAfter) or 120) then
+        local p = S.paused
+        S.paused = nil
         save()
+        stopFlag = false
+        if p.idleAfter then
+          task = "idle"
+          send("result", { cmd = p.cmd, ok = true, msg = "no command from you for a while - free for survey work again" })
+        else
+          job = { cmd = p.cmd, args = p.args or {}, left = p.left, delay = 3 }
+          send("result", { cmd = p.cmd, ok = true, msg = "no command from you for a while - back to: " .. tostring(p.task or p.cmd) })
+        end
+      else
+        local tk = pausedTask()
+        if tk ~= task then task = tk end
         sleep(1)
-        os.reboot()
       end
     else
       -- idle: a core not checked yet - read its functions, test it (once)
@@ -2971,7 +3701,7 @@ function worker()
         S.refuelDone = true
       end
       if not S.refuelDone and not job and not SLOT_LOCK then
-        local okR, okR2, msgR = pcall(doRefuel)
+        local okR, okR2, msgR = pcall(doRefuel, true)
         S.refuelDone = true
         save()
         send("result", { cmd = "refuel", ok = okR and okR2 or false,
@@ -3097,7 +3827,7 @@ end
 -- the program must never just end: an error used to leave the turtle at its
 -- command prompt (offline, deaf to commands until rebooted by hand). Now the
 -- error is written down, the turtle restarts itself, and the base is told.
-CRASH_FILE = "node_crash"
+CRASH_FILE = "node_crash" .. COPYSFX
 if fs.exists(CRASH_FILE) then
   local h = fs.open(CRASH_FILE, "r")
   local t = textutils.unserialize(h.readAll() or "") or {}

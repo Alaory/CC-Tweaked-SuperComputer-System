@@ -58,8 +58,11 @@ local function dec2(s, p)
 end
 
 -- one cell as 4 bytes
-local function cell(h, b)
-  local v = math.max(0, math.min(65535, floor(h) + 64))
+-- partial = true (overview only): the chunk was only touched at its edge by a
+-- neighbouring scan; kept in the top bit of the height (heights stay < 32768)
+local function cell(h, b, partial)
+  local v = math.max(0, math.min(32767, floor(h) + 64))
+  if partial then v = v + 32768 end
   return char(floor(v / 256), v % 256, floor(b / 256), b % 256)
 end
 local EMPTY = "\0\0\0\0"
@@ -69,7 +72,10 @@ local function cellAt(L, i)
   local a, b, c, d
   if e then a, b, c, d = e:byte(1, 4) else a, b, c, d = L.d:byte(i * 4 + 1, i * 4 + 4) end
   if not d or (c == 0 and d == 0) then return nil end
-  return a * 256 + b - 64, c * 256 + d
+  local v = a * 256 + b
+  local partial = v >= 32768
+  if partial then v = v - 32768 end
+  return v - 64, c * 256 + d, partial
 end
 -- put the edits into the text (after a scan)
 local function pack(L, n)
@@ -93,7 +99,19 @@ end
 local function ckey(cx, cz) return (cx + 2097152) * 4194304 + (cz + 2097152) end
 -- file keys: detail "rx_rz", overview "o" .. "ox_oz"
 local function rkey(cx, cz) return floor(cx / REGION) .. "_" .. floor(cz / REGION) end
-local function okey(cx, cz) return "o" .. floor(cx / OVR) .. "_" .. floor(cz / OVR) end
+-- (cached by number: the map draws look this up thousands of times, and
+-- building the text every time is slow in the game's Lua)
+local OKEYS = {}
+local function okey(cx, cz)
+  local ox, oz = floor(cx / OVR), floor(cz / OVR)
+  local nk = (ox + 65536) * 131072 + (oz + 65536)
+  local k = OKEYS[nk]
+  if not k then
+    k = "o" .. ox .. "_" .. oz
+    OKEYS[nk] = k
+  end
+  return k
+end
 
 -- the detail chunk at cx, cz (made if `make`)
 local function chunkAt(cx, cz, make)
@@ -124,6 +142,12 @@ function MAP.get(x, z)
 end
 
 -- height, block of the chunk that holds x, z (overview), or nil
+-- is the chunk of x z really scanned (not just touched at its edge)?
+function MAP.scanned(x, z)
+  local h, _, partial = MAP.getOverview(x, z)
+  return h ~= nil and not partial
+end
+
 function MAP.getOverview(x, z)
   local cx, cz = floor(x / 16), floor(z / 16)
   local o = MAP.ov[okey(cx, cz)]
@@ -158,11 +182,13 @@ local function summarize(c)
   if n == 0 then return end
   local o = ovAt(c.cx, c.cz, true)
   local i = (c.cz % OVR) * OVR + (c.cx % OVR)
-  local had = cellAt(o, i)
-  if had and n < 128 then return end
+  local had, _, wasPartial = cellAt(o, i)
+  if had and n < 128 and not wasPartial then return end     -- a real overview: keep it
   if not had then MAP.ovN = MAP.ovN + 1 end
   o.e = o.e or {}
-  o.e[i] = cell(floor(sum / n + 0.5), best)
+  -- under half the chunk known (only the edge a neighbouring scan reaches):
+  -- shown, but marked PARTIAL - the survey still scans this chunk
+  o.e[i] = cell(floor(sum / n + 0.5), best, n < 128)
   MAP.dirty[o.r] = true
 end
 
@@ -214,6 +240,15 @@ end
 -- ===== files =====
 -- the "map" folders: data floppies, then the computer. On the computer the
 -- map may use at most CONFIG.map.computerKB (default 200 KB).
+-- files can be on this computer, a data floppy, or a storage helper
+-- ("store:<id>/map/<key>.dat", base_store.lua)
+local function dirOf(p) return tostring(p):match("^(.*)/[^/]*$") or "" end
+local function mExists(p) if STORE and STORE.isRemote(p) then return true end return fs.exists(p) end
+local function mDelete(p)
+  if STORE and STORE.isRemote(p) then pcall(STORE.delete, p) else pcall(fs.delete, p) end
+end
+MAP.rsize = {}        -- sizes of the files on storage helpers (key -> bytes)
+
 local function places()
   local out = {}
   for _, d in ipairs(mountedDisks()) do
@@ -223,26 +258,34 @@ local function places()
   free = okF and free or 0
   local onPc = 0
   for _, p in pairs(MAP.where) do
-    if fs.getDir(p) == DIR and fs.exists(p) then onPc = onPc + fs.getSize(p) end
+    if dirOf(p) == DIR and fs.exists(p) then onPc = onPc + fs.getSize(p) end
   end
   local cap = (tonumber(CONFIG.map.computerKB) or 200) * 1024 - onPc
-  out[#out + 1] = { dir = DIR, free = math.max(0, math.min(free, cap)), floppy = false }
+  -- never the last KB: the other data files (turtles, survey queue, logs ...) need them
+  local keep = (tonumber(CONFIG.map.keepFreeKB) or 96) * 1024
+  out[#out + 1] = { dir = DIR, free = math.max(0, math.min(free - keep, cap)), floppy = false }
+  -- storage helpers (after the floppies, before this computer)
+  for id, h in pairs(STORE and STORE.helpers or {}) do
+    if not h.refused then out[#out + 1] = { dir = "store:" .. id .. "/" .. DIR, free = h.free or 0, remote = id } end
+  end
   return out
 end
 
 -- n cells as text: per cell the height as the change from the cell before
 -- (1 char; "A" + 2 chars = exact height) and the block (1 char; "/" + 2 chars
--- for big numbers), "~" = nothing, "*n" = the cell before n more times
+-- for big numbers), "~" = nothing, "*n" = the cell before n more times,
+-- "!" before a cell = PARTIAL (overview: only the edge of the chunk is known)
 local function cellsText(L, n, loc)
   local out, prev, run, ph = {}, nil, 0, 64
   for i = 0, n - 1 do
-    local h, b = cellAt(L, i)
+    local h, b, partial = cellAt(L, i)
     local tok = "~"
     if h then
       b = loc(b)
       local dh = h - ph
       ph = h
-      tok = ((dh >= -31 and dh <= 31) and c1(dh + 32) or ("A" .. enc2(h + 64))) ..
+      tok = (partial and "!" or "") ..
+            ((dh >= -31 and dh <= 31) and c1(dh + 32) or ("A" .. enc2(h + 64))) ..
             ((b < 63) and c1(b) or ("/" .. enc2(b)))
     end
     if tok == prev and run < 63 then
@@ -259,15 +302,17 @@ end
 -- text -> n cells as 4-byte text (glob: the file's block numbers -> the map's)
 local function readCells(s, n, glob)
   local out, p, i, ph, len = {}, 1, 0, 64, #s
-  local last, lastDh, lastAbs, lastB = EMPTY, 0, false, 0
+  local last, lastDh, lastAbs, lastB, lastP, nextP = EMPTY, 0, false, 0, false, false
   while p <= len and i < n do
     local ch = s:sub(p, p)
-    if ch == "*" then
+    if ch == "!" then
+      nextP, p = true, p + 1                -- the next cell is partial
+    elseif ch == "*" then
       for _ = 1, DEC[s:sub(p + 1, p + 1)] or 0 do
         if i >= n then break end
         if last ~= EMPTY and not lastAbs then
           ph = ph + lastDh
-          last = cell(ph, lastB)
+          last = cell(ph, lastB, lastP)
         end
         out[i + 1], i = last, i + 1
       end
@@ -286,7 +331,8 @@ local function readCells(s, n, glob)
       if bch == "/" then b, p = glob[dec2(s, p + 1) or 0], p + 3
       else b, p = glob[DEC[bch] or 0], p + 1 end
       lastB = b or MAP.pal("unknown")
-      last = cell(ph, lastB)
+      lastP, nextP = nextP, false
+      last = cell(ph, lastB, lastP)
       out[i + 1], i = last, i + 1
     end
   end
@@ -328,13 +374,9 @@ local function fileText(key)
 end
 
 -- read one map file into memory (old "O" ore lines are skipped)
-local function readFile(path)
-  local h = fs.open(path, "r")
-  if not h then return end
+local function readText(text)
   local glob, nloc = {}, 0
-  while true do
-    local line = h.readLine()
-    if not line then break end
+  for line in tostring(text or ""):gmatch("[^\n]+") do
     local tag = line:sub(1, 1)
     if tag == "P" then
       glob[nloc] = MAP.pal(line:sub(3))
@@ -355,7 +397,22 @@ local function readFile(path)
       end
     end
   end
+end
+local function readFile(path)
+  local h = fs.open(path, "r")
+  if not h then return end
+  local t = h.readAll()
   h.close()
+  readText(t)
+  return t
+end
+-- loading in the background (map worker): let the screen and the other
+-- workers run between files (no sleep - an event comes back at once)
+local function loadYield()
+  if MAP.loading and MAP.canYield and TT and TT.yieldCo == coroutine.running() then   -- (only in the map worker)
+    os.queueEvent("map_loading")
+    os.pullEvent("map_loading")
+  end
 end
 
 -- write one file where it fits: a data floppy first (the one it is on, else
@@ -365,18 +422,27 @@ local function writeFile(key, text, plc)
   local need = #text + 4096                       -- the same check as saveFileSafe
   local order = {}
   for _, p in ipairs(plc) do order[#order + 1] = p end
+  local function rank(p) return p.floppy and 3 or (p.remote and 2 or 1) end
   table.sort(order, function(a, b)
-    if a.floppy ~= b.floppy then return a.floppy end
-    local aOld, bOld = old and fs.getDir(old) == a.dir, old and fs.getDir(old) == b.dir
+    if rank(a) ~= rank(b) then return rank(a) > rank(b) end
+    local aOld, bOld = old and dirOf(old) == a.dir, old and dirOf(old) == b.dir
     if aOld ~= bOld then return aOld end
     return a.free > b.free
   end)
   for _, p in ipairs(order) do
-    local path = fs.combine(p.dir, key .. ".dat")
+    local path = p.dir .. "/" .. key .. ".dat"
     if p.free >= need then
-      pcall(fs.makeDir, p.dir)
-      if saveFileSafe(path, text) then
-        if old and old ~= path and fs.exists(old) then pcall(fs.delete, old) end
+      local ok
+      if p.remote then
+        ok = STORE.write(path, text)
+        if ok then MAP.rsize[key] = #text end
+      else
+        pcall(fs.makeDir, p.dir)
+        ok = saveFileSafe(path, text)
+      end
+      if ok then
+        if old and old ~= path and mExists(old) then mDelete(old) end
+        if not p.remote then MAP.rsize[key] = nil end
         MAP.where[key] = path
         p.free = p.free - #text
         return true
@@ -391,8 +457,9 @@ end
 -- detail does not fit, its oldest quarter is dropped (up to four times - the
 -- overview keeps those chunks). noTrim = never drop anything.
 function MAP.save(toDisks, noTrim)
+  if not MAP.loaded then return false end          -- half-read map: never written over the files
   if toDisks then
-    for k, p in pairs(MAP.where) do if fs.getDir(p) == DIR then MAP.dirty[k] = true end end
+    for k, p in pairs(MAP.where) do if dirOf(p) == DIR then MAP.dirty[k] = true end end
   end
   if not next(MAP.dirty) then return true end
   local dropped = 0
@@ -403,7 +470,7 @@ function MAP.save(toDisks, noTrim)
       if t then
         keys[#keys + 1], texts[k] = k, t
       else                                           -- nothing left in it: delete the file
-        if MAP.where[k] and fs.exists(MAP.where[k]) then pcall(fs.delete, MAP.where[k]) end
+        if MAP.where[k] and mExists(MAP.where[k]) then mDelete(MAP.where[k]) end
         MAP.where[k], MAP.dirty[k] = nil, nil
       end
     end
@@ -442,6 +509,30 @@ function MAP.save(toDisks, noTrim)
   end
   MAP.savedAt = os.clock()
   return not next(MAP.dirty)
+end
+
+-- map files on THIS computer move to the data floppies / storage helpers when
+-- they have room: only CHANGED files are written, so the ones saved on the
+-- computer before (no floppy / helper yet, or they were full) stayed there and
+-- filled its 1 MB. mapWorker: every 10 min, every minute when the disk is low.
+-- Returns how many moved.
+function MAP.offload()
+  if not MAP.loaded then return 0 end
+  local before = 0
+  for _, p in pairs(MAP.where) do if dirOf(p) == DIR then before = before + 1 end end
+  if before == 0 then return 0 end
+  local room = 0
+  for _, pl in ipairs(places()) do if pl.floppy or pl.remote then room = room + (pl.free or 0) end end
+  if room < 8192 then return 0 end
+  pcall(MAP.save, true, true)                      -- (never drops anything)
+  local after = 0
+  for _, p in pairs(MAP.where) do if dirOf(p) == DIR then after = after + 1 end end
+  local moved = before - after
+  if moved > 0 and sysLog then
+    sysLog("Map: moved " .. moved .. " map file(s) off this computer onto the floppies / storage helpers" ..
+           (after > 0 and (" (" .. after .. " still here - no room left)") or ""), "INFO")
+  end
+  return moved
 end
 
 -- save if something changed and the last save is a minute ago (comms worker)
@@ -487,6 +578,11 @@ function MAP.floppySpace()
   for _, d in ipairs(mountedDisks()) do
     if d.data then free, count = free + (d.free or 0), count + 1 end
   end
+  -- storage helpers count as room for the map too
+  if STORE then
+    local hf, hn = STORE.space()
+    free, count = free + hf, count + hn
+  end
   return free, count
 end
 
@@ -497,11 +593,14 @@ function MAP.checkSpace()
     local got = MAP.claimEmptyFloppies()
     if got > 0 then
       setToast(got .. " new floppy disk(s) are now used for the map", C.good)
+      if sysLog then sysLog(got .. " new floppy disk(s) are now used for the map", "DONE") end
       free, count = MAP.floppySpace()
     end
   end
   local failed = next(MAP.dirty) ~= nil
   local dropping = (MAP.lastDrop or 0) > 0             -- room was made by dropping detail
+  -- no room for more map: auto-map pauses (MAP.autoTick) until there is
+  MAP.full = failed or (dropping and free < LOW_KB * 1024)
   if free >= LOW_KB * 1024 and not failed and not dropping then
     if state.diskLow and state.diskLow:find("floppies", 1, true) then state.diskLow = nil end
     return
@@ -515,6 +614,7 @@ function MAP.checkSpace()
   if os.clock() - lastWarn >= 1800 or failed and os.clock() - lastWarn >= 300 then
     lastWarn = os.clock()
     setPopup("MAP FLOPPIES", msg, failed and C.bad or C.warn)
+    if sysLog then sysLog(msg, failed and "ERROR" or "WARNING") end
     if state.owner then chatTell(state.owner, msg) end
   end
 end
@@ -522,11 +622,13 @@ end
 -- how much room the map files take: total bytes, on the computer, files
 function MAP.diskUse()
   local total, onPc, files = 0, 0, 0
-  for _, p in pairs(MAP.where) do
-    if fs.exists(p) then
+  for k, p in pairs(MAP.where) do
+    if STORE and STORE.isRemote(p) then
+      total, files = total + (MAP.rsize[k] or 0), files + 1
+    elseif fs.exists(p) then
       local s = fs.getSize(p)
       total, files = total + s, files + 1
-      if fs.getDir(p) == DIR then onPc = onPc + s end
+      if dirOf(p) == DIR then onPc = onPc + s end
     end
   end
   return total, onPc, files
@@ -534,14 +636,16 @@ end
 
 -- forget everything (e.g. scans made with wrong coordinates)
 function MAP.clear()
+  if not MAP.loaded then return false end          -- still reading it: the rest would come back
   MAP.version = MAP.version + 1
-  for _, p in pairs(MAP.where) do if fs.exists(p) then pcall(fs.delete, p) end end
+  for _, p in pairs(MAP.where) do if mExists(p) then mDelete(p) end end
   MAP.ch, MAP.order, MAP.ov, MAP.where, MAP.dirty = {}, {}, {}, {}, {}
   MAP.names, MAP.nameIdx = {}, {}
   MAP.scans, MAP.tick, MAP.ovN = 0, 0, 0
   for _, p in ipairs({ CONFIG.map.file, dataFile(CONFIG.map.file, true) }) do
     if fs.exists(p) then pcall(fs.delete, p) end
   end
+  return true
 end
 
 -- the old single map file (map.dat, before region files): read it once
@@ -581,20 +685,41 @@ end
 -- read every map file (computer and data floppies); convert an old map.dat;
 -- build the overview of chunks that have none yet
 function MAP.load()
+  -- the storage helpers first (their list is needed for places())
+  if STORE and next(STORE.known) then pcall(STORE.find, true) end   -- only helpers seen before (fast)
   for _, p in ipairs(places()) do
-    if fs.exists(p.dir) and fs.isDir(p.dir) then
+    if p.remote then
+      -- a storage helper: list its map files, read them in a few big requests
+      local okL, list = pcall(STORE.list, p.remote, DIR)
+      local want = {}
+      for f, size in pairs(okL and list or {}) do
+        local k = f:match("^(o?%-?%d+_%-?%d+)%.dat$")
+        if k and not MAP.where[k] then
+          want[#want + 1] = f
+          MAP.where[k] = p.dir .. "/" .. f
+          MAP.rsize[k] = size
+        end
+      end
+      local i = 1
+      while i <= #want do
+        local batch = {}
+        for j = i, math.min(#want, i + 19) do batch[#batch + 1] = DIR .. "/" .. want[j] end
+        local okR, files = pcall(STORE.readMany, p.remote, batch)
+        local got = 0
+        for name, text in pairs(okR and files or {}) do pcall(readText, text) got = got + 1 end
+        loadYield()
+        if got == 0 then break end                 -- helper gone: the rest stays unread this time
+        i = i + got
+      end
+    elseif fs.exists(p.dir) and fs.isDir(p.dir) then
       for _, f in ipairs(fs.list(p.dir)) do
         local k = f:match("^(o?%-?%d+_%-?%d+)%.dat$")
         if k and not MAP.where[k] then              -- a file twice: the first one counts
           MAP.where[k] = fs.combine(p.dir, f)
-          pcall(readFile, MAP.where[k])
+          local okR, t = pcall(readFile, MAP.where[k])
           -- an old detail file with ore lines: write it again without them
-          if k:sub(1, 1) ~= "o" then
-            local h = fs.open(MAP.where[k], "r")
-            local t = h and h.readAll() or ""
-            if h then h.close() end
-            if t:find("\nO ", 1, true) then MAP.dirty[k] = true end
-          end
+          if okR and type(t) == "string" and k:sub(1, 1) ~= "o" and t:find("\nO ", 1, true) then MAP.dirty[k] = true end
+          loadYield()
         end
       end
     end
@@ -608,8 +733,11 @@ function MAP.load()
   end
   -- every detail chunk must be in the overview (older saves had no overview)
   countOverview()
+  -- and older saves stored edge-only chunks as if they were fully mapped:
+  -- summarize again (marks them partial, so a survey scans them properly)
   for _, c in pairs(MAP.ch) do
-    if not MAP.getOverview(c.cx * 16, c.cz * 16) then summarize(c) end
+    local h, _, partial = MAP.getOverview(c.cx * 16, c.cz * 16)
+    if not h or not partial then summarize(c) end
   end
   for _, o in pairs(MAP.ov) do pack(o, OVR * OVR) end
   table.sort(MAP.order, function(a, b) return MAP.ch[a].s < MAP.ch[b].s end)
@@ -617,6 +745,7 @@ function MAP.load()
   if next(oldFiles) then
     -- the old file goes once everything is saved; if the map does not fit next
     -- to it, it goes first (everything is in memory) and the map gets its room
+    MAP.loaded = true
     local ok = MAP.save(false, true)
     for f in pairs(oldFiles) do pcall(fs.delete, f) end
     if not ok then MAP.save() end
@@ -624,10 +753,33 @@ function MAP.load()
   MAP.version = MAP.version + 1
 end
 
+-- the map is read in the background after the start (map worker); until then
+-- scans wait here, nothing is saved and no survey is handed out
+MAP.loaded = false
+MAP.pendingScans = {}
+function MAP.loadNow()
+  if MAP.loaded then return end
+  MAP.loading = true
+  local ok, err = pcall(MAP.load)
+  MAP.loading = false
+  MAP.loaded = true
+  if not ok and setToast then setToast("Map loading error: " .. tostring(err), C.bad) end
+  local list = MAP.pendingScans
+  MAP.pendingScans = {}
+  for _, m in ipairs(list) do pcall(MAP.addScan, m) end
+  MAP.version = MAP.version + 1
+  os.queueEvent("inv_update")
+end
+
 -- a scan summary from a turtle (node.lua): absolute centre + relative data
 -- (the ores it also sends are not kept)
 function MAP.addScan(m)
   if type(m.cols) ~= "table" or type(m.names) ~= "table" then return end
+  if not MAP.loaded then
+    -- the map is still being read: this scan is added afterwards
+    if #MAP.pendingScans < 300 then MAP.pendingScans[#MAP.pendingScans + 1] = m end
+    return
+  end
   local x0, y0, z0 = tonumber(m.x), tonumber(m.y), tonumber(m.z)
   if not (x0 and y0 and z0) then return end
   local r = floor(tonumber(m.r) or 8)
@@ -739,7 +891,7 @@ end
 -- remember rotation, zoom and position (MAP tab) for the next start
 function MAP.saveView()
   local V = MAP.view()
-  saveFileSafe(VIEW_FILE, textutils.serialize({ rot = V.rot, zoom = V.zoom, cx = V.cx, cz = V.cz }))
+  saveFileSafe(VIEW_FILE, serialSmall({ rot = V.rot, zoom = V.zoom, cx = V.cx, cz = V.cz }))
 end
 
 -- the world area the map currently shows (x1, z1, x2, z2)
@@ -768,7 +920,9 @@ function MAP.surveySpots(x1, z1, x2, z2, r)
           if MAP.get(x + dx, z + dz) then known = known + 1 end
         end
       end
-      if known / total >= need then skipped = skipped + 1
+      if not MAP.inArea(x, z) then
+        -- outside the work area: never
+      elseif known / total >= need or MAP.scanned(x, z) then skipped = skipped + 1
       else spots[#spots + 1] = { x, z } end
     end
   end
@@ -785,17 +939,48 @@ local QUEUE_FILE = "survey_queue.dat"
 local BATCH = 64
 MAP.queue = nil      -- { x1, z1, x2, z2, r, cols, rows, cursor, sent, skipped, ids = {...} }
 
+-- kept on a data floppy when there is one (it can get big: the handed-out
+-- spots); the computer's copy only when no floppy takes it
 local function saveQueue()
-  if MAP.queue then saveFileSafe(QUEUE_FILE, textutils.serialize(MAP.queue))
-  elseif fs.exists(QUEUE_FILE) then pcall(fs.delete, QUEUE_FILE) end
+  local p = dataFile(QUEUE_FILE, true)
+  if MAP.queue then
+    local text = serialSmall(MAP.queue)
+    local ok = saveFileSafe(p, text)
+    if not ok and p ~= QUEUE_FILE then ok = saveFileSafe(QUEUE_FILE, text) p = QUEUE_FILE end
+    if ok and p ~= QUEUE_FILE and fs.exists(QUEUE_FILE) then pcall(fs.delete, QUEUE_FILE) end
+  else
+    if fs.exists(p) then pcall(fs.delete, p) end
+    if fs.exists(QUEUE_FILE) then pcall(fs.delete, QUEUE_FILE) end
+  end
 end
 do
-  if fs.exists(QUEUE_FILE) then
-    local h = fs.open(QUEUE_FILE, "r")
+  local qf = dataFile(QUEUE_FILE)
+  if not fs.exists(qf) then qf = QUEUE_FILE end
+  if fs.exists(qf) then
+    local h = fs.open(qf, "r")
     local t = h and textutils.unserialize(h.readAll() or "")
     if h then h.close() end
     if type(t) == "table" and t.cols then MAP.queue = t end
   end
+end
+
+-- the WORK AREA (SETTINGS > MAP: corner 1 + corner 2, x / z): turtles never
+-- get survey spots outside it. Not set = the whole world (up to the border).
+function MAP.area()
+  local a, b = CONFIG.map.areaA, CONFIG.map.areaB
+  if type(a) == "table" and a.x and a.z and type(b) == "table" and b.x and b.z then
+    return math.min(a.x, b.x), math.min(a.z, b.z), math.max(a.x, b.x), math.max(a.z, b.z)
+  end
+end
+function MAP.areaKey()
+  local x1, z1, x2, z2 = MAP.area()
+  return x1 and (x1 .. "," .. z1 .. "," .. x2 .. "," .. z2) or "world"
+end
+function MAP.inArea(x, z)
+  local border = tonumber(CONFIG.map.border) or 20000
+  if math.abs(x) > border or math.abs(z) > border then return false end
+  local x1, z1, x2, z2 = MAP.area()
+  return not x1 or (x >= x1 and x <= x2 and z >= z1 and z <= z2)
 end
 
 -- start a queued survey of an area (ids = the turtles to use, nil = all free ones)
@@ -806,53 +991,318 @@ function MAP.queueSurvey(x1, z1, x2, z2, r, ids)
     if t and t.held then t.held = nil TT.listDirty = true end
   end
   local step = 2 * r + 1
+  local old = MAP.queue
+  if old and old.auto then MAP.auto.cursor = old.cursor MAP.saveAuto() end     -- auto-map goes on later from here
+  -- never past the world border (a zoomed-out view shows far more than the world)
+  local border = tonumber(CONFIG.map.border) or 20000
+  x1, z1 = math.max(x1, -border), math.max(z1, -border)
+  x2, z2 = math.min(x2, border), math.min(z2, border)
+  -- and to the work area: nothing outside it
+  local ax1, az1, ax2, az2 = MAP.area()
+  if ax1 then
+    x1, z1, x2, z2 = math.max(x1, ax1), math.max(z1, az1), math.min(x2, ax2), math.min(z2, az2)
+  end
+  if x2 < x1 or z2 < z1 then return 0 end              -- nothing of it is in the work area: no survey
+  -- a SPIRAL from the point of the area nearest to the base (or the turtles):
+  -- the turtles start close to home and work outward - not at the far corner
+  local c = CONFIG.drone.home or state.basePos
+  if not (c and c.x) then
+    for _, id in ipairs(ids or TT.available()) do
+      local t = state.turtles[id]
+      if t and t.pos and t.pos.x then c = t.pos break end
+    end
+  end
+  local cx = (c and c.x) and math.floor(c.x) or math.floor((x1 + x2) / 2)
+  local cz = (c and c.z) and math.floor(c.z) or math.floor((z1 + z2) / 2)
+  cx, cz = math.max(x1, math.min(x2, cx)), math.max(z1, math.min(z2, cz))
+  local rad = math.ceil(math.max(cx - x1, x2 - cx, cz - z1, z2 - cz) / step)
   MAP.queue = { x1 = x1, z1 = z1, x2 = x2, z2 = z2, r = r, step = step,
-                cols = math.max(1, math.floor((x2 - x1) / step) + 1),
-                rows = math.max(1, math.floor((z2 - z1) / step) + 1),
+                spiral = true, rect = true, cx = cx, cz = cz,
+                cols = 2 * rad + 1, rows = 2 * rad + 1,
                 cursor = 0, sent = 0, skipped = 0, ids = ids }
+  if old then MAP.queue.redo, MAP.queue.out = old.redo, old.out end   -- nothing handed out is lost
   saveQueue()
-  return MAP.queue.cols * MAP.queue.rows
+  return (math.floor((x2 - x1) / step) + 1) * (math.floor((z2 - z1) / step) + 1)     -- spots in the area
+end
+
+-- is a survey spot done? Its own scan arrived (the spot's column is in the
+-- detail layer), or its chunk is fully in the overview. (Spots are 17 blocks
+-- apart, chunks 16: a done spot's chunk can stay half-covered until the
+-- neighbouring spot is scanned - that is not "undone".)
+function MAP.spotDone(x, z)
+  return MAP.get(x, z) ~= nil or MAP.scanned(x, z)
+end
+
+-- n-th position (0, 1, 2 ...) of a square spiral around 0,0: the centre first,
+-- then ring after ring outward
+local function spiral(n)
+  if n == 0 then return 0, 0 end
+  local k = math.ceil((math.sqrt(n + 1) - 1) / 2)    -- the ring
+  local side = 2 * k
+  local first = (2 * k - 1) * (2 * k - 1)            -- index of the ring's first spot
+  local m = n - first
+  if m < side then return k, -k + 1 + m end           -- right side, going up
+  m = m - side
+  if m < side then return k - 1 - m, k end            -- top, going left
+  m = m - side
+  if m < side then return -k, k - 1 - m end           -- left side, going down
+  m = m - side
+  return -k + 1 + m, -k                               -- bottom, going right
+end
+MAP.spiral = spiral
+
+-- ===== AUTO-MAP: always a survey running, from the base outward =====
+-- When no survey is running, the base starts (or continues) one that spirals
+-- out from the base over the whole world, and hands it out like any survey.
+-- Paused while the map floppies are full; ends at the world border. Your own
+-- surveys go first; auto-map continues where it was afterwards.
+local AUTO_FILE = "auto_survey.dat"
+MAP.auto = { on = (CONFIG.map.autoSurvey ~= false), cursor = 0 }
+do
+  if fs.exists(AUTO_FILE) then
+    local h = fs.open(AUTO_FILE, "r")
+    local t = h and textutils.unserialize(h.readAll() or "")
+    if h then h.close() end
+    if type(t) == "table" then MAP.auto = t end
+  end
+end
+function MAP.saveAuto() saveFileSafe(AUTO_FILE, serialSmall(MAP.auto)) end
+function MAP.setAuto(on)
+  MAP.auto.on = on and true or false
+  MAP.auto.done = nil
+  if not on and MAP.queue and MAP.queue.auto then
+    MAP.auto.cursor = MAP.queue.cursor
+    MAP.queue = nil
+    saveQueue()
+  end
+  MAP.saveAuto()
+end
+
+-- comms worker: start / continue auto-map when nothing else runs
+function MAP.autoTick()
+  local a = MAP.auto
+  -- the work area changed since auto-map finished / started: start over in the new one
+  if (a.areaKey or "world") ~= MAP.areaKey() and not MAP.queue then
+    a.done, a.cursor, a.areaKey = nil, 0, MAP.areaKey()
+    MAP.saveAuto()
+  end
+  if not a.on or a.done or MAP.queue or MAP.full or not MAP.loaded then return end
+  local c = CONFIG.drone.home or state.basePos
+  if not (c and c.x) or #TT.available() == 0 then return end
+  local r = CONFIG.map.scanRadius or 8
+  local step = 2 * r + 1
+  local border = tonumber(CONFIG.map.border) or 20000
+  local cx, cz = math.floor(c.x), math.floor(c.z)
+  local rad = math.ceil((border + math.max(math.abs(c.x), math.abs(c.z))) / step)
+  local ax1, az1, ax2, az2 = MAP.area()
+  if ax1 then
+    -- a work area: the spiral from the base (or the area's point nearest to it) out to the area's far corner
+    cx, cz = math.max(ax1, math.min(ax2, cx)), math.max(az1, math.min(az2, cz))
+    rad = math.ceil(math.max(cx - ax1, ax2 - cx, cz - az1, az2 - cz) / step) + 1
+  end
+  a.areaKey = MAP.areaKey()
+  MAP.queue = { auto = true, spiral = true, cx = cx, cz = cz, r = r, step = step, areaKey = a.areaKey,
+                cols = 2 * rad + 1, rows = 2 * rad + 1, cursor = a.cursor or 0, sent = 0, skipped = 0 }
+  saveQueue()
+  setToast("Auto-map: surveying on from the base outward (" ..
+           math.floor(MAP.autoRadius() + 0.5) .. " blocks done around it)", C.label)
+end
+
+-- how far around the base auto-map has got (blocks)
+function MAP.autoRadius()
+  local q = MAP.queue
+  local cur = (q and q.auto) and q.cursor or (MAP.auto.cursor or 0)
+  local step = (q and q.step) or (2 * (CONFIG.map.scanRadius or 8) + 1)
+  return math.max(0, math.ceil((math.sqrt(cur + 1) - 1) / 2) - 1) * step
 end
 
 function MAP.stopSurvey()
+  if MAP.queue and MAP.queue.auto then
+    -- stopping auto-map = turning it off (else it would start again at once)
+    MAP.auto.cursor, MAP.auto.on = MAP.queue.cursor, false
+    MAP.saveAuto()
+  end
   MAP.queue = nil
   saveQueue()
 end
 
 -- the next batch of spots not yet in the map (checks a limited number per call)
-local function nextBatch(q)
+local function nextBatch(q, want)
+  local BATCH = want or BATCH
   local total = q.cols * q.rows
   local out, checked = {}, 0
-  while #out < BATCH and q.cursor < total and checked < 3000 do
+  -- spots near a player to avoid wait (back into q.redo, tried again later)
+  local threats, range = {}, 0
+  if TT and TT.threats then threats, range = TT.threats() end
+  local why = { near = 0, done = 0, redo = 0 }
+  local function nearPlayer(x, z)
+    if #threats == 0 then return false end
+    local who = TT.nearThreat(x, z, threats, range)
+    if who then why.near, why.who = why.near + 1, who end
+    return who ~= nil
+  end
+  q.lastWhy = why
+  q.redo = q.redo or {}
+  -- first the spots a turtle gave back unscanned (see MAP.reclaim) - each looked at once
+  local n0 = #q.redo
+  for _ = 1, n0 do
+    if #out >= BATCH then break end
+    local p = table.remove(q.redo, 1)
+    if MAP.spotDone(p[1], p[2]) or not MAP.inArea(p[1], p[2]) then
+      -- done meanwhile / outside the work area now
+    elseif nearPlayer(p[1], p[2]) then q.redo[#q.redo + 1] = p
+    else out[#out + 1] = p end
+  end
+  if #out >= BATCH then return out end
+  local outside = 0
+  while #out < BATCH and q.cursor < total and checked < 3000 and outside < 40000 do
     local i = q.cursor
     q.cursor = q.cursor + 1
     checked = checked + 1
-    -- snake order: every other row backwards, so a turtle never jumps back
-    local row, col = math.floor(i / q.cols), i % q.cols
-    if row % 2 == 1 then col = q.cols - 1 - col end
-    local x, z = q.x1 + q.r + col * q.step, q.z1 + q.r + row * q.step
-    if MAP.getOverview(x, z) then q.skipped = q.skipped + 1
+    local x, z
+    if q.spiral then
+      -- a spiral from the base (or the area's nearest point) outward
+      local dx, dz = spiral(i)
+      x, z = q.cx + dx * q.step, q.cz + dz * q.step
+      -- a survey of an area: the spiral's spots outside it are skipped (cheap -
+      -- no map lookup, not counted against the 3000)
+      if q.rect and (x < q.x1 or x > q.x2 or z < q.z1 or z > q.z2) then
+        checked, outside, x = checked - 1, outside + 1, nil
+      end
+    else
+      -- snake order: every other row backwards, so a turtle never jumps back
+      local row, col = math.floor(i / q.cols), i % q.cols
+      if row % 2 == 1 then col = q.cols - 1 - col end
+      x, z = q.x1 + q.r + col * q.step, q.z1 + q.r + row * q.step
+    end
+    if x and not MAP.inArea(x, z) then
+      checked, outside, x = checked - 1, outside + 1, nil     -- outside the work area / border: cheap skip
+    end
+    if not x then
+      -- outside the surveyed area
+    elseif MAP.spotDone(x, z) then q.skipped = q.skipped + 1 why.done = why.done + 1
+    elseif nearPlayer(x, z) then q.redo[#q.redo + 1] = { x, z }       -- later
     else out[#out + 1] = { x, z } end
   end
+  why.redo = #q.redo
   return out
+end
+
+-- A turtle stopped working on its batch (finished, failed, low on fuel, gave
+-- up after restarts, result lost ...): every spot of it that is still not in
+-- the map goes back into the queue (q.redo) for the next free turtle. Safe to
+-- call any time - scanned spots are simply dropped.
+function MAP.reclaim(id)
+  local q = MAP.queue
+  if not (q and q.out and q.out[id]) then return 0 end
+  local n = 0
+  q.redo = q.redo or {}
+  for _, p in ipairs(q.out[id]) do
+    if not MAP.spotDone(p[1], p[2]) then q.redo[#q.redo + 1] = p n = n + 1 end
+  end
+  q.out[id] = nil
+  saveQueue()
+  return n
+end
+
+-- a turtle answered its survey batch (TT.receive): done -> forget the batch;
+-- failed -> its unscanned spots go back into the queue
+function MAP.batchResult(id, ok)
+  local q = MAP.queue
+  if not (q and q.out and q.out[id]) then return end
+  -- how fast is this turtle (spots per second)? the pack shares out by it
+  local t = state.turtles[id]
+  if ok and t and t.queueAt and os.clock() - t.queueAt > 1 then
+    local r = #q.out[id] / (os.clock() - t.queueAt)
+    t.packRate = t.packRate and (t.packRate * 0.5 + r * 0.5) or r
+  end
+  local n = MAP.reclaim(id)
+  if n > 0 then
+    local t = state.turtles[id]
+    TT.log(t, n .. " survey spot(s) not done - back in the queue for the next free turtle")
+  end
+end
+
+-- a survey of a small area (SURVEY: ALL): its spots join the running survey,
+-- or become a new one - either way kept in the queue file and handed out in
+-- batches, so nothing is lost when a turtle stops
+function MAP.addSurvey(x1, z1, x2, z2, r)
+  local spots, skipped = MAP.surveySpots(x1, z1, x2, z2, r)
+  if #spots == 0 then return 0, skipped end
+  local q = MAP.queue
+  if not q then
+    MAP.queueSurvey(x1, z1, x2, z2, r, nil)
+    return #spots, skipped
+  end
+  q.redo = q.redo or {}
+  for i = #spots, 1, -1 do table.insert(q.redo, 1, spots[i]) end    -- before the rest
+  for _, id in ipairs(TT.available()) do
+    local t = state.turtles[id]
+    if t and t.held then t.held = nil TT.listDirty = true end
+  end
+  saveQueue()
+  return #spots, skipped
 end
 
 -- hand batches to idle turtles (comms worker, every few seconds)
 function MAP.feedSurvey()
   local q = MAP.queue
-  if not q then return end
+  if not q or not MAP.loaded then return end      -- (map still loading: done spots unknown)
+  -- a survey saved by an older version (row by row from the far corner):
+  -- once into the spiral from the base (done spots are skipped anyway)
+  if not q.spiral and not q.auto and q.x1 then
+    local oldOut, sent, skipped, ids, excl = q.out, q.sent, q.skipped, q.ids, q.excluded
+    local held = {}
+    for id, t in pairs(state.turtles) do held[id] = t.held end
+    MAP.queue = nil
+    MAP.queueSurvey(q.x1, q.z1, q.x2, q.z2, q.r, ids)
+    for id, t in pairs(state.turtles) do t.held = held[id] end         -- (no release: you did not start it now)
+    q = MAP.queue
+    -- the old batches (and spots given back) were far out at the corner: dropped
+    -- (the spiral gets there in its turn); the turtles on their way there are
+    -- called back - also when they come back online later (t.recall, saved)
+    q.sent, q.skipped, q.excluded = sent or 0, skipped or 0, excl
+    for id in pairs(oldOut or {}) do
+      local t = state.turtles[id]
+      if t then
+        t.recall = true
+        TT.listDirty = true
+        TT.log(t, "Its survey batch was far away (old survey order) - called back home")
+      end
+    end
+    q.changed = true
+  end
+  if q.auto and (q.areaKey or "world") ~= MAP.areaKey() then
+    -- the work area was changed: auto-map starts again inside the new one
+    MAP.auto.cursor, MAP.auto.done = 0, nil
+    MAP.saveAuto()
+    MAP.queue = nil
+    saveQueue()
+    return
+  end
+  if q.auto and MAP.full then return end           -- auto-map waits for room on the floppies
   local total = q.cols * q.rows
   local minFuel = tonumber(CONFIG.map.surveyMinFuel) or 500
   local busy, why, anyFree = false, {}, false
   local list = q.ids or TT.available()
+  -- PACK: the turtles work close together (neighbouring spots), so when one is
+  -- unloaded the others are near it - one visit wakes them all
+  local pack = CONFIG.map.pack ~= false
+  local packFree = {}
   for _, id in ipairs(list) do
     local t = state.turtles[id]
     local free = t and TT.online(t) and t.pos and t.pos.x and (t.task == nil or t.task == "idle") and not t.anchor
                  and not (q.excluded and q.excluded[id])      -- stopped by the owner
                  and not t.rescuerRole and not t.held         -- the rescuer stays free; STOPPED stays stopped
+                 and not TT.factoryRole(t)                    -- the factory builder / crafter stays at the factory
     local fuel = t and tonumber(t.fuel)
+    if t then t.packWait = nil end                -- (set again below while it waits for its pack)
     if free and t.queueAt and os.clock() - t.queueAt < 15 then free = false busy = true end
     if free and fuel and fuel < minFuel then free = false end
+    -- still holding a batch (idle without its result yet): not free - after 30 s
+    -- idle the batch is taken back below, THEN it gets new spots (never overwrite:
+    -- its unscanned spots would be lost)
+    if free and q.out and q.out[id] then free = false busy = true end
     if t and not free and t.task and t.task ~= "idle" then busy = true end
     -- why this turtle gets nothing (told to you when nobody works)
     if t and not free then
@@ -862,24 +1312,101 @@ function MAP.feedSurvey()
       elseif t.task and t.task ~= "idle" then w = "busy"
       elseif t.held or (q.excluded and q.excluded[id]) then w = "STOPPED - give it a command first"
       elseif fuel and fuel < minFuel then w = "fuel " .. fuel .. " (needs " .. minFuel .. ")"
-      elseif t.anchor then w = "anchor" elseif t.rescuerRole then w = "rescuer" end
+      elseif t.anchor then w = "anchor" elseif t.rescuerRole then w = "rescuer"
+      elseif TT.factoryRole(t) then w = "factory " .. TT.factoryRole(t) end
       if w then why[#why + 1] = (t.label or ("#" .. id)) .. ": " .. w end
     end
     if free then anyFree = true end
-    if free and q.cursor < total then
+    -- idle while the base still counts a batch as theirs: take it back
+    -- (whatever was scanned is dropped; the rest is handed out again)
+    if t and q.out and q.out[id] and TT.online(t) and (t.task == nil or t.task == "idle")
+       and (not t.queueAt or os.clock() - t.queueAt > 30) then
+      MAP.reclaim(id)
+    end
+    if free and pack then
+      packFree[#packFree + 1] = id                -- handed out together below
+    elseif free and (q.cursor < total or (q.redo and #q.redo > 0)) then
       local spots = nextBatch(q)
       if #spots > 0 then
         TT.sendSpots(id, spots, q.r)
+        q.out = q.out or {}
+        q.out[id] = spots
         t.queueAt = os.clock()
         q.sent = q.sent + #spots
         busy = true
+        q.changed = true
+      end
+    end
+  end
+  -- a turtle silent for 10 min (unloaded, or deleted by a server crash) still
+  -- holding spots: they go to the others (if it comes back, it just scans twice)
+  local nowE = os.epoch("utc")
+  for id in pairs(q.out or {}) do
+    local t = state.turtles[id]
+    if not t or (not TT.online(t) and t.seenEpoch and nowE - t.seenEpoch > (tonumber(CONFIG.map.reclaimOffline) or 600) * 1000) then
+      MAP.reclaim(id)
+      q.changed = true
+    end
+  end
+  -- the pack: a new round only when the whole pack is done with the last one
+  -- (or after packWait s - one hung turtle does not hold up the others)
+  if pack and #packFree > 0 and (q.cursor < total or (q.redo and #q.redo > 0)) then
+    local open = false
+    if q.wave then
+      -- (the queue is saved: a round time from BEFORE a base restart is ahead of the new
+      --  clock - the packWait limit below would never run out. Count from now.)
+      if (q.wave.t or 0) > os.clock() then q.wave.t = os.clock() end
+      for _, wid in ipairs(q.wave.ids or {}) do if q.out and q.out[wid] then open = true end end
+      if open and os.clock() - (q.wave.t or 0) > (tonumber(CONFIG.map.packWait) or 300) then open = false end
+    end
+    if open then
+      busy = true                                 -- (waiting for the others is not a problem)
+      for _, id in ipairs(packFree) do state.turtles[id].packWait = true end
+    else
+      table.sort(packFree)
+      local n = math.min(#packFree, tonumber(CONFIG.map.packSize) or 8)
+      local k = tonumber(CONFIG.map.packSpots) or 3
+      local spots = nextBatch(q, n * k)
+      n = math.min(n, #spots)
+      local ids = {}
+      -- spots in turn, side by side along the way - a faster turtle (measured:
+      -- t.packRate, spots per second) gets more, so the pack finishes together
+      local lists, cnt = {}, {}
+      for i = 1, n do lists[i], cnt[i] = {}, 0 end
+      for _, p in ipairs(spots) do
+        local best, bestV
+        for i = 1, n do
+          local rate = tonumber(state.turtles[packFree[i]].packRate) or 0.01
+          local v = (cnt[i] + 1) / rate
+          if not best or v < bestV then best, bestV = i, v end
+        end
+        cnt[best] = cnt[best] + 1
+        lists[best][#lists[best] + 1] = p
+      end
+      for i = 1, n do
+        local mine = lists[i]
+        local id = packFree[i]
+        local t = state.turtles[id]
+        if #mine == 0 then mine = nil end
+        if mine then
+        TT.sendSpots(id, mine, q.r)
+        q.out = q.out or {}
+        q.out[id] = mine
+        t.queueAt, t.packWait = os.clock(), nil
+        q.sent = q.sent + #mine
+        ids[#ids + 1] = id
+        end
+      end
+      if n > 0 then
+        q.wave = { t = os.clock(), ids = ids }
+        busy, q.changed = true, true
       end
     end
   end
   -- no turtle CAN work on it: say why - once, again only when the reason
   -- changes or after 10 minutes (a free turtle that is just skipping
   -- already-mapped spots is not a problem)
-  if not busy and not anyFree and q.cursor < total then
+  if not busy and not anyFree and (q.cursor < total or (q.redo and #q.redo > 0)) then
     local msg = (#list == 0) and "No turtle can survey (online, idle, position known, not anchor/rescuer)."
                 or ("No turtle takes a batch - " .. table.concat(why, ", "))
     if msg ~= MAP.queueToldMsg or os.clock() - (MAP.queueToldAt or 0) > 600 then
@@ -889,11 +1416,23 @@ function MAP.feedSurvey()
   else
     MAP.queueToldMsg = nil
   end
-  if q.cursor >= total and not busy then
+  local open = (q.redo and #q.redo > 0) or (q.out and next(q.out) ~= nil)
+  if q.cursor >= total and not busy and not open and q.auto then
+    MAP.auto.done, MAP.auto.cursor = true, q.cursor
+    MAP.saveAuto()
+    setPopup("AUTO-MAP DONE", "The whole world up to the border is surveyed.", C.good)
+    if sysLog then sysLog("Auto-map done: the whole world up to the border is surveyed", "DONE") end
+    MAP.queue = nil
+  elseif q.cursor >= total and not busy and not open then
     setToast("Survey finished: " .. q.sent .. " scans, " .. q.skipped .. " spots were already mapped", C.good)
     MAP.queue = nil
   end
-  saveQueue()
+  -- written when something changed (or once a minute for the cursor), not every 2 s
+  if not MAP.queue or q.changed or os.clock() - (MAP.queueSavedAt or 0) > 60 then
+    q.changed = nil
+    MAP.queueSavedAt = os.clock()
+    saveQueue()
+  end
 end
 
 -- progress for the screen: done fraction, spots total
@@ -901,7 +1440,21 @@ function MAP.surveyProgress()
   local q = MAP.queue
   if not q then return nil end
   local total = q.cols * q.rows
-  return q.cursor / total, total, q.sent, q.skipped
+  if q.rect then
+    -- spots of the area only (the spiral square is bigger): done = how far the
+    -- spiral got, as a share of the area's spots it has passed
+    local inArea = math.max(1, (math.floor((q.x2 - q.x1) / q.step) + 1) * (math.floor((q.z2 - q.z1) / q.step) + 1))
+    local k = math.max(0, math.ceil((math.sqrt(q.cursor + 1) - 1) / 2))     -- the ring it is on
+    local half = k * q.step
+    local w = math.min(q.x2, q.cx + half) - math.max(q.x1, q.cx - half)
+    local h = math.min(q.z2, q.cz + half) - math.max(q.z1, q.cz - half)
+    local passed = (math.floor(math.max(0, w) / q.step) + 1) * (math.floor(math.max(0, h) / q.step) + 1)
+    if q.cursor >= total then passed = inArea end
+    local again = q.redo and #q.redo or 0
+    return math.min(1, passed / inArea), inArea, q.sent, q.skipped, again
+  end
+  local again = q.redo and #q.redo or 0
+  return q.cursor / total, total, q.sent, q.skipped, again
 end
 
 -- one screen cell to the right (r) and one down (d), as world x/z steps
@@ -937,4 +1490,4 @@ function MAP.compass()
   return DIRL[r], DIRL[(r + 1) % 4], DIRL[(r + 2) % 4], DIRL[(r + 3) % 4], DIRN[r]
 end
 
-MAP.load()
+-- (MAP.load runs in the map worker: MAP.loadNow)

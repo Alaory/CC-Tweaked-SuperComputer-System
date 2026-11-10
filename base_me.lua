@@ -54,13 +54,45 @@ function pushNote(title, msg, col, secs)
       return
     end
   end
+  -- a BOX in the corner only when it matters; every message still goes to
+  -- EVENTS (its badge counts it), events.log and - if wanted - your chat.
+  --   CONFIG.notes.show: "all" | "important" (warnings + errors, default) |
+  --   "errors" | "none". What you just tapped is always shown. Not more than
+  --   one new box every 4 s (errors excepted), the same one again within a
+  --   minute gets no new box.
+  local kind = noteKind(col)
+  local level = (CONFIG.notes and CONFIG.notes.show) or "important"
+  local show
+  if USER_ACTION then show = true
+  elseif level == "none" then show = false
+  elseif level == "errors" then show = kind == "ERROR"
+  elseif level == "important" then show = (kind == "ERROR" or kind == "WARNING")
+  else show = true end
+  local key = tostring(title) .. "|" .. msg
+  NOTE_SEEN = NOTE_SEEN or {}
+  if show and not USER_ACTION and NOTE_SEEN[key] and now - NOTE_SEEN[key] < 60 then show = false end
+  if show and not USER_ACTION and kind ~= "ERROR" and now - (NOTE_LASTBOX or -100) < 4 then show = false end
   noteId = noteId + 1
   local when = realTime("%H:%M")
-  table.insert(state.notes, 1, { id = noteId, title = title, msg = msg, col = col, t = now,
-                                 exp = exp, life = life, when = when })
+  if show then
+    NOTE_SEEN[key], NOTE_LASTBOX = now, now
+    table.insert(state.notes, 1, { id = noteId, title = title, msg = msg, col = col, t = now,
+                                   exp = exp, life = life, when = when })
+  end
+  -- the very same message again within 30 s: not logged again (no flood in
+  -- EVENTS, events.log or your chat)
+  NOTE_LOGGED = NOTE_LOGGED or {}
+  if NOTE_LOGGED[key] and now - NOTE_LOGGED[key] < 30 and not USER_ACTION then
+    if show then os.queueEvent("inv_update") end
+    return
+  end
+  NOTE_LOGGED[key] = now
+  NOTE_LOGGED_N = (NOTE_LOGGED_N or 0) + 1
+  if NOTE_LOGGED_N > 300 then NOTE_LOGGED, NOTE_SEEN, NOTE_LOGGED_N = { [key] = now }, {}, 0 end   -- keep it small
   noteLogAdd({ title = title, msg = msg, col = col, when = realTime("%d.%m %H:%M") })
   if state.page ~= "events" then state.noteUnread = (state.noteUnread or 0) + 1 end
   if notifyChat then pcall(notifyChat, title, msg, col) end    -- '$drone notify' (base_chat.lua)
+  if POCKET then pcall(POCKET.note, title, msg, col) end        -- the pocket remote (base_pocket.lua)
   os.queueEvent("inv_update")
 end
 
@@ -77,14 +109,14 @@ function noteLogAdd(e)
   table.insert(state.noteLog, 1, e)
   while #state.noteLog > noteSetting("keep") do table.remove(state.noteLog) end
   pcall(function()
-    local okF, free = pcall(fs.getFreeSpace, "/")
-    if okF and type(free) == "number" and free < 8192 then return end   -- disk nearly full: skip
-    if fs.exists(NOTE_FILE) and fs.getSize(NOTE_FILE) > NOTE_MAX then
-      if fs.exists(NOTE_OLD) then fs.delete(NOTE_OLD) end
-      fs.move(NOTE_FILE, NOTE_OLD)
+    local cur, old = logPaths(NOTE_FILE, NOTE_OLD)      -- (a data floppy when there is one)
+    if freeAt(cur) < 8192 then return end              -- disk nearly full: skip
+    if fs.exists(cur) and fs.getSize(cur) > NOTE_MAX then
+      if fs.exists(old) then fs.delete(old) end
+      fs.move(cur, old)
     end
     local function clean(v) return (tostring(v or ""):gsub("[\r\n|]", " ")) end
-    local h = fs.open(NOTE_FILE, "a")
+    local h = fs.open(cur, "a")
     if not h then return end
     h.writeLine(realTime("%Y-%m-%d %H:%M") .. "|" .. noteKind(e.col) .. "|" .. clean(e.title) .. "|" .. clean(e.msg))
     h.close()
@@ -96,7 +128,7 @@ end
 function noteLogClear()
   state.noteLog = {}
   pcall(function()
-    local h = fs.open(NOTE_FILE, "a")
+    local h = fs.open((logPaths(NOTE_FILE, NOTE_OLD)), "a")
     if h then h.writeLine(realTime("%Y-%m-%d %H:%M") .. "|CLEAR||list cleared on the EVENTS tab") h.close() end
   end)
 end
@@ -104,7 +136,8 @@ end
 -- the saved lines (oldest first), from events.old.log and events.log
 function noteLogLines()
   local lines = {}
-  for _, f in ipairs({ NOTE_OLD, NOTE_FILE }) do
+  local cur, old = logPaths(NOTE_FILE, NOTE_OLD)
+  for _, f in ipairs({ old, cur }) do
     if fs.exists(f) then
       local h = fs.open(f, "r")
       while h do
@@ -267,8 +300,9 @@ end
 local NAMES_FILE = "me_names.dat"
 ME_NAMES = {}
 do
-  if fs.exists(NAMES_FILE) then
-    local h = fs.open(NAMES_FILE, "r")
+  local np = dataPath(NAMES_FILE)                    -- (a data floppy when there is one)
+  if fs.exists(np) then
+    local h = fs.open(np, "r")
     local t = h and textutils.unserialize(h.readAll() or "")
     if h then h.close() end
     if type(t) == "table" then for _, n in ipairs(t) do ME_NAMES[n] = true end end
@@ -289,7 +323,7 @@ local function saveNames(force)
   for n in pairs(ME_NAMES) do list[#list + 1] = n end
   table.sort(list)
   local okS, text = pcall(textutils.serialize, list)
-  if okS and saveFileSafe(NAMES_FILE, text) then namesDirty, namesSavedAt = false, os.clock() end
+  if okS and saveFileSafe(dataPath(NAMES_FILE), text) then namesDirty, namesSavedAt = false, os.clock() end
 end
 -- 'me add <id>': look this item up in the partial view from now on
 function meAddName(n) meRememberName(n) saveNames(true) state.meNameCache = nil end
@@ -407,14 +441,21 @@ function fetchME()
         if not okT and isDistError(list) then return "BROKEN" end
         return {}
       end)
-      cache = { t = os.clock(), items = {}, broken = {}, swept = inList }
+      cache = { t = os.clock(), items = {}, broken = {}, swept = inList, curioOf = {} }
       local seenKey = {}
       for i, list in ipairs(res) do
         if list == "BROKEN" then
           cache.broken[#cache.broken + 1] = "#" .. tags[i]
         elseif type(list) == "table" then
+          -- items listed under "#curios:<slot>" fit that slot, even when the
+          -- answer does not carry the item's tags (then curioSlotsOf finds nothing)
+          local cslot = tags[i]:match("^curios:(.+)$")
           for _, it in ipairs(list) do
             if type(it) == "table" and it.name then
+              if cslot then
+                cache.curioOf[it.name] = cache.curioOf[it.name] or {}
+                cache.curioOf[it.name][cslot] = true
+              end
               local k = tostring(it.name) .. "|" .. (type(it.fingerprint) == "string" and it.fingerprint or "")
               if not seenKey[k] then seenKey[k] = true cache.items[#cache.items + 1] = it end
               -- learn this item's tags for the next sweep
@@ -507,9 +548,15 @@ function fetchME()
       cur.count = cur.count + cnt
       cur.craftable = cur.craftable or craftable
     else
+      local cs = curioSlotsOf(it)
+      local tc = state.meTagCache and state.meTagCache.curioOf and state.meTagCache.curioOf[it.name]
+      if tc then
+        cs = cs or {}
+        for s in pairs(tc) do cs[s] = true end
+      end
       cur = { name = it.name, count = cnt, craftable = craftable,
               display = cleanName(it.displayName or prettify(it.name)),
-              curios = curioSlotsOf(it) }
+              curios = cs }
       me.byName[it.name] = cur
       me.items[#me.items + 1] = cur
     end
@@ -1708,6 +1755,10 @@ function runAction(a)
     if a.kind == "cstore" then n, err = curioToME(a.name, a.count, a.slotType, a.slotNo)
     elseif a.kind == "cunequip" then n, err = curioToInventory(a.name, a.count, a.slotType, a.slotNo)
     else n, err = meToCurio(a.name, a.count, a.slotType, a.slotNo) end
+    if a.kind == "cequip" and CURIOS then
+      if a.auto then CURIOS.autoResult(a, n, err)
+      elseif n > 0 then CURIOS.learn(a.slotType, a.name) end   -- (it fits: shown for this slot type from now on)
+    end
     local verb = (a.kind == "cstore" and "Stored in the network: ") or (a.kind == "cunequip" and "Moved to your inventory: ")
                  or "Put on: "
     if n > 0 then setToast(verb .. disp .. (err and (" - " .. err) or ""), err and C.warn or C.good, 8)

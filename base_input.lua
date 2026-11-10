@@ -7,7 +7,31 @@
 ---------------------------------------------------------------------
 -- INPUT
 ---------------------------------------------------------------------
+-- A tap that just misses a button (1 row / 1 column off - fingers and the
+-- monitor's thin rows) counts for the NEAREST button; a tap on a button is
+-- never moved. Small 1-row buttons were hard to hit.
+function snapTouch(tx, ty)
+  for i = #hits, 1, -1 do
+    local h = hits[i]
+    if tx >= h[1] and tx <= h[3] and ty >= h[2] and ty <= h[4] then return tx, ty end
+  end
+  local best, bx, by
+  for i = #hits, 1, -1 do
+    local h = hits[i]
+    local cx = math.max(h[1], math.min(h[3], tx))
+    local cy = math.max(h[2], math.min(h[4], ty))
+    local dx, dy = math.abs(cx - tx), math.abs(cy - ty)
+    if dx <= 1 and dy <= 1 then
+      local d = dx + dy * 1.5                    -- (rows are taller than columns)
+      if not best or d < best then best, bx, by = d, cx, cy end
+    end
+  end
+  if best then return bx, by end
+  return tx, ty
+end
+
 function handleTouch(tx, ty)
+  tx, ty = snapTouch(tx, ty)
   for i = #hits, 1, -1 do
     local h = hits[i]
     if tx >= h[1] and tx <= h[3] and ty >= h[2] and ty <= h[4] then
@@ -16,8 +40,18 @@ function handleTouch(tx, ty)
         sortMode = sortMode == "count" and "name"
                 or sortMode == "name" and "slot" or "count"
         sortList()
+      elseif h[5] == "group" then
+        -- a top tab: the page used last in that group
+        local pg = openGroup(h[6])
+        if pg then
+          state.page = pg
+          saveFileSafe("ui_page.dat", pg)
+          if pg == "events" then state.noteUnread = 0 end
+        end
       elseif h[5] == "page" then
         state.page = h[6]
+        state.groupLast = state.groupLast or {}
+        if groupOf(h[6]) then state.groupLast[groupOf(h[6])] = h[6] end
         saveFileSafe("ui_page.dat", h[6])                 -- opened again after a restart
         if h[6] == "events" then state.noteUnread = 0 end   -- seen
       elseif h[5] == "meitem" then
@@ -43,12 +77,84 @@ function handleTouch(tx, ty)
             if submitDrone(dr, { kind = what, passenger = a.pass }) then
               setToast(dr.label .. ": " .. what .. " started", C.label, 4)
             end
+          elseif a.kind == "setpos" then
+            local def = settingAt(state.setGroup or 1, tonumber(a.name))
+            if def then
+              local okP, msgP = settingHere(def)
+              setToast(msgP, okP and C.good or C.warn, 5)
+            end
+          elseif a.kind == "minecmd" then
+            -- a mining team command that needs a second tap (NEW FIELD)
+            local id, cmd = tostring(a.name):match("^(%d+):(%a+)$")
+            if id then
+              MINE.cmd(tonumber(id), cmd, {})
+              setToast(cmd:upper() .. " sent to the loader - it tells the miners", C.label, 5)
+            end
+          elseif a.kind == "quick" then
+            -- HOME > QUICK ACTIONS (the same actions as the pocket remote)
+            local okQ, okA, msgQ = pcall(POCKET.act, a.name, a.args or {})
+            if not okQ then okA, msgQ = false, tostring(okA) end
+            setToast(tostring(msgQ), okA and C.good or C.warn, 6)
+          elseif a.kind == "syssave" then
+            -- the map worker saves (it may have to wait for storage helpers)
+            MAP.saveNow = true
+            os.queueEvent("map_save")
+            setToast("Saving the map ...", C.label, 3)
+          elseif a.kind == "sysupdate" then
+            local n = TT.forceUpdate() or 0             -- also while you play / automatic updates off
+            setToast(CODE and (n == 0 and ("All online turtles run " .. TT.verName(CODE.ver))
+                     or (n .. " turtle(s) get " .. TT.verName(CODE.ver) .. ", 3 at a time")) or "No node.lua found", C.label, 5)
+          elseif a.kind == "sysupgrade" then
+            -- newest files from GitHub; every line in the SYSTEM log, the last one as a box
+            local last = "Upgrade: asking GitHub ..."
+            setToast(last, C.label, 5)
+            local done = baseUpgrade({}, function(s)
+              last = s
+              if sysLog then pcall(sysLog, "upgrade: " .. s, "INFO") end
+            end)
+            if not done then setPopup("UPGRADE", last, C.label) end
+          elseif a.kind == "sysrestart" then
+            pcall(MAP.save)
+            if sysLog then sysLog("Base restarted from the SYSTEM tab", "INFO") end
+            if baseExit then pcall(baseExit, nil) end
+            os.reboot()
+          elseif a.kind == "party" then
+            local ok, msg
+            if a.name == "stop" then ok, msg = TT.partyStop("called back") else ok, msg = TT.partyStart() end
+            setToast(msg or "", ok and C.good or C.warn, 8)
+          elseif a.kind == "forgetbase" then
+            local n = TT.forgetAtBase()
+            setToast(n .. " turtle(s) that went silent at the base forgotten", C.good, 6)
           elseif a.kind == "findlost" then
             local ok, msg = TT.findLost()
             setToast(msg, ok and C.good or C.warn, 8)
           elseif a.kind == "trescue" then
             local ok, msg = TT.rescue(tonumber(a.name))
             setToast(msg, ok and C.good or C.warn, 7)
+          elseif a.kind == "minedrop" then
+            local ok, msg = MINE.drop(tonumber(a.name))
+            setToast(msg, ok and C.label or C.warn, 7)
+          elseif a.kind == "tdriveforce" then
+            local id, act = tostring(a.name):match("^(%d+):(%w+)$")
+            if id then TT.drive(tonumber(id), act, true) end
+          elseif a.kind == "tdigup" then
+            local t = state.turtles[tonumber(a.name)]
+            if t then
+              local args = {}
+              local h = t.pos and t.pos.x and MAP.get(t.pos.x, t.pos.z)
+              if type(h) == "number" and t.pos.y and h >= t.pos.y then args[1] = h + 1 end   -- the surface there
+              TT.send(t.id, "digup", args)
+              setToast(t.label .. ": mining up to the surface" .. (args[1] and (" (Y " .. args[1] .. ")") or ""), C.label, 6)
+            end
+          elseif a.kind == "tforget" then
+            local t = state.turtles[tonumber(a.name)]
+            if t and TT.online(t) then
+              setToast(t.label .. " is online - not forgotten", C.warn, 5)
+            elseif t then
+              local label = t.label
+              TT.forget(t.id)
+              setToast(label .. " forgotten (taken off the list; its survey spots go to the others)", C.label, 6)
+            end
           elseif a.kind == "tflyme" then
             -- the selected drone carries the owner to the turtle (lands on top of it)
             local t = state.turtles[tonumber(a.name)]
@@ -60,16 +166,20 @@ function handleTouch(tx, ty)
             elseif not state.owner then
               setToast("Owner unknown (memory card)", C.warn, 4)
             else
-              dr.dest = { kind = "coords", x = t.pos.x, y = t.pos.y + 1, z = t.pos.z }
-              dr.passenger = state.owner
-              if submitDrone(dr, { kind = "ferry", passenger = state.owner }) then
+              -- its own destination (the DRONES page choice stays as it is)
+              local tdest = { kind = "coords", name = t.label, x = t.pos.x, y = t.pos.y + 1, z = t.pos.z,
+                              turtle = t.id }                -- (LIVE: followed while it moves)
+              if submitDrone(dr, { kind = "ferry", passenger = state.owner, dest = tdest }) then
                 setToast(dr.label .. " is coming to take you to " .. t.label, C.good, 6)
               end
             end
           elseif a.kind == "mapclear" then
-            MAP.clear()
-            state.mapSel = nil
-            setToast("Map cleared", C.label, 4)
+            if MAP.clear() then
+              state.mapSel = nil
+              setToast("Map cleared", C.label, 4)
+            else
+              setToast("The map is still loading - try again in a moment", C.warn, 5)
+            end
           elseif a.kind == "survey" or a.kind == "surveyall" then
             -- the area on screen, minus what is mapped, split between turtles
             local x1, z1, x2, z2 = MAP.viewArea()
@@ -89,9 +199,27 @@ function handleTouch(tx, ty)
                 setToast("No free turtle (online, idle, position known)", C.warn, 5)
               else
                 local n = MAP.queueSurvey(x1, z1, x2, z2, r, ids)
+                if n == 0 then
+                  setToast("Nothing to survey here - this view is outside your work area (SETTINGS > MAP)", C.warn, 6)
+                else
                 setToast("Big survey started: " .. n .. " spots (" .. math.floor((x2 - x1) / 16) .. " x " ..
                          math.floor((z2 - z1) / 16) .. " chunks), handed out in batches - progress on the MAP tab",
                          C.good)
+                end
+              end
+            elseif a.kind == "surveyall" then
+              -- a smaller area: also through the (saved) queue, so spots a
+              -- turtle does not finish are handed out again
+              if #TT.available() == 0 then
+                setToast("No free turtle (online, idle, position known)", C.warn, 5)
+              else
+                local n, skipped = MAP.addSurvey(x1, z1, x2, z2, r)
+                if n == 0 then
+                  setToast("This area is already mapped (" .. skipped .. " spots)", C.label, 5)
+                else
+                  setToast("Survey: " .. n .. " spots queued" .. (skipped > 0 and (" (" .. skipped .. " already mapped)") or "") ..
+                           " - handed out in batches, progress on the MAP tab", C.good, 6)
+                end
               end
             else
               local ids
@@ -203,7 +331,8 @@ function handleTouch(tx, ty)
           setToast("That turtle's position is unknown", C.warn, 4)
         end
       elseif h[5] == "tsel" then
-        state.tSel = h[6]
+        -- tapping the selected turtle again goes back to the FLEET overview
+        if state.tSel == h[6] then state.tSel = nil else state.tSel = h[6] end
       elseif h[5] == "trescuer" then
         local t = state.turtles[h[6]]
         if t and t.anchor and not t.rescuerRole then
@@ -220,8 +349,35 @@ function handleTouch(tx, ty)
             setToast(t.label .. " is no longer the rescue turtle", C.label)
           end
         end
+      elseif h[5] == "tdrive" then
+        TT.drive(h[6][1], h[6][2])
+      elseif h[5] == "tdsel" then                     -- (DRIVE page; "dsel" = the drone picker)
+        state.tSel = h[6]
+        local st = state.turtles[h[6]]
+        if st and TT.online(st) then TT.drive(h[6], "look") end        -- what is around it, at once
       elseif h[5] == "tcmd" then
         TT.send(h[6][1], h[6][2], h[6][3])
+      elseif h[5] == "minecmd" then
+        -- a new field starts where the LOADER stands: every miner must be in its chunk
+        local lu = MINE.units[h[6][1]]
+        if h[6][2] == "start" and lu and lu.role == "loader" and lu.ci == nil and lu.pos and lu.pos.x then
+          local away = {}
+          for _, mu in pairs(MINE.units) do
+            if mu.role == "miner" and mu.leader == lu.id and mu.pos and mu.pos.x and
+               (math.floor(mu.pos.x / 16) ~= math.floor(lu.pos.x / 16) or math.floor(mu.pos.z / 16) ~= math.floor(lu.pos.z / 16)) then
+              away[#away + 1] = (mu.label or ("#" .. mu.id))
+            end
+          end
+          if #away > 0 then
+            setPopup("MINERS NOT IN THE LOADER'S CHUNK", table.concat(away, ", ") .. " must stand in the same chunk as " ..
+                     "the loader (" .. fmtPos(lu.pos.x, lu.pos.y, lu.pos.z) .. ") - only that chunk is loaded at the start.", C.warn)
+          end
+        end
+        MINE.cmd(h[6][1], h[6][2], {})
+        local u = MINE.units[h[6][1]]
+        local wait = u and u.role == "miner" and u.running
+        setToast(string.upper(h[6][2]) .. " sent" .. (wait and " - the miner gets it at its next report (up to 30 s)" or ""),
+                 C.label, 5)
       elseif h[5] == "acc_allow" then
         allowPlayer(h[6])
         chatTell(h[6], tostring(state.owner) .. " allowed you to use the drones: $" ..
@@ -272,8 +428,23 @@ function handleTouch(tx, ty)
       elseif h[5] == "nclear" then
         state.notes = {}
       elseif h[5] == "mqstop" then
+        local wasAuto = MAP.queue and MAP.queue.auto
         MAP.stopSurvey()
-        setToast("Big survey stopped (turtles finish their current batch - STOP ALL stops them now)", C.label)
+        setToast(wasAuto and "Auto-map is OFF (turn it on again on the MAP tab)" or
+                 "Big survey stopped (turtles finish their current batch - STOP ALL stops them now)", C.label)
+      elseif h[5] == "mauto" then
+        MAP.setAuto(not MAP.auto.on)
+        setToast(MAP.auto.on and "Auto-map is ON: the turtles keep surveying from the base outward, by themselves"
+                 or "Auto-map is OFF", MAP.auto.on and C.good or C.label)
+      elseif h[5] == "callfits" then
+        state.curiosAll = not state.curiosAll
+        state.curiosFitPage = 1
+      elseif h[5] == "cauto" and CURIOS then
+        local v = h[6]
+        local on = CURIOS.toggleAuto(v[1], v[2], v[3])
+        setToast(on and ("AUTO-EQUIP ON: one " .. tostring(v[3]) .. " is kept on in " .. prettify(v[1]) ..
+                 " (a new one from AE2 when it is used up)") or ("AUTO-EQUIP OFF for " .. tostring(v[3])),
+                 on and C.good or C.label)
       elseif h[5] == "csel" then
         local cur = state.curiosSel
         if cur and cur.type == h[6][1] and cur.pos == h[6][2] then state.curiosSel = nil
@@ -289,6 +460,17 @@ function handleTouch(tx, ty)
         else
           setToast("Owner unknown (memory card in the Inventory Manager?)", C.warn, 4)
         end
+      elseif h[5] == "setgroup" then
+        state.setGroup = h[6]
+      elseif h[5] == "setdec" or h[5] == "setinc" or h[5] == "setreset" then
+        -- SETTINGS page: one step down / up, or back to base_config.lua
+        local def = settingAt(state.setGroup or 1, h[6])
+        if def then
+          local okN, errN
+          if h[5] == "setreset" then okN, errN = pcall(settingReset, def)
+          else okN, errN = pcall(settingStep, def, h[5] == "setdec" and -1 or 1) end
+          if not okN then setToast("Could not change it: " .. tostring(errN), C.warn, 5) end
+        end
       elseif h[5] == "evfilter" then
         state.eventsFilter = h[6]
         state.eventsPage = 1
@@ -296,7 +478,7 @@ function handleTouch(tx, ty)
         noteLogClear()                  -- the list only; events.log keeps everything
         state.eventsPage = 1
       end
-      return h[5] == "page" or h[5] == "act" or h[5] == "mecraft"
+      return h[5] == "page" or h[5] == "group" or h[5] == "act" or h[5] == "mecraft"
     end
   end
   return false

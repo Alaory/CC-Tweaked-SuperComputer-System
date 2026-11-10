@@ -21,17 +21,15 @@ function drawDronePage(G)
 
   -- drone selector (dot = connected, * = on a mission)
   local sx = 2
-  text(sx, G.y0, "DRONE", C.dim, C.bg)
+  text(sx, G.y0 + 1, "DRONE", C.dim, C.bg)
   sx = sx + 7
   for _, k in ipairs(droneOrder) do
     local dr = drones[k]
     local sel = dr == state.drone
     local bg = sel and C.accent or C.empty
     local lab = " " .. dr.label .. (dr.busy and " *" or "") .. " "
-    text(sx, G.y0, lab, sel and C.ink or C.text, bg)
-    text(sx + #lab, G.y0, "\7 ", dr.conn and C.good or C.bad, bg)
-    round(sx, G.y0, #lab + 2, 1, bg, C.bg)
-    addHit(sx, G.y0, #lab + 2, 1, "dsel", k)
+    tabButton(sx, G.y0, lab .. "  ", sel and C.ink or C.text, bg, "dsel", k)
+    text(sx + #lab, G.y0 + 1, "\7", dr.conn and C.good or C.bad, bg)
     sx = sx + #lab + 3
   end
 
@@ -41,7 +39,7 @@ function drawDronePage(G)
   end
 
   local D = state.drone
-  local y0, bottom = G.y0 + 2, G.y1
+  local y0, bottom = G.y0 + 3, G.y1
   local lx = 2
   local leftW = math.floor((W - 3) * 0.40)
   local rx = lx + leftW + 1
@@ -88,7 +86,7 @@ function drawDronePage(G)
   card(lx, my, leftW, mh, "MISSION")
   if not m then
     text(ix, my + 3, "No mission yet.", C.dim, C.panel)
-    text(ix, my + 4, trunc("Pick a passenger and a destination, then FERRY.", iw), C.dim, C.panel)
+    text(ix, my + 4, trunc("Pick a passenger + a place, then FERRY.", iw), C.dim, C.panel)
   else
     local stc = (m.state == "done" and C.good) or (m.state == "running" and C.warn)
                 or (m.state == "stopped" and C.dim) or C.bad
@@ -148,7 +146,7 @@ function drawDronePage(G)
 
   ------------------------------------------------ ACTIONS
   local ay = y0 + 10
-  card(rx, ay, rw, 13, "ACTIONS")
+  card(rx, ay, rw, 15, "ACTIONS")
   if not D.conn then
     text(rix, ay + 4, "Connect a drone first (see the left panel).", C.dim, C.panel)
   else
@@ -162,12 +160,12 @@ function drawDronePage(G)
               "FERRY  " .. trunc(pass, bw - 8) .. "  >  " .. trunc(dname, bw - 8),
               { kind = "drone", name = "ferry:" .. pass, count = 0, pass = pass }, true)
     drawButton(rix + 2 * (bw + 1), ay + 7, bw, 3, "STOP", C.bad, C.ink, "dstop")
-    actButton(rix, ay + 11, bw, 1, "RELEASE DRONE", { kind = "drone", name = "release:", count = 0 })
-    actButton(rix + bw + 1, ay + 11, bw, 1, "GO HOME", { kind = "drone", name = "home:", count = 0 })
+    actButton(rix, ay + 11, bw, 3, "RELEASE DRONE", { kind = "drone", name = "release:", count = 0 })
+    actButton(rix + bw + 1, ay + 11, bw, 3, "GO HOME", { kind = "drone", name = "home:", count = 0 })
   end
 
   ------------------------------------------------ PLAYERS + SAVED PLACES
-  local py = ay + 14
+  local py = ay + 16
   local rest = bottom - py + 1
   local ph = math.floor(rest * 0.58)
   local wy = py + ph + 1

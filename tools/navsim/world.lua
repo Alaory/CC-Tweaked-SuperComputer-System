@@ -24,6 +24,13 @@ if SCEN == "wall" then
   -- a long wall: 120 wide, up to Y 130 - too wide to plan around nearby
   for y = 55, 130 do for z = -60, 60 do SOLID["30," .. y .. "," .. z] = "minecraft:stone" end end
 end
+if SCEN == "maze" or SCEN == "maze2" then
+  -- a comb of tall walls between start and target (TX=44): the planner has to
+  -- weave through the gaps - nothing to climb over
+  local function wall(x, z1, z2) for y = 50, 140 do for z = z1, z2 do SOLID[x .. "," .. y .. "," .. z] = "minecraft:stone" end end end
+  wall(10, -30, 6) wall(20, -6, 30) wall(30, -30, 6)
+  if SCEN == "maze2" then wall(38, -6, 30) for x = 10, 38 do for y = 50, 140 do SOLID[x .. "," .. y .. ",-31"] = "minecraft:stone" SOLID[x .. "," .. y .. ",31"] = "minecraft:stone" end end end
+end
 local pos = { x = 0, y = 0, z = 0 }
 pos.y = ground(0, 0) + 1
 local f = 3                             -- facing: 0 +z, 1 -x, 2 -z, 3 +x
@@ -42,8 +49,8 @@ turtle = {
   back = function() return try(pos.x - DX[f], pos.y, pos.z - DZ[f]) end,
   up = function() return try(pos.x, pos.y + 1, pos.z) end,
   down = function() return try(pos.x, pos.y - 1, pos.z) end,
-  turnLeft = function() f = (f + 3) % 4 return true end,
-  turnRight = function() f = (f + 1) % 4 return true end,
+  turnLeft = function() f = (f + 3) % 4 TURNS = (TURNS or 0) + 1 clock = clock + 0.4 return true end,
+  turnRight = function() f = (f + 1) % 4 TURNS = (TURNS or 0) + 1 clock = clock + 0.4 return true end,
   detect = function() return solid(pos.x + DX[f], pos.y, pos.z + DZ[f]) ~= nil end,
   detectUp = function() return solid(pos.x, pos.y + 1, pos.z) ~= nil end,
   detectDown = function() return solid(pos.x, pos.y - 1, pos.z) ~= nil end,
@@ -67,6 +74,7 @@ os.getComputerID = function() return 9 end
 os.getComputerLabel = function() return "Sim" end
 os.setComputerLabel = function() end
 os.epoch = function() return 1700000000000 + math.floor(clock * 1000) end
+REALCLOCK = REALCLOCK or os.clock
 os.clock = function() return clock end
 os.startTimer = function() return 1 end
 os.queueEvent = function() end
@@ -98,8 +106,54 @@ parallel = { waitForAny = function() end, waitForAll = function(...) for _, g in
 print = function() end
 assert(loadfile(NODE))()
 immediate("setpos", { pos.x, pos.y, pos.z, "east" })
+-- count the route planning (calls, cells in the routes, real CPU time)
+local A0 = astar
+PLANS, PLANLEN, PLANCPU = 0, 0, 0
+astar = function(...)
+  local t0 = REALCLOCK()
+  local p, e = A0(...)
+  PLANCPU = PLANCPU + (REALCLOCK() - t0)
+  PLANS = PLANS + 1
+  if p then PLANLEN = PLANLEN + #p end
+  return p, e
+end
+if SCEN == "astar" then
+  -- the planner alone: a maze in its memory, routes between far corners
+  local function turnsOf(path, sx, sz)
+    local n, last, px, pz = 0, nil, sx, sz
+    for _, p in ipairs(path) do
+      local dx, dz = p[1] - px, p[3] - pz
+      if dx ~= 0 or dz ~= 0 then
+        local d = dx .. "," .. dz
+        if last and d ~= last then n = n + 1 end
+        last = d
+      end
+      px, pz = p[1], p[3]
+    end
+    return n
+  end
+  local seed = 7
+  local function rnd() seed = (seed * 1103515245 + 12345) % 2147483648 return seed / 2147483648 end
+  local totalT, totalL, totalCpu, fails = 0, 0, 0, 0
+  for run = 1, 6 do
+    -- forget the last maze (the planner's memory is private: clear cell by cell)
+    for x = -5, 45 do for z = -25, 25 do for y = 98, 102 do memClear(x, y, z) end end end
+    -- random pillars and walls on one layer (the turtle stays at y 100)
+    for x = -5, 45 do for z = -25, 25 do
+      if rnd() < 0.18 then for y = 99, 101 do memWall(x, y, z, "hard", "scan") end end
+    end end
+    for x = -5, 45 do for z = -25, 25 do memWall(x, 102, z, "hard", "scan") memWall(x, 98, z, "hard", "scan") end end
+    local t0 = REALCLOCK()
+    local path, err = astar(0, 100, -20, 40, 100, 20)
+    totalCpu = totalCpu + (REALCLOCK() - t0)
+    if path then totalL, totalT = totalL + #path, totalT + turnsOf(path, 0, -20) else fails = fails + 1 io.stdout:write("  fail: " .. tostring(err) .. "\n") end
+  end
+  io.stdout:write(string.format("astar: 6 mazes  route cells %d  turns %d  failed %d  cpu %.2f s\n", totalL, totalT, fails, totalCpu))
+  os.exit(0)
+end
 local tx, tz = tonumber(os.getenv("TX") or 300), tonumber(os.getenv("TZ") or 0)
 local ty = ground(tx, tz) + 1
 local ok, res, msg = xpcall(function() return runJob({ cmd = "goto", args = { tx, ty, tz } }) end, debug.traceback)
-io.stdout:write(string.format("%-10s %-8s arrived %-5s moves %5d  game time %4d s  (%s)\n", SCEN, os.getenv("WHO") or "",
-  tostring(ok and res and pos.x == tx and pos.z == tz), moves, math.floor(clock), tostring(ok and msg or res):sub(1, 400)))
+io.stdout:write(string.format("%-10s %-8s arrived %-5s moves %5d  turns %4d  game time %4d s  (%s)\n", SCEN, os.getenv("WHO") or "",
+  tostring(ok and res and pos.x == tx and pos.z == tz), moves, TURNS or 0, math.floor(clock), tostring(ok and msg or res):sub(1, 400)))
+io.stdout:write(string.format("           plans %d (route cells %d, cpu %.2f s)\n", PLANS, PLANLEN, PLANCPU))

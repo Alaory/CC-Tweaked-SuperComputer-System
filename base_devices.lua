@@ -8,6 +8,64 @@
 --   Defines: inv, mon, det, envDet, chatBox, bridge, bridgeKind, picked, invCaps.
 
 ---------------------------------------------------------------------
+-- SETTINGS changed on the SYSTEM tab (settings.dat): applied over
+-- base_config.lua right after it is loaded, so base_config.lua itself is
+-- never changed. { ["turtles.idleHome"] = 300, ... }
+---------------------------------------------------------------------
+SETTINGS_FILE = "settings.dat"
+SETTINGS = {}
+CONFIG_ORIGINAL = {}       -- the base_config.lua value of every changed setting (for RESET)
+function setConfigPath(path, value)
+  local t = CONFIG
+  local parts = {}
+  for p in tostring(path):gmatch("[^%.]+") do parts[#parts + 1] = p end
+  for i = 1, #parts - 1 do
+    if type(t[parts[i]]) ~= "table" then t[parts[i]] = {} end
+    t = t[parts[i]]
+  end
+  t[parts[#parts]] = value
+end
+function getConfigPath(path)
+  local t = CONFIG
+  for p in tostring(path):gmatch("[^%.]+") do
+    if type(t) ~= "table" then return nil end
+    t = t[p]
+  end
+  return t
+end
+do
+  if fs.exists(SETTINGS_FILE) then
+    local h = fs.open(SETTINGS_FILE, "r")
+    local t = h and textutils.unserialize(h.readAll() or "")
+    if h then h.close() end
+    if type(t) == "table" then SETTINGS = t end
+  end
+  for path, v in pairs(SETTINGS) do
+    CONFIG_ORIGINAL[path] = getConfigPath(path)
+    pcall(setConfigPath, path, v)
+  end
+end
+local function saveSettings()
+  local h = fs.open(SETTINGS_FILE, "w")
+  if h then h.write(textutils.serialize(SETTINGS)) h.close() end
+end
+-- change a setting now and keep it (settings.dat)
+function setSetting(path, value)
+  if SETTINGS[path] == nil and CONFIG_ORIGINAL[path] == nil then CONFIG_ORIGINAL[path] = getConfigPath(path) end
+  setConfigPath(path, value)
+  SETTINGS[path] = value
+  saveSettings()
+end
+-- back to the value in base_config.lua
+function resetSetting(path)
+  if SETTINGS[path] == nil then return end
+  setConfigPath(path, CONFIG_ORIGINAL[path])
+  SETTINGS[path] = nil
+  saveSettings()
+end
+function isChanged(path) return SETTINGS[path] ~= nil end
+
+---------------------------------------------------------------------
 -- PERIPHERALS
 ---------------------------------------------------------------------
 -- Find a peripheral on the computer's sides OR anywhere on the wired network.

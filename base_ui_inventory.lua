@@ -30,7 +30,7 @@ function drawBackpack(x, y, w, h, G)
   local hy = gy + 3 * (ch + 1) + 2
   text(gx, hy - 2, "HOTBAR", C.label, C.panel)
   if state.heldIdx then
-    fill(gx + state.heldIdx * pitch, hy - 1, cw, 1, C.accent)
+    fill(gx + state.heldIdx * pitch, hy - 1, cw, 1, C.accent)   -- the item in your hand
   end
   for col = 0, 8 do
     local cx = gx + col * pitch
@@ -38,48 +38,40 @@ function drawBackpack(x, y, w, h, G)
     drawCell(cx, hy, cw, ch, it, tostring(col + 1))
     addHit(cx, hy, cw, ch, "item", it and it.name)
   end
-end
 
--- armour and offhand slots
-function drawEquip(x, y, w, h, G)
-  card(x, y, w, h, "EQUIPMENT")
+  -- armour + offhand in the same box (no separate EQUIPMENT / OVERVIEW boxes)
+  local ay = hy + ch + 2
+  text(gx, ay - 1, "ARMOUR + OFFHAND", C.label, C.panel)
   local labels = { "Helm", "Chest", "Legs", "Boots", "Offhand" }
-  local sx = x + 1 + math.floor((w - 2 - (G.pitch * 5 - 1)) / 2)
   for i = 1, 5 do
-    local cx = sx + (i - 1) * G.pitch
+    local cx = gx + (i - 1 + (i == 5 and 1 or 0)) * pitch    -- (a gap before the offhand)
     local it = state.equip[i]
-    drawCell(cx, y + 3, G.cw, G.ch, it, labels[i])
-    addHit(cx, y + 3, G.cw, G.ch, "item", it and it.name)
+    drawCell(cx, ay, cw, ch, it, labels[i])
+    addHit(cx, ay, cw, ch, "item", it and it.name)
   end
-end
-
--- how full the inventory is
-function drawOverview(x, y, w, h)
-  card(x, y, w, h, "OVERVIEW")
-  local ix, iw = x + 2, w - 4
-  local frac = state.used / 36
-  local col = frac < 0.6 and C.good or (frac < 0.85 and C.warn or C.bad)
-  local s = h >= 12 and 2 or 1
-
-  kv(ix, y + 3, iw, "Slots used", state.used .. "/36")
-  barW(ix, y + 4, iw, math.floor(frac * iw + 0.5), col)
-  local r = y + 4 + s
-  kv(ix, r, iw, "Free slots", tostring(36 - state.used))
-  kv(ix, r + s, iw, "Total items", commas(state.total))
-  kv(ix, r + 2 * s, iw, "Unique types", tostring(#state.list))
+  -- how full: on the right of the armour row
+  local bx = gx + 7 * pitch
+  local bw = gridW - 7 * pitch
+  if bw >= 8 then
+    local frac = state.used / 36
+    local col = frac < 0.6 and C.good or (frac < 0.85 and C.warn or C.bad)
+    local free = (36 - state.used) .. " free"
+    text(bx, ay + math.floor((ch - 1) / 2) - 1, trunc(free, bw), col, C.panel)
+    barW(bx, ay + math.floor((ch - 1) / 2), bw, math.floor(frac * bw + 0.5), col)
+  end
 end
 
 -- the item list with the SORT button
 function drawList(x, y, w, h)
   card(x, y, w, h, "ITEMS")
   local label = "SORT: " .. sortMode:upper()
-  local bx = x + w - #label - 4
-  text(bx, y + 1, " " .. label .. " ", C.ink, C.accent)
-  addHit(bx, y + 1, #label + 2, 1, "sort")
+  local bw = #label + 4
+  drawButton(x + w - bw - 2, y + 1, bw, 2, label, C.empty, C.text, "sort")
 
   local ix, iw = x + 2, w - 4
   local list = state.list
-  local avail = h - 4
+  local avail = h - 5
+  y = y + 1                                   -- (the list starts under the 2-row SORT button)
 
   -- 3 = name row + bar row + gap, 2 = bar behind text + gap, 1 = compact
   local pitch = 1

@@ -10,33 +10,64 @@
 ---------------------------------------------------------------------
 -- THEME
 ---------------------------------------------------------------------
--- Every theme gives each colour slot the same JOB (page background, cards,
--- text, accent, green = good / grass on the map, blue = water ...), only the
--- shades change. All themes are dark (the pills write dark text on colours).
+-- BLOCK UI (the look of every page - rules in CLAUDE.md "UI rules"):
+-- Minecraft's own colours, in deeper, softer shades (modern, not retro). Every theme ("biome") gives each colour slot the
+-- same JOB, only the shades of the FRAME change:
+--   bg      page background (dark, like the menu background)
+--   cards   panels (dark inventory window)
+--   lines   inactive tabs, row highlights, bevel highlight of panels
+--   buttons button face (Minecraft's stone button), empty slots, bar tracks
+--   text    white text;  dim = Minecraft's grey text
+--   accent  the selected tab / main buttons (Minecraft's blue "hover" button)
+--   titles  gold, like Minecraft's gold text (card titles, headings)
+-- The status colours are Minecraft's chat colours and the SAME in every
+-- biome (the MAP uses them for grass, water, sand ... too): green = good,
+-- yellow = attention, red = problem, cyan (aqua) = info, gold (orange), pink, purple.
 -- Slot order: bg, cards, lines, buttons, text, dim, accent, titles,
 --             cyan, green, yellow, orange, red, pink, purple, lime
 local SLOTS = { colors.black, colors.gray, colors.magenta, colors.lightGray, colors.white,
                 colors.brown, colors.blue, colors.lightBlue, colors.cyan, colors.green,
                 colors.yellow, colors.orange, colors.red, colors.pink, colors.purple, colors.lime }
+-- the fixed colours (status + map): Minecraft chat colours, softened (not garish)
+local FIXED = { 0x141414, 0x2E2E2E, 0x4A4A4A, 0x6F6F6F, 0xFFFFFF, 0xA89F92, 0x5A7CE6, 0xF2B33D,
+                0x52CFCF, 0x5CBF5C, 0xF0DE5C, 0xEE9F34, 0xE85C5C, 0xDE7BD6, 0xA374E6, 0x92D25C }
 THEMES = {
-  midnight = { 0x0B0E14, 0x151A26, 0x1F2636, 0x262E42, 0xE8ECF4, 0x7D879F, 0x6C9CFF, 0x8ED1FF,
-               0x40DCC4, 0x5EE38F, 0xF6C744, 0xFF9F5C, 0xFF6B6B, 0xFF7DC4, 0xB49CFF, 0xB5E35B },
-  nord     = { 0x1F232B, 0x2A2F3A, 0x343A47, 0x3E4656, 0xECEFF4, 0x8C96A8, 0x88C0D0, 0x9DB6D6,
-               0x8FBCBB, 0xA3BE8C, 0xEBCB8B, 0xD08770, 0xD06A73, 0xD291BC, 0xB48EAD, 0xC5D99B },
-  dracula  = { 0x191A21, 0x242631, 0x30323F, 0x3D4052, 0xF8F8F2, 0x8890B5, 0xBD93F9, 0x8BE9FD,
-               0x6FE3E3, 0x50FA7B, 0xF1FA8C, 0xFFB86C, 0xFF5555, 0xFF79C6, 0xC6A4FF, 0xA6E22E },
-  forest   = { 0x0D1712, 0x15231C, 0x1E3128, 0x283F33, 0xE6F0E8, 0x86A394, 0x5FD39A, 0x9FE0C0,
-               0x4FD1C5, 0x7EE787, 0xF2CC60, 0xF0A060, 0xF07070, 0xF08CC0, 0xB8A0F0, 0xC0E070 },
-  ember    = { 0x140E0D, 0x201715, 0x2D211E, 0x3A2B27, 0xF5ECE6, 0xA8948A, 0xFF8A50, 0xFFC48A,
-               0x5FD3C8, 0x8FD86A, 0xFFD25A, 0xFF9A55, 0xFF5F5F, 0xFF80B0, 0xC79BFF, 0xC8E05A },
-  ocean    = { 0x07121D, 0x0E1C2B, 0x172839, 0x21364D, 0xE4F0FA, 0x7F97AE, 0x3FA9F5, 0x7FD4FF,
-               0x2FD9D0, 0x4ADE9A, 0xF5D547, 0xFFA45B, 0xFF6A7A, 0xF58BD0, 0xA99CFF, 0xA8E063 },
+  -- Minecraft's menus, made modern: stone-grey buttons and gold titles like the
+  -- game, but deeper, softer shades (not the bright flat grey of old games).
+  -- frame only: bg, cards, lines, buttons, text, dim, accent, titles (the rest = FIXED)
+  stone     = { 0x121212, 0x262626, 0x3A3A3A, 0x505050, 0xFFFFFF, 0xA8A8A8, 0x5B7FE0, 0xF2B33D },
+  deepslate = { 0x0F0F13, 0x212129, 0x34343F, 0x4A4A57, 0xF2F2F8, 0x9A9AA8, 0x6A84E0, 0xF2B33D },
+  oak       = { 0x15100A, 0x2C2117, 0x433325, 0x5E4730, 0xFFF6E8, 0xC2AE94, 0x6A9A3C, 0xF5C451 },
+  nether    = { 0x130909, 0x281414, 0x3E1F1F, 0x572B2B, 0xFFEEEE, 0xC09898, 0xCC4433, 0xF5A93A },
+  ender     = { 0x0C0A12, 0x1B1725, 0x2D2640, 0x413758, 0xF6F0FF, 0xA89CC0, 0x8C62E8, 0xEFE39C },
+  ocean     = { 0x071116, 0x112129, 0x1C3640, 0x284E5A, 0xEAFBFF, 0x94B8C2, 0x2FA8B8, 0xF5C451 },
+  -- Bedrock edition menus: dark slate boxes, LIGHT grey buttons with dark text,
+  -- the selected tab / main button green, white titles (the owner's pick)
+  bedrock   = { 0x1B1B1C, 0x313233, 0x48494A, 0xD0D1D4, 0xFFFFFF, 0xA6A6AA, 0x5A7CE6, 0xFFFFFF },
 }
-THEME_ORDER = { "midnight", "nord", "dracula", "forest", "ember", "ocean" }
+THEME_ORDER = { "bedrock", "stone", "deepslate", "oak", "nether", "ender", "ocean" }
+-- themes with LIGHT buttons: text drawn on a button / the selected tab is made
+-- dark (white, gold, grey or a status colour on light grey cannot be read).
+-- accent = the colour slot of the selected tab / main button (the blue slot is
+-- the MAP's water, so a green accent uses the green slot).
+THEME_STYLE = { bedrock = { light = true, accent = colors.green } }
+LIGHT_FG = nil                       -- [background] = { [text colour] = readable colour }
+function themeStyle()
+  if not C then return end
+  local st = THEME_STYLE[THEME_NAME] or {}
+  C.accent = st.accent or colors.blue
+  if not st.light then LIGHT_FG = nil return end
+  local dark = {}
+  for _, c in ipairs({ C.text, C.label, colors.yellow, colors.lime, colors.cyan, colors.green,
+                       colors.orange, colors.pink, colors.lightBlue }) do dark[c] = C.ink end
+  dark[C.dim] = C.head
+  local onAccent = { [C.text] = C.ink, [C.label] = C.ink, [C.dim] = C.ink, [colors.green] = C.ink }
+  LIGHT_FG = { [C.empty] = dark, [C.accent] = onAccent }
+end
 local THEME_FILE = "theme.dat"
 
 -- the theme for this start: a fixed one (the 'theme' command, or
--- CONFIG.theme = "nord" in base_config.lua), or "random" (the default): a
+-- CONFIG.theme = "stone" in base_config.lua), or "random" (the default): a
 -- different one on every start
 local function chooseTheme()
   local saved = {}
@@ -56,14 +87,24 @@ local function chooseTheme()
   return pick, saved
 end
 
+-- colours the MAP uses (grass, water, sand, stone, snow ...): the same in
+-- every theme, so the map always looks the same and stays easy to read.
+-- A theme only changes the frame: background, cards, lines, buttons, titles.
+local MAP_SLOTS = { [colors.green] = true, [colors.lime] = true, [colors.blue] = true, [colors.yellow] = true,
+                    [colors.orange] = true, [colors.white] = true, [colors.brown] = true, [colors.red] = true,
+                    [colors.cyan] = true, [colors.purple] = true, [colors.pink] = true }
+
 -- switch to a theme (also while running: the monitor gets the new colours)
 function setTheme(name)
   if not THEMES[name] then return false end
   THEME_NAME = name
   PALETTE = {}
-  for i, c in ipairs(SLOTS) do PALETTE[c] = THEMES[name][i] end
+  for i, c in ipairs(SLOTS) do
+    PALETTE[c] = (MAP_SLOTS[c] or not THEMES[name][i]) and FIXED[i] or THEMES[name][i]
+  end
   if mon then pcall(applyPalette, mon) end
   if win then pcall(applyPalette, win) end
+  themeStyle()
   shownRows = {}                -- every row is drawn again
   return true
 end
@@ -89,11 +130,12 @@ C = {
   red = colors.red, purple = colors.purple,
 }
 
+themeStyle()
+
 -- colours an item can be tinted with
-ITEM_COLORS = {
+ITEM_COLORS = {                      -- (fixed colours only: lightBlue = the gold titles)
   colors.blue, colors.cyan, colors.green, colors.yellow, colors.orange,
   colors.red, colors.pink, colors.purple, colors.lime,
-  colors.lightBlue,
 }
 
 -- set the program's colours on a monitor or window
@@ -116,11 +158,18 @@ win, W, H = nil
 -- Write a whole data file safely: only if it fits on the disk, and through a
 -- temporary file - a failed write never destroys the old file. Returns
 -- true, or false + the reason (also shown in the footer as a warning).
+-- textutils.serialize without the spaces and line breaks (a third of the size)
+function serialSmall(t)
+  local ok, s = pcall(textutils.serialize, t, { compact = true })
+  if ok and type(s) == "string" then return s end
+  return textutils.serialize(t)
+end
+
 function saveFileSafe(path, text)
   local dir = fs.getDir(path)
   local okF, free = pcall(fs.getFreeSpace, dir == "" and "/" or dir)
   if okF and type(free) == "number" and free < #text + 4096 then
-    state.diskLow = string.format("DISK ALMOST FULL: %s not saved (%d KB free, needs %d KB)",
+    state.diskLow = string.format("DISK ALMOST FULL: %s not saved (%d KB free, needs %d KB) - type disks",
                                   path, math.floor(free / 1024), math.ceil(#text / 1024))
     return false, state.diskLow
   end
@@ -194,6 +243,39 @@ function dataFile(path, forSave)
   return path
 end
 
+-- where a data file lives NOW (a data floppy first - dataFile moves the
+-- computer's copy there), remembered for a minute: dataFile looks at every
+-- drive, too slow for every log line. Logs, mining.dat, turtles.dat ... use it
+-- so the computer's 1 MB is left for the program.
+local DPATH = {}
+function dataPath(name)
+  local c = DPATH[name]
+  if c and os.clock() - c.t < 60 and c.t <= os.clock() then return c.p end
+  local ok, p = pcall(dataFile, name)
+  p = (ok and p) or name
+  DPATH[name] = { p = p, t = os.clock() }
+  return p
+end
+function dataPathReset() DPATH = {} end                 -- (look again now: a floppy was put in)
+-- a log file and its ".old" partner in the same place (a floppy); an old
+-- partner still on the computer moves along
+function logPaths(cur, old)
+  local cp = dataPath(cur)
+  local op = old
+  if cp ~= cur then
+    op = fs.combine(fs.getDir(cp), old)
+    if fs.exists(old) and not fs.exists(op) then pcall(fs.move, old, op) end
+    if fs.exists(old) then pcall(fs.delete, old) end
+  end
+  return cp, op
+end
+-- free space where a path lives
+function freeAt(path)
+  local d = fs.getDir(path)
+  local ok, f = pcall(fs.getFreeSpace, d == "" and "/" or d)
+  return ok and type(f) == "number" and f or 0
+end
+
 -- a data file was saved somewhere else (a data floppy): the old copy on the
 -- computer is not needed any more
 function dropOldCopy(configPath, savedPath, nothingInMemory)
@@ -246,6 +328,7 @@ end
 
 -- write text into the off-screen window
 function text(x, y, s, fg, bg)
+  if bg and LIGHT_FG and LIGHT_FG[bg] then fg = LIGHT_FG[bg][fg] or fg end
   if bg then win.setBackgroundColor(bg) end
   win.setTextColor(fg)
   win.setCursorPos(x, y)
@@ -340,9 +423,10 @@ end
 function waitFor(t, ...)
   local id = os.startTimer(t)
   local names = { ... }
+  local deadline = os.clock() + t
   while true do
     local ev, p = os.pullEventRaw()
-    if ev == "timer" and p == id then return end
+    if (ev == "timer" and p == id) or os.clock() >= deadline then return end
     if ev == "terminate" then os.cancelTimer(id) return end
     for _, n in ipairs(names) do
       if ev == n then os.cancelTimer(id) return end

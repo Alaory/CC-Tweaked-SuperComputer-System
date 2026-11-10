@@ -5,6 +5,139 @@
 --   loop. inventory.lua runs these together: uiLoop, invWorker, pageWorker,
 --   actionWorker, droneWorker, terminalWorker, chatWorker, commsWorker.
 
+-- ===== the SYSTEM log =====
+-- Only system things (the base was off / crashed, new turtle program, map
+-- floppies, auto-map ...), so they are not pushed out of the EVENTS list by
+-- everyday messages. system.log on the computer (16 KB, then system.old.log);
+-- the SYSTEM tab shows the newest 100.
+local SYS_FILE, SYS_OLD = "system.log", "system.old.log"
+SYSLOG = {}
+do
+  local cur, old = logPaths(SYS_FILE, SYS_OLD)
+  for _, f in ipairs({ old, cur }) do
+    if fs.exists(f) then
+      local h = fs.open(f, "r")
+      while h do
+        local l = h.readLine()
+        if not l then break end
+        local d, kind, msg = l:match("^(.-)|(%u+)|(.*)$")
+        if d then table.insert(SYSLOG, 1, { when = d, kind = kind, msg = msg }) end
+      end
+      if h then h.close() end
+    end
+  end
+  while #SYSLOG > 100 do table.remove(SYSLOG) end
+end
+-- add a line to the system log (kind: "ERROR", "WARNING", "DONE", "INFO")
+function sysLog(msg, kind)
+  kind = kind or "INFO"
+  local okD, d = pcall(os.date, "%d.%m %H:%M")
+  d = okD and d or "?"
+  msg = tostring(msg):gsub("[\r\n|]", " ")
+  table.insert(SYSLOG, 1, { when = d, kind = kind, msg = msg })
+  while #SYSLOG > 100 do table.remove(SYSLOG) end
+  pcall(function()
+    local cur, old = logPaths(SYS_FILE, SYS_OLD)          -- (a data floppy when there is one)
+    if freeAt(cur) < 8192 then return end
+    if fs.exists(cur) and fs.getSize(cur) > 16384 then
+      if fs.exists(old) then fs.delete(old) end
+      fs.move(cur, old)
+    end
+    local h = fs.open(cur, "a")
+    if h then h.writeLine(d .. "|" .. kind .. "|" .. msg) h.close() end
+  end)
+end
+
+-- ===== system status for the SYSTEM tab (worker; drawing only reads it) =====
+function sysRefresh()
+  local s = {}
+  local okF, free = pcall(fs.getFreeSpace, "/")
+  local okC, cap = pcall(fs.getCapacity, "/")
+  s.pcFree, s.pcCap = okF and free or nil, okC and cap or nil
+  local okM, mfree, mcount = pcall(MAP.floppySpace)
+  s.mapFree, s.mapFloppies = okM and mfree or nil, okM and mcount or nil
+  local okU, total, onPc, files = pcall(MAP.diskUse)
+  s.mapBytes, s.mapOnPc, s.mapFiles = okU and total or nil, okU and onPc or nil, okU and files or nil
+  local up, all = 0, 0
+  for _, t in pairs(state.turtles) do
+    all = all + 1
+    if CODE and t.ver == CODE.ver then up = up + 1 end
+  end
+  s.turtlesUp, s.turtlesAll = up, all
+  s.eventsLog = fs.exists("events.log") and fs.getSize("events.log") or 0
+  if STORE then s.helperFree, s.helpers = STORE.space() end
+  if SCHEM then
+    local n = 0
+    for _ in pairs(SCHEM.list()) do n = n + 1 end
+    s.schematics = n
+  end
+  state.sys = s
+end
+
+-- ===== was the base computer off? =====
+-- Every 30 s the real time is written to base_alive.dat. On the next start
+-- the gap tells how long the computer was off, and why: after an error, you
+-- stopped it, or (otherwise) its chunk was unloaded / the server restarted.
+-- The last 10 times are kept ('uptime' on the computer).
+local ALIVE_FILE = "base_alive.dat"
+BASE_ALIVE = { starts = 0, offs = {} }
+do
+  if fs.exists(ALIVE_FILE) then
+    local h = fs.open(ALIVE_FILE, "r")
+    local t = h and textutils.unserialize(h.readAll() or "")
+    if h then h.close() end
+    if type(t) == "table" then BASE_ALIVE = t end
+  end
+  BASE_ALIVE.offs = BASE_ALIVE.offs or {}
+end
+local function aliveSave() saveFileSafe(ALIVE_FILE, serialSmall(BASE_ALIVE)) end
+function baseAliveTick()
+  BASE_ALIVE.t = os.epoch("utc")
+  aliveSave()
+end
+-- inventory.lua calls this when the program ends (error or Ctrl+T)
+function baseExit(crashErr)
+  BASE_ALIVE.t = os.epoch("utc")
+  if crashErr then BASE_ALIVE.crash = tostring(crashErr) else BASE_ALIVE.stopped = true end
+  pcall(aliveSave)
+  if MINE and MINE.dirty then pcall(MINE.save) end
+end
+local function when(ms)
+  local ok, r = pcall(os.date, "%d.%m %H:%M", math.floor(ms / 1000))
+  return ok and r or "?"
+end
+function fmtSpan(sec)
+  sec = math.floor(sec)
+  if sec < 120 then return sec .. " s" end
+  if sec < 7200 then return math.floor(sec / 60) .. " min" end
+  return math.floor(sec / 3600) .. " h " .. math.floor(sec % 3600 / 60) .. " min"
+end
+-- on start: report the time the base was off (called once, before the workers run)
+function baseStartCheck()
+  local now = os.epoch("utc")
+  local last = tonumber(BASE_ALIVE.t)
+  if last then
+    local gap = (now - last) / 1000
+    local why = BASE_ALIVE.crash and ("after an ERROR: " .. BASE_ALIVE.crash)
+                or BASE_ALIVE.stopped and "you stopped it"
+                or "its chunk was unloaded or the server restarted (nothing kept it loaded)"
+    if gap > 90 or BASE_ALIVE.crash then
+      table.insert(BASE_ALIVE.offs, 1, { from = last, to = now, why = why })
+      while #BASE_ALIVE.offs > 10 do table.remove(BASE_ALIVE.offs) end
+      local msg = "Off from " .. when(last) .. " to " .. when(now) .. " (" .. fmtSpan(gap) .. ") - " .. why
+      sysLog("Base was OFF " .. fmtSpan(gap) .. " (" .. when(last) .. " - " .. when(now) .. "): " .. why,
+             BASE_ALIVE.crash and "ERROR" or (BASE_ALIVE.stopped and "INFO" or "WARNING"))
+      if BASE_ALIVE.crash or not BASE_ALIVE.stopped then setPopup("BASE WAS OFF", msg, C.warn)
+      else setToast("Base was off " .. fmtSpan(gap) .. " (you stopped it)", C.label) end
+    end
+  end
+  BASE_ALIVE.crash, BASE_ALIVE.stopped = nil, nil
+  BASE_ALIVE.starts = (BASE_ALIVE.starts or 0) + 1
+  BASE_ALIVE.since = now
+  BASE_ALIVE.t = now
+  aliveSave()
+end
+
 ---------------------------------------------------------------------
 -- MAIN
 ---------------------------------------------------------------------
@@ -76,6 +209,7 @@ function pageWorker()
         local ok, rows, msg, note = pcall(fetchCurios)
         if ok then
           state.curios, state.curiosMsg, state.curiosNote = rows, msg, note
+          if CURIOS and type(rows) == "table" then pcall(CURIOS.learnWorn, rows) end
         else
           state.curios, state.curiosMsg, state.curiosNote = nil, tostring(rows), nil
         end
@@ -133,6 +267,14 @@ function pageWorker()
       end
     end
 
+    -- turtles avoid other players: their positions are needed on every page
+    -- (and for AWAY mode: is the owner online? - every 30 s)
+    local avoid = next(state.turtles) and (tonumber(CONFIG.turtles.avoidRange or 100) or 0) > 0
+    if det and not fresh("players", avoid and 10 or 30) then
+      safe({ "players", "owner" }, refreshPlayers, true)
+      did = true
+    end
+
     -- where is this computer? (for the anchor check; needs the turtle modem
     -- and GPS; asked here, not in the comms worker, so no message is missed)
     if state.tModem and not state.basePosTried then
@@ -183,7 +325,9 @@ function actionWorker()
   while state.running do
     local a = table.remove(state.actionQueue, 1)
     if a then
+      USER_ACTION = true                -- a button you pressed: its result is always shown
       local ok, err = pcall(runAction, a)
+      USER_ACTION = false
       if not ok then setToast("Error: " .. tostring(err), C.bad, 10) end
       state.busy = false
       state.force.inv = true          -- the inventory just changed
@@ -216,9 +360,13 @@ function droneWorker()
       dr.requester = nil
     end
     if dr then
+      dr.mdest = nil                  -- the mission's own destination is over
       if not ok then
         dr.mission = { title = "error", steps = {}, state = "failed", err = cleanErr(err) }
         droneLog(dr, "Error: " .. cleanErr(err))
+        -- a program error mid-mission: stop its action, the park check brings it home
+        pcall(resetDrone, dr)
+        dr.failedAt = os.clock()
       end
       dr.busy = false
     end
@@ -260,15 +408,72 @@ end
 -- busy talking to a peripheral); replies are paced (the Chat Box needs ~1 s).
 -- worker 7: turtles. Opens the wireless/ender modem, receives their reports
 -- and sends the queued commands (no game calls that could block the screen).
+-- the map worker: saving the map (also onto storage helpers - those calls
+-- wait for an answer, so they get a worker of their own: the turtles' messages
+-- and the monitor never wait for them) and finding the storage helpers
+function mapWorker()
+  MAP.canYield = true
+  TT.yieldCo = coroutine.running()          -- long work here lets the others run (TT.workYield)
+  -- storage helpers left OFF by a server restart: on again (and a moment to start) before the map is read
+  local okW, nWoke = pcall(STORE.wakeAll)
+  if okW and (nWoke or 0) > 0 then sleep(4) end
+  if next(STORE.known) then
+    pcall(STORE.find, true)                 -- (only the helpers used before - quick)
+    local okK, nK = pcall(STORE.kickSilent) -- on, but store.lua not running: restart it first
+    if okK and (nK or 0) > 0 then sleep(5) end
+  end
+  pcall(MAP.loadNow)                        -- read the map now, in the background (the screen is up)
+  pcall(TT.codeLoad)                        -- node.lua for the turtles (compiled + checked: a moment)
+  local lastFind = os.clock() - 280         -- first look for new helpers ~20 s after the start
+  local lastCode = os.clock()
+  while state.running do
+    waitFor(5, "map_save", "schem_in")
+    if #SCHEM.pending > 0 then pcall(SCHEM.processPending) end   -- dropped schematics (read with pauses)
+    if MAP.saveNow and MAP.loaded then            -- (still loading: saved once it is read)
+      MAP.saveNow = false
+      local okS = pcall(MAP.save)
+      pcall(MAP.checkSpace)
+      setToast(okS and not next(MAP.dirty) and "Map saved" or "Map not fully saved (no room?)",
+               okS and not next(MAP.dirty) and C.good or C.warn, 4)
+    else
+      pcall(MAP.autoSave)                -- changed map regions, at most once a minute
+    end
+    if os.clock() - lastCode > 30 then lastCode = os.clock() pcall(TT.codeLoad) end   -- node.lua changed?
+    -- map files still on this computer -> floppies / storage helpers (every 10 min;
+    -- every minute while the computer's disk is low)
+    local okF, pcFree = pcall(fs.getFreeSpace, "/")
+    local low = okF and type(pcFree) == "number" and pcFree < 160 * 1024
+    if os.clock() - (state.offloadAt or -1000) > (low and 60 or 600) then
+      state.offloadAt = os.clock()
+      pcall(MAP.offload)
+    end
+    if os.clock() - lastFind > 300 then  -- storage helpers added / gone, and their updates
+      lastFind = os.clock()
+      local okW2, n2 = pcall(STORE.wakeAll)       -- one switched off meanwhile: on again
+      if okW2 and (n2 or 0) > 0 then sleep(4) end
+      pcall(STORE.find)
+      local okK, nK = pcall(STORE.kickSilent)     -- on, but store.lua not running: restart it
+      if okK and (nK or 0) > 0 then sleep(5) pcall(STORE.find) end
+      pcall(STORE.updateAll)
+    end
+  end
+end
+
 function commsWorker()
   local opened
   local codeTick = 0
   local tick = os.startTimer(2)
+  -- the 2-s jobs run by the CLOCK, not only on their timer: a timer that goes off
+  -- while a job waits for a peripheral answer (ME bridge, player detector ...) is
+  -- thrown away by CraftOS - before, that stopped ALL these jobs (turtle updates,
+  -- going home, rescues ...) until the base was restarted
+  local nextTick = os.clock() + 2
   while state.running do
     if not opened then
       local m = TT.findModem()
       if m and pcall(rednet.open, m) then
         pcall(rednet.host, CONFIG.turtles.protocol, CONFIG.turtles.hostname)
+        pcall(rednet.host, POCKET.PROTO, CONFIG.turtles.hostname)       -- the pocket remote finds the base
         opened = m
         state.tModem = m
         os.queueEvent("inv_update")
@@ -278,18 +483,29 @@ function commsWorker()
     end
     while opened and #state.tOut > 0 do
       local o = table.remove(state.tOut, 1)
-      pcall(rednet.send, o.id, o.msg, CONFIG.turtles.protocol)
+      -- a COPY (turtle n*100000 + id): sent to the real id, only the tagged copy obeys
+      local real, copy = TT.realId(o.id)
+      if copy > 0 then o.msg.copy = copy end
+      pcall(rednet.send, real, o.msg, CONFIG.turtles.protocol)
+    end
+    while opened and #POCKET.out > 0 do                         -- answers / messages for the pocket remote
+      local o = table.remove(POCKET.out, 1)
+      pcall(rednet.send, o.id, o.msg, POCKET.PROTO)
     end
     local ev, a, b, c = os.pullEventRaw()
     if ev == "rednet_message" and c == CONFIG.turtles.protocol then
       pcall(TT.receive, a, b)
+    elseif ev == "rednet_message" and c == POCKET.PROTO then
+      pcall(POCKET.receive, a, b)
     elseif ev == "disk" and a == TT.installDrive() then
       pcall(TT.codeLoad)
       pcall(TT.prepareInstallFloppy)                -- a floppy in the install drive
-    elseif ev == "timer" and a == tick then
-      tick = os.startTimer(2)
+    end
+    if os.clock() >= nextTick then
+      nextTick = os.clock() + 2
+      tick = os.startTimer(2)                     -- (also replaces a lost one)
+      state.commsTickAt = os.clock()
       if KNOW.dirty and os.clock() - KNOW.saved > 30 then pcall(KNOW.save) end
-      pcall(MAP.autoSave)                -- changed map regions, at most once a minute
       local okF, errF = pcall(MAP.feedSurvey)  -- a big survey: next batch to each idle turtle
       if not okF and (not state.feedErrAt or os.clock() - state.feedErrAt > 60) then
         state.feedErrAt = os.clock()
@@ -298,10 +514,19 @@ function commsWorker()
       pcall(TT.updateTick)               -- turtle program updates, one turtle at a time
       pcall(TT.stopTick)                 -- STOP again until the turtle answers
       pcall(TT.patrolTick)               -- the rescue turtle: send it where it is needed
+      pcall(TT.partyTick)                -- the SEARCH PARTY: all turtles look for the lost ones together
       pcall(TT.homeTick)                 -- homes for new turtles; idle turtles go home
+      pcall(TT.avoidTick)                -- turtles keep away from other players
+      pcall(TT.stallTick)                -- a turtle hung in its job is stopped
+      pcall(MAP.autoTick)                -- auto-map: a survey always running (from the base outward)
+      pcall(AWAY.tick)                   -- you are offline: use the time / report when you are back
+      pcall(FACTORY.tick)                -- fewer turtles than you want: build one (AE2 parts)
+      pcall(CURIOS.autoTick)             -- auto-equip: keep a totem (...) on in its curios slot
       if TT.listDirty and codeTick % 15 == 0 then pcall(TT.saveList) end
       codeTick = codeTick + 1
-      if codeTick % 15 == 1 then pcall(TT.codeLoad) end     -- every 30 s
+      if codeTick % 15 == 7 then pcall(baseAliveTick) end    -- every 30 s: "still running"
+      if codeTick % 5 == 3 then pcall(sysRefresh) end        -- SYSTEM tab numbers (every 10 s)
+      -- (node.lua changed? - checked by the map worker every 30 s, it may take a moment)
       os.queueEvent("inv_update")       -- online/offline can change with time
     end
   end
@@ -377,7 +602,19 @@ function terminalWorker()
     local line = read(nil, history, complete)
     if line == nil then break end
     if line ~= "" then history[#history + 1] = line end
-    local ok, out = pcall(handleCommand, line)
+    -- drive <id>: steer a turtle with the keyboard (W A S D, SPACE, SHIFT ...)
+    local did = line:match("^%s*drive%s+(%d+)%s*$")
+    if did then
+      local okD, errD = pcall(driveTerminal, tonumber(did))
+      if not okD then print("Error: " .. tostring(errD)) end
+      line = nil
+    end
+    local ok, out = true, {}
+    if line then
+      HAND_CMD = true                       -- (turtle commands typed here are YOURS: they go first)
+      ok, out = pcall(handleCommand, line)
+      HAND_CMD = false
+    end
     if ok then
       for _, l in ipairs(out) do print(l) end
     else
@@ -407,12 +644,20 @@ function uiLoop()
 
   drawNow()
   local clockTimer = os.startTimer(1)
+  local clockDue = os.clock() + 1
 
   while state.running do
     local ev, a, b, c, d = os.pullEventRaw()
+    -- a lost timer (thrown away while a peripheral call waited) never stops the screen
+    if os.clock() > clockDue + 2 then clockTimer, clockDue = os.startTimer(1), os.clock() + 1 end
+    if drawTimer and os.clock() - lastDraw > 1 then drawTimer = nil requestDraw() end
 
     if ev == "monitor_touch" and a == monName then
-      local wake = handleTouch(b, c)
+      -- messages from what you just tapped are always shown (USER_ACTION, pushNote)
+      USER_ACTION = true
+      local okT, wake = pcall(handleTouch, b, c)
+      USER_ACTION = false
+      if not okT then error(wake, 0) end
       if wake then os.queueEvent("inv_wake") end
       drawNow()                         -- react to a touch immediately
 
@@ -424,9 +669,15 @@ function uiLoop()
         drawTimer = nil
         drawNow()
       elseif a == clockTimer then       -- keeps the clock and messages fresh
-        clockTimer = os.startTimer(1)
+        clockTimer, clockDue = os.startTimer(1), os.clock() + 1
         requestDraw()
       end
+
+    elseif ev == "file_transfer" then
+      -- a file dragged onto the computer's screen: a Create schematic (.nbt)
+      local okT, errT = pcall(SCHEM.onTransfer, a)
+      if not okT then setToast("Could not take the file: " .. tostring(errT), C.bad, 8) end
+      requestDraw()
 
     elseif ev == "monitor_resize" and a == monName then
       buildWindow()

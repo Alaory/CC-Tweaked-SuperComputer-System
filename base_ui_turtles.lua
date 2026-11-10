@@ -3,6 +3,108 @@
 --
 --   TURTLES tab: the turtle list, the selected turtle's status and control pad.
 
+-- FLEET overview (no turtle selected): counts per status, what needs you
+-- (tap a line to select that turtle), fuel, program, survey, mining teams
+local ORDER = { "busy", "trouble", "still", "stuck", "nofuel", "held", "idle", "offline", "missing" }
+local NAMES = { busy = "WORKING", trouble = "FINDING A WAY", still = "NOT MOVING", stuck = "STUCK",
+                nofuel = "NO FUEL", held = "STOPPED", idle = "IDLE", offline = "OFFLINE", missing = "MISSING" }
+function drawFleet(x, y, w, h, list)
+  card(x, y, w, h, "FLEET   (tap a turtle on the left for its controls)")
+  local ix, iw = x + 2, w - 4
+  local count, col, need = {}, {}, {}
+  local fuelSum, low, up = 0, nil, 0
+  for _, t in ipairs(list) do
+    local key, lab, c, why = TT.status(t)
+    count[key] = (count[key] or 0) + 1
+    col[key] = col[key] or c
+    -- FINDING A WAY is a turtle already working around something: not listed
+    if key == "stuck" or key == "nofuel" or key == "still" or key == "missing" or (key == "idle" and c == C.warn) then
+      need[#need + 1] = { t = t, lab = lab, c = c, why = why }
+    end
+    if TT.dupText(t) then need[#need + 1] = { t = t, lab = "HAS COPIES", c = C.warn, why = TT.dupText(t) } end
+    local f = tonumber(t.fuel)
+    if f and TT.online(t) then
+      fuelSum = fuelSum + f
+      if not low or f < tonumber(low.fuel) then low = t end
+    end
+    if CODE and t.ver == CODE.ver then up = up + 1 end
+  end
+  -- status pills
+  local px, py = ix, y + 3
+  for _, k in ipairs(ORDER) do
+    if count[k] then
+      local lbl = NAMES[k] .. " " .. count[k]
+      if px + #lbl + 3 > ix + iw then px, py = ix, py + 2 end
+      px = px + pill(px, py, lbl, C.ink, col[k] or C.label) + 1
+    end
+  end
+  local ry = py + 2
+  -- numbers
+  kv(ix, ry, iw, "Turtles", #list .. "   (" .. (#list - (count.offline or 0)) .. " online)")
+  kv(ix, ry + 1, iw, "Fuel, all together", commas(fuelSum) .. (low and ("   lowest: " .. low.label .. " " .. commas(low.fuel)) or ""),
+     (low and tonumber(low.fuel) < 2000) and C.warn or C.text)
+  kv(ix, ry + 2, iw, "Turtle program", CODE and (up .. "/" .. #list .. " on " .. TT.verName(CODE.ver) ..
+     (TT.updWaiting and "  (updates wait until you are offline)" or "")) or "?", (CODE and up < #list) and C.warn or C.text)
+  local frac, total, sent = MAP.surveyProgress()
+  if frac then
+    local q = MAP.queue
+    kv(ix, ry + 3, iw, q.auto and "Auto-map" or "Survey", math.floor(frac * 100 + 0.5) .. "%   " .. commas(sent or 0) ..
+       " spots sent" .. (q.auto and ("   " .. math.floor(MAP.autoRadius() + 0.5) .. " blocks around the base") or ""))
+    barW(ix, ry + 4, iw, frac * iw, C.accent)
+  else
+    kv(ix, ry + 3, iw, "Survey", (MAP.auto and MAP.auto.on) and "auto-map waits for a free turtle" or "none running", C.dim)
+  end
+  -- the turtle factory (AE2 parts)
+  if FACTORY then
+    local fl, fc = FACTORY.statusLine()
+    kv(ix, ry + 5, iw, "Factory", trunc(fl, iw - 12), fc)
+  end
+  -- mining teams
+  local my = ry + 7
+  if MINE and next(MINE.units) then
+    text(ix, my, "MINING TEAMS", C.label, C.panel)
+    my = my + 1
+    for dim, team in pairs(MINE.teams()) do
+      local ll = team.loader and MINE.status(team.loader) or "MISSING"
+      local working, bad = 0, 0
+      for _, m in ipairs(team.miners) do
+        local lab = MINE.status(m)
+        if lab == "MINING" or lab == "UNLOADING" or lab == "WAITING" then working = working + 1
+        elseif lab ~= "PAUSED" then bad = bad + 1 end
+      end
+      text(ix, my, trunc(dim .. ":  " .. working .. "/" .. #team.miners .. " miners working   loader " .. ll ..
+           (bad > 0 and ("   " .. bad .. " need a look") or ""), iw), bad > 0 and C.warn or C.dim, C.panel)
+      my = my + 1
+    end
+    my = my + 1
+  end
+  -- the search party (all turtles looking for the lost ones together)
+  local pl = TT.partyLine and TT.partyLine()
+  if pl then
+    for _, l in ipairs(wrap(pl, iw, 2)) do text(ix, my, l, C.label, C.panel) my = my + 1 end
+    my = my + 1
+  end
+  -- turtles that went silent AT the base (picked up / broken while testing): no
+  -- rescue goes there; one button forgets them all
+  local atb = TT.lostAtBase and TT.lostAtBase() or {}
+  if #atb > 0 and my + 4 <= y + h - 2 then
+    text(ix, my, trunc(#atb .. " silent AT THE BASE (picked up? no rescue is sent)", iw), C.warn, C.panel)
+    actButton(ix, my + 1, math.min(iw, 30), 2, "FORGET THEM (" .. #atb .. ")", { kind = "forgetbase", name = "all", count = 0 })
+    my = my + 4
+  end
+  -- what needs you (tap = select)
+  text(ix, my, #need > 0 and ("NEEDS A LOOK (" .. #need .. ")") or "NOTHING NEEDS YOU", #need > 0 and C.warn or C.good, C.panel)
+  local ny = my + 1
+  for _, n in ipairs(need) do
+    if ny > y + h - 2 then break end
+    local lbl = n.lab
+    pill(ix, ny, lbl, C.ink, n.c)
+    text(ix + #lbl + 3, ny, trunc(n.t.label .. " #" .. n.t.id .. "  " .. tostring(n.why), iw - #lbl - 3), C.text, C.panel)
+    addHit(ix, ny, iw, 1, "tsel", n.t.id)
+    ny = ny + 1
+  end
+end
+
 -- page drawing
 function drawTurtlesPage(G)
   local y0, bottom = G.y0, G.y1
@@ -29,7 +131,7 @@ function drawTurtlesPage(G)
     local at, inChunk = TT.anchorInfo()
     local msg, col
     if not at then
-      msg, col = "No ANCHOR: this computer stops when you leave the server", C.warn
+      msg, col = "No ANCHOR: the base stops when you log off", C.warn
     elseif inChunk == true then
       msg, col = at.label .. " is the ANCHOR: the base keeps running when you leave", C.good
     elseif inChunk == false then
@@ -40,8 +142,13 @@ function drawTurtlesPage(G)
     text(lx + 2, bottom - 1, trunc(msg, leftW - 4), col, C.panel)
   end
   -- lost turtles nobody knows the position of: search around the base
-  actButton(lx + 2, bottom - 4, leftW - 4, 2, "FIND LOST TURTLES (search around the base)",
-            { kind = "findlost", name = "all", count = 0 }, true)
+  local hw = math.floor((leftW - 5) / 2)
+  actButton(lx + 2, bottom - 4, hw, 2, "FIND LOST AROUND BASE", { kind = "findlost", name = "all", count = 0 }, true)
+  if TT.party then
+    actButton(lx + 3 + hw, bottom - 4, leftW - 5 - hw, 2, "CALL BACK PARTY", { kind = "party", name = "stop", count = 0 })
+  else
+    actButton(lx + 3 + hw, bottom - 4, leftW - 5 - hw, 2, "SEARCH PARTY", { kind = "party", name = "start", count = 0 }, true)
+  end
   if #list == 0 then
     text(ix, y0 + 3, "Waiting for turtles...", C.dim, C.panel)
     text(ix, y0 + 4, trunc("Run node.lua on a turtle (same key).", iw), C.dim, C.panel)
@@ -59,13 +166,17 @@ function drawTurtlesPage(G)
     local vn = TT.verName(t.ver)
     local old = on and TT.outdated(t)
     local ready = old and CODE and t.updReady == CODE.ver
-    local st = (on and t.stuck) and "STUCK" or ready and "UPDATE READY" or old and "UPDATING"
-               or (on and t.held) and "STOPPED"
-               or (on and t.anchor) and "ANCHOR" or (on and t.rescuerRole) and "RESCUER"
-               or (on and "ONLINE" or "OFFLINE")
-    local stc = (on and t.stuck) and C.warn or old and C.label or (on and t.held) and C.warn
-                or (on and t.anchor) and C.purple
-                or (on and t.rescuerRole) and C.warn or (on and C.good or C.bad)
+    local forcedU = TT.updateForce and os.clock() < TT.updateForce
+    local upd = old and (t.updState == "sending" and "SENDING UPDATE" or (t.updState == "retry" and "RETRY UPDATE")
+                         or (ready and "UPDATE AFTER JOB")
+                         or ((not forcedU and (TT.updWaiting or not CONFIG.turtles.autoUpdate)) and "UPDATE WAITS")
+                         or "UPDATE QUEUED")
+    -- the real state first (stuck / not moving / working / idle + why); an
+    -- update in progress only shows when nothing is wrong
+    local key, st, stc, why = TT.status(t)
+    if upd and (key == "idle" or key == "busy") then
+      st, stc = ready and "UPDATE READY" or upd, C.label
+    end
     pill(lx + leftW - #st - 4, ry, st, C.ink, stc)
     -- name + program version (green = the newest, yellow = older), in the room left of the pill
     local name = trunc(t.label .. "  #" .. t.id, math.max(6, iw - #st - #vn - 6))
@@ -73,25 +184,24 @@ function drawTurtlesPage(G)
     text(ix + #name + 2, ry, vn, (CODE and t.ver == CODE.ver) and C.good or C.warn, C.panel)
     if type(t.fuel) == "number" and type(t.fuelMax) == "number" and t.fuelMax > 0 then
       local f = math.max(0, math.min(1, t.fuel / t.fuelMax))
-      kv(ix, ry + 1, iw, "Fuel", commas(t.fuel) .. " / " .. commas(t.fuelMax),
-         f < 0.1 and C.bad or C.text)
-      barW(ix, ry + 2, iw, f * iw, f < 0.1 and C.bad or (f < 0.3 and C.warn or C.good))
+      -- colours by the amount itself (1,000 / 5,000), not by the share of a
+      -- 100,000 tank - 9,000 fuel is plenty
+      local fc = (t.fuel < 1000 and C.bad) or (t.fuel < 5000 and C.warn) or C.good
+      kv(ix, ry + 1, iw, "Fuel", commas(t.fuel) .. " / " .. commas(t.fuelMax), t.fuel < 1000 and C.bad or C.text)
+      barW(ix, ry + 2, iw, math.max(f * iw, t.fuel > 0 and 1 or 0), fc)
     else
       kv(ix, ry + 1, iw, "Fuel", tostring(t.fuel or "?"))
     end
     local where = t.pos and fmtPos(t.pos.x, t.pos.y, t.pos.z) or "position unknown"
-    local doing = on and tostring(t.task or "idle")
-                  or ((t.seenEpoch and ("offline - last seen " .. TT.ago(t.seenEpoch)) or "offline")
-                      .. (t.rescuer and " - rescue on its way" or ""))
-    text(ix, ry + 3, trunc(where .. "   " .. doing, iw), on and C.dim or C.warn, C.panel)
+    local bad = key ~= "idle" and key ~= "busy"
+    text(ix, ry + 3, trunc(where .. "   " .. why, iw), bad and stc or C.dim, C.panel)
     addHit(lx + 1, ry, leftW - 2, 4, "tsel", t.id)
   end
 
   ------------------------------------------------ selected turtle
   local t = state.tSel and state.turtles[state.tSel]
   if not t then
-    card(rx, y0, rw, 7, "CONTROL")
-    text(rix, y0 + 3, "Select a turtle on the left.", C.dim, C.panel)
+    drawFleet(rx, y0, rw, bottom - y0 + 1, list)
     return
   end
   local ch = 27
@@ -104,14 +214,29 @@ function drawTurtlesPage(G)
        t.home and fmtPos(t.home.x, t.home.y, t.home.z) or "not set", t.home and C.text or C.warn)
   stat(rix + 3 * (q + 2), y0 + 3, q, "TASK", t.task or "idle", t.task and t.task ~= "idle" and C.warn or C.text)
   stat(rix + 4 * (q + 2), y0 + 3, q, "ITEMS", tostring(t.items or "?"))
-  if t.stuck then
-    text(rix, y0 + 5, trunc("STUCK: " .. tostring(t.stuck), riw), C.warn, C.panel)
+  local sKey, sLab, sCol, sWhy = TT.status(t)
+  if TT.dupText(t) then
+    text(rix, y0 + 5, trunc(TT.dupText(t), riw), C.warn, C.panel)
+  elseif sKey ~= "idle" and sKey ~= "busy" and sKey ~= "held" then
+    text(rix, y0 + 5, trunc(sLab .. ": " .. sWhy, riw), sCol, C.panel)
+  elseif CODE and TT.online(t) and TT.outdated(t) then
+    local msg = (t.updReady == CODE.ver) and ("Has " .. TT.verName(CODE.ver) .. " ready - installs when its job is done")
+                or (t.updState == "sending") and ("Sending " .. TT.verName(CODE.ver) .. " now (" .. #CODE.pieces .. " pieces)")
+                or (t.updState == "retry") and ("Update: " .. tostring(t.updNote or "failed") .. " - next try in " ..
+                     math.max(0, math.floor((t.updRetry or 0) - os.clock())) .. " s")
+                or ("Waiting for its turn to get " .. TT.verName(CODE.ver) ..
+                    ((not CONFIG.turtles.autoUpdate and not (TT.updateForce and os.clock() < TT.updateForce))
+                     and " (automatic updates are OFF - press UPDATE TURTLES)"
+                     or (TT.updWaiting and " (waits until you are offline - or press UPDATE TURTLES)") or ""))
+    text(rix, y0 + 5, trunc(msg, riw), C.label, C.panel)
   elseif t.held then
     text(rix, y0 + 5, trunc("STOPPED by you - automatic jobs skip it. Any button (e.g. PING) releases it.", riw),
          C.warn, C.panel)
   elseif not t.pos or not t.pos.f then
     text(rix, y0 + 5, trunc("Position unknown: press GPS LOCATE, or type  turtle " .. t.id ..
          " setpos <x> <y> <z> <north|south|east|west>", riw), C.warn, C.panel)
+  else
+    text(rix, y0 + 5, trunc(sLab .. ": " .. sWhy, riw), sCol == C.label and C.dim or sCol, C.panel)
   end
 
   local function cmdBtn(x, y, w, h, label, cmd, args, bg, fg)
@@ -127,7 +252,12 @@ function drawTurtlesPage(G)
   cmdBtn(rix + bw + 1,       r2, bw, 3, "BACK",       "move", { "back", 1 })
   cmdBtn(rix + 2 * (bw + 1), r2, bw, 3, "TURN RIGHT", "move", { "right", 1 })
   cmdBtn(rix + 3 * (bw + 1), r2, bw, 3, "GO HOME",    "home", {}, C.accent, C.ink)
-  cmdBtn(rix,                r3, bw, 1, "PING",       "ping")
+  if TT.online(t) then
+    cmdBtn(rix,              r3, bw, 1, "PING",       "ping")
+  else
+    -- offline (or MISSING - deleted by a server crash?): take it off the list
+    actButton(rix, r3, bw, 1, "FORGET", { kind = "tforget", name = tostring(t.id), count = 0 })
+  end
   cmdBtn(rix + bw + 1,       r3, bw, 1, "SET HOME",   "sethome")
   cmdBtn(rix + 2 * (bw + 1), r3, bw, 1, "REFUEL",     "refuel")
   cmdBtn(rix + 3 * (bw + 1), r3, bw, 1, "GPS LOCATE", "locate")
@@ -148,14 +278,22 @@ function drawTurtlesPage(G)
   -- the exit route out of the base (shared by all turtles)
   local r5 = y0 + 20
   local hw2 = math.floor((riw - 1) / 2)
+  -- with a pickaxe: MINE UP (straight up to the surface, natural blocks only) - two taps
+  local pick = tostring(t.gear or ""):find("pick", 1, true) and TT.online(t)
+  local ew = pick and math.floor((riw - 2) / 3) or hw2
+  local ew2 = pick and ew or (riw - hw2 - 1)
   if t.rec then
-    drawButton(rix, r5, hw2, 2, "EXIT: RECORDING (" .. t.rec .. ")", C.warn, C.ink, "tcmd", { t.id, "exitrec", {} })
-    drawButton(rix + hw2 + 1, r5, riw - hw2 - 1, 2, "EXIT: SAVE ROUTE", C.good, C.ink, "tcmd",
+    drawButton(rix, r5, ew, 2, "EXIT: RECORDING (" .. t.rec .. ")", C.warn, C.ink, "tcmd", { t.id, "exitrec", {} })
+    drawButton(rix + ew + 1, r5, ew2, 2, "EXIT: SAVE ROUTE", C.good, C.ink, "tcmd",
                { t.id, "exitsave", {} })
   else
-    drawButton(rix, r5, hw2, 2, "EXIT: START RECORDING", C.empty, C.text, "tcmd", { t.id, "exitrec", {} })
-    drawButton(rix + hw2 + 1, r5, riw - hw2 - 1, 2, "EXIT: SAVE ROUTE", C.empty, C.dim, "tcmd",
+    drawButton(rix, r5, ew, 2, "EXIT: START RECORDING", C.empty, C.text, "tcmd", { t.id, "exitrec", {} })
+    drawButton(rix + ew + 1, r5, ew2, 2, "EXIT: SAVE ROUTE", C.empty, C.dim, "tcmd",
                { t.id, "exitsave", {} })
+  end
+  if pick then
+    actButton(rix + 2 * (ew + 1), r5, riw - 2 * (ew + 1), 2, "MINE UP TO THE SURFACE",
+              { kind = "tdigup", name = tostring(t.id), count = 0 }, true)
   end
   local info
   if t.rec then

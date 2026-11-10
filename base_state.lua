@@ -8,6 +8,7 @@
 ---------------------------------------------------------------------
 -- STATE
 ---------------------------------------------------------------------
+HAND_CMD = false        -- a console command is running: turtle commands from it are YOURS (TT.send hand)
 state = {
   status = "loading", -- loading | ok | nocard | offline
   owner = nil,
@@ -21,7 +22,7 @@ state = {
   playerDim = nil,
   playerMsg = nil,
   players = {},       -- all online players {name, p, dim, isOwner, err}
-  page = "inventory", -- visible tab: inventory players storage curios me drone access turtles map
+  page = "home",      -- visible tab: home (the menu of every page), inventory, players ...
   playersPage = 1,
   rawView = {},       -- [name] = true -> show raw data on that card
   storage = {},       -- backpacks, buckets, ... {display, where, size, used, contents, tanks}

@@ -93,10 +93,10 @@ function startRide(name, dest, owner)
     return
   end
 
-  best.dest = dest
-  best.passenger = name
+  -- the ride carries its own rider + destination: what is chosen on the
+  -- monitor (DRONES page) is neither used nor changed
   best.requester = name
-  if submitDrone(best, { kind = "ferry", passenger = name }) then
+  if submitDrone(best, { kind = "ferry", passenger = name, dest = dest }) then
     state.lastRide[name:lower()] = os.clock()
     local far = bestD < math.huge and (" (" .. fl(bestD) .. " blocks away)") or ""
     chatTell(name, best.label .. " is coming to you" .. far .. ". Stand still!")
@@ -334,7 +334,7 @@ do
   end
 end
 function saveNotifySubs()
-  saveFileSafe(NOTIFY_FILE, textutils.serialize(state.notifySubs))
+  saveFileSafe(NOTIFY_FILE, serialSmall(state.notifySubs))
 end
 
 local sentAt, skipped = {}, {}       -- [player] = times of the last messages / messages not sent
