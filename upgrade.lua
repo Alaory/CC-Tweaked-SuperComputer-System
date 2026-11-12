@@ -83,6 +83,9 @@ end
 
 -- run it. o = { log = function(text), args = { ... }, dir = folder of the program,
 --               yield = function(), restart = function() } (all optional)
+--   o.fetch = "miner.lua", o.group = "miner": only DOWNLOAD that file (checked: size,
+--   checksum, compiles) and return true, text, version - nothing is written (the base
+--   keeps miner.lua on a data floppy and sends it to the mining turtles: mine update)
 local function run(o)
   o = o or {}
   local log = o.log or print
@@ -125,7 +128,7 @@ local function run(o)
     if man then break end
   end
   if not man then log("Could not read the file list: " .. tostring(err)) return false end
-  local group = whichGroup()
+  local group = o.group or whichGroup()
   local list = {}
   -- the SLIM copies ("slim:<group>", from dist/) unless you want the full ones
   local want = saved.full and group or ("slim:" .. group)
@@ -138,6 +141,24 @@ local function run(o)
     want = group                                -- (an older file list: no slim copies)
   end
   if #list == 0 then log("The file list has no files for this computer (" .. group .. ").") return false end
+  if o.fetch then
+    for _, f in ipairs(list) do
+      if f.path == o.fetch then
+        log("  getting " .. f.path)
+        local body, e = get(base .. (f.src or f.path))
+        if not body then log("Download failed: " .. f.path .. " - " .. tostring(e)) return false end
+        if #body ~= f.size or upgradeHash(body, yield) ~= f.sum then
+          log("Download of " .. f.path .. " is not complete / not the right version - try again in a minute.")
+          return false
+        end
+        local fn, ce = load(body, "=" .. f.path, "t", {})
+        if not fn then log("New " .. f.path .. " does not compile: " .. tostring(ce)) return false end
+        return true, body, (sha and sha:sub(1, 7)) or branch
+      end
+    end
+    log(o.fetch .. " is not in the file list (" .. group .. ").")
+    return false
+  end
 
   -- 3. what is different here
   local dir = o.dir or ""

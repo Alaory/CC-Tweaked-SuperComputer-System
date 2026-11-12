@@ -343,7 +343,20 @@ PneumaticCraft drone rides, turtle mapping/surveys, and an AE2 ME network view.
   Refused -> one note per reason + "joinno" {why} (the miner notes it). Miner: a new plan with
   ci > 0 -> S.lateFor -> J.late: CHUNK_LOCK off until it is INSIDE the team's chunk. A paused
   field: joiners are appended too (sorting shifted everybody's number mid-field); newTeamPlan
-  sorts by ID again. TOOL CHECK (m20, toolNow): turtle.getEquippedLeft/Right where they exist
+  sorts by ID again. MINER UPDATES (m21; base MINE.loadCode / startUpdate / updTick, console `mine update
+  [stop]`, MINING tab UPDATE MINERS two taps): miner.lua is NOT kept on the base's disk - upgrade.lua
+  fetch mode (o.fetch = "miner.lua", o.group = "miner"; manifest group miner + slim:miner) downloads
+  it checked, kept as miner_code.lua via dataFile (data floppy first); a miner.lua dragged next to
+  inventory.lua is used first (moved onto the floppy). Every RUNNING team is PAUSED first (U.resume),
+  then each online unit whose m.code (codeHash of its own program file, the same as make_manifest h)
+  differs gets "upd" {ver, i, n, text} pieces of 8000 straight into state.tOut (NOT u.queue - that
+  resends on every report), again after 60 s unless m.updReady; when a whole team runs it -> "start"
+  again (only teams it paused), DONE note; 1 h -> WARNING, teams started. A team with an online unit
+  WITHOUT m.code (m20 or older) is left alone (hand copy once). Miner: updPiece (checksum + compiles
+  -> UPD_READY), installMinerUpdate ONLY while paused (miner paused branch, not dumping; loader: not
+  running, no crossing): miner.new, size checked, old -> .old, save(), reboot - the state file keeps
+  role / team / field / job. minesim team2update / team3updatecaves (same plan id + team after, all
+  restarted, mining goes on), tools/tests/miner_update.lua, test_mine_update.lua. TOOL CHECK (m20, toolNow): turtle.getEquippedLeft/Right where they exist
   (the ITEM: modem / geo / pickaxe / "none"); else the side's peripheral type - BUT a side whose
   upgrade has no peripheral (a pickaxe) shows the BLOCK NEXT TO the turtle (the loader, another
   miner, a chest): any type other than geo / a wireless modem = "pickaxe" (a wired modem block:
@@ -732,7 +745,7 @@ PneumaticCraft drone rides, turtle mapping/surveys, and an AE2 ME network view.
 | base_console.lua / base_chat.lua / base_input.lua / base_workers.lua | console commands, chat commands, touch input, workers |
 | base_ui_*.lua | one file per page (base_ui_home.lua = HOME menu, base_ui_drive.lua = DRIVE) (base_ui_system.lua = STATUS, base_ui_settings.lua = SETTINGS) + base_ui_core.lua (header groups, cards, buttons, bars, footer) |
 | node.lua | the turtle program |
-| miner.lua | mining-dimension team program (MINER + LOADER roles; installed by hand, not OTA) |
+| miner.lua | mining-dimension team program (MINER + LOADER roles; installed by hand once, then `mine update` from the base) |
 | base_mining.lua / base_ui_mining.lua | mining teams on the base (MINE) / MINING tab |
 | base_away.lua | away mode: uses the time you are offline, WHILE YOU WERE AWAY report |
 | base_factory.lua | turtle factory: keeps the fleet size, AE2 parts, the builder turtle builds new ones |

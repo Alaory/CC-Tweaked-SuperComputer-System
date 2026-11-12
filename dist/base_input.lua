@@ -90,6 +90,13 @@ if id then
 MINE.cmd(tonumber(id), cmd, {})
 setToast(cmd:upper() .. " sent to the loader - it tells the miners", C.label, 5)
 end
+elseif a.kind == "mineupdate" then
+
+local last = "Miner update: getting miner.lua ..."
+setToast(last, C.label, 4)
+local c, why = MINE.loadCode(true, function(s2) last = s2 end)
+if not c then setPopup("MINER UPDATE", tostring(why), C.warn)
+else setPopup("MINER UPDATE", table.concat(MINE.startUpdate(c), "  "), C.label) end
 elseif a.kind == "quick" then
 
 local okQ, okA, msgQ = pcall(POCKET.act, a.name, a.args or {})

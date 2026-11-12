@@ -174,7 +174,7 @@ connected. After each mission it parks on its Charging Station.
 | Turtles | They get the new `node.lua` from the base by themselves - while you are **offline** (an update restarts them), or at once with **UPDATE TURTLES**. A busy turtle installs it after its job. A full disk never breaks a turtle: the update is then refused and the old program keeps running. |
 | Pocket | Type `upgrade` on the pocket computer. |
 | Storage helpers | By themselves, a few minutes after the base was upgraded (`store update` does it at once). |
-| Mining turtles | `miner.lua` is copied onto them by hand. |
+| Mining turtles | Copy `miner.lua` onto them by hand **once** (m21 or newer). After that: `mine update` on the base computer (or **UPDATE MINERS** on TURTLES > MINING). The base downloads `miner.lua`, keeps it on a data floppy (not on the computer's 1 MB), pauses each running team, sends the program to every loader and miner, and starts the team again once all of them run it. Each turtle installs it only while paused and keeps its team, field, job and unload station. |
 
 The files you get have their comments removed (about 30% smaller - a computer has only 1 MB);
 the commented ones stay on GitHub. `upgrade full` gets the commented files, `upgrade slim`
@@ -433,6 +433,9 @@ itself otherwise, so give it plenty of coal blocks if there is no endless item.
    lanes, and the team waits for it before the next crossing. Too far away, or during a crossing:
    the loader says so in the team's LOG and it joins as soon as it can. (Loader and the new miner
    need miner.lua m19 or newer.)
+7. **New version of miner.lua:** `mine update` on the base computer (or **UPDATE MINERS**, two
+   taps). The team is paused first, every turtle gets the new program and restarts, then the team
+   goes on where it was. Turtles with m20 or older need one hand copy first; the base says which.
 
 Optional lines in `base_config.lua`:
 ```lua

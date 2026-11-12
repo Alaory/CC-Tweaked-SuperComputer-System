@@ -148,6 +148,14 @@ local function teamCard(x, y, w, h, dim, team)
     actButton(bx + hw + 1, by + 4, bw - hw - 1, 1, "NEW FIELD",
               { kind = "minecmd", name = l.id .. ":newfield", count = 0 })
     by = by + 6
+    -- the newest miner.lua to the turtles (pauses the team, starts it again after)
+    if MINE.upd then
+      text(bx, by, trunc("UPDATING the miners - the team is paused until all have it", bw), C.warn, C.panel)
+      by = by + 2
+    elseif by + 2 <= bottom then
+      actButton(bx, by, bw, 1, "UPDATE MINERS (" .. tostring(l.ver or "?") .. ")", { kind = "mineupdate", name = "all", count = 0 })
+      by = by + 3
+    end
   end
   local hint, dropMe
   local function fuelLow(u, lim) return u and tonumber(u.fuel) and tonumber(u.fuel) < (lim or 500) end

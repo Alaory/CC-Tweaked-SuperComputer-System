@@ -80,7 +80,7 @@ CONFIG = {
 }
 
 STATE_FILE = "miner_state"
-MYVER = "m20"            -- shown on the screen and the base (MINING tab)
+MYVER = "m21"            -- shown on the screen and the base (MINING tab)
 DX = { [0] = 0, 1, 0, -1 }
 DZ = { [0] = -1, 0, 1, 0 }
 FNAME = { [0] = "north", "east", "south", "west" }
@@ -139,6 +139,83 @@ function note(msg)
   print(msg)
   NOTES[#NOTES + 1] = msg
   while #NOTES > 8 do table.remove(NOTES, 1) end
+end
+
+-- ===== UPDATES FROM THE BASE (m21: MINE UPDATE on the base) =====
+-- The base sends a new miner.lua in pieces ("upd": version, piece, pieces, text). A
+-- complete one is checked (checksum = version, it compiles) and INSTALLED ONLY WHILE
+-- PAUSED (the base pauses the team first and starts it again after) - never in the
+-- middle of a crossing. Written safely (a temp file first; the running program is only
+-- replaced once the new one is complete). The state file (role, team, field, job,
+-- station ...) is a separate file: after the restart it carries on as before.
+-- checksum: the same as the base's (and tools/make_manifest.py)
+function codeHash(text)
+  local h = 0
+  for i = 1, #text, 64 do
+    local b = { string.byte(text, i, math.min(#text, i + 63)) }
+    for k = 1, #b do h = (h * 31 + b[k]) % 4294967296 end
+  end
+  return string.format("%08x", h)
+end
+function myProgram()
+  local p = shell and shell.getRunningProgram and shell.getRunningProgram()
+  if not p or p == "" or p == "startup.lua" or p == "startup" then p = "miner.lua" end
+  return p
+end
+-- the checksum of the program this turtle runs (reported to the base)
+CODEVER = nil
+do
+  local okR = pcall(function()
+    local h = fs.open(myProgram(), "rb")
+    if h then
+      CODEVER = codeHash(h.readAll() or "")
+      h.close()
+    end
+  end)
+  if not okR then CODEVER = nil end
+end
+UPD, UPD_READY = nil, nil
+function updPiece(a)
+  local ver, i, n, text = tostring(a[1] or ""), tonumber(a[2]), tonumber(a[3]), a[4]
+  if not (i and n and type(text) == "string") or ver == "" then return end
+  if ver == CODEVER or (UPD_READY and UPD_READY.ver == ver) then return end
+  if not UPD or UPD.ver ~= ver then UPD = { ver = ver, n = n, parts = {}, got = 0 } end
+  if not UPD.parts[i] then UPD.parts[i], UPD.got = text, UPD.got + 1 end
+  if UPD.got < UPD.n then return end
+  local all = table.concat(UPD.parts)
+  UPD = nil
+  if codeHash(all) ~= ver then note("Update arrived damaged - the base sends it again") return end
+  local fn, err = load(all, "=miner.lua", "t", {})
+  if not fn then note("Update does not compile - not installed: " .. tostring(err)) return end
+  UPD_READY = { ver = ver, text = all }
+  note("Update " .. ver .. " ready - installs as soon as the team is paused")
+end
+-- write it (safely) and restart; false + why if it cannot
+function installMinerUpdate()
+  local u = UPD_READY
+  if not u then return false end
+  local prog, tmp = myProgram(), "miner.new"
+  if fs.exists(tmp) then fs.delete(tmp) end
+  local h = fs.open(tmp, "wb")
+  local okW = h and pcall(h.write, u.text)
+  if h then pcall(h.close) end
+  if not (okW and fs.exists(tmp) and fs.getSize(tmp) >= #u.text) then
+    if fs.exists(tmp) then fs.delete(tmp) end
+    UPD_READY = nil
+    note("Update NOT installed: the disk is too full - the old program keeps running")
+    return false
+  end
+  if fs.exists(prog .. ".old") then fs.delete(prog .. ".old") end
+  if fs.exists(prog) then fs.move(prog, prog .. ".old") end
+  fs.move(tmp, prog)
+  UPD_READY = nil
+  S.updatedAt = os.epoch and os.epoch("utc") or nil
+  save()
+  note("Update installed - restarting (team and job are kept)")
+  pcall(sendBase, "status")
+  sleep(1)
+  os.reboot()
+  return true
 end
 function setTask(t)
   task = t
@@ -249,6 +326,8 @@ function sendBase(t, extra)
   m.copy = COPY
   if DUP then m.dup = true end
   m.role, m.dim, m.ver = S.role, S.dim, MYVER
+  m.code = CODEVER                                -- (the program's checksum: MINE UPDATE)
+  m.updReady = UPD_READY and UPD_READY.ver or nil
   m.label = os.getComputerLabel() or ("Turtle " .. os.getComputerID())
   m.task = task
   local fuel = turtle.getFuelLevel()
@@ -585,6 +664,8 @@ function doCmd(cmd, args)
       sendTeam(id, "team", { team = S.team, plan = S.plan })    -- (alive after all? it sees it is out and stops)
       note(found and ("Miner " .. id .. " taken out of the team (" .. #S.team .. " left)") or ("Miner " .. id .. " is not in the team"))
     end
+  elseif cmd == "upd" then
+    updPiece(args)
   elseif cmd == "unpair" then
     S.partner, S.leader, S.team, S.tp = nil, nil, nil, nil
     note("Left the team")
@@ -2306,6 +2387,7 @@ function minerRun()
     end
     if (not S.running and not crossingDue()) or not S.leader or not S.tp then
       equipTool("modem")
+      if UPD_READY and not S.dumping then installMinerUpdate() end    -- (paused: a safe moment)
       if not S.leader then setTask("waiting for a loader turtle (same dimension)")
       elseif S.err then setTask("PAUSED: " .. S.err)
       else setTask(S.tp and "paused" or "in the team - press START on the base") end
@@ -2400,6 +2482,9 @@ function loaderRun()
     end
     -- the plan to every miner now and then (a restarted miner gets it again)
     if os.clock() - lastPlan > 30 then lastPlan = os.clock() sendPlan() end
+    if UPD_READY and not (S.plan and (S.running or S.plan.goSent == S.plan.ci or S.plan.phase == "cross")) then
+      installMinerUpdate()                        -- (paused, no crossing under way: a safe moment)
+    end
     if S.plan and (S.running or S.plan.goSent == S.plan.ci) then
       local okR, err = pcall(leaderStep)
       if not okR then

@@ -120,7 +120,7 @@ function MINE.receive(id, m)
   u.lastSeen, u.seenEpoch = os.clock(), os.epoch("utc")
   for _, k in ipairs({ "label", "role", "dim", "task", "fuel", "fuelMax", "free", "pos", "partner", "running", "err",
                        "ci", "li", "nl", "phase", "station", "carry", "got", "stats", "ver", "rowLength",
-                       "team", "leader", "ready", "idx", "transit" }) do
+                       "team", "leader", "ready", "idx", "transit", "code", "updReady" }) do
     u[k] = m[k]
   end
   -- ores per hour: counted from when it was first seen running
@@ -254,4 +254,208 @@ function MINE.drop(id)
   pcall(MINE.save)
   return true, "the loader #" .. l.id .. " takes miner #" .. id .. " out of the team (its layer goes to the others)" ..
                (MINE.online(l) and "" or " - the loader is offline: it gets this when it reports again")
+end
+
+-- ===== MINER UPDATES (mine update; miner.lua m21+) =====
+-- miner.lua is NOT kept on this computer (1 MB): `mine update` downloads it from GitHub
+-- (upgrade.lua, checked: size, checksum, compiles) and keeps it on a DATA FLOPPY
+-- (miner_code.lua via dataFile; the computer only when there is no floppy). A miner.lua
+-- dragged next to inventory.lua is used first (and moved onto the floppy).
+-- Sending: every RUNNING team is PAUSED first (just in case), then each online turtle
+-- whose program checksum (m.code) differs gets the program in pieces; a turtle installs
+-- it only while paused (never in a crossing) and restarts - its state file (role, team,
+-- field, job, station) is separate, so it carries on. Once the whole team runs it, the
+-- base presses START again for the teams it paused. Turtles with m20 or older report no
+-- checksum: copy miner.lua onto them by hand once; their team is left alone.
+MINE.CODE_FILE = "miner_code.lua"
+MINE.PIECE = 8000
+function MINE.codeHash(text)                     -- (the same as miner.lua's codeHash / make_manifest h)
+  local h = 0
+  for i = 1, #text, 64 do
+    local b = { string.byte(text, i, math.min(#text, i + 63)) }
+    for k = 1, #b do h = (h * 31 + b[k]) % 4294967296 end
+  end
+  return string.format("%08x", h)
+end
+local function readAll(p)
+  if not (p and fs.exists(p)) or fs.isDir(p) then return nil end
+  local h = fs.open(p, "rb")
+  if not h then return nil end
+  local s = h.readAll()
+  h.close()
+  return s
+end
+-- the program as { text, ver, pieces, from } (nil + why)
+function MINE.setCode(text, from)
+  local fn, err = load(text, "=miner.lua", "t", {})
+  if not fn then return nil, "miner.lua does not compile: " .. tostring(err) end
+  if not text:find("MYVER", 1, true) then return nil, "that is not miner.lua" end
+  local pieces = {}
+  for i = 1, #text, MINE.PIECE do pieces[#pieces + 1] = text:sub(i, i + MINE.PIECE - 1) end
+  local mv = text:match('MYVER%s*=%s*"([^"]+)"')
+  MINE.code = { text = text, ver = MINE.codeHash(text), pieces = pieces, from = from, myver = mv }
+  return MINE.code
+end
+-- keep it on a data floppy (true + where | false + why)
+function MINE.storeCode(text)
+  local p = dataFile and dataFile(MINE.CODE_FILE, true) or MINE.CODE_FILE
+  local cur = readAll(p)
+  if cur == text then return true, p end
+  local okS = saveFileSafe(p, text)
+  if okS == false or not fs.exists(p) then return false, "no room for miner.lua (" .. math.ceil(#text / 1024) .. " KB) - put in a data floppy (disks data)" end
+  return true, p
+end
+-- find the program: a miner.lua dragged in > the stored copy; download = GitHub first
+function MINE.loadCode(download, log)
+  log = log or function() end
+  local here = fs.combine(BASE_DIR or "", "miner.lua")
+  local text, from = readAll(here), "miner.lua on this computer"
+  if text then
+    local c, why = MINE.setCode(text, from)
+    if not c then return nil, why end
+    local okS = MINE.storeCode(text)
+    if okS then pcall(fs.delete, here) log("miner.lua moved onto the data storage (" .. math.ceil(#text / 1024) .. " KB)") end
+    return c
+  end
+  if download and http then
+    local path = fs.combine(BASE_DIR or "", "upgrade.lua")
+    local fn = fs.exists(path) and loadfile(path, "t", _ENV)
+    if fn then
+      local okR, done, body, v = pcall(fn, { fetch = "miner.lua", group = "miner", dir = BASE_DIR or "", log = log })
+      if okR and done and type(body) == "string" then
+        local c, why = MINE.setCode(body, "GitHub " .. tostring(v))
+        if not c then return nil, why end
+        local okS, where = MINE.storeCode(body)
+        log(okS and ("Kept on " .. where) or ("Not kept: " .. tostring(where)))
+        return c
+      end
+      log("Download did not work - trying the stored copy")
+    end
+  end
+  text = readAll(dataFile and dataFile(MINE.CODE_FILE) or MINE.CODE_FILE)
+  if text then return MINE.setCode(text, "the stored copy") end
+  return nil, "no miner.lua: drag one onto this computer (next to inventory.lua) or allow http for  mine update"
+end
+
+-- the units that can be updated; whole teams (dim) with an old program are skipped
+function MINE.updPlan(ver)
+  local teams = MINE.teams()
+  local plan = { send = {}, old = {}, skipDim = {} }
+  for d, team in pairs(teams) do
+    local members = { team.loader }
+    for _, m in ipairs(team.miners) do members[#members + 1] = m end
+    local oldIds = {}
+    for _, u in ipairs(members) do
+      if u and MINE.online(u) and u.code == nil then oldIds[#oldIds + 1] = "#" .. u.id end
+    end
+    if #oldIds > 0 then
+      plan.skipDim[d] = oldIds
+      for _, s in ipairs(oldIds) do plan.old[#plan.old + 1] = s end
+    else
+      for _, u in ipairs(members) do
+        if u and MINE.online(u) and u.code ~= ver then plan.send[#plan.send + 1] = u end
+      end
+    end
+  end
+  return plan
+end
+
+-- `mine update`: pause the running teams, send, start them again (lines for the console)
+function MINE.startUpdate(code)
+  local out = {}
+  MINE.code = code or MINE.code
+  local c = MINE.code
+  if not c then return { "No miner.lua to send." } end
+  local plan = MINE.updPlan(c.ver)
+  local U = { ver = c.ver, t0 = os.clock(), last = -99, resume = {}, dims = {}, sent = 0 }
+  for d, team in pairs(MINE.teams()) do
+    if not plan.skipDim[d] then
+      U.dims[d] = true
+      local l = team.loader
+      if l and l.running and MINE.online(l) then
+        MINE.cmd(l.id, "pause")
+        U.resume[l.id] = d
+        out[#out + 1] = "Team in " .. tostring(d) .. " PAUSED for the update - started again when all of it runs the new program"
+      end
+    else
+      out[#out + 1] = "Team in " .. tostring(d) .. " left alone: " .. table.concat(plan.skipDim[d], " ") ..
+                      " run m20 or older - copy miner.lua onto them by hand once, after that  mine update  works"
+    end
+  end
+  if #plan.send == 0 then
+    out[#out + 1] = "Every mining turtle that can be updated already runs this program (" .. tostring(c.myver) .. ")."
+    for id in pairs(U.resume) do MINE.cmd(id, "start") end
+    MINE.upd = nil
+    return out
+  end
+  MINE.upd = U
+  out[#out + 1] = ("Sending miner.lua %s (%s, %d KB) to %d turtle(s); each installs it while paused and restarts.")
+                  :format(tostring(c.myver), c.from or "?", math.ceil(#c.text / 1024), #plan.send)
+  MINE.updTick()
+  return out
+end
+
+-- the pieces straight to the sender (not into u.queue: that resends on every report)
+function MINE.sendCode(u)
+  local c = MINE.code
+  if not c then return end
+  for i, p in ipairs(c.pieces) do
+    local n = os.epoch("utc")
+    if n <= state.tLastN then n = state.tLastN + 1 end
+    state.tLastN = n
+    local a = { c.ver, tostring(i), tostring(#c.pieces), p }
+    local ses = (u.dups and #u.dups > 0) and u.mainSes or nil
+    state.tOut[#state.tOut + 1] = { id = u.id, msg = { t = "cmd", n = n, cmd = "upd", args = a, ses = ses,
+                                    sig = TT.sign(CONFIG.turtles.key, "cmd", n, "upd", a) } }
+  end
+  u.updSentAt = os.clock()
+  os.queueEvent("turtle_send")
+end
+
+-- comms worker (every 2 s; works every 20 s): send to who still runs the old one,
+-- start the paused teams that are done, give up after 1 h
+function MINE.updTick()
+  local U, c = MINE.upd, MINE.code
+  if not U or not c or c.ver ~= U.ver then return end
+  if os.clock() - U.last < 20 then return end
+  U.last = os.clock()
+  local teams = MINE.teams()
+  local left = 0
+  for d in pairs(U.dims) do
+    local team = teams[d]
+    local members = team and { team.loader } or {}
+    for _, m in ipairs(team and team.miners or {}) do members[#members + 1] = m end
+    local todo = 0
+    for _, u in ipairs(members) do
+      if u and MINE.online(u) and u.code ~= nil and u.code ~= U.ver then
+        todo = todo + 1
+        -- (it says it has it complete: wait for the install, else send again every 60 s)
+        if u.updReady ~= U.ver and os.clock() - (u.updSentAt or -999) > 60 then
+          MINE.sendCode(u)
+          U.sent = U.sent + 1
+          MINE.log(u, "> update " .. tostring(c.myver) .. " sent")
+        end
+      end
+    end
+    left = left + todo
+    if todo == 0 then
+      for id, dd in pairs(U.resume) do
+        if dd == d then
+          MINE.cmd(id, "start")
+          U.resume[id] = nil
+          pushNote("DONE", "Mining team in " .. tostring(d) .. " updated to " .. tostring(c.myver) .. " - started again", C.good)
+        end
+      end
+      U.dims[d] = nil
+    end
+  end
+  if left == 0 and not next(U.dims) then
+    MINE.upd = nil
+    pushNote("DONE", "Mining turtles updated to " .. tostring(c.myver), C.good)
+    if sysLog then sysLog("Mining turtles updated to miner.lua " .. tostring(c.myver), "INFO") end
+  elseif os.clock() - U.t0 > 3600 then
+    for id in pairs(U.resume) do MINE.cmd(id, "start") end
+    MINE.upd = nil
+    pushNote("WARNING", "Miner update: " .. left .. " turtle(s) did not take the new program in 1 h - teams started again", C.warn)
+  end
 end

@@ -46,6 +46,7 @@ local JOBS = {
   { "TT.homeTick", function() TT.homeTick() end }, { "TT.avoidTick", function() TT.avoidTick() end },
   { "TT.stallTick", function() TT.stallTick() end }, { "MAP.autoTick", function() MAP.autoTick() end },
   { "AWAY.tick", function() AWAY.tick() end }, { "FACTORY.tick", function() FACTORY.tick() end },
+  { "MINE.updTick", function() MINE.updTick() end },
   { "TT.saveList", function() TT.saveList() end }, { "baseAliveTick", function() baseAliveTick() end },
   { "sysRefresh", function() sysRefresh() end }, { "parkCheck", function() parkCheck() end },
   { "MAP.save", function() MAP.save() end }, { "MAP.checkSpace", function() MAP.checkSpace() end },

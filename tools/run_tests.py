@@ -215,6 +215,11 @@ def _():
     rc, out = run(["lua5.3", "tools/tests/miner_dup.lua", "miner.lua"])
     return rc == 0, out.strip()
 
+@check("node", "miner updates from the base (miner_update.lua)")
+def _():
+    rc, out = run(["lua5.3", "tools/tests/miner_update.lua", "miner.lua"])
+    return rc == 0, out.strip()
+
 @check("node", "duplicate copies (node_dup.lua)")
 def _():
     rc, out = run(["lua5.3", "tools/tests/node_dup.lua", "node.lua"])
@@ -245,9 +250,9 @@ MINING = ["plain", "team2", "team3", "team5", "caves", "reboot", "team3reboot", 
           "otherfuel", "loaderdrift", "wrongface", "gpsfix", "r1", "nofuel", "ownfull", "geoname", "corein", "modemon",
           "newfield", "team2newfield", "team3crosspause", "team3drop", "team5drop", "team3dropalive",
           "nearstation", "team3nearstation", "team3crashunload", "team2warpfail", "team3silentback",
-          "team2join", "team3join", "team2joincaves", "team2joinfar", "team2neighbour", "team3neighboureq"]
+          "team2join", "team3join", "team2joincaves", "team2joinfar", "team2neighbour", "team3neighboureq", "team2update", "team3updatecaves"]
 if QUICK:
-    MINING = ["plain", "team3", "reboot", "newfield", "team3crosspause", "team3drop", "team3dropalive", "wrongface", "team3nearstation", "team3crashunload", "team2join", "team2neighbour"]
+    MINING = ["plain", "team3", "reboot", "newfield", "team3crosspause", "team3drop", "team3dropalive", "wrongface", "team3nearstation", "team3crashunload", "team2join", "team2neighbour", "team2update"]
 HOURS = "1" if QUICK else "2"
 for scen in MINING:
     @check("mining", scen)

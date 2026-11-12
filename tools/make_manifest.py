@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """manifest.txt: the files `upgrade` downloads, with size + checksum.
-   group path size checksum   (group = base or pocket)
+   group path size checksum   (group = base, pocket or miner)
 Run after changing program files (run_tests.py checks it is up to date):
    python3 tools/make_manifest.py
 base_config.lua is NOT in it (the owner's settings are never replaced)."""
@@ -23,6 +23,7 @@ def files():
     base = [f for f in base if f != "base_config.lua"]
     out = [("base", f) for f in ["inventory.lua", "startup.lua", "node.lua", "store.lua", "upgrade.lua"] + base]
     out += [("pocket", "pocket.lua"), ("pocket", "upgrade.lua")]
+    out += [("miner", "miner.lua")]      # (NOT installed on the base: `mine update` fetches it for the mining turtles)
     return out
 
 def slimmed(f):

@@ -55,6 +55,7 @@ HELP = {
 " turtle <id> forget   take a turtle that is gone (server crash) off the list",
 " drive <id>   steer a turtle with the keyboard: W A S D, SPACE up, SHIFT down",
 " mine [drop|forget] <id>   mining turtles: drop = a lost miner out of its team",
+" mine update [stop]    the newest miner.lua to every mining turtle (teams paused first, then started again)",
 " factory [chest <name>|builder <id>|build|stop]   build turtles from AE2 parts",
 " factory recipes|learn|forget <item>|crafter <id>   recipes TAUGHT to a crafting turtle",
 " factory fuel [<item> [count]|reset]   the fuel a new turtle gets (default 16 coal blocks)",
@@ -848,7 +849,16 @@ elseif cmd == "mine" then
 
 local sub, id = (words[2] or ""):lower(), tonumber(words[3])
 local u = id and MINE.units[id]
-if (sub == "drop" or sub == "forget") and not u then
+if sub == "update" then
+
+if words[3] == "stop" then
+MINE.upd = nil
+say("Miner update stopped (paused teams stay paused - START TEAM on the MINING tab).")
+else
+local c, why = MINE.loadCode(true, say)
+if not c then say(why) else for _, l in ipairs(MINE.startUpdate(c)) do say(l) end end
+end
+elseif (sub == "drop" or sub == "forget") and not u then
 say("No mining turtle #" .. tostring(words[3]) .. ". Type  mine  to see them.")
 elseif sub == "drop" then
 local _, msg = MINE.drop(id)
@@ -861,11 +871,12 @@ else
 local any = false
 for uid, x in pairs(MINE.units) do
 any = true
-say(string.format(" #%-4d %-7s %-10s %s", uid, tostring(x.role), tostring(x.dim), MINE.online(x) and "online"
+say(string.format(" #%-4d %-7s %-5s %-10s %s", uid, tostring(x.role), tostring(x.ver or "?"), tostring(x.dim), MINE.online(x) and "online"
 or ("OFFLINE, last seen " .. (x.seenEpoch and TT.ago(x.seenEpoch) or "never"))))
 end
 if not any then say("No mining turtles yet.") end
 say("mine drop <id> = a lost miner out of its team,  mine forget <id> = off the base's list")
+say("mine update = the newest miner.lua to all of them (teams paused, started again after)")
 end
 
 elseif cmd == "away" then

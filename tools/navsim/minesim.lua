@@ -467,7 +467,7 @@ local function envFor(u)
   env.fs = {
     exists = function(p) return files[p] ~= nil end,
     open = function(p, mode)
-      if mode == "r" then
+      if mode == "r" or mode == "rb" then
         if not files[p] then return nil end
         local data = files[p]
         return { readAll = function() return data end, close = function() end }
@@ -475,6 +475,7 @@ local function envFor(u)
       local buf = {}
       return { write = function(s) buf[#buf + 1] = s end, close = function() files[p] = table.concat(buf) end }
     end,
+    getSize = function(p) return #(files[p] or "") end,
     delete = function(p) files[p] = nil end,
     move = function(a, b) files[b] = files[a] files[a] = nil end,
   }
@@ -485,7 +486,7 @@ local function envFor(u)
     getComputerLabel = function() return (u.role == "miner" and "Miner " or "Loader ") .. u.id end,
     setComputerLabel = function() end,
     getComputerID = function() return u.id end,
-    reboot = function() error("REBOOT") end,
+    reboot = function() coroutine.yield("REBOOT") error("REBOOT") end,
   }
   env.sleep = function(s) wait(s or 0) end
   -- a GPS system in the dimension (scenario nogps: none)
@@ -603,6 +604,7 @@ end
 l.files.miner_state = textutils.serialize({ role = "loader", key = KEY, dim = "overworld",
   pos = { x = LX, y = LY, z = LZ + ((SCEN == "gpsfix") and -2 or 0), f = (SCEN == "wrongface") and 3 or LF } })
 local SRC = io.open(ROOT .. "miner.lua"):read("a")
+for _, u in ipairs({ l, table.unpack(MS) }) do u.files["miner.lua"] = SRC end   -- (its own program file: m.code)
 local cos = {}
 ENVS = {}
 for _, u in ipairs({ l, table.unpack(MS) }) do
@@ -751,6 +753,19 @@ while T < maxT do
       break
     end
   end
+  -- scenario update: MINE UPDATE in the middle of the work (base_mining.lua): the team is
+  -- paused, every turtle gets the new program, installs it, restarts - and goes on with
+  -- the SAME team and field
+  if MINE.upd then MINE.updTick() end
+  if SCEN:find("update") and not UPDATED and T > 2400 and lu and lu.running then
+    UPDATED = T
+    NEWSRC = SRC:gsub('MYVER = "(m%d+)"', 'MYVER = "%1u"', 1)
+    UPD_BEFORE = { plan = ENVS.loader.S.plan and ENVS.loader.S.plan.id, team = table.concat(ENVS.loader.S.team or {}, ","), ores = 0 }
+    for _, id in ipairs(MINERS) do local u = MINE.units[id] UPD_BEFORE.ores = UPD_BEFORE.ores + ((u and u.stats and u.stats.ores) or 0) end
+    local c = assert(MINE.setCode(NEWSRC, "test"))
+    for _, ln in ipairs(MINE.startUpdate(c)) do io.write("** " .. ln .. "\n") end
+  end
+  if UPDATED and not UPD_DONE and MINE.upd == nil and T > UPDATED then UPD_DONE = T io.write("** update done after " .. math.floor(T - UPDATED) .. " s\n") end
   -- scenario reboot: the miner's program restarts (server restart / chunk unload)
   if SCEN:find("reboot") and not REBOOTED and T > 2400 then
     REBOOTED = true
@@ -823,6 +838,16 @@ while T < maxT do
   if c.wake > T then T = c.wake end
   if coroutine.status(c.co) == "dead" then fail(c.u.role .. " program ENDED") break end
   local ok, w = coroutine.resume(c.co)
+  if ok and w == "REBOOT" then
+    -- os.reboot: starts again from ITS OWN program file (an update installed it)
+    c.u.open = {}
+    REBOOTS = (REBOOTS or 0) + 1
+    local env = envFor(c.u)
+    ENVS[c.u.id] = env
+    if c.u.role == "loader" then ENVS.loader = env end
+    c.co = coroutine.create(assert(load(c.u.files["miner.lua"] or SRC, "miner.lua", "t", env)))
+    ok, w = true, T + 5
+  end
   if ok and w == "SHUTDOWN" then
     -- shut down while paused: starts again from startup
     c.u.open = {}
@@ -901,6 +926,25 @@ if ORES_AT_NF then
   if now - ORES_AT_NF < 50 then fail("the team did not mine after NEW FIELD + START") end
 end
 if delivered["jamd:mining_dim_core"] or delivered["somemod:eternal_flame"] then fail("the OWNER'S item was unloaded") end
+if SCEN:find("update") then
+  local nv = MINE.codeHash(NEWSRC or "")
+  if not UPD_DONE then fail("the miner update never finished") end
+  for _, c in ipairs(cos) do
+    if c.u.files["miner.lua"] ~= NEWSRC then fail(c.u.role .. " " .. c.u.id .. " does not have the new program") end
+    local u = MINE.units[c.u.id]
+    if not (u and u.code == nv) then fail(c.u.role .. " " .. c.u.id .. " does not REPORT the new program: " .. tostring(u and u.code)) end
+    if c.u.role == "miner" and ENVS[c.u.id].S.leader ~= LOADER then fail("miner " .. c.u.id .. " lost its team after the update") end
+  end
+  local LS = ENVS.loader.S
+  if (LS.plan and LS.plan.id) ~= UPD_BEFORE.plan then fail("the loader started a NEW field after the update (state lost)") end
+  if table.concat(LS.team or {}, ",") ~= UPD_BEFORE.team then fail("the team changed after the update: " .. UPD_BEFORE.team .. " -> " .. table.concat(LS.team or {}, ",")) end
+  if not LS.running then fail("the team was not started again after the update") end
+  if (REBOOTS or 0) < 1 + NMIN then fail("not every turtle restarted with the new program (" .. tostring(REBOOTS) .. ")") end
+  local now = 0
+  for _, id in ipairs(MINERS) do local u = MINE.units[id] now = now + ((u and u.stats and u.stats.ores) or 0) end
+  print("ores after the update: " .. (now - UPD_BEFORE.ores) .. ", restarts " .. tostring(REBOOTS))
+  if now - UPD_BEFORE.ores < 50 then fail("the team did not mine after the update") end
+end
 if SCEN:find("crashunload") then
   local now = 0
   for _, v in pairs(delivered) do now = now + v end
