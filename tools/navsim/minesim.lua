@@ -268,6 +268,11 @@ local function turtleApi(u)
   end
   t.equipLeft = function() return equip("left") end
   t.equipRight = function() return equip("right") end
+  -- scenario "...eq": this CC:Tweaked can name the equipped items
+  if SCEN:find("eq") then
+    t.getEquippedLeft = function() return u.left and { name = u.left, count = 1 } or nil end
+    t.getEquippedRight = function() return u.right and { name = u.right, count = 1 } or nil end
+  end
   local function place(d)
     act(u)
     local it = u.inv[u.sel]
@@ -332,7 +337,14 @@ local function peripheralApi(u)
     local x, y, z = front(u, "f")
     return SHULKERS[key(x, y, z)]
   end
-  P.getType = function(side) if frontInv(side) then return "inventory" end return upType(side) end
+  P.getType = function(side)
+    if frontInv(side) then return "inventory" end
+    local ty = upType(side)
+    -- scenario "neighbour": a side WITHOUT a peripheral upgrade (a pickaxe) shows the block
+    -- next to the turtle - here always another turtle (miners stand side by side)
+    if not ty and SCEN:find("neighbour") and (side == "left" or side == "right") then return "turtle" end
+    return ty
+  end
   P.hasType = function(side, ty)
     if frontInv(side) then return ty == "inventory" end
     local t = upType(side)

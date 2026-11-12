@@ -80,7 +80,7 @@ CONFIG = {
 }
 
 STATE_FILE = "miner_state"
-MYVER = "m19"            -- shown on the screen and the base (MINING tab)
+MYVER = "m20"            -- shown on the screen and the base (MINING tab)
 DX = { [0] = 0, 1, 0, -1 }
 DZ = { [0] = -1, 0, 1, 0 }
 FNAME = { [0] = "north", "east", "south", "west" }
@@ -826,14 +826,37 @@ function toolSide()
   if c == "left" then return "right" end
   return "left"
 end
--- what is on the free side now: "modem", "geo" or "pickaxe" (no peripheral)
+-- what is on the free side now: "modem", "geo", "pickaxe" or "none".
+-- The ITEM itself where this CC:Tweaked can tell (turtle.getEquippedLeft/Right).
+-- Else by the peripheral on that side - but a pickaxe is no peripheral, and then a
+-- turtle on a side WITHOUT a peripheral upgrade sees the BLOCK next to it there: the
+-- loader, another miner, a chest ... That read as "not the pickaxe" - a miner put down
+-- next to the team said "the pickaxe did not show up" with the pickaxe on (m20).
 function toolNow()
-  local t = peripheral.getType(toolSide())
+  local side = toolSide()
+  local f = (side == "left") and turtle.getEquippedLeft or turtle.getEquippedRight
+  if f then
+    local ok, d = pcall(f)
+    if ok then
+      if type(d) ~= "table" or not d.name then return "none" end
+      local n = tostring(d.name):lower()
+      if n:find("modem", 1, true) then return "modem" end
+      if n:find("geo", 1, true) then return "geo" end
+      if n:find("pickaxe", 1, true) then return "pickaxe" end
+      return n
+    end
+  end
+  local t = peripheral.getType(side)
   if not t then return "pickaxe" end
   t = tostring(t):lower()
-  if t:find("modem", 1, true) then return "modem" end
   if t:find("geo", 1, true) then return "geo" end
-  return t
+  if t:find("modem", 1, true) then
+    -- a WIRED modem block / cable next to me is not my (wireless / ender) modem
+    local okW, w = pcall(peripheral.call, side, "isWireless")
+    if okW and w == false then return "pickaxe" end
+    return "modem"
+  end
+  return "pickaxe"            -- a block next to me (a turtle, a chest ...): my side has no peripheral
 end
 TOOL_ITEM = { pickaxe = "*pickaxe*", modem = "*modem*", geo = "*geo_scanner*" }
 function equipTool(kind)

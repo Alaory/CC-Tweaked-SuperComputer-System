@@ -245,9 +245,9 @@ MINING = ["plain", "team2", "team3", "team5", "caves", "reboot", "team3reboot", 
           "otherfuel", "loaderdrift", "wrongface", "gpsfix", "r1", "nofuel", "ownfull", "geoname", "corein", "modemon",
           "newfield", "team2newfield", "team3crosspause", "team3drop", "team5drop", "team3dropalive",
           "nearstation", "team3nearstation", "team3crashunload", "team2warpfail", "team3silentback",
-          "team2join", "team3join", "team2joincaves", "team2joinfar"]
+          "team2join", "team3join", "team2joincaves", "team2joinfar", "team2neighbour", "team3neighboureq"]
 if QUICK:
-    MINING = ["plain", "team3", "reboot", "newfield", "team3crosspause", "team3drop", "team3dropalive", "wrongface", "team3nearstation", "team3crashunload", "team2join"]
+    MINING = ["plain", "team3", "reboot", "newfield", "team3crosspause", "team3drop", "team3dropalive", "wrongface", "team3nearstation", "team3crashunload", "team2join", "team2neighbour"]
 HOURS = "1" if QUICK else "2"
 for scen in MINING:
     @check("mining", scen)

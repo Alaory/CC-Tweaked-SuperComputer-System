@@ -343,7 +343,12 @@ PneumaticCraft drone rides, turtle mapping/surveys, and an AE2 ME network view.
   Refused -> one note per reason + "joinno" {why} (the miner notes it). Miner: a new plan with
   ci > 0 -> S.lateFor -> J.late: CHUNK_LOCK off until it is INSIDE the team's chunk. A paused
   field: joiners are appended too (sorting shifted everybody's number mid-field); newTeamPlan
-  sorts by ID again. A lost LOADER: MINE.drop forgets it; miners (m15) leave a loader silent 10 min
+  sorts by ID again. TOOL CHECK (m20, toolNow): turtle.getEquippedLeft/Right where they exist
+  (the ITEM: modem / geo / pickaxe / "none"); else the side's peripheral type - BUT a side whose
+  upgrade has no peripheral (a pickaxe) shows the BLOCK NEXT TO the turtle (the loader, another
+  miner, a chest): any type other than geo / a wireless modem = "pickaxe" (a wired modem block:
+  isWireless false). Before: "the pickaxe did not show up after equipping it (gave up after 8
+  tries)" for miners set up side by side. minesim team2neighbour / team3neighboureq. A lost LOADER: MINE.drop forgets it; miners (m15) leave a loader silent 10 min
   (LEADER_SEEN) when another one says loaderhere. MINE.drop(id) (console
   `mine drop` and a DROP button on the MINING tab for a miner gone 20+ min). Unloading: one miner at the station at a time
   (S.stationUse, 6 min max); each miner needs its own `miner station` (the
