@@ -67,9 +67,55 @@ return nil
 end
 
 
+
+
+SUPPLY.FLUID_READ = { "getStored", "getFluid", "getContents", "getFluidStored", "getTankContents" }
+function SUPPLY.methods(name)
+local ok, m = pcall(peripheral.getMethods, name)
+local set = {}
+if ok and type(m) == "table" then for _, k in ipairs(m) do set[k] = true end end
+return set, (ok and type(m) == "table") and m or {}
+end
 function SUPPLY.kinds(name)
 local function has(t) local ok, r = pcall(peripheral.hasType, name, t) return ok and r end
-return has("inventory"), has("fluid_storage")
+local isInv, isFluid = has("inventory"), has("fluid_storage")
+if not isFluid then
+local set = SUPPLY.methods(name)
+if set.tanks then isFluid = true end
+for _, k in ipairs(SUPPLY.FLUID_READ) do if set[k] then isFluid = true end end
+end
+if not isInv then
+local set = SUPPLY.methods(name)
+if set.list and (set.pullItems or set.size) then isInv = true end
+end
+return isInv, isFluid
+end
+
+
+local OWN = { "me_bridge", "inventory_manager", "player_detector", "chat_box", "drone_interface", "drive",
+"monitor", "computer", "turtle", "modem", "speaker", "printer", "energy_detector" }
+function SUPPLY.others()
+local cands, out = {}, {}
+for _, n in ipairs(SUPPLY.candidates()) do cands[n] = true end
+for _, n in ipairs(peripheral.getNames()) do
+if not cands[n] then
+local okT, ty = pcall(peripheral.getType, n)
+ty = (okT and type(ty) == "string") and ty or "?"
+local own = false
+for _, o in ipairs(OWN) do if ty:find(o, 1, true) then own = true end end
+if not own and not n:find("^%a+$") then out[#out + 1] = n end
+end
+end
+table.sort(out)
+return out
+end
+
+function SUPPLY.describe(name)
+local types = { pcall(peripheral.getType, name) }
+table.remove(types, 1)
+local _, list = SUPPLY.methods(name)
+table.sort(list)
+return table.concat(types, ", "), list
 end
 
 
@@ -86,13 +132,30 @@ end
 
 function SUPPLY.count(r)
 if r.kind == "fluid" then
-local ok, t = pcall(peripheral.call, r.target, "tanks")
-if not ok or type(t) ~= "table" then return nil, "cannot read its tanks" end
+local set = SUPPLY.methods(r.target)
+
+local function add(t)
+if type(t) ~= "table" then return nil end
+if t.name then return (t.name == r.name) and (tonumber(t.amount or t.count) or 0) or 0 end
 local n = 0
 for _, tk in pairs(t) do
-if type(tk) == "table" and tk.name == r.name then n = n + (tonumber(tk.amount) or 0) end
+if type(tk) == "table" and tk.name == r.name then n = n + (tonumber(tk.amount or tk.count) or 0) end
 end
 return n
+end
+local fns = { "tanks" }
+for _, k in ipairs(SUPPLY.FLUID_READ) do fns[#fns + 1] = k end
+for _, fn in ipairs(fns) do
+if set[fn] then
+local ok, t = pcall(peripheral.call, r.target, fn)
+if ok then
+if t == nil then return 0 end
+local n = add(t)
+if n then return n end
+end
+end
+end
+return nil, "cannot read how much it holds (supply check " .. r.target .. " shows what it offers)"
 end
 local ok, list = pcall(peripheral.call, r.target, "list")
 if not ok or type(list) ~= "table" then return nil, "cannot read what it holds" end
@@ -232,6 +295,25 @@ local n = SUPPLY.stop(words[3] or "")
 say(n > 0 and (n .. " supply rule(s) stopped. What is in the storage stays there.") or "No such rule. Type  supply  to see them.")
 return out
 end
+if a == "check" then
+local cands, others = SUPPLY.candidates(), SUPPLY.others()
+local name = words[3]
+if tonumber(name) and not peripheral.isPresent(name) then
+local i = tonumber(name)
+name = cands[i] or others[i - #cands]
+end
+if not name or not peripheral.isPresent(name) then
+say("Use:  supply check <number or name>  (the numbers from  supply)")
+return out
+end
+local ty, fns = SUPPLY.describe(name)
+local isInv, isFluid = SUPPLY.kinds(name)
+say(name .. "  type: " .. ty)
+say("  items: " .. (isInv and "yes" or "no") .. "   fluids: " .. (isFluid and "yes" or "no") ..
+(SUPPLY.refuse(name) and ("   NOT usable: " .. SUPPLY.refuse(name)) or ""))
+say("  functions: " .. (#fns > 0 and table.concat(fns, " ") or "none"))
+return out
+end
 if a == "now" then
 SUPPLY.at = -999
 SUPPLY.tick()
@@ -273,8 +355,20 @@ local isInv, isFluid = SUPPLY.kinds(n)
 say(string.format(" %d. %s  (%s)", i, n, (isInv and isFluid) and "items + fluids" or (isFluid and "fluids" or "items")))
 end
 else
-say("No free storage on the cable: put a wired modem on it and right-click the modem (it turns red).")
+say("No usable storage on the cable yet.")
 end
-say("supply <storage> <item> <count> | supply <storage> fluid <fluid> <buckets> | supply stop <n|storage|all> | supply now")
+
+local others = SUPPLY.others()
+if #others > 0 then
+say("Other blocks on the cable (no storage functions the base knows):")
+for i, n in ipairs(others) do
+local ty = SUPPLY.describe(n)
+say(string.format(" %d. %s  (%s)", #cands + i, n, ty))
+end
+say("  supply check <number> lists what one of them offers - send me that line.")
+end
+say("Not in either list? Its modem is off: right-click the wired modem ON the block (it turns red;")
+say("  chat says 'Peripheral ... connected'). A full-block modem works on any side.")
+say("supply <storage> <item> <count> | supply <storage> fluid <fluid> <buckets> | supply stop <n|storage|all> | supply now | supply check <n>")
 return out
 end

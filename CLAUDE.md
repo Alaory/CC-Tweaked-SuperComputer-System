@@ -542,8 +542,11 @@ PneumaticCraft drone rides, turtle mapping/surveys, and an AE2 ME network view.
   target is left out of fluidBuffer()'s automatic choice and FACTORY.reserved says "supply".
   r.why + one WARNING when short (r.warned until it works again). `supply` lists rules +
   numbered candidates; `supply <n|name> <item> <count>`, `supply <n|name> fluid <fluid>
-  <buckets>`, `supply stop <n|name|all>`, `supply now`. Wireless / ender modems cannot reach
-  a block's storage (messages only). test_supply.lua.
+  <buckets>`, `supply stop <n|name|all>`, `supply now`, `supply check <n|name>` (types + functions).
+  MODDED tanks with their OWN computer functions (no fluid_storage type): SUPPLY.kinds also accepts
+  tanks() / SUPPLY.FLUID_READ (getStored, getFluid, ...; {name, amount} or a list, nil = empty);
+  every other non-base block on the cable is listed under "Other blocks" (SUPPLY.others) so the
+  owner can `supply check` it. Wireless / ender modems cannot reach a block's storage (messages only). test_supply.lua.
 - POCKET REMOTE (pocket.lua on the owner's Advanced Pocket Computer with a
   wireless / ender modem; base_pocket.lua POCKET; rednet protocol "basepocket",
   rednet.host'ed by the comms worker; POCKET.out sent there). Pairing: pocket

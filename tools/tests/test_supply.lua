@@ -107,6 +107,39 @@ CHECK(fb == "functionalstorage:storage_controller_0", "the fluid buffer stays yo
 -- the factory never picks a supplied chest
 CHECK(FACTORY.reserved("minecraft:chest_7") == "supply", "a supplied chest is never the factory chest")
 
+-- a MODDED tank with its own computer functions (no "fluid_storage" type, no tanks()):
+-- getStored() = { name, amount } (nil when empty) - listed, read and filled
+local MOD = nil
+PERIPHS["bigtanks:steel_tank_0"] = { types = { "bigtanks:steel_tank" }, obj = {
+  getStored = function() return MOD end, getCapacity = function() return 64000 end } }
+local exp0 = bridge.exportFluid
+bridge.exportFluid = function(f, target)
+  if target == "bigtanks:steel_tank_0" then
+    local n = math.min(f.amount, 4000)
+    MOD = { name = f.name, amount = ((MOD and MOD.amount) or 0) + n }
+    return n
+  end
+  return exp0(f, target)
+end
+-- a block with nothing the base knows: listed as "other", supply check shows its functions
+PERIPHS["weirdmod:thing_0"] = { types = { "weirdmod:thing" }, obj = { doStuff = function() end } }
+local cands2 = table.concat(SUPPLY.candidates(), " ")
+CHECK(cands2:find("steel_tank_0", 1, true), "a modded tank with getStored() is a usable storage")
+local listing = table.concat(handleCommand("supply") or {}, "\n")
+CHECK(listing:find("weirdmod:thing_0", 1, true) and listing:find("Other blocks", 1, true), "an unknown block on the cable is listed under 'Other blocks'")
+local chk = table.concat(handleCommand("supply check weirdmod:thing_0") or {}, "\n")
+CHECK(chk:find("doStuff", 1, true) and chk:find("fluids: no", 1, true), "supply check shows what it offers")
+ok, msg = SUPPLY.add("bigtanks:steel_tank_0", "fluid", "lava", 10000)
+CHECK(ok, "fluid rule on the modded tank: " .. tostring(msg))
+CLOCK = CLOCK + 11
+SUPPLY.tick()
+CHECK(MOD and MOD.name == "minecraft:lava" and MOD.amount >= 10000, "modded tank filled to 10 buckets (" .. tostring(MOD and MOD.amount) .. ")")
+local amt = MOD.amount
+CLOCK = CLOCK + 11
+SUPPLY.tick()
+CHECK(MOD.amount == amt, "and not more once it is full")
+SUPPLY.stop("bigtanks:steel_tank_0")
+
 -- saved and read back
 SUPPLY.save()
 local keep = SUPPLY.rules

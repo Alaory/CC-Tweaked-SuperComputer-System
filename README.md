@@ -342,6 +342,8 @@ again …)", "after an update" or "after an ERROR: …".
   - `supply` lists the storages on the cable (with numbers) and what is kept stocked.
   - `supply 1 coal 128` keeps 128 coal in storage 1. `supply 2 fluid water 16` keeps 16 buckets of water.
   - `supply stop <n|all>` stops a rule. `supply now` checks at once.
+  - Not listed? `supply` also shows **other blocks** on the cable; `supply check <n>` lists what one
+    offers. Not there at all: the wired modem on it is off (right-click it, it turns red).
 
   Every 10 s the base counts what is in it and sends the difference from AE2. It only ever puts
   things **in**, never takes anything out, and never sends your own enchanted, renamed or used
