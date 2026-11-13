@@ -28,7 +28,7 @@ end
 local function save()
 saveFileSafe(FILE, serialSmall({ on = AWAY.on, since = AWAY.since, lastSeen = AWAY.lastSeen,
 snap = AWAY.snap, last = AWAY.last, page = AWAY.page,
-autoOn = AWAY.autoOn }))
+autoOn = AWAY.autoOn, left = AWAY.left, acc = AWAY.acc, prev = AWAY.prev }))
 end
 do
 if fs.exists(FILE) then
@@ -38,6 +38,7 @@ if h then h.close() end
 if type(t) == "table" then
 AWAY.on, AWAY.since, AWAY.lastSeen, AWAY.snap, AWAY.last, AWAY.page = t.on, t.since, t.lastSeen, t.snap, t.last, t.page
 AWAY.autoOn = t.autoOn
+AWAY.left, AWAY.acc, AWAY.prev = t.left, t.acc, t.prev
 end
 end
 end
@@ -81,6 +82,43 @@ end
 return s
 end
 
+
+
+
+local function gain(cur, was)
+cur, was = tonumber(cur) or 0, tonumber(was) or 0
+if cur >= was then return cur - was end
+return cur
+end
+function AWAY.track()
+AWAY.acc, AWAY.prev = AWAY.acc or {}, AWAY.prev or {}
+local changed = false
+for id, u in pairs(MINE and MINE.units or {}) do
+local dim = u.dim or "?"
+local key = tostring(id)
+local cur = { ores = type(u.stats) == "table" and tonumber(u.stats.ores) or 0, ci = tonumber(u.ci) or 0, got = {} }
+for k, v in pairs(u.got or {}) do cur.got[k] = tonumber(v) or 0 end
+local p = AWAY.prev[key]
+if p then
+local a = AWAY.acc[dim] or { ores = 0, chunks = 0, got = {} }
+AWAY.acc[dim] = a
+if u.role == "loader" then
+local c = gain(cur.ci, p.ci)
+if c > 0 then a.chunks = a.chunks + c changed = true end
+else
+local o = gain(cur.ores, p.ores)
+if o > 0 then a.ores = a.ores + o changed = true end
+for k, v in pairs(cur.got) do
+local g = gain(v, (p.got or {})[k])
+if g > 0 then a.got[k] = (a.got[k] or 0) + g changed = true end
+end
+end
+end
+AWAY.prev[key] = cur
+end
+return changed
+end
+
 local function fmtTime(ms)
 local okD, d = pcall(os.date, "%d.%m %H:%M", math.floor(ms / 1000))
 return okD and d or "?"
@@ -93,13 +131,30 @@ local s = AWAY.snap or {}
 local now = os.epoch("utc")
 local lines = {}
 local function add(t, col) lines[#lines + 1] = { t = t, col = col or C.text } end
-add("Away " .. fmtSpan((now - (AWAY.since or now)) / 1000) .. " (since " .. fmtTime(AWAY.since or now) .. ")", C.label)
+local left = AWAY.left or AWAY.since or now
+add("Away " .. fmtSpan((now - left) / 1000) .. " (since " .. fmtTime(left) .. ")", C.label)
 
 local grew = (MAP.ovN or 0) - (s.ovN or 0)
 add("Map: +" .. commas(math.max(0, grew)) .. " chunks mapped (" .. commas(MAP.ovN or 0) .. " in all)",
 grew > 0 and C.good or C.dim)
 
-for dim, team in pairs(MINE and MINE.teams() or {}) do
+if AWAY.acc then
+pcall(AWAY.track)
+local dims = {}
+for dim in pairs(AWAY.acc) do dims[#dims + 1] = dim end
+table.sort(dims)
+for _, dim in ipairs(dims) do
+local a = AWAY.acc[dim]
+local diff = {}
+for k, v in pairs(a.got or {}) do if v > 0 then diff[#diff + 1] = { k, v } end end
+table.sort(diff, function(x, y) return x[2] > y[2] end)
+local parts = {}
+for i = 1, math.min(4, #diff) do parts[#parts + 1] = itemName(diff[i][1]) .. " " .. commas(diff[i][2]) end
+add("Mining " .. dim .. ": +" .. (a.chunks or 0) .. " chunks, +" .. commas(a.ores or 0) .. " ores" ..
+(#parts > 0 and (" - " .. table.concat(parts, ", ")) or ""), (a.ores or 0) > 0 and C.good or C.warn)
+end
+end
+for dim, team in pairs((not AWAY.acc) and MINE and MINE.teams() or {}) do
 if #team.miners > 0 then
 local T = MINE.totals(team)
 local was = (s.mine or {})[dim] or { ores = 0, ci = 0, got = {} }
@@ -143,7 +198,7 @@ if #gone > 0 then add("Marked MISSING (not found where they were): " .. table.co
 local offs = (BASE_ALIVE or {}).offs or {}
 local nOff, tOff = 0, 0
 for _, o in ipairs(offs) do
-if (o.from or 0) >= (AWAY.since or now) then nOff, tOff = nOff + 1, tOff + ((o.to or 0) - (o.from or 0)) end
+if (o.from or 0) >= left then nOff, tOff = nOff + 1, tOff + ((o.to or 0) - (o.from or 0)) end
 end
 if nOff > 0 then add("The base was OFF " .. nOff .. " time(s), " .. fmtSpan(tOff / 1000) .. " in all - see SYSTEM", C.warn) end
 
@@ -183,7 +238,10 @@ end
 
 function AWAY.start()
 AWAY.on, AWAY.since = true, os.epoch("utc")
+AWAY.left = AWAY.offSince or AWAY.since
 AWAY.snap = snapshot()
+AWAY.acc, AWAY.prev = {}, {}
+pcall(AWAY.track)
 AWAY.page = state.page
 
 if AWAY.cfg("autoMap", true) and MAP.auto and not MAP.auto.on and not MAP.auto.done then
@@ -197,7 +255,7 @@ end
 function AWAY.back()
 
 
-local short = (os.epoch("utc") - (AWAY.since or 0)) / 1000 < (tonumber(AWAY.cfg("after", 300)) or 300)
+local short = (os.epoch("utc") - (AWAY.left or AWAY.since or 0)) / 1000 < (tonumber(AWAY.cfg("after", 300)) or 300)
 if short then
 AWAY.on = false
 if AWAY.autoOn then AWAY.autoOn = nil MAP.setAuto(false) end
@@ -206,7 +264,15 @@ AWAY.page = nil
 save()
 return
 end
-local lines = AWAY.report()
+
+
+local okR, lines = pcall(AWAY.report)
+if not okR then
+local err = tostring(lines)
+lines = { { t = "Away " .. fmtSpan((os.epoch("utc") - (AWAY.left or AWAY.since or 0)) / 1000), col = C.label },
+{ t = "(the report could not be made: " .. err .. ")", col = C.bad } }
+if sysLog then sysLog("Away report error: " .. err, "ERROR") end
+end
 AWAY.last = { t = os.epoch("utc"), lines = lines }
 AWAY.on = false
 if AWAY.autoOn then
@@ -300,7 +366,15 @@ end
 end
 AWAY.lastSeen = now
 AWAY.offSince = nil
-if AWAY.on then AWAY.back() end
+AWAY.offLogged = nil
+if AWAY.on then
+local okB, errB = pcall(AWAY.back)
+if not okB then
+AWAY.on = false
+if sysLog then sysLog("Away mode: coming back failed - " .. tostring(errB), "ERROR") end
+save()
+end
+end
 return
 end
 if online == nil then return end
@@ -313,10 +387,19 @@ AWAY.lastSeen = AWAY.lastSeen or now
 
 AWAY.offSince = AWAY.offSince or now
 
+if not AWAY.offLogged and not AWAY.on then
+AWAY.offLogged = true
+if sysLog then
+sysLog("You are offline (server player list) - away mode starts in " ..
+fmtSpan(tonumber(AWAY.cfg("after", 300)) or 300) .. (MAP.loaded and "" or " (after the map is read)"), "INFO")
+end
+end
+
 if not AWAY.on and MAP.loaded and (now - AWAY.offSince) / 1000 > (tonumber(AWAY.cfg("after", 300)) or 300) then
 AWAY.start()
 end
 if AWAY.on then
+if AWAY.track() then save() end
 
 
 if AWAY.cfg("map", true) and (state.tModem or next(state.turtles) or MAP.hasData()) then

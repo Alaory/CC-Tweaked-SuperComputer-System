@@ -3498,6 +3498,26 @@ function doRefuel(first)
   end
 end
 
+-- OUT OF FUEL WHILE IDLE (fuel < 20): try everything it carries, once a minute - a COPY
+-- (made by a server crash) or a turtle that knows some endless items (S.reuse) but not the one
+-- it carries now sat at 0 fuel for good: idle top-up only used items it already knew, and the
+-- first refuel counted as done. Learns endless items, burns real fuel (it has none left anyway).
+EMPTY_TRY = nil
+function idleEmptyFuel()
+  local f = turtle.getFuelLevel()
+  if f == "unlimited" or f >= 20 or job or SLOT_LOCK then return false end
+  if EMPTY_TRY and os.clock() - EMPTY_TRY < 60 then return false end
+  EMPTY_TRY = os.clock()
+  pcall(doRefuel, true)
+  save()
+  local now = turtle.getFuelLevel()
+  if now ~= "unlimited" and now >= 20 then
+    send("result", { cmd = "refuel", ok = true, msg = "had no fuel - refuelled from what I carry (" .. tostring(now) .. ")" })
+    return true
+  end
+  return false
+end
+
 function listener()
   while true do
     local id, m = rednet.receive(CONFIG.protocol)
@@ -3697,7 +3717,7 @@ function worker()
       -- (only a turtle that never refuelled and is low: never burns the coal a
       -- rescuer carries for others)
       local fl = turtle.getFuelLevel()
-      if not S.refuelDone and (S.reuse ~= nil or fl == "unlimited" or fl >= 1000) then
+      if not S.refuelDone and ((S.reuse and next(S.reuse)) or fl == "unlimited" or fl >= 1000) then
         S.refuelDone = true
       end
       if not S.refuelDone and not job and not SLOT_LOCK then
@@ -3707,6 +3727,7 @@ function worker()
         send("result", { cmd = "refuel", ok = okR and okR2 or false,
                          msg = "first start - refuelled by myself: " .. tostring(okR and msgR or okR2) })
       end
+      pcall(idleEmptyFuel)                         -- 0 fuel: try everything it carries (once a minute)
       -- idle: fill up with reusable fuel, a little at a time (stays responsive)
       local f = turtle.getFuelLevel()
       if f ~= "unlimited" and S.reuse and next(S.reuse) and f < refuelTarget() then

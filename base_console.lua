@@ -932,6 +932,16 @@ function handleCommand(line)
     end
     local on = AWAY.ownerOnline()
     say("You are " .. (on == true and "online" or (on == false and "offline" or "unknown (no Player Detector?)")))
+    -- what the base sees (to find out why no report came)
+    local src = (state.online and state.onlineT and os.clock() - state.onlineT < 120)
+                and ("server player list, read " .. math.floor(os.clock() - state.onlineT) .. " s ago")
+                or "no fresh player list - the Player Detector's own answer"
+    say("  owner: " .. tostring(state.owner or "NOT KNOWN (Memory Card in the Inventory Manager?)") .. " - " .. src)
+    if AWAY.offSince then
+      say("  offline (seen by this run) for " .. fmtSpan((os.epoch("utc") - AWAY.offSince) / 1000) ..
+          " - away mode after " .. fmtSpan(tonumber(AWAY.cfg("after", 300)) or 300) .. (MAP.loaded and "" or ", the map is still being read"))
+    end
+    if AWAY.cfg("enabled", true) == false then say("  away mode is switched OFF (SETTINGS > AWAY)") end
 
   elseif cmd == "uptime" then
     local a = BASE_ALIVE or {}

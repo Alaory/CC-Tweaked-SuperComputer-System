@@ -53,5 +53,25 @@ turtle.refuel = function(n) uses = uses + 1 if uses == 5 then job = { cmd = "hom
 topUp(100000, true, 40)
 turtle.refuel, job = r0, nil
 CHECK(uses <= 6, "an order while filling up: it stops filling and goes (" .. uses .. " uses)")
+-- A COPY (server crash) / a turtle that knows OTHER endless items: refuelDone, S.reuse without
+-- the item it carries now, fuel 0, idle -> it sat at 0 for good. Now it tries what it carries.
+FUEL, S, job = 0, { refuelDone = true, reuse = { ["othermod:old_orb"] = true } }, nil
+SLOTS = { [1] = { name = "glowmod:endless_orb", count = 1 } }
+os.clock = os.clock or function() return 0 end
+CHECK(idleEmptyFuel() == true and FUEL >= 20, "idle at 0 fuel with an unknown endless item: refuelled (" .. FUEL .. ")")
+CHECK(S.reuse["glowmod:endless_orb"], "...and the item is learned as endless")
+-- not again within a minute, never with a job, never when it has fuel
+FUEL = 0
+CHECK(idleEmptyFuel() == false and FUEL == 0, "tried at most once a minute")
+FUEL, EMPTY_TRY = 0, nil
+job = { cmd = "home" }
+CHECK(idleEmptyFuel() == false, "not while a job runs (ensureFuel does that on the move)")
+job = nil
+FUEL, EMPTY_TRY = 500, nil
+CHECK(idleEmptyFuel() == false, "not when it has fuel")
+-- an EMPTY reuse list must not count as "first refuel done"
+local isrc = src:match("if not S.refuelDone and %((.-)%) then")
+CHECK(isrc and isrc:find("next(S.reuse)", 1, true), "an empty endless-fuel list is not 'refuelled'")
+CHECK(src:find("pcall(idleEmptyFuel)", 1, true), "the idle loop calls it")
 print(FAILS == 0 and "PASS" or ("FAILED " .. FAILS))
 os.exit(FAILS == 0 and 0 or 1)

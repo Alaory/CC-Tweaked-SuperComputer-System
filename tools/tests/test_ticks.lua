@@ -85,3 +85,10 @@ for round = 1, 40 do
 end
 CHECK(next(failed) == nil, "every background job and page ran without an error")
 CHECK(AWAY.on, "away mode started when the owner left")
+-- ...and the owner comes back after a long time: the WELCOME BACK report, in this messy world
+AWAY.since = os.epoch("utc") - 3 * 3600000
+state.online, state.onlineT = { alaory = true, stranger = true }, os.clock()
+local lastBefore = AWAY.last
+local okB, errB = pcall(AWAY.tick)
+CHECK(okB, "coming back runs without an error: " .. tostring(errB))
+CHECK(not AWAY.on and AWAY.last and AWAY.last ~= lastBefore and #AWAY.last.lines >= 2, "a WELCOME BACK report was made")

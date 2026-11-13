@@ -257,7 +257,10 @@ PneumaticCraft drone rides, turtle mapping/surveys, and an AE2 ME network view.
   fuel runs REFUEL once by itself (doRefuel(true); S.refuelDone) - only up to FIRST_FUEL (1000), then
   it can leave (factory build spot); idle top-up does the rest wherever it waits. A job that comes
   BEFORE that first refuel: ensureFuel (first move, fuel < 20) runs it (before: endless fuel was not
-  known yet -> 0 fuel, the new turtle never left). node_firstfuel.lua.
+  known yet -> 0 fuel, the new turtle never left). OUT OF FUEL WHILE IDLE (idleEmptyFuel, idle loop):
+  fuel < 20, no job -> doRefuel(true) once a minute (learns endless items, burns real fuel): a COPY or a
+  turtle whose S.reuse did not hold the item it carries sat at 0 for good (idle top-up used KNOWN
+  endless items only); an EMPTY S.reuse no longer counts as "first refuel done". node_firstfuel.lua.
 - Fuel chest at home (node.lua fuelStation): idle AT home with fuel < lowFuel
   (2000) -> sucks from an inventory below/above/in front (never a turtle),
   burns ONLY fuel items up to stationFuel (20000), non-fuel and empty buckets
@@ -437,6 +440,13 @@ PneumaticCraft drone rides, turtle mapping/surveys, and an AE2 ME network view.
   an entry in state.players (the owner is always added there, even offline: that
   kept away mode from ever starting). Base OFF longer than `after` right before
   the owner is seen again -> one box saying the base was off (chunk unloaded).
+  AWAY.left = when you LEFT (offSince; the report's "Away X" and the short check count from it, not
+  from start 5 min later). MINING GAINS are counted AS THEY COME (AWAY.track per unit every tick while
+  on; AWAY.acc / AWAY.prev saved in away.dat): a miner's counters restart at 0 after a server restart /
+  update, "now minus at start" gave +0. back() pcalls the report and the tick pcalls back(): an error
+  never leaves AWAY.on stuck (no report ever again + a days-old snapshot). Going offline is noted once
+  in the SYSTEM log; console `away` shows the owner, the player-list source and how long offline.
+  test_away_store.lua, test_ticks.lua (coming back in a messy world).
   NOTE cfg helpers (MINE.cfg / AWAY.cfg): `type(t)=="table" and t[k]` gives
   false, not nil - use an if (fixed; the mining cfg was never sent before).
 - TURTLE FACTORY (base_factory.lua FACTORY, comms tick FACTORY.tick every 10 s,
