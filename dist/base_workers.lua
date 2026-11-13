@@ -321,6 +321,16 @@ end
 end
 
 
+
+
+function supplyWorker()
+while state.running do
+local ok, busy = pcall(SUPPLY.tick)
+waitFor((ok and busy) and 0.05 or 2, "supply_wake")
+end
+end
+
+
 function actionWorker()
 while state.running do
 local a = table.remove(state.actionQueue, 1)
@@ -521,7 +531,6 @@ pcall(TT.stallTick)
 pcall(MAP.autoTick)
 pcall(AWAY.tick)
 pcall(FACTORY.tick)
-pcall(SUPPLY.tick)
 pcall(MINE.updTick)
 pcall(CURIOS.autoTick)
 if TT.listDirty and codeTick % 15 == 0 then pcall(TT.saveList) end

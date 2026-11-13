@@ -101,6 +101,7 @@ elseif a.kind == "supplyset" then
 
 local ok, msg = SUPPLY.add(a.target, a.skind, a.name, a.count)
 setToast(msg, ok and C.good or C.warn, 8)
+os.queueEvent("supply_wake")
 elseif a.kind == "supplystop" then
 local _, idx = SUPPLY.ruleFor(a.target, a.skind, a.name)
 if idx then table.remove(SUPPLY.rules, idx) SUPPLY.save() end

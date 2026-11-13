@@ -14,6 +14,7 @@
 
 SUPPLY = { rules = {}, at = -999, cache = { item = {}, fluid = {} }, cacheAt = -999 }
 SUPPLY.FULL = 9e15
+SUPPLY.BUDGET = 2
 local FILE = "supply.dat"
 
 function SUPPLY.load()
@@ -196,7 +197,11 @@ local need = (tonumber(r.keep) or 0) - have
 if need <= 0 then r.why = nil r.state = "full" return 0 end
 local moved = 0
 if r.kind == "fluid" then
-for _ = 1, 16 do
+
+
+local stopAt, calls = os.clock() + SUPPLY.BUDGET, 0
+while os.clock() < stopAt and calls < 2000 do
+calls = calls + 1
 local ok, res, e = transfer(bridge, { "exportFluid" }, r.target,
 { name = r.name, amount = math.min(need - moved, FLUID_MAX or 2147483647) })
 local n = ok and (numOf(res) or 0) or 0
@@ -215,11 +220,19 @@ if FACTORY and FACTORY.variants then plain, own, fp = FACTORY.variants(r.name) e
 if plain <= 0 then
 r.why = "none left in AE2" .. ((own > 0) and " (only your OWN ones - not taken)" or "")
 else
-local filter = { name = r.name, count = math.min(need, plain, 2147483647) }
+local stopAt, calls = os.clock() + SUPPLY.BUDGET, 0
+while os.clock() < stopAt and calls < 200 and moved < math.min(need, plain) do
+calls = calls + 1
+local filter = { name = r.name, count = math.min(need - moved, plain - moved, 2147483647) }
 if fp then filter.fingerprint = fp end
 local ok, res = transfer(bridge, { "exportItem" }, r.target, filter)
-moved = ok and (numOf(res) or 0) or 0
-if moved <= 0 then r.why = ok and "the storage took none (full of other things?)" or ("AE2 said: " .. tostring(res)) end
+local n = ok and (numOf(res) or 0) or 0
+if n <= 0 then
+if moved == 0 then r.why = ok and "the storage took none (full of other things?)" or ("AE2 said: " .. tostring(res)) end
+break
+end
+moved = moved + n
+end
 end
 end
 if moved > 0 then
@@ -230,6 +243,7 @@ r.lastMoved, r.lastAt = moved, os.clock()
 SUPPLY.dirty = true
 end
 r.state = (moved > 0) and "filled" or "short"
+r.busy = moved > 0 and (have + moved) < (tonumber(r.keep) or 0)
 
 if r.why and not r.warned then
 r.warned = true
@@ -259,14 +273,26 @@ for i, r in ipairs(SUPPLY.rules) do
 if r.target == target and r.kind == kind and r.name == name then return r, i end
 end
 end
+
+
+
 function SUPPLY.tick()
 if os.clock() - SUPPLY.cacheAt >= 10 then pcall(SUPPLY.refreshCache) end
-if #SUPPLY.rules == 0 then return end
+if #SUPPLY.rules == 0 then return false end
 local every = tonumber(CONFIG.supply and CONFIG.supply.every) or 10
-if os.clock() - SUPPLY.at < every then return end
+if os.clock() - SUPPLY.at < every and not SUPPLY.busy then return false end
 SUPPLY.at = os.clock()
-for _, r in ipairs(SUPPLY.rules) do pcall(SUPPLY.fill, r) end
-if SUPPLY.dirty then SUPPLY.dirty = false pcall(SUPPLY.save) end
+local busy = false
+for _, r in ipairs(SUPPLY.rules) do
+pcall(SUPPLY.fill, r)
+if r.busy then busy = true end
+end
+SUPPLY.busy = busy
+if SUPPLY.dirty and (not busy or os.clock() - (SUPPLY.savedAt or -999) > 60) then
+SUPPLY.dirty, SUPPLY.savedAt = false, os.clock()
+pcall(SUPPLY.save)
+end
+return busy
 end
 
 

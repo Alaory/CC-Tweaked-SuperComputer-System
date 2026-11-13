@@ -232,6 +232,54 @@ do
   SUPPLY.rules = rulesB
 end
 
+-- SPEED: a tank that takes 1 bucket per call (each call a game tick). Before: 16 calls every
+-- 10 s (~1.6 B/s). Now: pumps for SUPPLY.BUDGET s per round and comes straight back while
+-- the tank still takes it; back to the slow check once it is full.
+do
+  local rulesB = SUPPLY.rules
+  SUPPLY.rules = {}
+  local SLOW, CAP = 0, 300000
+  PERIPHS["slowmod:tank_0"] = { types = { "slowmod:tank", "fluid_storage" }, obj = {
+    tanks = function() return { { name = "minecraft:water", amount = SLOW } } end } }
+  local expS = bridge.exportFluid
+  bridge.exportFluid = function(f, target)
+    if target == "slowmod:tank_0" then
+      CLOCK = CLOCK + 0.05
+      local n = math.min(f.amount, 1000, CAP - SLOW)
+      SLOW = SLOW + n
+      return n
+    end
+    return expS(f, target)
+  end
+  MEF["minecraft:water"] = 1e12
+  SUPPLY.add("slowmod:tank_0", "fluid", "water", SUPPLY.FULL)
+  CLOCK = CLOCK + 11
+  local t0 = CLOCK
+  local busy = SUPPLY.tick()
+  CHECK(SLOW >= 30000, "one round pumps ~" .. SUPPLY.BUDGET .. " s worth, not 16 calls (" .. SLOW .. " mB)")
+  CHECK(busy == true, "still taking it -> busy (the worker comes straight back)")
+  local rounds = 0
+  while busy and rounds < 50 do
+    rounds = rounds + 1
+    CLOCK = CLOCK + 0.05                               -- (the worker waits 0.05 s)
+    busy = SUPPLY.tick()
+  end
+  CHECK(SLOW == CAP, "full in " .. math.floor(CLOCK - t0) .. " s (300 B; the old way took ~190 s)")
+  CHECK(CLOCK - t0 < 30, "fast: " .. math.floor(CLOCK - t0) .. " s")
+  CHECK(busy == false, "full -> not busy")
+  local before = SLOW
+  CLOCK = CLOCK + 1
+  CHECK(SUPPLY.tick() == false and SLOW == before, "then only the slow check again (every 10 s)")
+  bridge.exportFluid = expS
+  PERIPHS["slowmod:tank_0"] = nil
+  SUPPLY.rules = rulesB
+end
+local wsrc = (io.open("base_workers.lua") or io.open("../../base_workers.lua")):read("a")
+CHECK(wsrc:find("function supplyWorker", 1, true) and not wsrc:find("pcall(SUPPLY.tick)                 --", 1, true),
+      "supply runs in its own worker, not the comms worker")
+local isrc = (io.open("inventory.lua") or io.open("../../inventory.lua")):read("a")
+CHECK(isrc:find("supplyWorker)", 1, true), "inventory.lua starts supplyWorker")
+
 -- saved and read back
 SUPPLY.save()
 local keep = SUPPLY.rules

@@ -19,7 +19,8 @@ PneumaticCraft drone rides, turtle mapping/surveys, and an AE2 ME network view.
   Order matters: a file may only use globals defined by files loaded before it
   at load time (inside functions, anything goes).
 - Workers run together via `parallel.waitForAny`: uiLoop, invWorker,
-  pageWorker, actionWorker, droneWorker, terminalWorker, chatWorker, commsWorker, mapWorker.
+  pageWorker, actionWorker, droneWorker, terminalWorker, chatWorker, commsWorker, mapWorker,
+  supplyWorker.
   LOST TIMERS: CraftOS drops events (timers too) that arrive while a coroutine waits
   for a peripheral answer. So the commsWorker 2-s jobs run by the CLOCK (nextTick; a
   new timer each tick replaces a lost one), uiLoop re-arms clockTimer / drawTimer,
@@ -534,7 +535,7 @@ PneumaticCraft drone rides, turtle mapping/surveys, and an AE2 ME network view.
   totem); r.why = "none left in AE2" / the put-on error (shown on the tab, `curios auto`).
   Putting on needs CONFIG.me.curiosChest. test_curios.lua.
 - SUPPLY (base_supply.lua SUPPLY, console `supply`, comms tick SUPPLY.tick every CONFIG.supply.every
-  s = 10; supply.dat via dataPath): rules {target = network name of a storage on the WIRED cable,
+  s = 10, run by supplyWorker; supply.dat via dataPath): rules {target = network name of a storage on the WIRED cable,
   kind item|fluid, name, keep (items / mB)}. Counts the target (list / tanks), exports the
   difference from AE2 (items: FACTORY.variants -> only PLAIN ones by fingerprint, never the
   owner's own; fluids: exportFluid loop, 1 bucket per call ok). NEVER takes anything out.
@@ -556,7 +557,11 @@ PneumaticCraft drone rides, turtle mapping/surveys, and an AE2 ME network view.
   item): storage button (hit supnext = the next one of SUPPLY.cache[kind]; the cache is refreshed in
   SUPPLY.tick every 10 s - never peripheral calls in drawing) + 16 B / 256 B / FULL (items x64 / x1000
   / FULL; act supplyset, two taps; FULL = SUPPLY.FULL 9e15 = as much as goes in) or, when kept,
-  "KEPT AT .. - STOP" (supplystop). test_supply.lua.
+  "KEPT AT .. - STOP" (supplystop). SPEED: its OWN worker (supplyWorker, base_workers.lua; in
+  inventory.lua's list - not the comms worker): SUPPLY.tick pumps each rule for SUPPLY.BUDGET s (2;
+  calls while something moves - a tank / bridge may take 1 bucket per call) and returns busy (r.busy =
+  moved and still short) -> the worker comes back after 0.05 s; nothing to do -> every
+  CONFIG.supply.every s (10). Before: 16 calls every 10 s. A new rule queues "supply_wake". test_supply.lua.
 - POCKET REMOTE (pocket.lua on the owner's Advanced Pocket Computer with a
   wireless / ender modem; base_pocket.lua POCKET; rednet protocol "basepocket",
   rednet.host'ed by the comms worker; POCKET.out sent there). Pairing: pocket

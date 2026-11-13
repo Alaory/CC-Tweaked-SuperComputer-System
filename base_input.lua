@@ -101,6 +101,7 @@ function handleTouch(tx, ty)
             -- AE2 tab KEEP A STORAGE FILLED
             local ok, msg = SUPPLY.add(a.target, a.skind, a.name, a.count)
             setToast(msg, ok and C.good or C.warn, 8)
+            os.queueEvent("supply_wake")                -- (starts filling at once)
           elseif a.kind == "supplystop" then
             local _, idx = SUPPLY.ruleFor(a.target, a.skind, a.name)
             if idx then table.remove(SUPPLY.rules, idx) SUPPLY.save() end

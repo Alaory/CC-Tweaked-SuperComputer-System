@@ -69,7 +69,7 @@ buildWindow()
 if baseStartCheck then pcall(baseStartCheck) end      -- was the base off? (base_workers.lua)
 
 local okRun, errRun = pcall(parallel.waitForAny, uiLoop, invWorker, pageWorker, actionWorker,
-                   droneWorker, terminalWorker, chatWorker, commsWorker, mapWorker)
+                   droneWorker, terminalWorker, chatWorker, commsWorker, mapWorker, supplyWorker)
 
 pcall(MAP.save)                     -- map changes of the last minute
 if baseExit then

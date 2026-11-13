@@ -3,7 +3,7 @@
 --
 --   The background workers (all slow game calls happen here) and the screen
 --   loop. inventory.lua runs these together: uiLoop, invWorker, pageWorker,
---   actionWorker, droneWorker, terminalWorker, chatWorker, commsWorker.
+--   actionWorker, droneWorker, terminalWorker, chatWorker, commsWorker, mapWorker, supplyWorker.
 
 -- ===== the SYSTEM log =====
 -- Only system things (the base was off / crashed, new turtle program, map
@@ -320,6 +320,16 @@ function pageWorker()
   end
 end
 
+-- KEEP A STORAGE FILLED (base_supply.lua): its own worker, so pumping a lot never holds
+-- up the turtles' messages; straight on while a storage still takes it, else every 2 s
+-- (SUPPLY.tick itself only works every CONFIG.supply.every s then)
+function supplyWorker()
+  while state.running do
+    local ok, busy = pcall(SUPPLY.tick)
+    waitFor((ok and busy) and 0.05 or 2, "supply_wake")
+  end
+end
+
 -- worker 3: confirmed transfers / crafts (can take seconds, never blocks the screen)
 function actionWorker()
   while state.running do
@@ -521,7 +531,6 @@ function commsWorker()
       pcall(MAP.autoTick)                -- auto-map: a survey always running (from the base outward)
       pcall(AWAY.tick)                   -- you are offline: use the time / report when you are back
       pcall(FACTORY.tick)                -- fewer turtles than you want: build one (AE2 parts)
-      pcall(SUPPLY.tick)                 -- storages kept stocked from AE2 (console supply)
       pcall(MINE.updTick)                -- mine update: the new miner.lua to the mining turtles (teams paused)
       pcall(CURIOS.autoTick)             -- auto-equip: keep a totem (...) on in its curios slot
       if TT.listDirty and codeTick % 15 == 0 then pcall(TT.saveList) end
