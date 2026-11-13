@@ -1515,7 +1515,7 @@ function moveFluid(dir, name, mb, budget)
     calls = calls + 1
     if os.clock() >= stopAt or calls > 4000 then return moved, nil, true end
     local ok, r, e = transfer(bridge, dir == "take" and FL_OUT or FL_IN, b,
-                              { name = name, amount = math.min(left, 2147483647) })
+                              { name = name, amount = math.min(left, FLUID_MAX or 2147483647) })
     if not ok then return moved, tostring(r) end
     local n = tonumber(r) or 0
     if n <= 0 then return moved, (moved == 0) and tostring(e or "nothing moved") or nil end
@@ -1883,9 +1883,9 @@ function runAction(a)
     a.done = (a.done or 0) + n
     if more and n > 0 and a.count - n > 0 then
       -- a big "ALL": the rest goes on at the END of the queue (other buttons are not kept waiting)
-      state.actionQueue[#state.actionQueue + 1] = { kind = a.kind, name = a.name, count = a.count - n, done = a.done }
+      state.actionQueue[#state.actionQueue + 1] = { kind = a.kind, name = a.name, count = a.count - n, done = a.done, cont = true }
       os.queueEvent("inv_action")
-      setToast(string.format("Moving %s %s: %s so far - carrying on", disp, where, fmtBuckets(a.done)), C.label, 6)
+      setToast(string.format("Moving %s %s: %s so far - carrying on (fluidstop on the computer ends it)", disp, where, fmtBuckets(a.done)), C.label, 6)
       state.meForce = true
       return
     end

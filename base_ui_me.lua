@@ -14,6 +14,11 @@ end
 
 -- filtered + sorted list of ME items (cached until something changes)
 -- mB -> "12,345 B" (buckets), small amounts in mB
+-- the fluid ALL buttons: EVERYTHING, however much (infinite cells too). One call carries
+-- at most 2,147,483,647 mB (FLUID_MAX, moveFluid); it keeps calling until the source is
+-- empty or the target takes no more. Console  fluidstop  ends a running move.
+FLUID_MAX = 2147483647
+function FLUID_ALL(n) return math.max(1, tonumber(n) or 0) end
 function fmtBuckets(mb)
   mb = tonumber(mb) or 0
   if mb >= 1000 then return commas(math.floor(mb / 1000)) .. " B" end
@@ -233,13 +238,13 @@ function drawMEPage(G)
         end
       end
       frow(py + 9, "TAKE TO FLUID STORAGE", "ftake",
-           { { "1 B", 1000 }, { "16 B", 16000 }, { "64 B", 64000 }, { "ALL", math.max(1, sel.count) } })
+           { { "1 B", 1000 }, { "16 B", 16000 }, { "64 B", 64000 }, { "ALL", FLUID_ALL(sel.count) } })
       if nTanks > 0 then
         frow(py + 13, "FILL MY CONTAINERS", "ftank",
-             { { "1 B", 1000 }, { "16 B", 16000 }, { "ALL", math.max(1, sel.count) } })
+             { { "1 B", 1000 }, { "16 B", 16000 }, { "ALL", FLUID_ALL(sel.count) } })
       end
       -- "16 B" / "ALL" come from the fluid storage, "FROM MINE" from your own containers
-      local store = { { "16 B", 16000 }, { "ALL", math.max(1, inBuf) } }
+      local store = { { "16 B", 16000 }, { "ALL", FLUID_ALL(inBuf) } }
       if inTanks > 0 then store[#store + 1] = { "FROM MINE", inTanks, "fempty" } end
       frow(py + 17, "STORE IN ME", "fstore", store)
       if sel.craftable then
@@ -285,7 +290,7 @@ function drawMEPage(G)
       end
     end
     row(py + 7, "TAKE TO INVENTORY", "take",
-        { { "x1", 1 }, { "x16", 16 }, { "x64", 64 }, { "ALL", math.max(1, sel.count) } })
+        { { "x1", 1 }, { "x16", 16 }, { "x64", 64 }, { "ALL", FLUID_ALL(sel.count) } })
     if sel.craftable then
       row(py + 12, "CRAFT", "craft",
           { { "x1", 1 }, { "x16", 16 }, { "x64", 64 }, { "x256", 256 } })

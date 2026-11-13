@@ -55,6 +55,7 @@ HELP = {
   " turtle <id> forget   take a turtle that is gone (server crash) off the list",
   " drive <id>   steer a turtle with the keyboard: W A S D, SPACE up, SHIFT down",
   " mine [drop|forget] <id>   mining turtles: drop = a lost miner out of its team",
+  " fluidstop             end a big fluid ALL that is still moving",
   " fluidbuffer [<n>|auto]   which fluid storage AE2 fluids pass through (filling your tanks)",
   " supply [<storage> <item> <count>|<storage> fluid <fluid> <buckets>|stop <n>|now]   keep a storage on the cable stocked from AE2",
   " mine update [stop]    the newest miner.lua to every mining turtle (teams paused first, then started again)",
@@ -846,6 +847,14 @@ function handleCommand(line)
       if not any then say("No pocket paired. Copy pocket.lua onto your pocket computer (with a modem), run  pocket  on it.") end
       say("pocket unpair <id> = it can no longer control the base")
     end
+
+  elseif cmd == "fluidstop" then
+    -- end a big fluid ALL that is still going (its rest waits in the action queue)
+    local n = 0
+    for i = #state.actionQueue, 1, -1 do
+      if state.actionQueue[i].cont then table.remove(state.actionQueue, i) n = n + 1 end
+    end
+    say(n > 0 and "Fluid move stopped (what was moved stays where it is)." or "No fluid move is running.")
 
   elseif cmd == "fluidbuffer" then
     -- which fluid storage the ME fluid moves go through (your tanks <-> AE2)

@@ -48,3 +48,23 @@ CHECK(BUF == 0 and ME["minecraft:water"] == 500000, "STORE IN ME ALL: everything
 local c0 = CLOCK
 runAction({ kind = "ftake", name = "minecraft:lava", count = 1000000 })
 CHECK(#state.actionQueue == 0 and CLOCK - c0 < 1, "nothing to move -> stops at once")
+-- ALL = EVERYTHING (no cap): an infinite cell's amount too; one call carries at most max int
+CHECK(FLUID_ALL(9.2e18) == 9.2e18, "ALL of a huge (infinite cell) amount = all of it")
+CHECK(FLUID_ALL(5000) == 5000 and FLUID_ALL(0) == 1, "ALL of a small amount = all of it")
+local asked = 0
+local exp0 = bridge.exportFluid
+bridge.exportFluid = function(f, t) asked = math.max(asked, f.amount) return exp0(f, t) end
+ME["minecraft:water"] = 5000
+runAction({ kind = "ftake", name = "minecraft:water", count = 9.2e18 })
+CHECK(asked <= 2147483647, "one call never asks for more than max int (" .. asked .. ")")
+CHECK(ME["minecraft:water"] == 0 and #state.actionQueue == 0, "a huge ALL stops when the source is empty")
+-- fluidstop ends a running big move
+PER = 1
+ME["minecraft:water"] = 1e9
+runAction({ kind = "ftake", name = "minecraft:water", count = 9.2e18 })
+CHECK(#state.actionQueue == 1, "still moving: the rest waits in the queue")
+local out = table.concat(handleCommand("fluidstop") or {}, " ")
+CHECK(#state.actionQueue == 0 and out:find("stopped", 1, true), "fluidstop ends it")
+local ui = io.open("base_ui_me.lua") or io.open("../../base_ui_me.lua")
+local src = ui:read("a") ui:close()
+CHECK(select(2, src:gsub("FLUID_ALL%(", "")) >= 5, "every fluid ALL button uses FLUID_ALL")
