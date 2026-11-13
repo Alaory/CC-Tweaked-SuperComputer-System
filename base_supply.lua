@@ -12,7 +12,8 @@
 --   of the fluid buffer's automatic choice (fluidBuffer in base_me.lua).
 --   Saved in supply.dat. tools/tests/test_supply.lua.
 
-SUPPLY = { rules = {}, at = -999 }
+SUPPLY = { rules = {}, at = -999, cache = { item = {}, fluid = {} }, cacheAt = -999 }
+SUPPLY.FULL = 9e15                 -- "FULL": as much as it takes (keep topping it up)
 local FILE = "supply.dat"
 
 function SUPPLY.load()
@@ -173,6 +174,7 @@ end
 -- amounts as text (fluids in buckets)
 function SUPPLY.amount(r, n)
   n = tonumber(n) or 0
+  if n >= SUPPLY.FULL then return "FULL" end
   if r.kind == "fluid" then
     local b = n / 1000
     return (b == math.floor(b) and tostring(math.floor(b)) or string.format("%.1f", b)) .. " B"
@@ -195,7 +197,8 @@ function SUPPLY.fill(r)
   local moved = 0
   if r.kind == "fluid" then
     for _ = 1, 16 do                             -- (some tanks take 1 bucket per call)
-      local ok, res, e = transfer(bridge, { "exportFluid" }, r.target, { name = r.name, amount = need - moved })
+      local ok, res, e = transfer(bridge, { "exportFluid" }, r.target,
+                                  { name = r.name, amount = math.min(need - moved, FLUID_MAX or 2147483647) })
       local n = ok and (numOf(res) or 0) or 0
       if n <= 0 then
         if moved == 0 then r.why = ok and ("AE2 has no " .. r.name .. " or the tank takes none" .. (e and (" (" .. tostring(e) .. ")") or ""))
@@ -212,7 +215,7 @@ function SUPPLY.fill(r)
     if plain <= 0 then
       r.why = "none left in AE2" .. ((own > 0) and " (only your OWN ones - not taken)" or "")
     else
-      local filter = { name = r.name, count = math.min(need, plain) }
+      local filter = { name = r.name, count = math.min(need, plain, 2147483647) }
       if fp then filter.fingerprint = fp end
       local ok, res = transfer(bridge, { "exportItem" }, r.target, filter)
       moved = ok and (numOf(res) or 0) or 0
@@ -238,7 +241,26 @@ function SUPPLY.fill(r)
 end
 
 -- comms worker (every 2 s; works every CONFIG.supply.every s)
+-- the storages for the AE2 tab's KEEP FILLED row (peripheral calls never in drawing:
+-- refreshed here, every 10 s)
+function SUPPLY.refreshCache()
+  SUPPLY.cacheAt = os.clock()
+  local c = { item = {}, fluid = {} }
+  for _, n in ipairs(SUPPLY.candidates()) do
+    local isInv, isFluid = SUPPLY.kinds(n)
+    if isInv then c.item[#c.item + 1] = n end
+    if isFluid then c.fluid[#c.fluid + 1] = n end
+  end
+  SUPPLY.cache = c
+end
+-- the rule for this storage + item / fluid (drawing: tables only)
+function SUPPLY.ruleFor(target, kind, name)
+  for i, r in ipairs(SUPPLY.rules) do
+    if r.target == target and r.kind == kind and r.name == name then return r, i end
+  end
+end
 function SUPPLY.tick()
+  if os.clock() - SUPPLY.cacheAt >= 10 then pcall(SUPPLY.refreshCache) end
   if #SUPPLY.rules == 0 then return end
   local every = tonumber(CONFIG.supply and CONFIG.supply.every) or 10
   if os.clock() - SUPPLY.at < every then return end

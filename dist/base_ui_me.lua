@@ -19,6 +19,37 @@ end
 
 FLUID_MAX = 2147483647
 function FLUID_ALL(n) return math.max(1, tonumber(n) or 0) end
+
+
+function keepRow(x, y, w, sel, kind)
+text(x, y, "KEEP A STORAGE FILLED", C.label, C.panel)
+local list = (SUPPLY.cache or {})[kind] or {}
+if #list == 0 then
+text(x, y + 1, trunc("No storage for this on the cable - wired modem on it, then type supply", w), C.dim, C.panel)
+return
+end
+state.supIdx = state.supIdx or {}
+local i = state.supIdx[kind] or 1
+if i > #list then i = 1 end
+local target = list[i]
+local tw = math.floor(w * 0.42)
+drawButton(x, y + 1, tw, 3, trunc(target, tw - (#list > 1 and 3 or 1)) .. (#list > 1 and " >" or ""), C.empty, C.text, "supnext", kind)
+local r = SUPPLY.ruleFor(target, kind, sel.name)
+local bx, bw = x + tw + 1, w - tw - 1
+if r then
+actButton(bx, y + 1, bw, 3, trunc("KEPT AT " .. SUPPLY.amount(r, r.keep) .. " - STOP", bw - 1),
+{ kind = "supplystop", name = sel.name, count = 0, target = target, skind = kind })
+else
+local am = (kind == "fluid") and { { "16 B", 16000 }, { "256 B", 256000 }, { "FULL", SUPPLY.FULL } }
+or { { "x64", 64 }, { "x1000", 1000 }, { "FULL", SUPPLY.FULL } }
+local ew = math.floor((bw - 2) / 3)
+for k, a in ipairs(am) do
+actButton(bx + (k - 1) * (ew + 1), y + 1, (k == 3) and (bw - 2 * (ew + 1)) or ew, 3, a[1],
+{ kind = "supplyset", name = sel.name, count = a[2], target = target, skind = kind })
+end
+end
+end
+
 function fmtBuckets(mb)
 mb = tonumber(mb) or 0
 if mb >= 1000 then return commas(math.floor(mb / 1000)) .. " B" end
@@ -205,6 +236,12 @@ actButton(rix, sy + sh - 4, riw, 3, trunc("BUFFER -> ME  (empties " .. tostring(
 
 
 local py, ph = sy + sh + 1, (mtype == "fluids") and 28 or 21
+
+local selK = state.meSel and ((mtype == "fluids" and me.byNameF) or (mtype == "chemicals" and me.byNameC) or me.byName or {})[state.meSel]
+if selK and SUPPLY then
+if mtype == "fluids" and me.fluidBuf then ph = selK.craftable and 33 or 29
+elseif not liquid then ph = selK.craftable and 25 or 21 end
+end
 card(rx, py, rw, ph, "SELECTED ITEM")
 local selMap = (mtype == "fluids" and me.byNameF) or (mtype == "chemicals" and me.byNameC) or me.byName
 local sel = state.meSel and (selMap or {})[state.meSel]
@@ -250,6 +287,7 @@ frow(py + 17, "STORE IN ME", "fstore", store)
 if sel.craftable then
 frow(py + 21, "CRAFT", "fcraft", { { "1 B", 1000 }, { "16 B", 16000 }, { "64 B", 64000 }, { "256 B", 256000 } })
 end
+if SUPPLY then keepRow(rix, py + (sel.craftable and 26 or 22), riw, sel, "fluid") end
 text(rix, py + ph - 2, trunc("Fluid storage: " .. me.fluidBuf, riw), C.dim, C.panel)
 elseif mtype == "fluids" then
 for i, line in ipairs(wrap("Fluids cannot be moved: " .. tostring(me.fluidBufErr or "no fluid storage"), riw, 3)) do
@@ -295,6 +333,7 @@ if sel.craftable then
 row(py + 12, "CRAFT", "craft",
 { { "x1", 1 }, { "x16", 16 }, { "x64", 64 }, { "x256", 256 } })
 end
+if SUPPLY then keepRow(rix, py + (sel.craftable and 17 or 12), riw, sel, "item") end
 
 local chests = me.chests or {}
 local function chestLine(w, label, yy)

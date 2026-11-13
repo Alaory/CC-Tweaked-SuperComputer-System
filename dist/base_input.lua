@@ -97,6 +97,14 @@ setToast(last, C.label, 4)
 local c, why = MINE.loadCode(true, function(s2) last = s2 end)
 if not c then setPopup("MINER UPDATE", tostring(why), C.warn)
 else setPopup("MINER UPDATE", table.concat(MINE.startUpdate(c), "  "), C.label) end
+elseif a.kind == "supplyset" then
+
+local ok, msg = SUPPLY.add(a.target, a.skind, a.name, a.count)
+setToast(msg, ok and C.good or C.warn, 8)
+elseif a.kind == "supplystop" then
+local _, idx = SUPPLY.ruleFor(a.target, a.skind, a.name)
+if idx then table.remove(SUPPLY.rules, idx) SUPPLY.save() end
+setToast(idx and ("No longer kept filled: " .. tostring(a.target) .. " (what is in it stays)") or "It was not kept filled", C.label, 6)
 elseif a.kind == "quick" then
 
 local okQ, okA, msgQ = pcall(POCKET.act, a.name, a.args or {})
@@ -364,6 +372,11 @@ local st = state.turtles[h[6]]
 if st and TT.online(st) then TT.drive(h[6], "look") end
 elseif h[5] == "tcmd" then
 TT.send(h[6][1], h[6][2], h[6][3])
+elseif h[5] == "supnext" then
+
+state.supIdx = state.supIdx or {}
+local n = #(((SUPPLY or {}).cache or {})[h[6]] or {})
+state.supIdx[h[6]] = ((state.supIdx[h[6]] or 1) % math.max(1, n)) + 1
 elseif h[5] == "minecmd" then
 
 local lu = MINE.units[h[6][1]]

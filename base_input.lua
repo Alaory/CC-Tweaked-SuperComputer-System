@@ -97,6 +97,14 @@ function handleTouch(tx, ty)
             local c, why = MINE.loadCode(true, function(s2) last = s2 end)
             if not c then setPopup("MINER UPDATE", tostring(why), C.warn)
             else setPopup("MINER UPDATE", table.concat(MINE.startUpdate(c), "  "), C.label) end
+          elseif a.kind == "supplyset" then
+            -- AE2 tab KEEP A STORAGE FILLED
+            local ok, msg = SUPPLY.add(a.target, a.skind, a.name, a.count)
+            setToast(msg, ok and C.good or C.warn, 8)
+          elseif a.kind == "supplystop" then
+            local _, idx = SUPPLY.ruleFor(a.target, a.skind, a.name)
+            if idx then table.remove(SUPPLY.rules, idx) SUPPLY.save() end
+            setToast(idx and ("No longer kept filled: " .. tostring(a.target) .. " (what is in it stays)") or "It was not kept filled", C.label, 6)
           elseif a.kind == "quick" then
             -- HOME > QUICK ACTIONS (the same actions as the pocket remote)
             local okQ, okA, msgQ = pcall(POCKET.act, a.name, a.args or {})
@@ -364,6 +372,11 @@ function handleTouch(tx, ty)
         if st and TT.online(st) then TT.drive(h[6], "look") end        -- what is around it, at once
       elseif h[5] == "tcmd" then
         TT.send(h[6][1], h[6][2], h[6][3])
+      elseif h[5] == "supnext" then
+        -- KEEP A STORAGE FILLED: the next storage on the cable
+        state.supIdx = state.supIdx or {}
+        local n = #(((SUPPLY or {}).cache or {})[h[6]] or {})
+        state.supIdx[h[6]] = ((state.supIdx[h[6]] or 1) % math.max(1, n)) + 1
       elseif h[5] == "minecmd" then
         -- a new field starts where the LOADER stands: every miner must be in its chunk
         local lu = MINE.units[h[6][1]]

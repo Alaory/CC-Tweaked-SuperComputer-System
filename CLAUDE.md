@@ -552,7 +552,11 @@ PneumaticCraft drone rides, turtle mapping/surveys, and an AE2 ME network view.
   another fluid storage joins the cable - an Entangled block made it "several fluid storages" and
   filling the owner's tanks stopped. None remembered + several -> "type fluidbuffer"; console
   `fluidbuffer [<n|name>|auto]` (setSetting me.fluidBuffer); the buffer is refused as a supply
-  target. test_supply.lua.
+  target. AE2 TAB ROW "KEEP A STORAGE FILLED" (keepRow in base_ui_me.lua, under the selected fluid /
+  item): storage button (hit supnext = the next one of SUPPLY.cache[kind]; the cache is refreshed in
+  SUPPLY.tick every 10 s - never peripheral calls in drawing) + 16 B / 256 B / FULL (items x64 / x1000
+  / FULL; act supplyset, two taps; FULL = SUPPLY.FULL 9e15 = as much as goes in) or, when kept,
+  "KEPT AT .. - STOP" (supplystop). test_supply.lua.
 - POCKET REMOTE (pocket.lua on the owner's Advanced Pocket Computer with a
   wireless / ender modem; base_pocket.lua POCKET; rednet protocol "basepocket",
   rednet.host'ed by the comms worker; POCKET.out sent there). Pairing: pocket

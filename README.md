@@ -337,8 +337,10 @@ again …)", "after an update" or "after an ERROR: …".
   wear) makes the base put a new one on from AE2 whenever it is gone - a used totem, for
   example. `curios auto` lists the rules. An empty slot lists what fits; SHOW ALL lists
   everything in AE2.
-- **Keep a storage stocked (`supply`):** put a **wired modem** on any chest, barrel, drawer or
-  tank, right-click the modem (it turns red), then on the base computer:
+- **Keep a storage stocked:** put a **wired modem** on any chest, barrel, drawer or tank and
+  right-click the modem (it turns red). On the **AE2** tab pick a fluid or item: under it,
+  **KEEP A STORAGE FILLED** - tap the storage button to choose the storage, then an amount or
+  **FULL** (tap twice). The row then shows **KEPT AT ... - STOP**. Or on the base computer:
   - `supply` lists the storages on the cable (with numbers) and what is kept stocked.
   - `supply 1 coal 128` keeps 128 coal in storage 1. `supply 2 fluid water 16` keeps 16 buckets of water.
   - `supply stop <n|all>` stops a rule. `supply now` checks at once.

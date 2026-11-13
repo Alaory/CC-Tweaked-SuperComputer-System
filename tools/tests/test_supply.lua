@@ -171,6 +171,67 @@ for k, v in pairs(savedP) do PERIPHS[k] = v end
 SUPPLY.rules = rules0
 CONFIG.me.buffer = "functionalstorage:storage_controller_0"
 
+-- THE AE2 TAB: KEEP A STORAGE FILLED row (tap the storage = next one, an amount twice = keep it,
+-- KEPT AT ... - STOP twice = stop). Drawing reads SUPPLY.cache only (filled by the tick).
+do
+  local rulesB = SUPPLY.rules
+  SUPPLY.rules = {}
+  CONFIG.me.fluidBuffer = "functionalstorage:storage_controller_0"
+  SUPPLY.refreshCache()
+  CHECK(#SUPPLY.cache.fluid >= 1 and #SUPPLY.cache.item >= 1, "cache: fluid + item storages (" .. #SUPPLY.cache.fluid .. "/" .. #SUPPLY.cache.item .. ")")
+  local me = state.me or {}
+  state.me = me
+  me.items, me.byName, me.chemicals, me.byNameC, me.cellTypes, me.tasks = me.items or {}, me.byName or {}, {}, {}, {}, {}
+  local w = { name = "minecraft:water", display = "Water", count = 2987589793000 }
+  me.fluids, me.byNameF = { w }, { ["minecraft:water"] = w }
+  me.fluidBuf, me.fluidBufTanks = "functionalstorage:storage_controller_0", {}
+  state.meType, state.meSel, state.page = "fluids", "minecraft:water", "me"
+  local function findHit(pred)
+    for _, h in ipairs(hits) do if pred(h) then return h end end
+  end
+  local calls0 = 0
+  local pc0 = peripheral.call
+  peripheral.call = function(...) calls0 = calls0 + 1 return pc0(...) end
+  draw()
+  peripheral.call = pc0
+  CHECK(calls0 == 0, "drawing the AE2 tab calls no peripheral (" .. calls0 .. ")")
+  local full = findHit(function(h) return h[5] == "act" and h[6].kind == "supplyset" and h[6].count == SUPPLY.FULL end)
+  local nextB = findHit(function(h) return h[5] == "supnext" end)
+  CHECK(full and nextB, "KEEP A STORAGE FILLED row: storage button + FULL")
+  if full and nextB then
+    local first = full[6].target
+    local fx, fy = full[1] + 1, full[2] + 1
+    -- tap the storage button: the next storage
+    if #SUPPLY.cache.fluid > 1 then
+      handleTouch(nextB[1] + 1, nextB[2] + 1)
+      draw()
+      local f2 = findHit(function(h) return h[5] == "act" and h[6].kind == "supplyset" and h[6].count == SUPPLY.FULL end)
+      CHECK(f2 and f2[6].target ~= first, "tapping the storage picks the next one")
+      handleTouch(nextB[1] + 1, nextB[2] + 1)        -- (back to the first)
+      draw()
+    end
+    handleTouch(fx, fy)
+    CHECK(#SUPPLY.rules == 0, "one tap: nothing yet (tap twice)")
+    draw()
+    handleTouch(fx, fy)
+    local r = SUPPLY.rules[1]
+    CHECK(r and r.target == first and r.kind == "fluid" and r.name == "minecraft:water" and r.keep == SUPPLY.FULL,
+          "two taps on FULL: " .. tostring(first) .. " is kept filled with water")
+    draw()
+    local stop = findHit(function(h) return h[5] == "act" and h[6].kind == "supplystop" end)
+    CHECK(stop, "then the row shows KEPT AT FULL - STOP")
+    if stop then
+      handleTouch(stop[1] + 1, stop[2] + 1)
+      draw()
+      handleTouch(stop[1] + 1, stop[2] + 1)
+      CHECK(#SUPPLY.rules == 0, "two taps on STOP: no longer kept filled")
+    end
+  end
+  -- FULL fills as much as goes in (one call never above max int)
+  CHECK(SUPPLY.amount({ kind = "fluid" }, SUPPLY.FULL) == "FULL", "FULL shows as FULL")
+  SUPPLY.rules = rulesB
+end
+
 -- saved and read back
 SUPPLY.save()
 local keep = SUPPLY.rules
