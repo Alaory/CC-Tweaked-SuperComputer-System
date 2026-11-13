@@ -55,6 +55,7 @@ HELP = {
 " turtle <id> forget   take a turtle that is gone (server crash) off the list",
 " drive <id>   steer a turtle with the keyboard: W A S D, SPACE up, SHIFT down",
 " mine [drop|forget] <id>   mining turtles: drop = a lost miner out of its team",
+" supply [<storage> <item> <count>|<storage> fluid <fluid> <buckets>|stop <n>|now]   keep a storage on the cable stocked from AE2",
 " mine update [stop]    the newest miner.lua to every mining turtle (teams paused first, then started again)",
 " factory [chest <name>|builder <id>|build|stop]   build turtles from AE2 parts",
 " factory recipes|learn|forget <item>|crafter <id>   recipes TAUGHT to a crafting turtle",
@@ -844,6 +845,10 @@ end
 if not any then say("No pocket paired. Copy pocket.lua onto your pocket computer (with a modem), run  pocket  on it.") end
 say("pocket unpair <id> = it can no longer control the base")
 end
+
+elseif cmd == "supply" then
+
+for _, l in ipairs(SUPPLY.command(words)) do say(l) end
 
 elseif cmd == "mine" then
 

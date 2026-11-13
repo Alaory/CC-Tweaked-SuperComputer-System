@@ -533,6 +533,17 @@ PneumaticCraft drone rides, turtle mapping/surveys, and an AE2 ME network view.
   (auto=true) when the item is not worn in that slot type and a slot is free (a used
   totem); r.why = "none left in AE2" / the put-on error (shown on the tab, `curios auto`).
   Putting on needs CONFIG.me.curiosChest. test_curios.lua.
+- SUPPLY (base_supply.lua SUPPLY, console `supply`, comms tick SUPPLY.tick every CONFIG.supply.every
+  s = 10; supply.dat via dataPath): rules {target = network name of a storage on the WIRED cable,
+  kind item|fluid, name, keep (items / mB)}. Counts the target (list / tanks), exports the
+  difference from AE2 (items: FACTORY.variants -> only PLAIN ones by fingerprint, never the
+  owner's own; fluids: exportFluid loop, 1 bucket per call ok). NEVER takes anything out.
+  SUPPLY.refuse: the CONFIG.me buffers, the factory chest, bridges / drives / computers. A
+  target is left out of fluidBuffer()'s automatic choice and FACTORY.reserved says "supply".
+  r.why + one WARNING when short (r.warned until it works again). `supply` lists rules +
+  numbered candidates; `supply <n|name> <item> <count>`, `supply <n|name> fluid <fluid>
+  <buckets>`, `supply stop <n|name|all>`, `supply now`. Wireless / ender modems cannot reach
+  a block's storage (messages only). test_supply.lua.
 - POCKET REMOTE (pocket.lua on the owner's Advanced Pocket Computer with a
   wireless / ender modem; base_pocket.lua POCKET; rednet protocol "basepocket",
   rednet.host'ed by the comms worker; POCKET.out sent there). Pairing: pocket
@@ -749,6 +760,7 @@ PneumaticCraft drone rides, turtle mapping/surveys, and an AE2 ME network view.
 | base_mining.lua / base_ui_mining.lua | mining teams on the base (MINE) / MINING tab |
 | base_away.lua | away mode: uses the time you are offline, WHILE YOU WERE AWAY report |
 | base_factory.lua | turtle factory: keeps the fleet size, AE2 parts, the builder turtle builds new ones |
+| base_supply.lua | `supply`: storages on the wired cable kept stocked from AE2 (items + fluids) |
 | base_schem.lua | schematics: Create .nbt files dropped on the screen, unpacked + read, materials list |
 | base_pocket.lua / pocket.lua | the pocket remote: base side (pairing, status, actions, messages) / the program on the pocket computer |
 
@@ -882,4 +894,4 @@ rider down at the pickup spot.
 ## Useful console commands (on the base computer)
 help, report, tanks, mesetup, me check, me add <id>, curios check, disks
 [data|move], drones, drone <n>, charger, turtles, turtle <id> <cmd>, update,
-rescue, findlost, map [clear], exit [clear], survey, theme, events.
+rescue, findlost, map [clear], exit [clear], survey, theme, events, supply, mine update.

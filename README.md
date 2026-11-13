@@ -337,6 +337,17 @@ again …)", "after an update" or "after an ERROR: …".
   wear) makes the base put a new one on from AE2 whenever it is gone - a used totem, for
   example. `curios auto` lists the rules. An empty slot lists what fits; SHOW ALL lists
   everything in AE2.
+- **Keep a storage stocked (`supply`):** put a **wired modem** on any chest, barrel, drawer or
+  tank, right-click the modem (it turns red), then on the base computer:
+  - `supply` lists the storages on the cable (with numbers) and what is kept stocked.
+  - `supply 1 coal 128` keeps 128 coal in storage 1. `supply 2 fluid water 16` keeps 16 buckets of water.
+  - `supply stop <n|all>` stops a rule. `supply now` checks at once.
+
+  Every 10 s the base counts what is in it and sends the difference from AE2. It only ever puts
+  things **in**, never takes anything out, and never sends your own enchanted, renamed or used
+  items. If AE2 runs out, you get one warning. The base's own buffers can't be used.
+  A wireless or ender modem can't do this: it only carries messages, so the storage has to
+  be on the cable.
 
 ---
 
@@ -495,12 +506,12 @@ Type these on the base computer. `help` lists them all.
 | Turtles | `turtles` · `turtle <id> <cmd>` (`log`, `diag`, `goto x y z`, `home`, `stop`, `forget`, `setting …`) · `drive <id>` · `update` · `rescue <id>` · `findlost` · `party [stop]` · `forget base` · `exit [clear]` |
 | Map | `map [clear]` · `survey [auto on\|off]` · `disks [data\|move]` · work area: SETTINGS > MAP corners |
 | Factory | `factory [chest <name>\|builder <id>\|crafter <id>\|build\|stop\|fuel <item> [count]\|fuel reset\|learn\|recipes\|forget <item>\|items]` (or SETTINGS > FACTORY) |
-| Mining | `mine [drop\|forget] <id>` |
+| Mining | `mine [drop\|forget] <id>` · `mine update [stop]` |
 | Pocket | `pocket [unpair <id>]` |
 | Schematics | `schem [<name>\|delete <name>]` |
 | Drones | `drones` · `drone <n>` · `dest …` · `save <name>` · `list` · `fly` · `pickup` · `drop` · `ferry` · `home` · `stop` · `charger [x y z]` |
 | Chat | `allow <name>` · `deny <name>` · `allowed` |
-| ME | `mesetup` · `me check` · `me add <id>` · `tanks` · `curios check` · `curios probe` · `curios auto [clear]` |
+| ME | `mesetup` · `me check` · `me add <id>` · `tanks` · `supply [<storage> <item> <count>\|<storage> fluid <fluid> <buckets>\|stop <n>\|now]` · `curios check` · `curios probe` · `curios auto [clear]` |
 | Screen | `theme [name\|random]` · `events [n] [errors]` |
 | Checks | `report` (every block and its functions, uploaded to pastebin) · `uptime` (when the base was off, and why) |
 
@@ -557,6 +568,7 @@ Type these on the base computer. `help` lists them all.
 | `base_me.lua` | ME / RS network, transfers, fluids, crafting, messages and their log |
 | `base_drones.lua` | drone missions, charging, parking |
 | `base_store.lua` | talking to the storage helper computers |
+| `base_supply.lua` | `supply`: storages on the cable kept stocked from AE2 |
 | `base_turtles.lua` · `base_map.lua` | turtle communication, homes, fuel, rescue, updates · map data and surveys |
 | `base_console.lua` · `base_chat.lua` · `base_input.lua` · `base_workers.lua` | keyboard commands · chat commands · monitor touches · background workers |
 | `base_ui_*.lua` | one file per page (`base_ui_core.lua` = header and shared drawing, `base_ui_home.lua` = HOME, `base_ui_drive.lua` = Drive, `base_ui_system.lua` = Status, `base_ui_settings.lua` = Settings) |

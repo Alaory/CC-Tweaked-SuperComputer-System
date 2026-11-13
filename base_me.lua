@@ -1449,7 +1449,8 @@ function fluidBuffer()
   for _, n in ipairs(peripheral.getNames()) do
     local okT, ty = pcall(peripheral.getType, n)
     ty = (okT and type(ty) == "string") and ty or ""
-    if isFluid(n) and not ty:find("me_bridge", 1, true) and not ty:find("inventory_manager", 1, true) then
+    if isFluid(n) and not ty:find("me_bridge", 1, true) and not ty:find("inventory_manager", 1, true)
+       and not (SUPPLY and SUPPLY.isTarget(n)) then                  -- (a tank the base keeps stocked: not the buffer)
       list[#list + 1] = n
     end
   end

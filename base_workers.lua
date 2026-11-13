@@ -521,6 +521,7 @@ function commsWorker()
       pcall(MAP.autoTick)                -- auto-map: a survey always running (from the base outward)
       pcall(AWAY.tick)                   -- you are offline: use the time / report when you are back
       pcall(FACTORY.tick)                -- fewer turtles than you want: build one (AE2 parts)
+      pcall(SUPPLY.tick)                 -- storages kept stocked from AE2 (console supply)
       pcall(MINE.updTick)                -- mine update: the new miner.lua to the mining turtles (teams paused)
       pcall(CURIOS.autoTick)             -- auto-equip: keep a totem (...) on in its curios slot
       if TT.listDirty and codeTick % 15 == 0 then pcall(TT.saveList) end

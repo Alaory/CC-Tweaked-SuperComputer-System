@@ -311,6 +311,7 @@ function FACTORY.reserved(name)
   for _, k in ipairs({ "buffer", "giveChest", "takeChest", "curiosChest", "fluidBuffer" }) do
     if me[k] == name then return k end
   end
+  if SUPPLY and SUPPLY.isTarget and SUPPLY.isTarget(name) then return "supply" end   -- (kept stocked: console supply)
 end
 
 -- why no turtle is built now (nil = it can build)
