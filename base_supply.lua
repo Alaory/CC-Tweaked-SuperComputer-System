@@ -56,8 +56,12 @@ function SUPPLY.refuse(name)
   for _, k in ipairs({ "buffer", "giveChest", "takeChest", "curiosChest", "fluidBuffer" }) do
     if (CONFIG.me or {})[k] == name then used = k end
   end
+  if used == "fluidBuffer" then return name .. " is the base's fluid buffer (fluidbuffer to change it) - pick another storage" end
   if used then return name .. " is the base's own " .. used .. " - pick another storage" end
   if FACTORY and FACTORY.chest == name then return name .. " is the factory chest - pick another storage" end
+  if not (CONFIG.me or {}).fluidBuffer and fluidBufferMem and fluidBufferMem() == name then
+    return name .. " is the base's fluid buffer (fluidbuffer to change it) - pick another storage"
+  end
   local okT, ty = pcall(peripheral.getType, name)
   ty = (okT and type(ty) == "string") and ty or ""
   for _, bad in ipairs({ "me_bridge", "inventory_manager", "drive", "computer", "turtle", "monitor", "modem" }) do
@@ -360,10 +364,13 @@ function SUPPLY.command(words)
   -- everything else on the cable: a modded block the base cannot fill (yet) shows up here
   local others = SUPPLY.others()
   if #others > 0 then
-    say("Other blocks on the cable (no storage functions the base knows):")
+    say("Other blocks on the cable (the base's own, or no storage functions it knows):")
     for i, n in ipairs(others) do
       local ty = SUPPLY.describe(n)
-      say(string.format(" %d. %s  (%s)", #cands + i, n, ty))
+      local why = SUPPLY.refuse(n)
+      local used = why and why:match("is the base's own (%a+)") or (why and why:find("fluid buffer", 1, true) and "fluid buffer")
+                   or (why and why:find("factory chest", 1, true) and "factory chest")
+      say(string.format(" %d. %s  (%s)", #cands + i, n, used and ("used by the base: " .. used) or ty))
     end
     say("  supply check <number> lists what one of them offers - send me that line.")
   end

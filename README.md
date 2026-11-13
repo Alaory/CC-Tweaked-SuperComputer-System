@@ -348,6 +348,9 @@ again …)", "after an update" or "after an ERROR: …".
   Every 10 s the base counts what is in it and sends the difference from AE2. It only ever puts
   things **in**, never takes anything out, and never sends your own enchanted, renamed or used
   items. If AE2 runs out, you get one warning. The base's own buffers can't be used.
+  Fluids for your own tanks pass through ONE fluid storage (the fluid buffer, normally your
+  storage controller). With several fluid storages on the cable, `fluidbuffer` shows which one;
+  `fluidbuffer <n>` picks it.
   A wireless or ender modem can't do this: it only carries messages, so the storage has to
   be on the cable.
 
@@ -513,7 +516,7 @@ Type these on the base computer. `help` lists them all.
 | Schematics | `schem [<name>\|delete <name>]` |
 | Drones | `drones` · `drone <n>` · `dest …` · `save <name>` · `list` · `fly` · `pickup` · `drop` · `ferry` · `home` · `stop` · `charger [x y z]` |
 | Chat | `allow <name>` · `deny <name>` · `allowed` |
-| ME | `mesetup` · `me check` · `me add <id>` · `tanks` · `supply [<storage> <item> <count>\|<storage> fluid <fluid> <buckets>\|stop <n>\|now]` · `curios check` · `curios probe` · `curios auto [clear]` |
+| ME | `mesetup` · `me check` · `me add <id>` · `tanks` · `fluidbuffer [<n>\|auto]` · `supply [<storage> <item> <count>\|<storage> fluid <fluid> <buckets>\|stop <n>\|now]` · `curios check` · `curios probe` · `curios auto [clear]` |
 | Screen | `theme [name\|random]` · `events [n] [errors]` |
 | Checks | `report` (every block and its functions, uploaded to pastebin) · `uptime` (when the base was off, and why) |
 

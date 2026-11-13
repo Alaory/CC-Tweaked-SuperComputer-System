@@ -247,14 +247,18 @@ frow(py + 21, "CRAFT", "fcraft", { { "1 B", 1000 }, { "16 B", 16000 }, { "64 B",
 end
 text(rix, py + ph - 2, trunc("Fluid storage: " .. me.fluidBuf, riw), C.dim, C.panel)
 elseif mtype == "fluids" then
-text(rix, py + 8, trunc("Fluids cannot be moved: " .. tostring(me.fluidBufErr or "no fluid storage"), riw), C.warn, C.panel)
-text(rix, py + 9, trunc("Connect a tank or fluid storage to the wired network.", riw), C.dim, C.panel)
+for i, line in ipairs(wrap("Fluids cannot be moved: " .. tostring(me.fluidBufErr or "no fluid storage"), riw, 3)) do
+text(rix, py + 7 + i, line, C.warn, C.panel)
+end
+if not me.fluidBuf and tostring(me.fluidBufErr or ""):find("no fluid storage", 1, true) then
+text(rix, py + 12, trunc("Connect a tank or fluid storage to the wired network.", riw), C.dim, C.panel)
+end
 if sel.craftable then
-text(rix, py + 11, "CRAFT", C.label, C.panel)
+text(rix, py + 14, "CRAFT", C.label, C.panel)
 local amounts = { { "1 B", 1000 }, { "16 B", 16000 }, { "64 B", 64000 }, { "256 B", 256000 } }
 local bw = math.floor((riw - 3) / 4)
 for i, a in ipairs(amounts) do
-actButton(rix + (i - 1) * (bw + 1), py + 12, bw, 3, a[1], { kind = "fcraft", name = sel.name, count = a[2] })
+actButton(rix + (i - 1) * (bw + 1), py + 15, bw, 3, a[1], { kind = "fcraft", name = sel.name, count = a[2] })
 end
 end
 else

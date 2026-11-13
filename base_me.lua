@@ -1438,6 +1438,44 @@ end
 -- ===== fluids: between the ME network and a fluid storage on the network =====
 -- CONFIG.me.fluidBuffer (network name), else the item buffer if it also holds
 -- fluids, else the only fluid storage on the network
+-- the one found by itself is REMEMBERED (fluid_buffer.dat): a second fluid storage put
+-- on the cable later (a tank, an Entangled block) no longer stops every fluid move
+local FB_FILE = "fluid_buffer.dat"
+FB_MEM = nil
+function fluidBufferMem()
+  if FB_MEM == nil then
+    FB_MEM = false
+    local p = dataPath and dataPath(FB_FILE) or FB_FILE
+    if fs.exists(p) then
+      local h = fs.open(p, "r")
+      local t = h and h.readAll()
+      if h then h.close() end
+      t = t and t:match("^%s*(%S+)")
+      if t then FB_MEM = t end
+    end
+  end
+  return FB_MEM or nil
+end
+local function fbRemember(n)
+  if fluidBufferMem() == n then return end
+  FB_MEM = n
+  pcall(saveFileSafe, dataPath and dataPath(FB_FILE) or FB_FILE, n)
+end
+-- every fluid storage that could be the buffer (not bridges, not supplied tanks)
+function fluidStorages()
+  local list = {}
+  for _, n in ipairs(peripheral.getNames()) do
+    local okT, ty = pcall(peripheral.getType, n)
+    ty = (okT and type(ty) == "string") and ty or ""
+    local ok, isF = pcall(peripheral.hasType, n, "fluid_storage")
+    if ok and isF and not ty:find("me_bridge", 1, true) and not ty:find("inventory_manager", 1, true)
+       and not (SUPPLY and SUPPLY.isTarget(n)) then
+      list[#list + 1] = n
+    end
+  end
+  table.sort(list)
+  return list
+end
 function fluidBuffer()
   if CONFIG.me.fluidBuffer then return CONFIG.me.fluidBuffer end
   local function isFluid(n)
@@ -1455,9 +1493,11 @@ function fluidBuffer()
     end
   end
   table.sort(list)
-  if #list == 1 then return list[1] end
+  if #list == 1 then fbRemember(list[1]) return list[1] end
   if #list == 0 then return nil, "no fluid storage on the network" end
-  return nil, "several fluid storages - set fluidBuffer in base_config.lua (me): " .. table.concat(list, ", ")
+  local mem = fluidBufferMem()
+  for _, n in ipairs(list) do if n == mem then return n end end
+  return nil, "several fluid storages (" .. table.concat(list, ", ") .. ") - type  fluidbuffer  on the computer to pick yours"
 end
 
 local FL_OUT, FL_IN = { "exportFluid" }, { "importFluid" }

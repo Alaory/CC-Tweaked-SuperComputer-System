@@ -55,6 +55,7 @@ HELP = {
   " turtle <id> forget   take a turtle that is gone (server crash) off the list",
   " drive <id>   steer a turtle with the keyboard: W A S D, SPACE up, SHIFT down",
   " mine [drop|forget] <id>   mining turtles: drop = a lost miner out of its team",
+  " fluidbuffer [<n>|auto]   which fluid storage AE2 fluids pass through (filling your tanks)",
   " supply [<storage> <item> <count>|<storage> fluid <fluid> <buckets>|stop <n>|now]   keep a storage on the cable stocked from AE2",
   " mine update [stop]    the newest miner.lua to every mining turtle (teams paused first, then started again)",
   " factory [chest <name>|builder <id>|build|stop]   build turtles from AE2 parts",
@@ -844,6 +845,29 @@ function handleCommand(line)
       end
       if not any then say("No pocket paired. Copy pocket.lua onto your pocket computer (with a modem), run  pocket  on it.") end
       say("pocket unpair <id> = it can no longer control the base")
+    end
+
+  elseif cmd == "fluidbuffer" then
+    -- which fluid storage the ME fluid moves go through (your tanks <-> AE2)
+    local list = fluidStorages()
+    local w = words[2]
+    if w == "auto" then
+      resetSetting("me.fluidBuffer")
+      say("Fluid buffer: found by itself again (now: " .. tostring((fluidBuffer())) .. ")")
+    elseif w then
+      local name = (tonumber(w) and list[tonumber(w)]) or w
+      if not peripheral.isPresent(name) then say(w .. " is not on the cable. Type  fluidbuffer  for the list.")
+      elseif SUPPLY and SUPPLY.isTarget(name) then say(name .. " is kept stocked by  supply  - it cannot be the buffer.")
+      else
+        setSetting("me.fluidBuffer", name)
+        say("Fluid buffer is now " .. name .. ". Filling / emptying your tanks goes through it.")
+      end
+    else
+      local cur, err = fluidBuffer()
+      say("Fluid buffer: " .. (cur or ("NONE - " .. tostring(err))))
+      for i, n in ipairs(list) do say(string.format(" %d. %s%s", i, n, n == cur and "  <- in use" or "")) end
+      say("fluidbuffer <number|name> = use that one,  fluidbuffer auto = find it by itself")
+      say("(It must be YOUR storage that AE2 fluids pass through - e.g. the storage controller.)")
     end
 
   elseif cmd == "supply" then

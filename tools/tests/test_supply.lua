@@ -140,6 +140,37 @@ SUPPLY.tick()
 CHECK(MOD.amount == amt, "and not more once it is full")
 SUPPLY.stop("bigtanks:steel_tank_0")
 
+-- THE FLUID BUFFER IS REMEMBERED: the owner's storage controller was the only fluid storage,
+-- then an Entangled block went on the cable -> "several fluid storages", filling the owner's
+-- tanks stopped. The one found alone is remembered and stays the buffer.
+local savedP = {}
+for _, k in ipairs({ "mekanism:basic_fluid_tank_0", "bigtanks:steel_tank_0", "entangled:tile_0" }) do savedP[k] = PERIPHS[k] PERIPHS[k] = nil end
+local rules0 = SUPPLY.rules
+SUPPLY.rules = {}
+CONFIG.me.buffer, CONFIG.me.fluidBuffer = "minecraft:barrel_1", nil
+FB_MEM = nil
+CHECK(fluidBuffer() == "functionalstorage:storage_controller_0", "only one fluid storage -> it is the buffer")
+PERIPHS["entangled:tile_0"] = { types = { "entangled:tile", "fluid_storage" }, obj = { tanks = function() return {} end } }
+FB_MEM = nil                                 -- (as after a base restart: read back from the file)
+local fb2, fbErr = fluidBuffer()
+CHECK(fb2 == "functionalstorage:storage_controller_0", "a 2nd fluid storage added later: the remembered one stays (" .. tostring(fb2) .. " " .. tostring(fbErr) .. ")")
+CHECK(SUPPLY.refuse("functionalstorage:storage_controller_0"), "the fluid buffer can not be a supply target")
+CHECK(not SUPPLY.refuse("entangled:tile_0"), "the Entangled block can")
+-- nothing remembered + several: says what to type
+FB_MEM = false
+local fb3, err3 = fluidBuffer()
+CHECK(fb3 == nil and tostring(err3):find("fluidbuffer", 1, true), "several, none remembered -> tells you to type fluidbuffer")
+local outFB = table.concat(handleCommand("fluidbuffer") or {}, "\n")
+CHECK(outFB:find("1. entangled:tile_0", 1, true) and outFB:find("2. functionalstorage:storage_controller_0", 1, true), "fluidbuffer lists them numbered")
+handleCommand("fluidbuffer 2")
+CHECK(fluidBuffer() == "functionalstorage:storage_controller_0", "fluidbuffer 2 picks the storage controller")
+handleCommand("fluidbuffer auto")
+CHECK(CONFIG.me.fluidBuffer == nil, "fluidbuffer auto = found by itself again")
+PERIPHS["entangled:tile_0"] = nil
+for k, v in pairs(savedP) do PERIPHS[k] = v end
+SUPPLY.rules = rules0
+CONFIG.me.buffer = "functionalstorage:storage_controller_0"
+
 -- saved and read back
 SUPPLY.save()
 local keep = SUPPLY.rules

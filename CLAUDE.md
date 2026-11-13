@@ -546,7 +546,13 @@ PneumaticCraft drone rides, turtle mapping/surveys, and an AE2 ME network view.
   MODDED tanks with their OWN computer functions (no fluid_storage type): SUPPLY.kinds also accepts
   tanks() / SUPPLY.FLUID_READ (getStored, getFluid, ...; {name, amount} or a list, nil = empty);
   every other non-base block on the cable is listed under "Other blocks" (SUPPLY.others) so the
-  owner can `supply check` it. Wireless / ender modems cannot reach a block's storage (messages only). test_supply.lua.
+  owner can `supply check` it (reserved ones say "used by the base: <what>"). Wireless / ender modems
+  cannot reach a block's storage (messages only). FLUID BUFFER REMEMBERED (fluidBuffer, base_me.lua):
+  the one found ALONE is saved (fluid_buffer.dat, FB_MEM / fluidBufferMem) and stays the buffer when
+  another fluid storage joins the cable - an Entangled block made it "several fluid storages" and
+  filling the owner's tanks stopped. None remembered + several -> "type fluidbuffer"; console
+  `fluidbuffer [<n|name>|auto]` (setSetting me.fluidBuffer); the buffer is refused as a supply
+  target. test_supply.lua.
 - POCKET REMOTE (pocket.lua on the owner's Advanced Pocket Computer with a
   wireless / ender modem; base_pocket.lua POCKET; rednet protocol "basepocket",
   rednet.host'ed by the comms worker; POCKET.out sent there). Pairing: pocket
