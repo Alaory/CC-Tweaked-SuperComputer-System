@@ -636,6 +636,11 @@ PneumaticCraft drone rides, turtle mapping/surveys, and an AE2 ME network view.
   changes the frame (bg, cards, lines, buttons, titles). Chosen at start: theme.dat {mode, last} or
   CONFIG.theme, default "random" (never the same as last time). `theme
   [name|random]` switches live (setTheme) and saves. Keep new themes dark.
+- FLUID "ALL" (moveFluid, base_me.lua): Advanced Peripherals moves only a part per call; the old
+  64-call cap stopped ALL half way (64 x the per-call amount). Now it calls while something moves,
+  until done or `budget` s (20; also max 4000 calls) -> 3rd result true; runAction puts the REST at
+  the END of state.actionQueue (a.done carries the total) so other buttons are not kept waiting.
+  test_fluid_all.lua.
 - Message boxes (pushNote, base_me.lua): a BOX only for CONFIG.notes.show
   ("important" = warnings + errors, default; "errors", "all", "none") - INFO/DONE
   go to EVENTS only; USER_ACTION (set around handleTouch and runAction in

@@ -1502,11 +1502,18 @@ end
 
 local FL_OUT, FL_IN = { "exportFluid" }, { "importFluid" }
 
-function moveFluid(dir, name, mb)
+
+
+
+
+function moveFluid(dir, name, mb, budget)
 local b, err = fluidBuffer()
 if not b then return 0, err end
 local moved, left = 0, mb
-for _ = 1, 64 do
+local stopAt, calls = os.clock() + (budget or 20), 0
+while true do
+calls = calls + 1
+if os.clock() >= stopAt or calls > 4000 then return moved, nil, true end
 local ok, r, e = transfer(bridge, dir == "take" and FL_OUT or FL_IN, b,
 { name = name, amount = math.min(left, 2147483647) })
 if not ok then return moved, tostring(r) end
@@ -1871,8 +1878,18 @@ else
 setToast("Craft failed: " .. tostring(err), C.bad, 10)
 end
 elseif fluid then
-local n, err = moveFluid(a.kind == "ftake" and "take" or "store", a.name, a.count)
+local n, err, more = moveFluid(a.kind == "ftake" and "take" or "store", a.name, a.count)
 local where = a.kind == "ftake" and "into the fluid storage" or "into the ME network"
+a.done = (a.done or 0) + n
+if more and n > 0 and a.count - n > 0 then
+
+state.actionQueue[#state.actionQueue + 1] = { kind = a.kind, name = a.name, count = a.count - n, done = a.done }
+os.queueEvent("inv_action")
+setToast(string.format("Moving %s %s: %s so far - carrying on", disp, where, fmtBuckets(a.done)), C.label, 6)
+state.meForce = true
+return
+end
+n = a.done
 if n == 0 then
 setToast("Fluid not moved: " .. tostring(err), C.bad, 10)
 else
