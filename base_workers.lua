@@ -321,12 +321,14 @@ function pageWorker()
 end
 
 -- KEEP A STORAGE FILLED (base_supply.lua): its own worker, so pumping a lot never holds
--- up the turtles' messages; straight on while a storage still takes it, else every 2 s
--- (SUPPLY.tick itself only works every CONFIG.supply.every s then)
+-- up the turtles' messages; straight on while a storage still takes it, else
+-- (every SUPPLY.every() s, default 1: drained in a second = refilled in a second)
 function supplyWorker()
   while state.running do
     local ok, busy = pcall(SUPPLY.tick)
-    waitFor((ok and busy) and 0.05 or 2, "supply_wake")
+    local e = 1
+    if SUPPLY.every then local okE, v = pcall(SUPPLY.every) if okE then e = v end end
+    waitFor((ok and busy) and 0.05 or e, "supply_wake")
   end
 end
 

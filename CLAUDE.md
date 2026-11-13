@@ -534,8 +534,9 @@ PneumaticCraft drone rides, turtle mapping/surveys, and an AE2 ME network view.
   (auto=true) when the item is not worn in that slot type and a slot is free (a used
   totem); r.why = "none left in AE2" / the put-on error (shown on the tab, `curios auto`).
   Putting on needs CONFIG.me.curiosChest. test_curios.lua.
-- SUPPLY (base_supply.lua SUPPLY, console `supply`, comms tick SUPPLY.tick every CONFIG.supply.every
-  s = 10, run by supplyWorker; supply.dat via dataPath): rules {target = network name of a storage on the WIRED cable,
+- SUPPLY (base_supply.lua SUPPLY, console `supply`, SUPPLY.tick run by supplyWorker every SUPPLY.every()
+  s = CONFIG.supply.every, default 1 (the owner drains a tank in a second and waited 10 s; `supply every
+  <s>` 0.2-600, setSetting); supply.dat via dataPath): rules {target = network name of a storage on the WIRED cable,
   kind item|fluid, name, keep (items / mB)}. Counts the target (list / tanks), exports the
   difference from AE2 (items: FACTORY.variants -> only PLAIN ones by fingerprint, never the
   owner's own; fluids: exportFluid loop, 1 bucket per call ok). NEVER takes anything out.
@@ -561,7 +562,7 @@ PneumaticCraft drone rides, turtle mapping/surveys, and an AE2 ME network view.
   inventory.lua's list - not the comms worker): SUPPLY.tick pumps each rule for SUPPLY.BUDGET s (2;
   calls while something moves - a tank / bridge may take 1 bucket per call) and returns busy (r.busy =
   moved and still short) -> the worker comes back after 0.05 s; nothing to do -> every
-  CONFIG.supply.every s (10). Before: 16 calls every 10 s. A new rule queues "supply_wake". test_supply.lua.
+  SUPPLY.every() s (1). Before: 16 calls every 10 s. A new rule queues "supply_wake". test_supply.lua.
 - POCKET REMOTE (pocket.lua on the owner's Advanced Pocket Computer with a
   wireless / ender modem; base_pocket.lua POCKET; rednet protocol "basepocket",
   rednet.host'ed by the comms worker; POCKET.out sent there). Pairing: pocket

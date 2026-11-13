@@ -326,7 +326,9 @@ end
 function supplyWorker()
 while state.running do
 local ok, busy = pcall(SUPPLY.tick)
-waitFor((ok and busy) and 0.05 or 2, "supply_wake")
+local e = 1
+if SUPPLY.every then local okE, v = pcall(SUPPLY.every) if okE then e = v end end
+waitFor((ok and busy) and 0.05 or e, "supply_wake")
 end
 end
 

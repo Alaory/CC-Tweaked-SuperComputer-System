@@ -14,6 +14,12 @@
 
 SUPPLY = { rules = {}, at = -999, cache = { item = {}, fluid = {} }, cacheAt = -999 }
 SUPPLY.FULL = 9e15
+
+function SUPPLY.every()
+local e = tonumber(CONFIG.supply and CONFIG.supply.every) or 1
+if e < 0.2 then e = 0.2 end
+return e
+end
 SUPPLY.BUDGET = 2
 local FILE = "supply.dat"
 
@@ -256,7 +262,6 @@ end
 
 
 
-
 function SUPPLY.refreshCache()
 SUPPLY.cacheAt = os.clock()
 local c = { item = {}, fluid = {} }
@@ -279,7 +284,7 @@ end
 function SUPPLY.tick()
 if os.clock() - SUPPLY.cacheAt >= 10 then pcall(SUPPLY.refreshCache) end
 if #SUPPLY.rules == 0 then return false end
-local every = tonumber(CONFIG.supply and CONFIG.supply.every) or 10
+local every = SUPPLY.every()
 if os.clock() - SUPPLY.at < every and not SUPPLY.busy then return false end
 SUPPLY.at = os.clock()
 local busy = false
@@ -319,7 +324,7 @@ SUPPLY.rules[#SUPPLY.rules + 1] = r
 SUPPLY.save()
 SUPPLY.at = -999
 return true, "From now on " .. target .. " is kept at " .. SUPPLY.amount(r, keep) .. " " .. name .. " from AE2 (checked every " ..
-tostring(tonumber(CONFIG.supply and CONFIG.supply.every) or 10) .. " s; nothing is ever taken out of it)"
+tostring(SUPPLY.every()) .. " s; nothing is ever taken out of it)"
 end
 
 
@@ -345,6 +350,16 @@ local a = words[2]
 if a == "stop" then
 local n = SUPPLY.stop(words[3] or "")
 say(n > 0 and (n .. " supply rule(s) stopped. What is in the storage stays there.") or "No such rule. Type  supply  to see them.")
+return out
+end
+if a == "every" then
+local n = tonumber(words[3])
+if not n or n < 0.2 or n > 600 then
+say("Checked every " .. SUPPLY.every() .. " s.  supply every <seconds> (0.2 - 600) changes it.")
+else
+setSetting("supply.every", n)
+say("A full storage is now checked every " .. SUPPLY.every() .. " s (refilled within that time).")
+end
 return out
 end
 if a == "check" then
@@ -424,6 +439,6 @@ say("  supply check <number> lists what one of them offers - send me that line."
 end
 say("Not in either list? Its modem is off: right-click the wired modem ON the block (it turns red;")
 say("  chat says 'Peripheral ... connected'). A full-block modem works on any side.")
-say("supply <storage> <item> <count> | supply <storage> fluid <fluid> <buckets> | supply stop <n|storage|all> | supply now | supply check <n>")
+say("supply <storage> <item> <count> | supply <storage> fluid <fluid> <buckets> | supply stop <n|storage|all> | supply now | supply check <n> | supply every <s>")
 return out
 end

@@ -348,7 +348,7 @@ again …)", "after an update" or "after an ERROR: …".
     offers. Not there at all: the wired modem on it is off (right-click it, it turns red).
 
   The base counts what is in it and sends the difference from AE2 - non-stop while the storage
-  still takes more, then it checks every 10 s. It only ever puts
+  still takes more, then it checks again every second (`supply every <seconds>` changes that). It only ever puts
   things **in**, never takes anything out, and never sends your own enchanted, renamed or used
   items. If AE2 runs out, you get one warning. The base's own buffers can't be used.
   Fluids for your own tanks pass through ONE fluid storage (the fluid buffer, normally your

@@ -269,7 +269,16 @@ do
   CHECK(busy == false, "full -> not busy")
   local before = SLOW
   CLOCK = CLOCK + 1
-  CHECK(SUPPLY.tick() == false and SLOW == before, "then only the slow check again (every 10 s)")
+  CHECK(SUPPLY.tick() == false and SLOW == before, "full: nothing moved")
+  -- you DRAIN it in a second: refilled within SUPPLY.every() (1 s), not 10 s
+  CHECK(SUPPLY.every() == 1, "a full storage is checked every 1 s by default")
+  SLOW = 0
+  CLOCK = CLOCK + SUPPLY.every()
+  SUPPLY.tick()
+  CHECK(SLOW > 0, "drained -> the next check (1 s later) pumps again (" .. SLOW .. " mB)")
+  local outE = table.concat(handleCommand("supply every 3") or {}, " ")
+  CHECK(SUPPLY.every() == 3 and outE:find("every 3", 1, true), "supply every 3 changes it")
+  handleCommand("supply every 1")
   bridge.exportFluid = expS
   PERIPHS["slowmod:tank_0"] = nil
   SUPPLY.rules = rulesB

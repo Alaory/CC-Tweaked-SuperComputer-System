@@ -3,7 +3,7 @@
 --
 --   SUPPLY: keep a storage on the wired cable stocked from AE2 (console `supply`).
 --   A rule = { target = network name, kind = "item" | "fluid", name, keep }:
---   every CONFIG.supply.every s (10) the base counts what the storage holds and
+--   every CONFIG.supply.every s (1; SUPPLY.every()) the base counts what the storage holds and
 --   exports the difference from AE2 (items: only PLAIN ones - never your own
 --   enchanted / renamed / used ones, FACTORY.variants; fluids: exportFluid in mB).
 --   It only ever PUTS things in: nothing is taken out of the storage, ever.
@@ -14,6 +14,12 @@
 
 SUPPLY = { rules = {}, at = -999, cache = { item = {}, fluid = {} }, cacheAt = -999 }
 SUPPLY.FULL = 9e15                 -- "FULL": as much as it takes (keep topping it up)
+-- how often a full storage is checked again (s): `supply every <s>`, default 1
+function SUPPLY.every()
+  local e = tonumber(CONFIG.supply and CONFIG.supply.every) or 1
+  if e < 0.2 then e = 0.2 end
+  return e
+end
 SUPPLY.BUDGET = 2                  -- s of pumping per rule per round (the worker comes straight back)
 local FILE = "supply.dat"
 
@@ -254,7 +260,6 @@ function SUPPLY.fill(r)
   return moved
 end
 
--- comms worker (every 2 s; works every CONFIG.supply.every s)
 -- the storages for the AE2 tab's KEEP FILLED row (peripheral calls never in drawing:
 -- refreshed here, every 10 s)
 function SUPPLY.refreshCache()
@@ -274,12 +279,12 @@ function SUPPLY.ruleFor(target, kind, name)
   end
 end
 -- one round (supplyWorker, its own coroutine: pumping never holds up the turtles' comms).
--- Every CONFIG.supply.every s (10) - but AT ONCE again while a storage is still taking it
+-- Every SUPPLY.every() s (1: you drain it in a second, it is refilled in a second) - AT ONCE again while a storage is still taking it
 -- (before: 16 calls every 10 s = slow when a tank takes 1 bucket per call). Returns busy.
 function SUPPLY.tick()
   if os.clock() - SUPPLY.cacheAt >= 10 then pcall(SUPPLY.refreshCache) end
   if #SUPPLY.rules == 0 then return false end
-  local every = tonumber(CONFIG.supply and CONFIG.supply.every) or 10
+  local every = SUPPLY.every()
   if os.clock() - SUPPLY.at < every and not SUPPLY.busy then return false end
   SUPPLY.at = os.clock()
   local busy = false
@@ -319,7 +324,7 @@ function SUPPLY.add(target, kind, name, keep)
   SUPPLY.save()
   SUPPLY.at = -999                                 -- (filled at the next tick)
   return true, "From now on " .. target .. " is kept at " .. SUPPLY.amount(r, keep) .. " " .. name .. " from AE2 (checked every " ..
-               tostring(tonumber(CONFIG.supply and CONFIG.supply.every) or 10) .. " s; nothing is ever taken out of it)"
+               tostring(SUPPLY.every()) .. " s; nothing is ever taken out of it)"
 end
 
 -- stop rules: by number, by storage name, or "all"; returns how many
@@ -345,6 +350,16 @@ function SUPPLY.command(words)
   if a == "stop" then
     local n = SUPPLY.stop(words[3] or "")
     say(n > 0 and (n .. " supply rule(s) stopped. What is in the storage stays there.") or "No such rule. Type  supply  to see them.")
+    return out
+  end
+  if a == "every" then
+    local n = tonumber(words[3])
+    if not n or n < 0.2 or n > 600 then
+      say("Checked every " .. SUPPLY.every() .. " s.  supply every <seconds> (0.2 - 600) changes it.")
+    else
+      setSetting("supply.every", n)
+      say("A full storage is now checked every " .. SUPPLY.every() .. " s (refilled within that time).")
+    end
     return out
   end
   if a == "check" then
@@ -424,6 +439,6 @@ function SUPPLY.command(words)
   end
   say("Not in either list? Its modem is off: right-click the wired modem ON the block (it turns red;")
   say("  chat says 'Peripheral ... connected'). A full-block modem works on any side.")
-  say("supply <storage> <item> <count> | supply <storage> fluid <fluid> <buckets> | supply stop <n|storage|all> | supply now | supply check <n>")
+  say("supply <storage> <item> <count> | supply <storage> fluid <fluid> <buckets> | supply stop <n|storage|all> | supply now | supply check <n> | supply every <s>")
   return out
 end
