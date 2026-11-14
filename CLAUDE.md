@@ -261,6 +261,16 @@ PneumaticCraft drone rides, turtle mapping/surveys, and an AE2 ME network view.
   fuel < 20, no job -> doRefuel(true) once a minute (learns endless items, burns real fuel): a COPY or a
   turtle whose S.reuse did not hold the item it carries sat at 0 for good (idle top-up used KNOWN
   endless items only); an EMPTY S.reuse no longer counts as "first refuel done". node_firstfuel.lua.
+  FUEL REVIEW (node_fuel.lua, test_fuel_trip.lua): topUp learns an item as endless only if the SAME
+  name is still there with the same count (a lava bucket leaves an empty bucket - was learned as
+  endless); remembered REUSE_SLOTS are checked (another item may sit there after unloading - "only
+  reusable" burned it), none left -> all 16 scanned; all endless items refusing -> gives up after 100
+  ticks (dry; ensureFuel has no budget - it waited for ever). NEVER_BURN / neverBurn: planks, logs,
+  chests, barrels, wooden tools ... are never burned (REFUEL, idle, the chest at home - it may be the
+  owner's chest); isFuel no longer matches coal_ore. ensureFuel mid-job: still < 20 after coal & co
+  -> topUp(1000, false, 400) finds an endless item it did not know. REUSE_SLOTS is a GLOBAL (the
+  report, defined earlier in the file, reads it): m.endless -> t.endless -> homeTick sends no fuel
+  trips / low-fuel home trips to a turtle with endless fuel and >= 20 (they cut its top-up).
 - Fuel chest at home (node.lua fuelStation): idle AT home with fuel < lowFuel
   (2000) -> sucks from an inventory below/above/in front (never a turtle),
   burns ONLY fuel items up to stationFuel (20000), non-fuel and empty buckets

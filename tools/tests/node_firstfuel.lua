@@ -13,7 +13,8 @@ local function piece(from, to)
 end
 local code = piece("function ensureFuel()", "-- STEPPING = ") ..
              piece("local TOPUP = {}", "-- one block to an ADJACENT") ..
-             piece("-- REFUEL: every slot", "function listener()")
+             piece("-- REFUEL: every slot", "function listener()") ..
+             piece("function isFuel(n)", "-- what rescue gear")
 local fn, err = load(code, "=node pieces")
 CHECK(fn, "pieces load: " .. tostring(err))
 local FUEL, SEL = 0, 1
@@ -28,7 +29,6 @@ turtle = {
 }
 S, CONFIG, SLOT_LOCK, job, stopFlag = {}, {}, false, nil, false
 function send() end function save() end function sleep() end
-function isFuel(n) return n == "minecraft:coal" end
 peripheral = { wrap = function() return nil end }
 if fn then fn() end
 -- the base sends it off the build spot BEFORE its first refuel: the first move

@@ -417,6 +417,7 @@ function send(t, extra)
   m.ver = MYVER
   m.updReady = UPD_READY and UPD_READY.ver or nil
   m.gear = S.gear
+  m.endless = REUSE_SLOTS ~= nil or nil          -- (carries endless fuel: tops itself up, no fuel trips)
   m.rec = S.recording and (S.recCount or 1) or nil
   m.waiting = outboxCount and outboxCount() or 0
   pcall(rednet.send, baseId, m, CONFIG.protocol)
@@ -530,6 +531,11 @@ function ensureFuel()
     end
   end
   turtle.select(sel)
+  -- still empty: an endless item it does not know yet (a copy, a new modded item) -
+  -- try what it carries (never wooden things / tools / containers), learns it
+  if turtle.getFuelLevel() < 20 and not SLOT_LOCK then
+    topUp(math.min(refuelTarget(), FIRST_FUEL or 1000), false, 400)
+  end
 end
 
 -- STEPPING = a move/turn/equip is under way: a forced STOP waits for it to
@@ -672,7 +678,7 @@ local TOPUP = {}       -- the last top-up: gained, uses, refused, seconds (for t
 -- equipping (core swap) and refuelling both select slots: they take turns.
 -- SLOT_LOCK = someone is equipping; TOPUP_RUNNING = a top-up is selecting slots
 SLOT_LOCK, TOPUP_RUNNING = false, false
-local REUSE_SLOTS      -- the slots holding reusable fuel last time (saves looking at all 16)
+REUSE_SLOTS = nil      -- the slots holding reusable fuel last time (saves looking at all 16; global: the report reads it)
 -- ENERGY CELLS: an automata core (Advanced Peripherals) turns the FE in a
 -- charged item the turtle carries into fuel (chargeTurtle). Tried first; no
 -- core / no cell / empty cell = nothing happens. Returns the fuel gained.
@@ -707,11 +713,18 @@ function topUp(target, onlyReusable, budget)
   -- (known reusable ones first: saves coal)
   local slots = {}
   if onlyReusable and REUSE_SLOTS then
-    for _, sl in ipairs(REUSE_SLOTS) do slots[#slots + 1] = { i = sl.i, name = sl.name, count = sl.count } end
-  else
+    -- (the remembered slots - checked: after unloading / a chest another item may sit there,
+    -- and "only reusable" must never burn anything else)
+    for _, sl in ipairs(REUSE_SLOTS) do
+      local d = turtle.getItemDetail(sl.i)
+      if d and d.name == sl.name then slots[#slots + 1] = { i = sl.i, name = sl.name, count = d.count } end
+    end
+  end
+  if #slots == 0 then                            -- (moved / never looked: all 16 slots)
     for i = 1, 16 do
       local d = turtle.getItemDetail(i)
-      if d and (not onlyReusable or S.reuse[d.name]) then
+      -- (never the owner's wooden things / tools / containers, even if they would burn)
+      if d and (not onlyReusable or S.reuse[d.name]) and (S.reuse[d.name] or not neverBurn(d.name)) then
         slots[#slots + 1] = { i = i, name = d.name, count = d.count }
       end
     end
@@ -721,7 +734,7 @@ function topUp(target, onlyReusable, budget)
       return a.i < b.i
     end)
   end
-  local stop = false
+  local stop, dry = false, 0
   while #slots > 0 and turtle.getFuelLevel() < target and not stop do
     local keep, any, cooling = {}, false, false
     for _, sl in ipairs(slots) do
@@ -746,12 +759,13 @@ function topUp(target, onlyReusable, budget)
         end
         any = true
         if not S.reuse[sl.name] then
-          -- still there after use? then it is reusable (checked until known)
-          local c = turtle.getItemCount(sl.i)
-          if c >= sl.count then S.reuse[sl.name], learnt = true, true
+          -- still there after use - the SAME item, as many? then it is reusable (a lava bucket
+          -- leaves an empty bucket: same count, other name - that is NOT endless fuel)
+          local d2 = turtle.getItemDetail(sl.i)
+          if d2 and d2.name == sl.name and d2.count >= sl.count then S.reuse[sl.name], learnt = true, true
           else
-            sl.count = c
-            if c == 0 then dead = true break end            -- normal fuel used up
+            sl.count = (d2 and d2.name == sl.name) and d2.count or 0
+            if sl.count == 0 then dead = true break end     -- used up (or only a bucket left)
           end
         end
       end
@@ -760,9 +774,14 @@ function topUp(target, onlyReusable, budget)
     end
     slots = keep
     if not any then
-      if not cooling or stop then break end
-      sleep(0.05)                                           -- all cooling down: one tick
+      -- all cooling down: one tick - but not for ever (an endless item that keeps refusing
+      -- made a turtle wait here for good: ensureFuel calls this without a budget)
+      dry = dry + 1
+      if not cooling or stop or dry > 100 then break end
+      sleep(0.05)
       calls = calls + 1
+    else
+      dry = 0
     end
   end
   turtle.select(sel)
@@ -2242,8 +2261,21 @@ function isDrive(n) return n == "computercraft:disk_drive" end
 function isFloppy(n) return n == "computercraft:disk" end
 function isPick(n) return n:find("_pickaxe", 1, true) ~= nil end
 function isFuel(n)
-  return n:find("coal", 1, true) or n:find("charcoal", 1, true) or n:find("lava_bucket", 1, true)
-         or n:find("blaze_rod", 1, true)
+  return (n:find("coal", 1, true) and not n:find("_ore", 1, true)) or n:find("charcoal", 1, true)
+         or n:find("lava_bucket", 1, true) or n:find("blaze_rod", 1, true)
+end
+-- things that WOULD burn as turtle fuel but are somebody's building blocks, tools or
+-- containers: never burned (REFUEL, a chest at home, out of fuel) - only coal & co. and
+-- endless items are. (Before: planks, logs, chests, wooden tools in a chest at home went.)
+NEVER_BURN = { "planks", "_log", "_wood", "_stem", "hyphae", "sapling", "stick", "chest", "barrel", "shulker",
+               "crafting_table", "bookshelf", "lectern", "ladder", "scaffolding", "_door", "fence", "_sign",
+               "_boat", "_raft", "bow", "fishing_rod", "_sword", "_axe", "_pickaxe", "_shovel", "_hoe", "wool",
+               "carpet", "_bed", "banner", "loom", "composter", "note_block", "jukebox", "trapdoor",
+               "pressure_plate", "_button", "_slab", "_stairs", "turtle", "computer", "disk", "modem", "backpack" }
+function neverBurn(n)
+  if isFuel(n) then return false end
+  for _, p in ipairs(NEVER_BURN) do if n:find(p, 1, true) then return true end end
+  return false
 end
 -- what rescue gear this turtle carries (reported to the base)
 -- what is equipped on a side: item name (short) if this version can tell,
@@ -3403,7 +3435,7 @@ function fuelStation(only)
       local it = turtle.getItemDetail(e)
       S.reuse = S.reuse or {}
       -- a fuel item? (refuel(0) only checks, uses nothing)
-      local burnable = it and (isFuel(it.name) or S.reuse[it.name] or turtle.refuel(0))
+      local burnable = it and (isFuel(it.name) or S.reuse[it.name] or (not neverBurn(it.name) and turtle.refuel(0)))
       if burnable and it and not S.reuse[it.name] and not isFuel(it.name) then
         -- unknown fuel (e.g. a modded one): is it used up? one try tells
         local c0 = turtle.getItemCount(e)

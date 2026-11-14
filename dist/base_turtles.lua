@@ -423,6 +423,7 @@ if sysLog then sysLog((m.label or t.label or ("Turtle " .. id)) .. " reports aga
 end
 if type(m.label) == "string" then t.label = m.label end
 t.fuel, t.fuelMax, t.items = m.fuel, m.fuelMax, m.items
+t.endless = m.endless and true or nil
 
 local op, np = t.pos, m.pos
 
@@ -1716,6 +1717,9 @@ if idle then t.idleSince = t.idleSince or now else t.idleSince = nil end
 local fuel = tonumber(t.fuel)
 
 local low = fuel and fuel < (tonumber(CONFIG.turtles.lowFuel) or 2000) * ((AWAY and AWAY.on) and 3 or 1)
+
+
+if low and t.endless and fuel >= 20 then low = false end
 
 
 local fc = CONFIG.turtles.fuelChest

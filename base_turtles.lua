@@ -423,6 +423,7 @@ function TT.receive(id, m)
   end
   if type(m.label) == "string" then t.label = m.label end
   t.fuel, t.fuelMax, t.items = m.fuel, m.fuelMax, m.items
+  t.endless = m.endless and true or nil
   -- movement / task changes (for TT.status: a busy turtle that does not move)
   local op, np = t.pos, m.pos
   -- first word since the base started, or back after being offline: count from now
@@ -1716,6 +1717,9 @@ function TT.homeTick()
     local fuel = tonumber(t.fuel)
     -- while you are away they top up earlier (full tanks when you are back)
     local low = fuel and fuel < (tonumber(CONFIG.turtles.lowFuel) or 2000) * ((AWAY and AWAY.on) and 3 or 1)
+    -- carries ENDLESS fuel and tops itself up where it is: no trips to a fuel chest / home for
+    -- it (they stopped its top-up every 10 min); out of fuel < 20 the rescuer comes as before
+    if low and t.endless and fuel >= 20 then low = false end
     -- the shared fuel chest (CONFIG.turtles.fuelChest): one turtle at a time
     -- goes there, refuels and goes home
     local fc = CONFIG.turtles.fuelChest
