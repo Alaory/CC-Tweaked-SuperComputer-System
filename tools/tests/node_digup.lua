@@ -15,6 +15,7 @@ local function run(world, top, home)
   local Y = 0
   local dug = {}
   turtle = {
+    getItemCount = function() return 0 end,     -- (empty inventory: nothing to throw away)
     detectUp = function() return world[Y + 1] ~= nil end,
     inspectUp = function() if world[Y + 1] then return true, { name = world[Y + 1] } end return false end,
     digUp = function() dug[#dug + 1] = world[Y + 1] world[Y + 1] = nil return true end,

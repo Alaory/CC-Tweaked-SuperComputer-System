@@ -29,6 +29,7 @@ function save() end function trailSave() end function gpsCheck() end function fm
 function hasCore() return false end function atHome() return true end
 function afterForcedStop() end
 turtle = { getFuelLevel = function() return "unlimited" end }
+function freeSlots() return 8 end            -- (node.lua: free inventory slots - room enough)
 modemAttached, SLOT_LOCK, TOPUP_RUNNING, FORCE_STOP, STEPPING = true, false, false, false, false
 local SENT = {}
 function send(t, m) SENT[#SENT + 1] = { t = t, m = m } end
