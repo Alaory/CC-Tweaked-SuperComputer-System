@@ -22,6 +22,9 @@ local SRC = h:read("a")
 h:close()
 
 BASE_DIR = "tb"               -- (the stand-in reads the repo's own files: no miner.lua in "tb")
+-- (the stand-in computer is nearly full with the program files: miner.lua dragged in + its safe
+-- copy need ~240 KB - the owner keeps it on a data floppy; this test is about WHICH copy wins)
+CAP[""] = CAP[""] + 300000
 MINE.units = {}
 -- overworld team (m21: reports a checksum), running; nether team has an m20 miner
 report(10, { role = "loader", dim = "overworld", running = true, team = { 11, 12 }, fuel = 50000, ver = "m21", code = "aaaa0000" })

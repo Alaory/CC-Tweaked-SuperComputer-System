@@ -66,6 +66,7 @@ local DROPS = {
   ["minecraft:copper_ore"] = { "minecraft:raw_copper", 6 }, ["minecraft:deepslate_copper_ore"] = { "minecraft:raw_copper", 6 },
 }
 local FAIL = {}
+MADEWAY_N, MADE_SEEN, MW_ASKED = 0, {}, 0
 local function fail(msg) FAIL[#FAIL + 1] = string.format("[%.0fs] %s", T, msg) end
 
 local turtles = {}                          -- id -> unit
@@ -747,6 +748,35 @@ while T < maxT do
     end
     if all and n > 0 then LANES_OK = T io.write("** after the drop every miner waits at its NEW lane (" .. math.floor(T) .. " s)\n") end
   end
+  -- (every scenario) a miner WAITING at its lane (phase ready, no "go" yet) never stands in
+  -- another chunk: making way / going around stays in its own chunk (the next one may not
+  -- be loaded - the owner: "when the turtle moves out of the way it could go to unloaded chunks")
+  for _, mm in ipairs(MS) do
+    local env = ENVS[mm.id]
+    if env and env.OUT_OF_LANE and env.OUT_OF_LANE ~= MADE_SEEN[mm.id] then
+      MADE_SEEN[mm.id] = env.OUT_OF_LANE
+      MADEWAY_N = MADEWAY_N + 1
+      io.write(string.format("** miner %d made way (stepped to %d %d %d) at %.0f s\n", mm.id, mm.pos.x, mm.pos.y, mm.pos.z, T))
+    end
+    local st = env and env.S
+    -- "makeway": a team mate asks a miner waiting at its lane to make way (as when it is stuck
+    -- behind it) - it must step aside INSIDE its chunk (m24 stepped forward into the next one)
+    if SCEN:find("makeway") and st and st.job and st.job.phase == "ready" and not env.crossingDue() and not env.OUT_OF_LANE
+      and not env.MAKEWAY and MW_ASKED < 4 and T > (MW_LAST or 0) + 600 and T > 900 then
+      MW_ASKED, MW_LAST = MW_ASKED + 1, T
+      env.MAKEWAY = { from = 999, t = env.os.clock() }
+      io.write(string.format("** miner %d asked to make way at %.0f s\n", mm.id, T))
+    end
+    if st and st.job and st.tp and st.job.phase == "ready" and not env.crossingDue() then
+      local _, _, ex, ez = env.chunkCols(st.tp, st.job.ci)
+      if ex and (math.floor(mm.pos.x / 16) ~= math.floor(ex / 16) or math.floor(mm.pos.z / 16) ~= math.floor(ez / 16)) then
+        if not OUTCHUNK then
+          OUTCHUNK = true
+          fail(string.format("miner %d waiting at its lane stands OUTSIDE its chunk (%d %d %d) at %.0f s", mm.id, mm.pos.x, mm.pos.y, mm.pos.z, T))
+        end
+      end
+    end
+  end
   if SCEN:find("drop") and readyOk and not DROPPED and lu and ENVS.loader.S and ENVS.loader.S.plan and ENVS.loader.S.plan.ci >= 2 and T > 1200 then
     DROPPED = MS[tonumber(os.getenv("DROPIDX") or 1)].id
     CI_DROP = ENVS.loader.S.plan.ci
@@ -1004,6 +1034,7 @@ if os.getenv("DBGE") then
     end
   end
 end
+if SCEN:find("makeway") and MADEWAY_N < 2 then fail("asked " .. MW_ASKED .. " times, made way only " .. MADEWAY_N .. " times") end
 if SCEN:find("dropready") and not LANES_OK then fail("after the drop the miners never all waited at their NEW lanes") end
 if SCEN:find("blocker") then
   if not BLOCKED_AT then fail("the blocker never appeared") end

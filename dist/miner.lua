@@ -80,7 +80,7 @@ protect = { "computercraft:*", "*shulker*", "ae2:*", "*chest*", "*barrel*", "sop
 }
 
 STATE_FILE = "miner_state"
-MYVER = "m24"
+MYVER = "m25"
 DX = { [0] = 0, 1, 0, -1 }
 DZ = { [0] = -1, 0, 1, 0 }
 FNAME = { [0] = "north", "east", "south", "west" }
@@ -1163,7 +1163,11 @@ local f0 = S.pos.f
 local sides = (d == "f") and { (f0 + 1) % 4, (f0 + 3) % 4 } or { f0, (f0 + 1) % 4, (f0 + 3) % 4, (f0 + 2) % 4 }
 for _, sf in ipairs(sides) do
 local x, z = S.pos.x + DX[sf], S.pos.z + DZ[sf]
-local inChunk = not CHUNK_LOCK or (math.floor(x / 16) == CHUNK_LOCK[1] and math.floor(z / 16) == CHUNK_LOCK[2])
+
+
+local lx = CHUNK_LOCK and CHUNK_LOCK[1] or math.floor(S.pos.x / 16)
+local lz = CHUNK_LOCK and CHUNK_LOCK[2] or math.floor(S.pos.z / 16)
+local inChunk = math.floor(x / 16) == lx and math.floor(z / 16) == lz
 if inChunk and not nearStation(x, z, CONFIG.noDig) then
 turnTo(sf)
 local okI, b = turtle.inspect()
@@ -2330,11 +2334,34 @@ local t0, sent = os.clock(), -1000
 
 local function backToLane()
 if not OUT_OF_LANE then return true end
-turnTo((dir + 2) % 4)
+turnTo((OUT_OF_LANE.f + 2) % 4)
 local okB = step("f")
 turnTo(dir)
 if okB then OUT_OF_LANE = nil end
 return okB
+end
+
+
+local function stepAside()
+local opts = { (dir + 2) % 4, (dir + 1) % 4, (dir + 3) % 4 }
+for pass = 1, 2 do
+for _, f in ipairs(opts) do
+local x, z = S.pos.x + DX[f], S.pos.z + DZ[f]
+if math.floor(x / 16) == cx and math.floor(z / 16) == cz and not nearStation(x, z, CONFIG.noDig) then
+turnTo(f)
+local okI, b = turtle.inspect()
+local isT = okI and tostring(b.name):find("computercraft:turtle", 1, true)
+if not isT and (pass == 2 or not turtle.detect()) then
+AVOIDING = true
+local okS = step("f")
+AVOIDING = false
+if okS then return f end
+end
+end
+end
+end
+turnTo(dir)
+return nil
 end
 while GO ~= ci do
 if not S.running and not crossingDue() then
@@ -2353,15 +2380,15 @@ save()
 return true
 end
 if MAKEWAY and os.clock() - MAKEWAY.t < 60 and not OUT_OF_LANE then
-turnTo(dir)
-if not turtle.detect() and step("f") then
-OUT_OF_LANE = os.clock()
+local f = stepAside()
+if f then
+OUT_OF_LANE = { t = os.clock(), f = f }
 note("Made way for team mate #" .. tostring(MAKEWAY.from))
 end
 MAKEWAY = nil
 end
-if OUT_OF_LANE and os.clock() - OUT_OF_LANE > 25 then
-if not backToLane() then OUT_OF_LANE = os.clock() - 15 end
+if OUT_OF_LANE and os.clock() - OUT_OF_LANE.t > 25 then
+if not backToLane() then OUT_OF_LANE.t = os.clock() - 15 end
 end
 if os.clock() - sent > 10 then
 equipTool("modem")

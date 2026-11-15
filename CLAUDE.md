@@ -414,6 +414,13 @@ PneumaticCraft drone rides, turtle mapping/surveys, and an AE2 ME network view.
   say "the pickaxe did not show up". minesim team4dropready / team5dropready / team4dropreadynopick
   (drop while the others wait at their lanes; nopick = pickaxes cannot be put on for 10 min); the sim
   now updates ENVS on SHUTDOWN too (the checks read a dead program before).
+  m25 (the owner: "when the turtle moves out of the way it could go to unloaded chunks"): MAKEWAY
+  no longer steps FORWARD into X1 (the next chunk - maybe not loaded, or loaded but not running at
+  the edge of the loaded area = a frozen turtle): stepAside = one block back / to a side INSIDE the
+  job chunk (open first, else dug), OUT_OF_LANE {t, f} -> back the opposite way. passTurtle's side
+  steps stay in CHUNK_LOCK, else the chunk the turtle stands in. minesim team3makeway /
+  team5makewaycaves (a make-way request to a waiting miner) + EVERY scenario: a miner in "ready"
+  (no crossing due) outside its job chunk = FAIL (m24 failed it).
   MINE.silentTick: a unit silent 15 min (mining.silentWarn) -> ONE WARNING + sysLog with last spot,
   dim, job, last note (a crash can delete a turtle: "no trace"); `mine` shows offline units' spot. TOOL CHECK (m20, toolNow): turtle.getEquippedLeft/Right where they exist
   (the ITEM: modem / geo / pickaxe / "none"); else the side's peripheral type - BUT a side whose

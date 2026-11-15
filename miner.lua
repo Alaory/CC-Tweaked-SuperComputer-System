@@ -80,7 +80,7 @@ CONFIG = {
 }
 
 STATE_FILE = "miner_state"
-MYVER = "m24"            -- shown on the screen and the base (MINING tab)
+MYVER = "m25"            -- shown on the screen and the base (MINING tab)
 DX = { [0] = 0, 1, 0, -1 }
 DZ = { [0] = -1, 0, 1, 0 }
 FNAME = { [0] = "north", "east", "south", "west" }
@@ -1163,7 +1163,11 @@ function passTurtle(d, beside)
   local sides = (d == "f") and { (f0 + 1) % 4, (f0 + 3) % 4 } or { f0, (f0 + 1) % 4, (f0 + 3) % 4, (f0 + 2) % 4 }
   for _, sf in ipairs(sides) do
     local x, z = S.pos.x + DX[sf], S.pos.z + DZ[sf]
-    local inChunk = not CHUNK_LOCK or (math.floor(x / 16) == CHUNK_LOCK[1] and math.floor(z / 16) == CHUNK_LOCK[2])
+    -- never into another chunk (the lock, else the chunk I stand in): the one next door may
+    -- not be loaded - or loaded but not running (the edge of the loaded area) = a frozen turtle
+    local lx = CHUNK_LOCK and CHUNK_LOCK[1] or math.floor(S.pos.x / 16)
+    local lz = CHUNK_LOCK and CHUNK_LOCK[2] or math.floor(S.pos.z / 16)
+    local inChunk = math.floor(x / 16) == lx and math.floor(z / 16) == lz
     if inChunk and not nearStation(x, z, CONFIG.noDig) then
       turnTo(sf)
       local okI, b = turtle.inspect()
@@ -2326,15 +2330,38 @@ function teamStep()
     end
     -- wait for the loader's "go" (everybody is ready), then step over
     local t0, sent = os.clock(), -1000
-    -- MADE WAY: stepped into the first block of the next chunk for a team mate stuck behind
-    -- me; back to the lane after 25 s (and always before anything else happens)
+    -- MADE WAY: stepped one block back / aside (inside THIS chunk) for a team mate stuck
+    -- behind me; back to the lane after 25 s (and always before anything else happens)
     local function backToLane()
       if not OUT_OF_LANE then return true end
-      turnTo((dir + 2) % 4)
+      turnTo((OUT_OF_LANE.f + 2) % 4)
       local okB = step("f")
       turnTo(dir)
       if okB then OUT_OF_LANE = nil end
       return okB
+    end
+    -- make way: one block back or to the side, INSIDE this chunk (the next chunk may not be
+    -- loaded - a turtle stepping into it can freeze); an open block first, else one dug
+    local function stepAside()
+      local opts = { (dir + 2) % 4, (dir + 1) % 4, (dir + 3) % 4 }
+      for pass = 1, 2 do
+        for _, f in ipairs(opts) do
+          local x, z = S.pos.x + DX[f], S.pos.z + DZ[f]
+          if math.floor(x / 16) == cx and math.floor(z / 16) == cz and not nearStation(x, z, CONFIG.noDig) then
+            turnTo(f)
+            local okI, b = turtle.inspect()
+            local isT = okI and tostring(b.name):find("computercraft:turtle", 1, true)
+            if not isT and (pass == 2 or not turtle.detect()) then
+              AVOIDING = true
+              local okS = step("f")
+              AVOIDING = false
+              if okS then return f end
+            end
+          end
+        end
+      end
+      turnTo(dir)
+      return nil
     end
     while GO ~= ci do
       if not S.running and not crossingDue() then
@@ -2353,15 +2380,15 @@ function teamStep()
         return true
       end
       if MAKEWAY and os.clock() - MAKEWAY.t < 60 and not OUT_OF_LANE then
-        turnTo(dir)
-        if not turtle.detect() and step("f") then
-          OUT_OF_LANE = os.clock()
+        local f = stepAside()
+        if f then
+          OUT_OF_LANE = { t = os.clock(), f = f }
           note("Made way for team mate #" .. tostring(MAKEWAY.from))
         end
         MAKEWAY = nil
       end
-      if OUT_OF_LANE and os.clock() - OUT_OF_LANE > 25 then
-        if not backToLane() then OUT_OF_LANE = os.clock() - 15 end     -- (still taken: again in 10 s)
+      if OUT_OF_LANE and os.clock() - OUT_OF_LANE.t > 25 then
+        if not backToLane() then OUT_OF_LANE.t = os.clock() - 15 end   -- (still taken: again in 10 s)
       end
       if os.clock() - sent > 10 then
         equipTool("modem")
