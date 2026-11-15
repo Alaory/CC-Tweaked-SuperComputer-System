@@ -134,3 +134,22 @@ do
   local out = table.concat(handleCommand("mine") or {}, "\n")
   pushNote = p0
 end
+
+-- the NEWEST wins: an OLD miner.lua dragged next to inventory.lua must not beat a newer one
+-- (the owner: "I still see m23" - an old dragged copy kept mine update on that version)
+do
+  local newer = SRC:gsub('MYVER = "m(%d+)"', function(n) return 'MYVER = "m' .. (tonumber(n) + 5) .. '"' end, 1)
+  local older = SRC:gsub('MYVER = "m(%d+)"', 'MYVER = "m3"', 1)
+  local hf = fs.open(dataFile(MINE.CODE_FILE), "wb") hf.write(newer) hf.close()
+  local f2 = fs.open(fs.combine(BASE_DIR or "", "miner.lua"), "wb") f2.write(older) f2.close()
+  local said = {}
+  local c = MINE.loadCode(false, function(t) said[#said + 1] = t end)
+  CHECK(c and c.text == newer, "the newer stored copy wins over an OLD dragged miner.lua (" .. tostring(c and c.myver) .. ")")
+  CHECK(not fs.exists(fs.combine(BASE_DIR or "", "miner.lua")), "the old dragged file is removed")
+  CHECK(table.concat(said, " "):find("newest", 1, true), "it says which ones it found")
+  -- and a NEWER dragged one wins over the stored copy
+  local newest = SRC:gsub('MYVER = "m(%d+)"', function(n) return 'MYVER = "m' .. (tonumber(n) + 9) .. '"' end, 1)
+  local f3 = fs.open(fs.combine(BASE_DIR or "", "miner.lua"), "wb") f3.write(newest) f3.close()
+  local c2 = MINE.loadCode(false)
+  CHECK(c2 and c2.text == newest, "a newer dragged miner.lua wins")
+end

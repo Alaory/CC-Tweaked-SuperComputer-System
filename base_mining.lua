@@ -303,35 +303,58 @@ function MINE.storeCode(text)
   return true, p
 end
 -- find the program: a miner.lua dragged in > the stored copy; download = GitHub first
+-- the NEWEST of: a miner.lua dragged next to inventory.lua, GitHub (download), the stored copy.
+-- (Before: a miner.lua lying next to inventory.lua always won - an OLD one dragged in once kept
+-- "mine update" on that version.) The winner is kept on the data storage; a dragged file is
+-- moved there (or deleted when it is older).
+function MINE.verNum(text)
+  return tonumber(tostring(text or ""):match('MYVER%s*=%s*"m(%d+)"')) or -1
+end
 function MINE.loadCode(download, log)
   log = log or function() end
+  local cands = {}
   local here = fs.combine(BASE_DIR or "", "miner.lua")
-  local text, from = readAll(here), "miner.lua on this computer"
-  if text then
-    local c, why = MINE.setCode(text, from)
-    if not c then return nil, why end
-    local okS = MINE.storeCode(text)
-    if okS then pcall(fs.delete, here) log("miner.lua moved onto the data storage (" .. math.ceil(#text / 1024) .. " KB)") end
-    return c
-  end
+  local hereText = readAll(here)
+  if hereText then cands[#cands + 1] = { text = hereText, from = "miner.lua on this computer" } end
   if download and http then
     local path = fs.combine(BASE_DIR or "", "upgrade.lua")
     local fn = fs.exists(path) and loadfile(path, "t", _ENV)
     if fn then
       local okR, done, body, v = pcall(fn, { fetch = "miner.lua", group = "miner", dir = BASE_DIR or "", log = log })
-      if okR and done and type(body) == "string" then
-        local c, why = MINE.setCode(body, "GitHub " .. tostring(v))
-        if not c then return nil, why end
-        local okS, where = MINE.storeCode(body)
-        log(okS and ("Kept on " .. where) or ("Not kept: " .. tostring(where)))
-        return c
-      end
-      log("Download did not work - trying the stored copy")
+      if okR and done and type(body) == "string" then cands[#cands + 1] = { text = body, from = "GitHub " .. tostring(v) }
+      else log("Download did not work - using what is here") end
     end
   end
-  text = readAll(dataFile and dataFile(MINE.CODE_FILE) or MINE.CODE_FILE)
-  if text then return MINE.setCode(text, "the stored copy") end
-  return nil, "no miner.lua: drag one onto this computer (next to inventory.lua) or allow http for  mine update"
+  local stored = readAll(dataFile and dataFile(MINE.CODE_FILE) or MINE.CODE_FILE)
+  if stored then cands[#cands + 1] = { text = stored, from = "the stored copy" } end
+  if #cands == 0 then
+    return nil, "no miner.lua: drag one onto this computer (next to inventory.lua) or allow http for  mine update"
+  end
+  local best, why
+  for _, c in ipairs(cands) do
+    local okC, e = MINE.setCode(c.text, c.from)     -- (must compile and be miner.lua)
+    if okC then
+      c.n = MINE.verNum(c.text)
+      if not best or c.n > best.n then best = c end
+    else
+      why = e
+    end
+  end
+  if not best then return nil, why end
+  if #cands > 1 then
+    local list = {}
+    for _, c in ipairs(cands) do list[#list + 1] = c.from .. " = m" .. tostring(c.n or "?") end
+    log("Found " .. table.concat(list, ", ") .. " - using the newest: " .. best.from)
+  end
+  local c = MINE.setCode(best.text, best.from)
+  local okS, where = MINE.storeCode(best.text)
+  if okS and hereText then
+    pcall(fs.delete, here)                          -- (kept on the data storage now, or it was older)
+    log("miner.lua next to inventory.lua " .. (best.text == hereText and "moved onto the data storage" or "was older - removed"))
+  elseif not okS then
+    log("Not kept: " .. tostring(where))
+  end
+  return c
 end
 
 -- the units that can be updated; whole teams (dim) with an old program are skipped

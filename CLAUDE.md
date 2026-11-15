@@ -380,7 +380,7 @@ PneumaticCraft drone rides, turtle mapping/surveys, and an AE2 ME network view.
   [stop]`, MINING tab UPDATE MINERS two taps): miner.lua is NOT kept on the base's disk - upgrade.lua
   fetch mode (o.fetch = "miner.lua", o.group = "miner"; manifest group miner + slim:miner) downloads
   it checked, kept as miner_code.lua via dataFile (data floppy first); a miner.lua dragged next to
-  inventory.lua is used first (moved onto the floppy). Every RUNNING team is PAUSED first (U.resume),
+  inventory.lua, GitHub and the stored copy: the NEWEST (MYVER mN, MINE.verNum) wins, kept on the floppy, the dragged file removed (an old dragged copy used to win for good - "I still see m23"). Every RUNNING team is PAUSED first (U.resume),
   then each online unit whose m.code (codeHash of its own program file, the same as make_manifest h)
   differs gets "upd" {ver, i, n, text} pieces of 8000 straight into state.tOut (NOT u.queue - that
   resends on every report), again after 60 s unless m.updReady; when a whole team runs it -> "start"
