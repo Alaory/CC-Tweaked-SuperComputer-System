@@ -268,6 +268,9 @@ local function turtleApi(u)
   local function equip(side)
     act(u)
     local it = u.inv[u.sel]
+    -- scenario "nopick": after the drop, NO miner can put its pickaxe on for 10 min (the
+    -- owner's "the pickaxe did not show up") - they cannot dig their way around anybody
+    if SCEN:find("nopick") and DROPPED and T < (NOPICK_UNTIL or 0) and it and it.name:find("pickaxe") then return true end
     local old = u[side]
     u[side] = it and it.name or nil
     u.inv[u.sel] = old and { name = old, count = 1 } or nil
@@ -716,7 +719,35 @@ while T < maxT do
   end
   -- a miner DELETED by a server crash (miner 1 - the one digging the main
   -- tunnel), then on the base:  mine drop <id>  - the others must go on
-  if SCEN:find("drop") and not DROPPED and lu and ENVS.loader.S and ENVS.loader.S.plan and ENVS.loader.S.plan.ci >= 2 and T > 1200 then
+  -- "dropready": the miner is lost while the OTHERS already wait at their lanes (stacked in one
+  -- column): their numbers change, a new miner 1 must climb past the ones waiting above it
+  local readyOk = true
+  if SCEN:find("dropready") then
+    local nReady = 0
+    for i, mm in ipairs(MS) do
+      local st = ENVS[mm.id] and ENVS[mm.id].S
+      if i ~= tonumber(os.getenv("DROPIDX") or 1) and st and st.job and st.job.phase == "ready" then nReady = nReady + 1 end
+    end
+    readyOk = nReady >= 2
+  end
+  -- (dropready) after the drop: every miner waits at its NEW lane (the height that goes with
+  -- its new number) - before, a waiting miner kept its old height and the one below it wanted
+  -- that very block for ever (the owner's "a turtle is in the way")
+  if SCEN:find("dropready") and DROPPED and not LANES_OK and not BAD_LANE then
+    local all, n = true, 0
+    for _, mm in ipairs(MS) do
+      local env = ENVS[mm.id]
+      local st = env and env.S
+      if mm.id ~= DROPPED and st and st.job and st.tp then
+        n = n + 1
+        local k = env.myIndex()
+        local lane = env.tunY(st.tp, st.job.ci) - (k - 1)
+        if not (st.job.phase == "ready" and mm.pos.y == lane) then all = false end
+      end
+    end
+    if all and n > 0 then LANES_OK = T io.write("** after the drop every miner waits at its NEW lane (" .. math.floor(T) .. " s)\n") end
+  end
+  if SCEN:find("drop") and readyOk and not DROPPED and lu and ENVS.loader.S and ENVS.loader.S.plan and ENVS.loader.S.plan.ci >= 2 and T > 1200 then
     DROPPED = MS[tonumber(os.getenv("DROPIDX") or 1)].id
     CI_DROP = ENVS.loader.S.plan.ci
     if not SCEN:find("alive") then           -- "dropalive": dropped, but it still runs
@@ -726,6 +757,7 @@ while T < maxT do
     MINE.cmd(LOADER, "drop", { DROPPED })
     MINE.units[DROPPED] = nil
     io.write(string.format("** miner %d DELETED at %.0f s (chunk %d) - mine drop sent\n", DROPPED, T, CI_DROP))
+    NOPICK_UNTIL = T + 600
   end
   -- a NEW miner is put down while the team is at work (scenario "join"): it must be taken
   -- into the running team at the END of the list (nobody's number changes) and mine along.
@@ -866,7 +898,10 @@ while T < maxT do
   if ok and w == "SHUTDOWN" then
     -- shut down while paused: starts again from startup
     c.u.open = {}
-    c.co = coroutine.create(assert(load(SRC, "miner.lua", "t", envFor(c.u))))
+    local envS = envFor(c.u)
+    ENVS[c.u.id] = envS                                -- (the checks read the RUNNING program)
+    if c.u.role == "loader" then ENVS.loader = envS end
+    c.co = coroutine.create(assert(load(c.u.files["miner.lua"] or SRC, "miner.lua", "t", envS)))
     ok, w = true, T + 1
   end
   if not ok then fail(c.u.role .. " CRASHED: " .. tostring(w)) break end
@@ -960,6 +995,16 @@ if SCEN:find("update") then
   print("ores after the update: " .. (now - UPD_BEFORE.ores) .. ", restarts " .. tostring(REBOOTS))
   if now - UPD_BEFORE.ores < 50 then fail("the team did not mine after the update") end
 end
+if os.getenv("DBGE") then
+  for _, mm in ipairs(MS) do
+    local e = ENVS[mm.id]
+    if e and e.S then
+      io.write(string.format("END %d y%d phase=%s ci=%s GO=%s due=%s k=%s team=%s\n", mm.id, mm.pos.y, tostring(e.S.job and e.S.job.phase),
+        tostring(e.S.job and e.S.job.ci), tostring(e.GO), tostring(e.crossingDue and e.crossingDue()), tostring(e.myIndex()), table.concat(e.S.team or {}, ",")))
+    end
+  end
+end
+if SCEN:find("dropready") and not LANES_OK then fail("after the drop the miners never all waited at their NEW lanes") end
 if SCEN:find("blocker") then
   if not BLOCKED_AT then fail("the blocker never appeared") end
   local now, stopped = 0, false

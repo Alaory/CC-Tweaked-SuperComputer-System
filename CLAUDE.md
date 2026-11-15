@@ -398,6 +398,22 @@ PneumaticCraft drone rides, turtle mapping/surveys, and an AE2 ME network view.
   dead turtle (lost in a crash) in a shaft STOPPED the miner after 8 tries. "turtle is in the way"
   errors retry up to 20x without the long waits. minesim team3blocker / team4blockercaves /
   team5blocker (a dead turtle id 999 appears in front of miner 1 at 30 min; sim answers getID). Base
+  m24 (the owner's screenshots: two miners stacked in the lane column, "a turtle is in the way"):
+  LANES MOVE WITH THE NUMBERS - after a drop the miners renumber, lane = yt-(k-1) changes. A miner in
+  "ready" whose number changes (or that finds itself NOT at its lane, e.g. after a restart) goes back
+  to phase "lane" (before: waited at the OLD height for good - the miner below wanted that very block);
+  in the lane column it moves straight up/down there; goTo(..., exact) for the lane = wait for THAT
+  block (no "near"), STEP_ASK false for the goal block. "notready" {ci}: a miner leaving "ready" (index
+  change, tunnel override, wrong spot) tells the loader - before, its old ready flag let the loader
+  cross WITHOUT it (left in an unloaded chunk; failed team5dropready on m23 too). MAKEWAY: a miner
+  blocked by a team mate (not its own goal) sends "makeway" after 3 s (every 15 s); a miner waiting in
+  "ready" steps forward into its X1 block (already dug - no digging needed) for 25 s, always back
+  first (index change, pause, "go"). The LOADER's every team message carries m.team (S.team): a
+  miner's modem is off while it digs and missed the 30-s "team" messages. equipTool waits up to 5 s
+  and says what the side showed ("left side shows: X, read as Y") - the owner's miners still sometimes
+  say "the pickaxe did not show up". minesim team4dropready / team5dropready / team4dropreadynopick
+  (drop while the others wait at their lanes; nopick = pickaxes cannot be put on for 10 min); the sim
+  now updates ENVS on SHUTDOWN too (the checks read a dead program before).
   MINE.silentTick: a unit silent 15 min (mining.silentWarn) -> ONE WARNING + sysLog with last spot,
   dim, job, last note (a crash can delete a turtle: "no trace"); `mine` shows offline units' spot. TOOL CHECK (m20, toolNow): turtle.getEquippedLeft/Right where they exist
   (the ITEM: modem / geo / pickaxe / "none"); else the side's peripheral type - BUT a side whose

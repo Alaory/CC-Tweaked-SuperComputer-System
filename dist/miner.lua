@@ -80,7 +80,7 @@ protect = { "computercraft:*", "*shulker*", "ae2:*", "*chest*", "*barrel*", "sop
 }
 
 STATE_FILE = "miner_state"
-MYVER = "m23"
+MYVER = "m24"
 DX = { [0] = 0, 1, 0, -1 }
 DZ = { [0] = -1, 0, 1, 0 }
 FNAME = { [0] = "north", "east", "south", "west" }
@@ -396,6 +396,10 @@ m.sig = sign(S.key or "change-me", m.t, m.n)
 m.dim = S.dim
 m.from, m.to = MYTID, to
 
+
+
+if S.role == "loader" and S.team and m.team == nil then m.team = S.team end
+
 if S.role == "miner" and S.station then m.st = { x = S.station.x, y = S.station.y, z = S.station.z } end
 if to then pcall(rednet.send, to % 100000, m, CONFIG.team) else pcall(rednet.broadcast, m, CONFIG.team) end
 end
@@ -526,6 +530,9 @@ sendTeam(id, "team", { team = S.team, plan = S.plan })
 elseif m.t == "ready" and S.plan and m.ci == S.plan.ci then
 S.plan.ready[id] = m.ci
 save()
+elseif m.t == "notready" and S.plan and m.ci == S.plan.ci and S.plan.goSent ~= S.plan.ci then
+S.plan.ready[id] = nil
+save()
 elseif m.t == "needlayer" and S.plan and m.ci == S.plan.ci then
 local P = S.plan
 P.assigned = P.assigned or {}
@@ -554,6 +561,15 @@ if S.stationUse and S.stationUse.id == id then S.stationUse = nil end
 end
 elseif S.role == "miner" then
 if id == S.leader then LEADER_SEEN = os.clock() end
+
+if id == S.leader and m.t ~= "team" and type(m.team) == "table" then
+local mine, same = false, #m.team == #(S.team or {})
+for i, t in ipairs(m.team) do
+if t == MYTID then mine = true end
+if (S.team or {})[i] ~= t then same = false end
+end
+if mine and not same then S.team = m.team save() end
+end
 
 
 if m.t == "loaderhere" and S.leader and id ~= S.leader and os.clock() - (LEADER_SEEN or 0) > 600
@@ -594,6 +610,8 @@ S.leader, S.team, S.tp, S.job, S.running = nil, nil, nil, nil, false
 note("Taken out of the team by the loader - waiting to join again")
 save()
 end
+elseif m.t == "makeway" and isMember(id) then
+MAKEWAY = { from = id, t = os.clock() }
 elseif m.t == "go" and id == S.leader then
 GO = m.ci
 elseif m.t == "layer" and id == S.leader then
@@ -968,11 +986,20 @@ local ok = (side == "left") and turtle.equipLeft() or turtle.equipRight()
 turtle.select(1)
 if not ok then return false, "could not equip the " .. kind end
 
-for _ = 1, 40 do
+for _ = 1, 100 do
 if toolNow() == kind then break end
 sleep(0.05)
 end
-if toolNow() ~= kind then return false, "the " .. kind .. " did not show up after equipping it" end
+local now = toolNow()
+if now ~= kind then
+
+local f = (side == "left") and turtle.getEquippedLeft or turtle.getEquippedRight
+local okE, d = false, nil
+if f then okE, d = pcall(f) end
+local seen = (okE and type(d) == "table" and d.name) or (f and "nothing") or ("type " .. tostring(peripheral.getType(side)))
+return false, "the " .. kind .. " did not show up after equipping it (" .. side .. " side shows: " .. tostring(seen) ..
+", read as " .. tostring(now) .. ")"
+end
 if kind == "modem" then pcall(rednet.open, side) end
 return true
 end
@@ -1090,6 +1117,18 @@ local myId = os.getComputerID()
 local patience = 20
 if other and (other < myId or other == S.leader) then patience = 4 end
 if try % 10 == 1 then setTask("team mate #" .. tostring(other or "?") .. " is in the way - waiting") end
+
+
+if S.role == "miner" and other and try >= 3 and STEP_ASK then
+local tid
+for _, t in ipairs(S.team or {}) do if t % 100000 == other then tid = t end end
+if tid and os.clock() - ((ASKED or {})[tid] or -999) > 15 then
+ASKED = ASKED or {}
+ASKED[tid] = os.clock()
+equipTool("modem")
+pcall(sendTeam, tid, "makeway", {})
+end
+end
 if S.role == "miner" and ((not AVOIDING and try > patience) or (AVOIDING and try > 10)) then
 return false, TURTLE_WAY
 elseif try >= 50 then
@@ -1117,6 +1156,7 @@ end
 
 
 TURTLE_WAY = "a turtle is in the way - next try"
+STEP_ASK = true
 AVOIDING = false
 function passTurtle(d, beside)
 local f0 = S.pos.f
@@ -1156,7 +1196,7 @@ end
 
 
 
-function goTo(x, y, z, trail)
+function goTo(x, y, z, trail, exact)
 local function addPt()
 if trail then
 local l = trail[#trail]
@@ -1177,13 +1217,17 @@ local d = "f"
 if axis == "x" then turnTo(goal > cur and 1 or 3)
 elseif axis == "z" then turnTo(goal > cur and 2 or 0)
 else d = (goal > cur) and "u" or "d" end
+local nx, ny, nz = cellFor(d)
+
+STEP_ASK = not (nx == x and ny == y and nz == z)
 local ok, e = step(d)
+STEP_ASK = true
 if not ok then
 if e ~= TURTLE_WAY then return false, e end
-local nx, ny, nz = cellFor(d)
 if math.abs(goal - cur) == 1 then
 if nx == x and ny == y and nz == z then
-if passTurtle(d, true) then return true, "near" end
+
+if not exact and passTurtle(d, true) then return true, "near" end
 return false, e
 end
 return false, "corner"
@@ -2118,6 +2162,12 @@ function crossingDue()
 local J, tp = S.job, S.tp
 return J and tp and J.phase == "ready" and J.plan == tp.id and (tp.goSent == J.ci or GO == J.ci) or false
 end
+
+
+function unready(ci)
+equipTool("modem")
+pcall(sendTeam, S.leader, "notready", { ci = ci })
+end
 function teamStep()
 local okC, errC = true, nil
 if not crossingDue() then okC, errC = checkpoint() end
@@ -2135,6 +2185,7 @@ local lane = ty - (k - 1)
 
 
 if k == 1 and not J.tunnelDone and J.phase ~= "tunnel" and not crossingDue() then
+if J.phase == "ready" then unready(ci) end
 J.phase = "tunnel"
 save()
 end
@@ -2230,14 +2281,18 @@ setTask(isTransit(tp, ci) and ("moving away from the unload station (chunk " .. 
 or ("to my lane at the edge of chunk " .. ci))
 local ok, err
 if S.pos.y ~= lane then
-if J.mine or (math.floor(S.pos.x / 16) == cx and math.floor(S.pos.z / 16) == cz and k > 1 and ci > 0) then
+if S.pos.x == ex and S.pos.z == ez then
+
+
+ok, err = goTo(ex, lane, ez, nil, true)
+elseif J.mine or (math.floor(S.pos.x / 16) == cx and math.floor(S.pos.z / 16) == cz and k > 1 and ci > 0) then
 ok, err = goHV(sx, lane, sz)
 else
 ok, err = goVH(S.pos.x, lane, S.pos.z)
 end
 if not ok then return false, err end
 end
-ok, err = goTo(ex, lane, ez)
+ok, err = goTo(ex, lane, ez, nil, true)
 if not ok then return false, err end
 turnTo(dir)
 for _ = 1, 12 do
@@ -2261,21 +2316,64 @@ save()
 return true
 elseif J.phase == "ready" then
 
+
+
+if not crossingDue() and not OUT_OF_LANE and (S.pos.y ~= lane or S.pos.x ~= ex or S.pos.z ~= ez) then
+unready(ci)
+J.phase = "lane"
+save()
+return true
+end
+
 local t0, sent = os.clock(), -1000
+
+
+local function backToLane()
+if not OUT_OF_LANE then return true end
+turnTo((dir + 2) % 4)
+local okB = step("f")
+turnTo(dir)
+if okB then OUT_OF_LANE = nil end
+return okB
+end
 while GO ~= ci do
-if not S.running and not crossingDue() then return false, "paused" end
+if not S.running and not crossingDue() then
+if not backToLane() then return false, "could not get back to my lane - next try" end
+return false, "paused"
+end
 
 
-if myIndex() ~= k and not crossingDue() then return true end
+if myIndex() ~= k and not crossingDue() then
+if not backToLane() then return false, "could not get back to my lane - next try" end
+
+
+unready(ci)
+J.phase = "lane"
+save()
+return true
+end
+if MAKEWAY and os.clock() - MAKEWAY.t < 60 and not OUT_OF_LANE then
+turnTo(dir)
+if not turtle.detect() and step("f") then
+OUT_OF_LANE = os.clock()
+note("Made way for team mate #" .. tostring(MAKEWAY.from))
+end
+MAKEWAY = nil
+end
+if OUT_OF_LANE and os.clock() - OUT_OF_LANE > 25 then
+if not backToLane() then OUT_OF_LANE = os.clock() - 15 end
+end
 if os.clock() - sent > 10 then
 equipTool("modem")
 sendTeam(S.leader, "ready", { ci = ci })
 sent = os.clock()
 end
-setTask("ready at my lane - waiting for the others (" .. math.floor(os.clock() - t0) .. " s)")
+setTask((OUT_OF_LANE and "made way for a team mate - " or "") .. "ready at my lane - waiting for the others (" ..
+math.floor(os.clock() - t0) .. " s)")
 if os.clock() - LAST_STATUS > 15 then sendBase("status") end
 listen(1)
 end
+if not backToLane() then return false, "could not get back to my lane - next try" end
 turnTo(dir)
 for _ = 1, 8 do
 if not turtle.detect() then break end
