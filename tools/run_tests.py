@@ -158,6 +158,11 @@ def _():
     rc, out = run(["lua5.3", "tools/tests/node_cell.lua", "node.lua", "miner.lua"])
     return rc == 0, out.strip()
 
+@check("node", "dug junk thrown away, ores/tools kept (node_junk.lua)")
+def _():
+    rc, out = run(["lua5.3", "tools/tests/node_junk.lua", "node.lua"])
+    return rc == 0, out.strip()
+
 @check("node", "saving on a full disk keeps the old state (node_save_safe.lua)")
 def _():
     rc, out = run(["lua5.3", "tools/tests/node_save_safe.lua", "node.lua"])

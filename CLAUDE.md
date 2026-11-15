@@ -281,6 +281,15 @@ PneumaticCraft drone rides, turtle mapping/surveys, and an AE2 ME network view.
   -> topUp(1000, false, 400) finds an endless item it did not know. REUSE_SLOTS is a GLOBAL (the
   report, defined earlier in the file, reads it): m.endless -> t.endless -> homeTick sends no fuel
   trips / low-fuel home trips to a turtle with endless fuel and >= 20 (they cut its top-up).
+- DUG JUNK (node.lua JUNK / isJunk / dropJunk / freeSlots): survey turtles came back FULL of
+  dug blocks (nothing ever threw them away; a full turtle cannot take fuel from a chest). tryDig:
+  after a dig with <= 2 free slots -> dropJunk: plain stone / dirt / gravel / netherrack ... (exact
+  names after the colon, any mod - never ores, fuel, tools, redstone/glowstone), thrown out on a side
+  WITHOUT an inventory, never in the base zone; idle with 0 free slots -> once a minute too. m.freeSlots
+  -> t.freeSlots. LOST TOOLS: the base compares t.gear with the new report - "scanner" / "pick" gone ->
+  WARNING + sysLog "<turtle> LOST its Geo Scanner (last job: t.prevTask, now at .., N free slots)" (the
+  owner finds survey turtles with EMPTY inventories - cause not found yet; this tells us when / where).
+  node_junk.lua, test_lost_tool.lua.
 - Fuel chest at home (node.lua fuelStation): idle AT home with fuel < lowFuel
   (2000) -> sucks from an inventory below/above/in front (never a turtle),
   burns ONLY fuel items up to stationFuel (20000), non-fuel and empty buckets

@@ -428,6 +428,7 @@ function send(t, extra)
   m.fuel = fuel
   m.fuelMax = (fuel ~= "unlimited") and turtle.getFuelLimit() or nil
   m.items = itemCount()
+  m.freeSlots = freeSlots and freeSlots() or nil
   m.task = task
   if S.pos and S.pos.x then
     m.pos = { x = S.pos.x, y = S.pos.y, z = S.pos.z, f = S.pos.f and FNAME[S.pos.f] or nil }
@@ -1103,7 +1104,48 @@ tryDig = function(dir)
   local okI, data = inspect()
   if not okI or type(data) ~= "table" or not natural(data.name) then return false end
   local dig = (dir == "up" and turtle.digUp) or (dir == "down" and turtle.digDown) or turtle.dig
-  return withEquipped("_pickaxe", dig) == true
+  local okD = withEquipped("_pickaxe", dig) == true
+  -- what it digs piles up (cobblestone, dirt ...): with 2 slots or fewer left it throws
+  -- the plain stone / dirt away (a full turtle could not take fuel from a chest any more)
+  if okD and freeSlots() <= 2 then pcall(dropJunk) end
+  return okD
+end
+
+-- plain blocks a turtle digs on its way: thrown away, never kept (exact names, any mod)
+JUNK = {}
+for _, n in ipairs({ "cobblestone", "cobbled_deepslate", "dirt", "coarse_dirt", "rooted_dirt", "gravel", "sand",
+                     "red_sand", "netherrack", "tuff", "granite", "diorite", "andesite", "calcite", "dripstone_block",
+                     "pointed_dripstone", "flint", "mud", "moss_block", "sandstone", "red_sandstone", "basalt",
+                     "smooth_basalt", "blackstone", "end_stone", "soul_sand", "soul_soil", "snowball", "deepslate",
+                     "stone", "mycelium", "podzol", "grass_block", "clay", "terracotta" }) do JUNK[n] = true end
+function isJunk(name)
+  local id = tostring(name):match(":(.+)$") or tostring(name)
+  return JUNK[id] == true
+end
+function freeSlots()
+  local n = 0
+  for i = 1, 16 do if turtle.getItemCount(i) == 0 then n = n + 1 end end
+  return n
+end
+-- throw the junk out on a side with NO inventory (never into a chest), never at the base
+function dropJunk()
+  if inBaseZone() then return 0 end
+  local fn
+  for _, d in ipairs({ { "top", turtle.dropUp }, { "front", turtle.drop }, { "bottom", turtle.dropDown } }) do
+    local okI, inv = pcall(peripheral.hasType, d[1], "inventory")
+    if not (okI and inv) then fn = d[2] break end
+  end
+  if not fn then return 0 end
+  local sel, n = turtle.getSelectedSlot(), 0
+  for i = 1, 16 do
+    local d = turtle.getItemDetail(i)
+    if d and isJunk(d.name) then
+      turtle.select(i)
+      if fn() then n = n + d.count end
+    end
+  end
+  turtle.select(sel)
+  return n
 end
 
 function isOre(b)
@@ -3778,6 +3820,12 @@ function worker()
                          msg = "first start - refuelled by myself: " .. tostring(okR and msgR or okR2) })
       end
       pcall(idleEmptyFuel)                         -- 0 fuel: try everything it carries (once a minute)
+      -- full of dug blocks (from before): throw the junk away, once a minute, not at the base
+      if not job and (not JUNK_TRY or os.clock() - JUNK_TRY > 60) and freeSlots() == 0 then
+        JUNK_TRY = os.clock()
+        local nJ = dropJunk()
+        if nJ > 0 then send("result", { cmd = "junk", ok = true, msg = "inventory was full - threw away " .. nJ .. " dug blocks (stone, dirt ...)" }) end
+      end
       -- idle: fill up with reusable fuel, a little at a time (stays responsive)
       local f = turtle.getFuelLevel()
       if f ~= "unlimited" and S.reuse and next(S.reuse) and f < refuelTarget() then

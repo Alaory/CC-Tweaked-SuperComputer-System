@@ -473,7 +473,24 @@ function TT.receive(id, m)
   if oldVer and oldVer ~= "?" and m.ver and m.ver ~= oldVer and CODE and m.ver == CODE.ver then
     pcall(TT.updated, t, oldVer)
   end
+  if m.task and m.task ~= "idle" and not tostring(m.task):find("^waiting") then t.prevTask = m.task end
+  t.freeSlots = tonumber(m.freeSlots)
   if m.gear then
+    -- a TOOL that was there is gone: say so with what it was doing (to find out how)
+    local function has(g, w) for part in tostring(g or ""):gmatch("[^,]+") do if part == w then return true end end end
+    if t.gear then
+      for _, w in ipairs({ "scanner", "pick" }) do
+        if has(t.gear, w) and not has(m.gear, w) then
+          local what = (w == "scanner") and "Geo Scanner" or "pickaxe"
+          local where = (type(m.pos) == "table" and m.pos.x) and (m.pos.x .. " " .. m.pos.y .. " " .. m.pos.z) or "?"
+          local line = (t.label or ("Turtle " .. id)) .. " LOST its " .. what .. " (last job: " .. tostring(t.prevTask or "?") ..
+                       ", now at " .. where .. ", " .. tostring(m.freeSlots or "?") .. " free slots)"
+          TT.log(t, line)
+          if sysLog then sysLog(line, "WARNING") end
+          pushNote("WARNING", line, C.warn)
+        end
+      end
+    end
     t.gear = m.gear
     -- equipment problems: told once per turtle (and again when it changes)
     local bad = (m.gear:find("NO CHUNKY", 1, true) and "has NO Chunky upgrade equipped (its chunk unloads when you leave)")
