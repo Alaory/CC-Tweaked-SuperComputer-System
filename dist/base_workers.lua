@@ -537,6 +537,7 @@ pcall(TT.stallTick)
 pcall(MAP.autoTick)
 pcall(AWAY.tick)
 pcall(FACTORY.tick)
+pcall(MINE.silentTick)
 pcall(MINE.updTick)
 pcall(CURIOS.autoTick)
 if TT.listDirty and codeTick % 15 == 0 then pcall(TT.saveList) end

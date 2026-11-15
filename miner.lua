@@ -80,7 +80,7 @@ CONFIG = {
 }
 
 STATE_FILE = "miner_state"
-MYVER = "m22"            -- shown on the screen and the base (MINING tab)
+MYVER = "m23"            -- shown on the screen and the base (MINING tab)
 DX = { [0] = 0, 1, 0, -1 }
 DZ = { [0] = -1, 0, 1, 0 }
 FNAME = { [0] = "north", "east", "south", "west" }
@@ -1077,9 +1077,24 @@ function step(d)
     if turtle.getFuelLevel() == 0 then return false, "out of fuel" end
     local okI, bI = insp()
     if okI and tostring(bI.name):find("computercraft:turtle", 1, true) then
-      -- a team mate in the way: wait (never dig a turtle)
-      if try >= 50 then return false, "a turtle is in the way at " .. fmtPos() end
-      if try % 10 == 1 then setTask("a team mate is in the way - waiting") end
+      -- a TEAM MATE in the way (never dig a turtle). Before: both waited 50 s, both
+      -- failed and came back the same way - two miners facing each other in one
+      -- tunnel blocked each other for good (team STOPPED after 8 tries). Now the
+      -- HIGHER id gives way after a few seconds (one block to the side, then the
+      -- way is planned again from there); the lower one waits longer - and also
+      -- goes aside when the other never moves (the loader, a dead / lost turtle).
+      local side = (d == "u" and "top") or (d == "d" and "bottom") or "front"
+      local okO, other = pcall(peripheral.call, side, "getID")
+      other = okO and tonumber(other) or nil
+      local myId = os.getComputerID()
+      local patience = 20
+      if other and (other < myId or other == S.leader) then patience = 4 end   -- (I give way)
+      if try % 10 == 1 then setTask("team mate #" .. tostring(other or "?") .. " is in the way - waiting") end
+      if S.role == "miner" and ((not AVOIDING and try > patience) or (AVOIDING and try > 10)) then
+        return false, TURTLE_WAY                       -- goTo goes AROUND it (passTurtle)
+      elseif try >= 50 then
+        return false, "a turtle is in the way at " .. fmtPos()
+      end
       sleep(1)
     elseif det() then
       if S.role == "miner" then
@@ -1097,6 +1112,48 @@ function step(d)
   end
   return false, "blocked at " .. fmtPos()
 end
+-- a TURTLE stays in the way (a team mate that will not move, the loader, a dead / lost
+-- turtle): go AROUND it - one block to the side (dug if needed: natural blocks, not near
+-- the station, inside the chunk the miner works in, never into another turtle), two along
+-- the line, back onto it. beside = the blocked cell IS the goal: stop next to it.
+TURTLE_WAY = "a turtle is in the way - next try"
+AVOIDING = false
+function passTurtle(d, beside)
+  local f0 = S.pos.f
+  local sides = (d == "f") and { (f0 + 1) % 4, (f0 + 3) % 4 } or { f0, (f0 + 1) % 4, (f0 + 3) % 4, (f0 + 2) % 4 }
+  for _, sf in ipairs(sides) do
+    local x, z = S.pos.x + DX[sf], S.pos.z + DZ[sf]
+    local inChunk = not CHUNK_LOCK or (math.floor(x / 16) == CHUNK_LOCK[1] and math.floor(z / 16) == CHUNK_LOCK[2])
+    if inChunk and not nearStation(x, z, CONFIG.noDig) then
+      turnTo(sf)
+      local okI, b = turtle.inspect()
+      if not (okI and tostring(b.name):find("computercraft:turtle", 1, true)) then
+        AVOIDING = true
+        local okS = step("f")
+        if okS then
+          if beside then AVOIDING = false turnTo(f0) return true end
+          local okA = true
+          for _ = 1, 2 do
+            if d == "f" then turnTo(f0) end
+            if not step(d) then okA = false break end
+          end
+          if okA then
+            turnTo((sf + 2) % 4)
+            okA = step("f")
+          end
+          AVOIDING = false
+          turnTo(f0)
+          if okA then return true end
+          return false, "could not get past a turtle in the way - next try"
+        end
+        AVOIDING = false
+      end
+    end
+  end
+  turnTo(f0)
+  return false, TURTLE_WAY
+end
+
 -- straight moves: up/down first when going up, last when going down; x, then z.
 -- trail (optional) gets the corners (for the loader)
 function goTo(x, y, z, trail)
@@ -1108,24 +1165,62 @@ function goTo(x, y, z, trail)
       end
     end
   end
+  -- one straight line (axis "x", "z" or "y"). A turtle that stays in the way is passed
+  -- (passTurtle); the goal itself taken by one -> "near" (next to it is close enough);
+  -- the LAST cell of a line that is not the goal -> "corner" (the other line first)
+  local function line(axis)
+    while true do
+      local cur = (axis == "x" and S.pos.x) or (axis == "z" and S.pos.z) or S.pos.y
+      local goal = (axis == "x" and x) or (axis == "z" and z) or y
+      if cur == goal then return true end
+      local d = "f"
+      if axis == "x" then turnTo(goal > cur and 1 or 3)
+      elseif axis == "z" then turnTo(goal > cur and 2 or 0)
+      else d = (goal > cur) and "u" or "d" end
+      local ok, e = step(d)
+      if not ok then
+        if e ~= TURTLE_WAY then return false, e end
+        local nx, ny, nz = cellFor(d)
+        if math.abs(goal - cur) == 1 then
+          if nx == x and ny == y and nz == z then
+            if passTurtle(d, true) then return true, "near" end
+            return false, e
+          end
+          return false, "corner"
+        end
+        local okP, eP = passTurtle(d, false)
+        if not okP then return false, eP end
+      end
+    end
+  end
   local function vert()
-    while S.pos.y < y do local ok, e = step("u") if not ok then return false, e end end
-    while S.pos.y > y do local ok, e = step("d") if not ok then return false, e end end
-    addPt()
-    return true
+    local ok, e = line("y")
+    if ok then addPt() end
+    if e == "corner" then e = TURTLE_WAY end
+    return ok, e
   end
-  if y > S.pos.y then local ok, e = vert() if not ok then return false, e end end
-  if x ~= S.pos.x then
-    turnTo(x > S.pos.x and 1 or 3)
-    while S.pos.x ~= x do local ok, e = step("f") if not ok then return false, e end end
-    addPt()
+  if y > S.pos.y then
+    local ok, e = vert()
+    if not ok then return false, e end
+    if e == "near" then return true end
   end
-  if z ~= S.pos.z then
-    turnTo(z > S.pos.z and 2 or 0)
-    while S.pos.z ~= z do local ok, e = step("f") if not ok then return false, e end end
-    addPt()
+  local order = { "x", "z" }
+  for attempt = 1, 2 do
+    local okAll, err = true, nil
+    for _, ax in ipairs(order) do
+      local ok, e = line(ax)
+      if not ok then okAll, err = false, e break end
+      addPt()
+      if e == "near" then return true end
+    end
+    if okAll then break end
+    if err ~= "corner" or attempt == 2 then return false, (err == "corner") and TURTLE_WAY or err end
+    order = { "z", "x" }                               -- (the corner was taken: the other way round)
   end
-  if y ~= S.pos.y then local ok, e = vert() if not ok then return false, e end end
+  if y ~= S.pos.y then
+    local ok, e = vert()
+    if not ok then return false, e end
+  end
   return true
 end
 function fmtPos()
@@ -2438,7 +2533,9 @@ function minerRun()
         if tostring(ok):find("Terminated", 1, true) then error("Terminated", 0) end
         ok, err = false, "error: " .. tostring(ok)
       end
-      if not ok and tostring(err):find("next try", 1, true) and (RETRIES or 0) < 5 then
+      -- (giving way to a team mate can take a few goes: more retries for that)
+      local maxR = tostring(err):find("turtle is in the way", 1, true) and 20 or 5
+      if not ok and tostring(err):find("next try", 1, true) and (RETRIES or 0) < maxR then
         RETRIES = (RETRIES or 0) + 1                   -- position re-checked: just go on
         note(tostring(err))
       elseif not ok and err ~= "paused" and (FAILS or 0) < 8 and S.running then

@@ -113,3 +113,24 @@ MINE.units[11].code = "cccc0000"
 MINE.startUpdate(c)
 local okD, errD = pcall(function() state.page = "mining" draw() end)
 CHECK(okD, "MINING page draws during an update: " .. tostring(errD))
+
+-- a miner goes SILENT (a server crash can delete it): one warning with where it was last
+do
+  local said = {}
+  local p0 = pushNote
+  pushNote = function(k, m) said[#said + 1] = tostring(m) end
+  MINE.units[12].lastSeen = os.clock() - 2000
+  MINE.units[12].pos = { x = 140, y = 22, z = 31 }
+  MINE.units[12].task = "chunk 7 layer 3/8"
+  MINE.units[12].silentSaid = nil
+  MINE.silentTick()
+  MINE.silentTick()
+  local all = table.concat(said, " | ")
+  CHECK(#said == 1 and all:find("SILENT", 1, true) and all:find("140 22 31", 1, true) and all:find("chunk 7 layer", 1, true),
+        "a silent miner: ONE warning with its last spot and job (" .. all .. ")")
+  MINE.units[12].lastSeen = os.clock()
+  MINE.silentTick()
+  CHECK(not MINE.units[12].silentSaid, "it reports again: warned again next time")
+  local out = table.concat(handleCommand("mine") or {}, "\n")
+  pushNote = p0
+end

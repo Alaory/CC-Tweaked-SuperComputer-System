@@ -456,3 +456,30 @@ function MINE.updTick()
     pushNote("WARNING", "Miner update: " .. left .. " turtle(s) did not take the new program in 1 h - teams started again", C.warn)
   end
 end
+
+-- ===== A MINER GOES SILENT (comms worker): one WARNING with where it was last =====
+-- (a server crash can delete a turtle - "no trace of it"; the team pauses after 20 min
+-- and drops it after CONFIG.mining.autoDrop min by itself). Says where to look: the last
+-- position, dimension, job and its last log line. Again only after it spoke in between.
+function MINE.silentTick()
+  local limit = tonumber(MINE.cfg("silentWarn", 900)) or 900          -- s
+  for id, u in pairs(MINE.units) do
+    if u.lastSeen and os.clock() - u.lastSeen > limit then
+      if not u.silentSaid then
+        u.silentSaid = true
+        local p = u.pos
+        local where = (type(p) == "table" and p.x) and (p.x .. " " .. p.y .. " " .. p.z) or "unknown"
+        local last = u.log and u.log[1] and u.log[1].msg or "-"
+        local line = (u.label or ("#" .. id)) .. " (" .. tostring(u.role) .. ", " .. tostring(u.dim) .. ") is SILENT for " ..
+                     math.floor((os.clock() - u.lastSeen) / 60) .. " min - last seen at " .. where ..
+                     " doing '" .. tostring(u.task or "?") .. "'; last note: " .. tostring(last)
+        MINE.log(u, line)
+        if sysLog then sysLog("Mining: " .. line, "WARNING") end
+        pushNote("WARNING", line, C.warn)
+      end
+    elseif u.silentSaid and u.lastSeen and os.clock() - u.lastSeen < 60 then
+      u.silentSaid = nil
+      MINE.log(u, "It reports again")
+    end
+  end
+end

@@ -155,6 +155,14 @@ local function turtleApi(u)
     local x, y, z = front(u, d)
     if d == "b" then x, z = u.pos.x - DX[u.f], u.pos.z - DZ[u.f] end
     local b = block(x, y, z)
+    -- scenario "blocker": a DEAD turtle (high id, never moves) appears right in a miner's way
+    -- (one lost in a crash, or the loader standing still): the miner must go around it
+    if SCEN:find("blocker") and not BLOCKED_AT and T > 1800 and u.role == "miner" and u.id == MINERS[1]
+       and d == "f" and not b and not occupied(x, y, z) then
+      BLOCKED_AT = T
+      turtles[999] = { id = 999, role = "dead", pos = { x = x, y = y, z = z }, open = {}, inbox = {}, files = {} }
+      io.write("** a dead turtle appeared in front of miner " .. u.id .. " at " .. x .. " " .. y .. " " .. z .. " (task: " .. tostring(ENVS[u.id] and ENVS[u.id].task) .. ", facing " .. u.f .. ", at " .. u.pos.x .. " " .. u.pos.y .. " " .. u.pos.z .. ")\n")
+    end
     if (b and not b:find("water") and not b:find("lava")) or occupied(x, y, z) or u.fuel < 1 then return false, "Movement obstructed" end
     if not loaded(x, z, 1) then return false, "Cannot leave loaded world" end
     local oc = chunk(u.pos.x) .. "," .. chunk(u.pos.z)
@@ -357,6 +365,12 @@ local function peripheralApi(u)
     return out
   end
   P.wrap = function(side)
+    -- a TURTLE next to it answers getID (miner.lua: who gives way)
+    if side == "front" or side == "top" or side == "bottom" then
+      local x, y, z = front(u, side == "top" and "u" or (side == "bottom" and "d" or "f"))
+      local o = occupied(x, y, z)
+      if o then return { getID = function() return o.id end } end
+    end
     local inv = frontInv(side)
     if inv then
       return { list = function()
@@ -945,6 +959,17 @@ if SCEN:find("update") then
   for _, id in ipairs(MINERS) do local u = MINE.units[id] now = now + ((u and u.stats and u.stats.ores) or 0) end
   print("ores after the update: " .. (now - UPD_BEFORE.ores) .. ", restarts " .. tostring(REBOOTS))
   if now - UPD_BEFORE.ores < 50 then fail("the team did not mine after the update") end
+end
+if SCEN:find("blocker") then
+  if not BLOCKED_AT then fail("the blocker never appeared") end
+  local now, stopped = 0, false
+  for _, id in ipairs(MINERS) do
+    local u = MINE.units[id]
+    now = now + ((u and u.stats and u.stats.ores) or 0)
+    if ENVS[id] and ENVS[id].S and ENVS[id].S.err and not ENVS[id].S.running then stopped = ENVS[id].S.err end
+  end
+  if stopped then fail("a miner STOPPED behind the dead turtle: " .. tostring(stopped)) end
+  print("ores in all: " .. now .. " (the dead turtle appeared at " .. math.floor(BLOCKED_AT) .. " s)")
 end
 if SCEN:find("crashunload") then
   local now = 0

@@ -910,7 +910,8 @@ function handleCommand(line)
       for uid, x in pairs(MINE.units) do
         any = true
         say(string.format(" #%-4d %-7s %-5s %-10s %s", uid, tostring(x.role), tostring(x.ver or "?"), tostring(x.dim), MINE.online(x) and "online"
-            or ("OFFLINE, last seen " .. (x.seenEpoch and TT.ago(x.seenEpoch) or "never"))))
+            or ("OFFLINE, last seen " .. (x.seenEpoch and TT.ago(x.seenEpoch) or "never") ..
+                ((type(x.pos) == "table" and x.pos.x) and (" at " .. x.pos.x .. " " .. x.pos.y .. " " .. x.pos.z) or ""))))
       end
       if not any then say("No mining turtles yet.") end
       say("mine drop <id> = a lost miner out of its team,  mine forget <id> = off the base's list")

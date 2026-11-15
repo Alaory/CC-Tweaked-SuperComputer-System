@@ -389,7 +389,17 @@ PneumaticCraft drone rides, turtle mapping/surveys, and an AE2 ME network view.
   -> UPD_READY), installMinerUpdate ONLY while paused (miner paused branch, not dumping; loader: not
   running, no crossing): miner.new, size checked, old -> .old, save(), reboot - the state file keeps
   role / team / field / job. minesim team2update / team3updatecaves (same plan id + team after, all
-  restarted, mining goes on), tools/tests/miner_update.lua, test_mine_update.lua. TOOL CHECK (m20, toolNow): turtle.getEquippedLeft/Right where they exist
+  restarted, mining goes on), tools/tests/miner_update.lua, test_mine_update.lua. TURTLES IN THE WAY
+  (m23): step() reads the blocking turtle's id (peripheral getID); patience 4 s if I am the higher id or
+  it is the loader, else 20 s; then (miners) returns TURTLE_WAY and goTo goes AROUND it (passTurtle: one
+  block aside - dug, in CHUNK_LOCK, not near the station, never into a turtle - two along the line,
+  back); the goal itself taken -> stop next to it ("near" = arrived); the last cell of a line taken
+  (a corner) -> the other axis first. Before: both waited 50 s, failed, came back the same way - a
+  dead turtle (lost in a crash) in a shaft STOPPED the miner after 8 tries. "turtle is in the way"
+  errors retry up to 20x without the long waits. minesim team3blocker / team4blockercaves /
+  team5blocker (a dead turtle id 999 appears in front of miner 1 at 30 min; sim answers getID). Base
+  MINE.silentTick: a unit silent 15 min (mining.silentWarn) -> ONE WARNING + sysLog with last spot,
+  dim, job, last note (a crash can delete a turtle: "no trace"); `mine` shows offline units' spot. TOOL CHECK (m20, toolNow): turtle.getEquippedLeft/Right where they exist
   (the ITEM: modem / geo / pickaxe / "none"); else the side's peripheral type - BUT a side whose
   upgrade has no peripheral (a pickaxe) shows the BLOCK NEXT TO the turtle (the loader, another
   miner, a chest): any type other than geo / a wireless modem = "pickaxe" (a wired modem block:
