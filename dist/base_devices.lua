@@ -12,6 +12,40 @@
 
 
 
+
+
+
+
+function writeSafe(path, text)
+local tmp = path .. ".tmp"
+local h = fs.open(tmp, "w")
+if not h then return false, "cannot write " .. tmp end
+local ok, err = pcall(function() h.write(text) h.close() end)
+if not ok or not fs.exists(tmp) or fs.getSize(tmp) < #text then
+pcall(h.close)
+pcall(fs.delete, tmp)
+return false, "not saved: " .. tostring(ok and "disk full" or err)
+end
+local okM, errM = pcall(function()
+if fs.exists(path) then fs.delete(path) end
+fs.move(tmp, path)
+end)
+if not okM then return false, tostring(errM) end
+return true
+end
+
+function readSafe(path)
+for _, p in ipairs({ path, path .. ".tmp" }) do
+if fs.exists(p) then
+local h = fs.open(p, "r")
+local t = h and textutils.unserialize(h.readAll() or "")
+if h then h.close() end
+if t ~= nil then return t end
+end
+end
+return nil
+end
+
 SETTINGS_FILE = "settings.dat"
 SETTINGS = {}
 CONFIG_ORIGINAL = {}
@@ -34,20 +68,15 @@ end
 return t
 end
 do
-if fs.exists(SETTINGS_FILE) then
-local h = fs.open(SETTINGS_FILE, "r")
-local t = h and textutils.unserialize(h.readAll() or "")
-if h then h.close() end
+local t = readSafe(SETTINGS_FILE)
 if type(t) == "table" then SETTINGS = t end
-end
 for path, v in pairs(SETTINGS) do
 CONFIG_ORIGINAL[path] = getConfigPath(path)
 pcall(setConfigPath, path, v)
 end
 end
 local function saveSettings()
-local h = fs.open(SETTINGS_FILE, "w")
-if h then h.write(textutils.serialize(SETTINGS)) h.close() end
+writeSafe(SETTINGS_FILE, textutils.serialize(SETTINGS))
 end
 
 function setSetting(path, value)

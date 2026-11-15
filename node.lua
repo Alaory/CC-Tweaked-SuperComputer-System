@@ -82,11 +82,15 @@ COPYSFX = COPY and ("_c" .. COPY) or ""
 -- baseName always come from the program: the base fills them in.)
 local SETTINGS_FILE = "node_settings"
 function loadSettings()
-  if not fs.exists(SETTINGS_FILE) then return {} end
-  local h = fs.open(SETTINGS_FILE, "r")
-  local t = textutils.unserialize(h.readAll() or "")
-  h.close()
-  return type(t) == "table" and t or {}
+  for _, p in ipairs({ SETTINGS_FILE, SETTINGS_FILE .. ".new" }) do     -- (.new: see writeFile)
+    if fs.exists(p) then
+      local h = fs.open(p, "r")
+      local t = h and textutils.unserialize(h.readAll() or "")
+      if h then h.close() end
+      if type(t) == "table" then return t end
+    end
+  end
+  return {}
 end
 for k, v in pairs(loadSettings()) do
   if k ~= "key" and k ~= "protocol" and k ~= "baseName" then CONFIG[k] = v end
@@ -238,12 +242,6 @@ local moveCount = 0            -- every real move (for the progress watchdog)
 local recAdd                   -- route recording (defined further down)
 local gearString               -- rescue gear carried (defined further down)
 local learnBlocked             -- remember a block we could not pass (further down)
-if fs.exists(STATE_FILE) then
-  local h = fs.open(STATE_FILE, "r")
-  local t = textutils.unserialize(h.readAll() or "")
-  h.close()
-  if type(t) == "table" then S = t end
-end
 -- save a table to a file; a failure is reported, never stops the program
 local writeErr = nil
 -- DUPLICATES: a server crash while a turtle crosses into the next chunk can
@@ -263,15 +261,41 @@ function writeFile(path, value)
     printError(writeErr)
     return false
   end
-  local h = fs.open(path, "w")
+  -- through a NEW file: opening the real one for writing empties it at once, so a full
+  -- disk left an empty / cut-off state file (position, home, facing lost at the next
+  -- start). The old one is only replaced once the new one is complete.
+  local tmp = path .. ".new"
+  local h = fs.open(tmp, "w")
   if not h then return false end
   local okW, errW = pcall(function() h.write(text) h.close() end)
-  if not okW then
+  if not okW or not fs.exists(tmp) or fs.getSize(tmp) < #text then
     pcall(h.close)
-    writeErr = "cannot save " .. path .. ": " .. tostring(errW)     -- e.g. disk full
+    pcall(fs.delete, tmp)
+    writeErr = "cannot save " .. path .. ": " .. tostring(okW and "disk full" or errW)   -- the old file stays
     return false
   end
+  local okM = pcall(function()
+    if fs.exists(path) then fs.delete(path) end
+    fs.move(tmp, path)
+  end)
+  if not okM then writeErr = "cannot save " .. path .. " (move)" return false end
   return true
+end
+-- read a saved table: the file, else its ".new" (the program stopped between delete and move)
+function readTable(path)
+  for _, p in ipairs({ path, path .. ".new" }) do
+    if fs.exists(p) then
+      local h = fs.open(p, "r")
+      local t = h and textutils.unserialize(h.readAll() or "")
+      if h then h.close() end
+      if type(t) == "table" then return t end
+    end
+  end
+  return nil
+end
+do
+  local t = readTable(STATE_FILE)
+  if t then S = t end
 end
 
 function save()
@@ -303,10 +327,8 @@ function trailRebuild()
   trailIdx = {}
   for i, k in ipairs(trail) do trailIdx[k] = i end
 end
-if fs.exists(TRAIL_FILE) then
-  local h = fs.open(TRAIL_FILE, "r")
-  local t = textutils.unserialize(h.readAll() or "")
-  h.close()
+do
+  local t = readTable(TRAIL_FILE)
   if type(t) == "table" and t.v == 2 and type(t.trail) == "table" and type(t.T) == "table" then
     trail, T = t.trail, t.T
   end
@@ -1297,10 +1319,8 @@ end
 -- offline when the owner left the server). Re-sent from the heartbeat.
 local OUTBOX_FILE = "node_outbox" .. COPYSFX
 local outbox = {}
-if fs.exists(OUTBOX_FILE) then
-  local h = fs.open(OUTBOX_FILE, "r")
-  local t = textutils.unserialize(h.readAll() or "")
-  h.close()
+do
+  local t = readTable(OUTBOX_FILE)
   if type(t) == "table" then
     outbox = t
     for _, p in ipairs(outbox) do       -- fields an old version wrongly added to stored scans
@@ -2474,10 +2494,8 @@ function sweep(cx, cy, cz, radius, skip)
   local SWEEP_FILE = "node_sweep" .. COPYSFX
   local key = cx .. "," .. cy .. "," .. cz .. "," .. radius
   local first = 1
-  if fs.exists(SWEEP_FILE) then
-    local h = fs.open(SWEEP_FILE, "r")
-    local pr = textutils.unserialize(h.readAll() or "")
-    h.close()
+  do
+    local pr = readTable(SWEEP_FILE)
     if type(pr) == "table" and pr.key == key then
       first = (pr.done or 0) + 1
       handled = pr.handled or {}

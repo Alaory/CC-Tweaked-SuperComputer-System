@@ -194,6 +194,7 @@ local function serve()
         local tmp = path .. ".tmp"
         local h = fs.open(tmp, "w")
         local okW = h and pcall(function() h.write(data) h.close() end)
+        okW = okW and fs.exists(tmp) and fs.getSize(tmp) >= #data       -- (complete, or the old file stays)
         if okW then
           if fs.exists(path) then fs.delete(path) end
           fs.move(tmp, path)

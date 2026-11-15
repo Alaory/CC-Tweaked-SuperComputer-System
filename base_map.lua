@@ -956,10 +956,8 @@ end
 do
   local qf = dataFile(QUEUE_FILE)
   if not fs.exists(qf) then qf = QUEUE_FILE end
-  if fs.exists(qf) then
-    local h = fs.open(qf, "r")
-    local t = h and textutils.unserialize(h.readAll() or "")
-    if h then h.close() end
+  do
+    local t = readSafe(qf)
     if type(t) == "table" and t.cols then MAP.queue = t end
   end
 end
@@ -1059,12 +1057,8 @@ MAP.spiral = spiral
 local AUTO_FILE = "auto_survey.dat"
 MAP.auto = { on = (CONFIG.map.autoSurvey ~= false), cursor = 0 }
 do
-  if fs.exists(AUTO_FILE) then
-    local h = fs.open(AUTO_FILE, "r")
-    local t = h and textutils.unserialize(h.readAll() or "")
-    if h then h.close() end
-    if type(t) == "table" then MAP.auto = t end
-  end
+  local t = readSafe(AUTO_FILE)
+  if type(t) == "table" then MAP.auto = t end
 end
 function MAP.saveAuto() saveFileSafe(AUTO_FILE, serialSmall(MAP.auto)) end
 function MAP.setAuto(on)

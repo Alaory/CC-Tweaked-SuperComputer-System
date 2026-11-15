@@ -39,10 +39,7 @@ end
 
 function MINE.load()
   local path = dataPath and dataPath(FILE) or FILE     -- (a data floppy when there is one)
-  if not fs.exists(path) then return end
-  local h = fs.open(path, "r")
-  local t = h and textutils.unserialize(h.readAll() or "")
-  if h then h.close() end
+  local t = readSafe(path)
   if type(t) == "table" then
     for id, u in pairs(t) do
       u.id, u.log, u.queue = tonumber(id) or u.id, u.log or {}, {}

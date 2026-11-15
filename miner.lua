@@ -80,7 +80,7 @@ CONFIG = {
 }
 
 STATE_FILE = "miner_state"
-MYVER = "m21"            -- shown on the screen and the base (MINING tab)
+MYVER = "m22"            -- shown on the screen and the base (MINING tab)
 DX = { [0] = 0, 1, 0, -1 }
 DZ = { [0] = -1, 0, 1, 0 }
 FNAME = { [0] = "north", "east", "south", "west" }
@@ -113,21 +113,33 @@ if COPY then STATE_FILE = STATE_FILE .. "_c" .. COPY end
 function now() return math.floor(os.epoch("utc") / 1000) end
 function save()
   if DUP then return end                         -- (the state file belongs to the real one)
-  local h = fs.open(STATE_FILE .. ".tmp", "w")
+  local tmp = STATE_FILE .. ".tmp"
+  local okS, text = pcall(textutils.serialize, S)
+  if not okS then return end
+  local h = fs.open(tmp, "w")
   if not h then return end
-  local ok = pcall(function() h.write(textutils.serialize(S)) end)
-  h.close()
-  if ok then
-    if fs.exists(STATE_FILE) then fs.delete(STATE_FILE) end
-    fs.move(STATE_FILE .. ".tmp", STATE_FILE)
+  local ok = pcall(function() h.write(text) h.close() end)
+  -- only a COMPLETE new file replaces the old one (a full disk cut it off: team, field,
+  -- station lost at the next start)
+  if ok and fs.exists(tmp) and fs.getSize(tmp) >= #text then
+    pcall(function()
+      if fs.exists(STATE_FILE) then fs.delete(STATE_FILE) end
+      fs.move(tmp, STATE_FILE)
+    end)
+  else
+    pcall(h.close)
+    pcall(fs.delete, tmp)
   end
 end
 function loadState()
-  if fs.exists(STATE_FILE) then
-    local h = fs.open(STATE_FILE, "r")
-    local t = textutils.unserialize(h.readAll() or "")
-    h.close()
-    if type(t) == "table" then S = t end
+  -- the file, else its .tmp (stopped between delete and move)
+  for _, p in ipairs({ STATE_FILE, STATE_FILE .. ".tmp" }) do
+    if fs.exists(p) then
+      local h = fs.open(p, "r")
+      local t = h and textutils.unserialize(h.readAll() or "")
+      if h then h.close() end
+      if type(t) == "table" then S = t break end
+    end
   end
   S.stats = S.stats or { dug = 0, ores = 0, dumps = 0 }
   S.carry = S.carry or {}

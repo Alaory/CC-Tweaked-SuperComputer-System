@@ -756,12 +756,8 @@ local CHUNK = 8000
 local VER_FILE = "turtle_versions.dat"
 TT.versions = { next = 1, byHash = {} }
 do
-if fs.exists(VER_FILE) then
-local h = fs.open(VER_FILE, "r")
-local t = h and textutils.unserialize(h.readAll() or "")
-if h then h.close() end
+local t = readSafe(VER_FILE)
 if type(t) == "table" and type(t.byHash) == "table" then TT.versions = t end
-end
 end
 
 function TT.verName(hash)
@@ -1205,11 +1201,7 @@ end
 
 function TT.loadList()
 local lp = dataPath(CONFIG.turtles.listFile)
-if not fs.exists(lp) then return end
-local h = fs.open(lp, "r")
-if not h then return end
-local list = textutils.unserialize(h.readAll() or "")
-h.close()
+local list = readSafe(lp)
 if type(list) ~= "table" then return end
 for _, e in ipairs(list) do
 if type(e) == "table" and tonumber(e.id) then

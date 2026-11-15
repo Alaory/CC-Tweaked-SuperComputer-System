@@ -493,6 +493,10 @@ end
 elseif not peripheral.isPresent(opened) then
 opened, state.tModem = nil, nil
 end
+
+if not opened and #state.tOut > 300 then
+while #state.tOut > 300 do table.remove(state.tOut, 1) end
+end
 while opened and #state.tOut > 0 do
 local o = table.remove(state.tOut, 1)
 

@@ -16,12 +16,8 @@ POCKET = { PROTO = "basepocket", pockets = {}, pairing = nil, out = {} }
 local FILE = "pockets.dat"
 
 do
-  if fs.exists(FILE) then
-    local h = fs.open(FILE, "r")
-    local t = h and textutils.unserialize(h.readAll() or "")
-    if h then h.close() end
-    if type(t) == "table" then POCKET.pockets = t end
-  end
+  local t = readSafe(FILE)
+  if type(t) == "table" then POCKET.pockets = t end
 end
 local function save() saveFileSafe(FILE, serialSmall(POCKET.pockets)) end
 POCKET.save = save

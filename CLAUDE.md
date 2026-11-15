@@ -37,6 +37,16 @@ PneumaticCraft drone rides, turtle mapping/surveys, and an AE2 ME network view.
   view only on a zoom change or when the middle is off by > 1/4 screen.
 - Buttons: `actButton(x, y, w, h, label, action)`; a second tap confirms; the
   action is queued and run by `runAction(a)` (base_me.lua) in the action worker.
+- SAFE SAVING (writeSafe / readSafe, base_devices.lua - the first file loaded): opening a file for
+  writing EMPTIES it, so a full disk / a stop mid-save wiped settings.dat, saved places, the access
+  list, chargers, me_setup.dat ... (they were written in place). writeSafe = "<path>.tmp", size
+  checked, then delete + move (the old file stays whole otherwise); readSafe = the file, else its
+  .tmp. saveFileSafe uses writeSafe; EVERY load of a saved table goes through readSafe (turtles.dat,
+  mining.dat, away.dat, factory, recipes, pockets, survey queue, auto-map, versions, theme ...).
+  node.lua writeFile = the same via "<path>.new" + readTable (state, trail, outbox, sweep, settings:
+  position / home / facing were lost at the next start); miner.lua save/loadState the same (m22);
+  store.lua checks the size too. The comms queue (state.tOut) keeps the newest 300 while there is no
+  modem. node_save_safe.lua, test_save_safe.lua.
 - Data files are written with `saveFileSafe(path, text)` (base_theme.lua):
   only if they fit, through a temp file, never half-written. Big files go
   through `dataFile(path)` so they can live on data floppies (`disks data`).

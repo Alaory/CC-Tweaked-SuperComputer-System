@@ -12,6 +12,40 @@
 -- base_config.lua right after it is loaded, so base_config.lua itself is
 -- never changed. { ["turtles.idleHome"] = 300, ... }
 ---------------------------------------------------------------------
+-- write a file SAFELY: through "<path>.tmp", the old file replaced only when the new
+-- one is complete (opening the real file for writing empties it: a full disk / a crash
+-- left an empty settings.dat, places, access list ...). true, or false + why.
+-- (saveFileSafe in base_theme.lua adds the free-space check and the disk warning.)
+function writeSafe(path, text)
+  local tmp = path .. ".tmp"
+  local h = fs.open(tmp, "w")
+  if not h then return false, "cannot write " .. tmp end
+  local ok, err = pcall(function() h.write(text) h.close() end)
+  if not ok or not fs.exists(tmp) or fs.getSize(tmp) < #text then
+    pcall(h.close)
+    pcall(fs.delete, tmp)
+    return false, "not saved: " .. tostring(ok and "disk full" or err)
+  end
+  local okM, errM = pcall(function()
+    if fs.exists(path) then fs.delete(path) end
+    fs.move(tmp, path)
+  end)
+  if not okM then return false, tostring(errM) end
+  return true
+end
+-- read a saved table: the file, else its .tmp (stopped between delete and move)
+function readSafe(path)
+  for _, p in ipairs({ path, path .. ".tmp" }) do
+    if fs.exists(p) then
+      local h = fs.open(p, "r")
+      local t = h and textutils.unserialize(h.readAll() or "")
+      if h then h.close() end
+      if t ~= nil then return t end
+    end
+  end
+  return nil
+end
+
 SETTINGS_FILE = "settings.dat"
 SETTINGS = {}
 CONFIG_ORIGINAL = {}       -- the base_config.lua value of every changed setting (for RESET)
@@ -34,20 +68,15 @@ function getConfigPath(path)
   return t
 end
 do
-  if fs.exists(SETTINGS_FILE) then
-    local h = fs.open(SETTINGS_FILE, "r")
-    local t = h and textutils.unserialize(h.readAll() or "")
-    if h then h.close() end
-    if type(t) == "table" then SETTINGS = t end
-  end
+  local t = readSafe(SETTINGS_FILE)
+  if type(t) == "table" then SETTINGS = t end
   for path, v in pairs(SETTINGS) do
     CONFIG_ORIGINAL[path] = getConfigPath(path)
     pcall(setConfigPath, path, v)
   end
 end
 local function saveSettings()
-  local h = fs.open(SETTINGS_FILE, "w")
-  if h then h.write(textutils.serialize(SETTINGS)) h.close() end
+  writeSafe(SETTINGS_FILE, textutils.serialize(SETTINGS))
 end
 -- change a setting now and keep it (settings.dat)
 function setSetting(path, value)

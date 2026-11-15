@@ -33,11 +33,9 @@ drones, droneOrder = {}, {}
 savedLogs = {}
 do
   local f = dataFile(CONFIG.drone.logFile)
-  if f and fs.exists(f) then
-    local h = fs.open(f, "r")
-    if h then
-      local t = textutils.unserialize(h.readAll() or "")
-      h.close()
+  if f then
+    do
+      local t = readSafe(f)
       if type(t) == "table" then savedLogs = t end
     end
   end
@@ -156,23 +154,15 @@ end
 -- who may use "$drone" in chat -----------------------------------------
 function loadAccess()
   local f = CONFIG.chat.accessFile
-  if fs.exists(f) then
-    local h = fs.open(f, "r")
-    if h then
-      local t = textutils.unserialize(h.readAll() or "")
-      h.close()
-      if type(t) == "table" and type(t.allowed) == "table" then state.access = t end
-    end
+  do
+    local t = readSafe(f)
+    if type(t) == "table" and type(t.allowed) == "table" then state.access = t end
   end
 end
 
 -- save the chat allow list
 function saveAccess()
-  local h = fs.open(CONFIG.chat.accessFile, "w")
-  if h then
-    h.write(textutils.serialize(state.access))
-    h.close()
-  end
+  writeSafe(CONFIG.chat.accessFile, textutils.serialize(state.access))
 end
 
 loadAccess()
@@ -221,24 +211,15 @@ end
 -- saved places ---------------------------------------------------------
 function loadWaypoints()
   local f = CONFIG.drone.waypointFile
-  if fs.exists(f) then
-    local h = fs.open(f, "r")
-    if h then
-      local txt = h.readAll()
-      h.close()
-      local t = textutils.unserialize(txt or "")
-      if type(t) == "table" then state.waypoints = t end
-    end
+  do
+    local t = readSafe(f)
+    if type(t) == "table" then state.waypoints = t end
   end
 end
 
 -- save the saved places
 function saveWaypoints()
-  local h = fs.open(CONFIG.drone.waypointFile, "w")
-  if h then
-    h.write(textutils.serialize(state.waypoints))
-    h.close()
-  end
+  writeSafe(CONFIG.drone.waypointFile, textutils.serialize(state.waypoints))
 end
 
 -- a saved place by name (any case), or nil
@@ -1206,12 +1187,8 @@ end
 
 -- save the charging stations
 function saveChargers()
-  local h = fs.open(CONFIG.drone.chargerFile, "w")
-  if h then
-    h.write(textutils.serialize({ default = CONFIG.drone.charger or { off = true },
+  writeSafe(CONFIG.drone.chargerFile, textutils.serialize({ default = CONFIG.drone.charger or { off = true },
                                   drones = ownChargers, cfgSeen = CONFIG_CHARGER or { off = true } }))
-    h.close()
-  end
 end
 
 -- the SHARED station of all drones (clears their own stations)

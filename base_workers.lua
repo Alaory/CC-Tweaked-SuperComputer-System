@@ -493,6 +493,10 @@ function commsWorker()
     elseif not peripheral.isPresent(opened) then
       opened, state.tModem = nil, nil
     end
+    -- no modem: the queue would grow for ever - keep the newest 300
+    if not opened and #state.tOut > 300 then
+      while #state.tOut > 300 do table.remove(state.tOut, 1) end
+    end
     while opened and #state.tOut > 0 do
       local o = table.remove(state.tOut, 1)
       -- a COPY (turtle n*100000 + id): sent to the real id, only the tagged copy obeys

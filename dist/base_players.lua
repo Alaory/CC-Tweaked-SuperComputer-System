@@ -377,13 +377,10 @@ local OVERWORLD = "minecraft:overworld"
 
 
 local function backSave()
-local h = fs.open(CONFIG.back.file, "w")
-if h then h.write(textutils.serialize(backSpots)) h.close() end
+writeSafe(CONFIG.back.file, textutils.serialize(backSpots))
 end
-if fs.exists(CONFIG.back.file) then
-local h = fs.open(CONFIG.back.file, "r")
-local t = h and textutils.unserialize(h.readAll() or "")
-if h then h.close() end
+do
+local t = readSafe(CONFIG.back.file)
 if type(t) == "table" then backSpots = t end
 end
 

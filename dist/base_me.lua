@@ -1919,10 +1919,7 @@ local SIDES = { "north", "south", "east", "west", "up", "down" }
 
 
 function loadMESetup()
-if not fs.exists(SETUP_FILE) then return end
-local h = fs.open(SETUP_FILE, "r")
-local t = h and textutils.unserialize(h.readAll() or "")
-if h then h.close() end
+local t = readSafe(SETUP_FILE)
 if type(t) == "table" and t.managerSide and t.bridge then
 CONFIG.me.bufferFromManager = t.managerSide
 CONFIG.me.giveFromManager, CONFIG.me.takeFromManager = nil, nil
@@ -1939,11 +1936,7 @@ end
 
 
 local function saveSetup(side, cd, say)
-local h = fs.open(SETUP_FILE, "w")
-if h then
-h.write(textutils.serialize({ managerSide = side, bridge = cd.target, bridgeIsName = cd.isName or false }))
-h.close()
-end
+writeSafe(SETUP_FILE, textutils.serialize({ managerSide = side, bridge = cd.target, bridgeIsName = cd.isName or false }))
 loadMESetup()
 state.meChests, state.meChestsT = nil, nil
 say("SETUP DONE: the Inventory Manager reaches the buffer " ..
@@ -2109,11 +2102,7 @@ if ok and (tonumber(moved) or 0) > 0 then
 local after = countIn()
 transfer(bridge, ME_OUT, cd.target, { name = marker, count = 1 })
 if after < before then
-local h = fs.open(SETUP_FILE, "w")
-if h then
-h.write(textutils.serialize({ managerSide = c.side, bridge = cd.target, bridgeIsName = cd.isName or false }))
-h.close()
-end
+writeSafe(SETUP_FILE, textutils.serialize({ managerSide = c.side, bridge = cd.target, bridgeIsName = cd.isName or false }))
 loadMESetup()
 state.meChests, state.meChestsT = nil, nil
 say("SETUP DONE: the buffer chest is on the " .. c.side .. " side of the Inventory Manager;")

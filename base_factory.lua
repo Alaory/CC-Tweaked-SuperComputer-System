@@ -47,20 +47,16 @@ end
 local function saveRecipes() saveFileSafe(RECIPE_FILE, serialSmall(FACTORY.recipes)) end
 FACTORY.save = save
 do
-  if fs.exists(FILE) then
-    local h = fs.open(FILE, "r")
-    local t = h and textutils.unserialize(h.readAll() or "")
-    if h then h.close() end
+  do
+    local t = readSafe(FILE)
     if type(t) == "table" then
       FACTORY.job, FACTORY.builder, FACTORY.chest = t.job, t.builder, t.chest
       FACTORY.fails, FACTORY.last, FACTORY.built = t.fails or 0, t.last, t.built
       FACTORY.crafter = t.crafter
     end
   end
-  if fs.exists(RECIPE_FILE) then
-    local h = fs.open(RECIPE_FILE, "r")
-    local t = h and textutils.unserialize(h.readAll() or "")
-    if h then h.close() end
+  do
+    local t = readSafe(RECIPE_FILE)
     if type(t) == "table" then FACTORY.recipes = t end
   end
 end

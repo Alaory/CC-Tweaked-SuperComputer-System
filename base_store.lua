@@ -14,15 +14,12 @@ STORE = { PROTO = "basestore", helpers = {}, lastFind = -1000, n = 0 }
 -- (fast); looking for new ones takes ~2 s and is done by the map worker
 local KNOWN_FILE = "store_helpers.dat"
 STORE.known = {}
-if fs.exists(KNOWN_FILE) then
-  local h = fs.open(KNOWN_FILE, "r")
-  local t = h and textutils.unserialize(h.readAll() or "")
-  if h then h.close() end
+do
+  local t = readSafe(KNOWN_FILE)
   if type(t) == "table" then STORE.known = t end
 end
 local function saveKnown()
-  local h = fs.open(KNOWN_FILE, "w")
-  if h then h.write(textutils.serialize(STORE.known)) h.close() end
+  writeSafe(KNOWN_FILE, textutils.serialize(STORE.known))
 end
 
 -- rednet on the WIRED modems (the helpers sit on the cable network)

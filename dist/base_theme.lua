@@ -71,10 +71,8 @@ local THEME_FILE = "theme.dat"
 
 local function chooseTheme()
 local saved = {}
-if fs.exists(THEME_FILE) then
-local h = fs.open(THEME_FILE, "r")
-local t = h and textutils.unserialize(h.readAll() or "")
-if h then h.close() end
+do
+local t = readSafe(THEME_FILE)
 if type(t) == "table" then saved = t end
 end
 local want = saved.mode or CONFIG.theme or "random"
@@ -111,8 +109,7 @@ end
 
 
 function saveTheme(mode)
-local h = fs.open(THEME_FILE, "w")
-if h then h.write(textutils.serialize({ mode = mode, last = THEME_NAME })) h.close() end
+writeSafe(THEME_FILE, textutils.serialize({ mode = mode, last = THEME_NAME }))
 end
 
 do
@@ -173,18 +170,11 @@ state.diskLow = string.format("DISK ALMOST FULL: %s not saved (%d KB free, needs
 path, math.floor(free / 1024), math.ceil(#text / 1024))
 return false, state.diskLow
 end
-local tmp = path .. ".tmp"
-local h = fs.open(tmp, "w")
-if not h then return false, "cannot write " .. tmp end
-local ok, err = pcall(h.write, text)
-pcall(h.close)
+local ok, err = writeSafe(path, text)
 if not ok then
-pcall(fs.delete, tmp)
 state.diskLow = "DISK FULL: " .. path .. " not saved (" .. tostring(err) .. ")"
 return false, state.diskLow
 end
-if fs.exists(path) then fs.delete(path) end
-fs.move(tmp, path)
 
 if state.diskLow and state.diskLow:find(path, 1, true) then state.diskLow = nil end
 return true

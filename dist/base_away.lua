@@ -31,10 +31,8 @@ snap = AWAY.snap, last = AWAY.last, page = AWAY.page,
 autoOn = AWAY.autoOn, left = AWAY.left, acc = AWAY.acc, prev = AWAY.prev }))
 end
 do
-if fs.exists(FILE) then
-local h = fs.open(FILE, "r")
-local t = h and textutils.unserialize(h.readAll() or "")
-if h then h.close() end
+do
+local t = readSafe(FILE)
 if type(t) == "table" then
 AWAY.on, AWAY.since, AWAY.lastSeen, AWAY.snap, AWAY.last, AWAY.page = t.on, t.since, t.lastSeen, t.snap, t.last, t.page
 AWAY.autoOn = t.autoOn

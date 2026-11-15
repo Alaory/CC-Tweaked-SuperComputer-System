@@ -632,6 +632,7 @@ local a = nsrc:find("function TT.sign", 1, true)
 local b = nsrc:find("\n%-%- a wireless or ender modem", a)
 assert(load(nsrc:sub(a, b)))()
 fs = { exists = function() return false end }
+function readSafe() return nil end                -- (base_devices.lua: nothing saved in the sim)
 assert(loadfile(ROOT .. "base_mining.lua"))()
 local realClock = os.clock
 os.clock = function() return T end
