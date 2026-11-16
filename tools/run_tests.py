@@ -132,7 +132,7 @@ for t in sorted(glob.glob(os.path.join(ROOT, "tools", "tests", "test_*.lua"))):
         tail = "\n".join(l for l in out.splitlines() if l.startswith(("FAIL", "PASS", "lua5.3:")) or "ERROR" in l)
         return rc == 0 and "PASS" in out, tail or out[-800:]
 
-PAGES = ["home", "inventory", "players", "storage", "curios", "me", "drone", "access", "turtles", "drive", "map", "mining",
+PAGES = ["home", "inventory", "players", "storage", "curios", "me", "drone", "work", "access", "turtles", "drive", "map", "mining",
          "system", "events", "settings", "chat"]
 @check("pages", "%d monitor pages draw" % len(PAGES))
 def _():

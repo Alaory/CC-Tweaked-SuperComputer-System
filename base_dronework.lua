@@ -524,6 +524,7 @@ end
 
 -- comms worker, every 2 s
 function DW.tick()
+  if state.page == "work" and now() - (DW.view.at or -999) > 10 then pcall(DW.refreshView) end
   -- a trip finished?
   local trip = DW.trip
   if trip then
@@ -612,6 +613,88 @@ function DW.tick()
   local ok, err = submit(dr, title, steps, tr)
   if not ok then J.why = err end
   J.loadedBy = by
+end
+
+------------------------------------------------------------------ the DRONE WORK page
+-- what the page shows, read here (comms worker) - never peripheral / disk calls while drawing
+DW.view = { cands = {}, schems = {}, at = -999 }
+DW.ui = { rot = 0, clear = false, at = 0 }       -- the page's choices (BUILD options)
+function DW.refreshView()
+  local v = { cands = {}, schems = {}, at = now() }
+  v.bad = DW.notReady()
+  -- chests / barrels on the cable that can be the work chest: empty, <= 54 slots, not used
+  for _, name in ipairs(peripheral.getNames()) do
+    local okI, isI = pcall(peripheral.hasType, name, "inventory")
+    if okI and isI and not name:find("drive", 1, true) then
+      local okS, size = pcall(peripheral.call, name, "size")
+      local used = FACTORY.reserved(name)
+      if okS and tonumber(size) and tonumber(size) <= 54 and (not used or used == "drone work chest") then
+        local okL, list = pcall(peripheral.call, name, "list")
+        if name == DW.chestName() or (okL and type(list) == "table" and next(list) == nil) then v.cands[#v.cands + 1] = name end
+      end
+    end
+  end
+  table.sort(v.cands)
+  local okL, list = pcall(SCHEM.list)
+  local seen = {}
+  for name in pairs(okL and list or {}) do seen[name] = true end
+  for name in pairs(SCHEM.cache or {}) do seen[name] = true end      -- (just dropped / read)
+  for name in pairs(seen) do v.schems[#v.schems + 1] = name end
+  table.sort(v.schems)
+  DW.view = v
+end
+-- the next work chest on the cable (the page's CHEST button)
+function DW.nextChest()
+  local c = DW.view.cands
+  if #c == 0 then return false, "no EMPTY chest / barrel on the cable - put a wired modem on one (right-click it: red)" end
+  local cur, pick = DW.chestName(), c[1]
+  for i, n in ipairs(c) do if n == cur then pick = c[i % #c + 1] end end
+  setSetting("drone.workChest", pick)
+  DW.view.at = -999
+  return true, "Work chest: " .. pick .. " - now stand ON it and tap BLOCK UNDER ME"
+end
+function DW.chestHere()
+  if not DW.chestName() then return false, "pick the chest first (CHEST button)" end
+  local x, y, z = playerBlock(state.owner)
+  if not x then return false, "where are you? " .. tostring(y) end
+  setSetting("drone.workChestAt", { x = x, y = y, z = z })
+  DW.view.at = -999
+  return true, "Work chest " .. DW.chestName() .. " at " .. fmtPos(x, y, z)
+end
+-- SAVE MY SPOT: the block under you as "Place N" (rename in chat:  $drone mark <name>)
+function DW.markHere()
+  local x, y, z = playerBlock(state.owner)
+  if not x then return false, "where are you? " .. tostring(y) end
+  local n = 1
+  while findWaypoint("Place " .. n) do n = n + 1 end
+  addWaypoint("Place " .. n, x, y, z)
+  return true, "Saved Place " .. n .. " at " .. fmtPos(x, y, z) .. " (the block under you)"
+end
+-- a schematic picked on the page: its size + what it needs (AE2 read here, on the tap)
+function DW.select(name)
+  local s, why = SCHEM.load(name)
+  if not s then DW.sel = { name = name, err = why } return end
+  local need, place, air = SCHEM.materials(s)
+  local rows, short = {}, 0
+  for it, n in pairs(need) do
+    local have = bridge and (FACTORY.variants(it)) or 0
+    rows[#rows + 1] = { item = it, need = n, have = have }
+    if have < n then short = short + 1 end
+  end
+  table.sort(rows, function(a, b) return a.need > b.need end)
+  DW.sel = { name = name, size = s.size, place = place, air = air, rows = rows, short = short }
+end
+-- where BUILD puts it: 0 = the block under you, else the n-th saved place
+function DW.buildSpot()
+  local i = DW.ui.at or 0
+  if i > 0 then
+    local w = state.waypoints[i]
+    if w then return w.x, w.y, w.z, w.name end
+    DW.ui.at = 0
+  end
+  local x, y, z = playerBlock(state.owner)
+  if not x then return nil, y end
+  return x, y, z, "under you"
 end
 
 -- for the status lines (console / pocket)

@@ -97,6 +97,29 @@ setToast(last, C.label, 4)
 local c, why = MINE.loadCode(true, function(s2) last = s2 end)
 if not c then setPopup("MINER UPDATE", tostring(why), C.warn)
 else setPopup("MINER UPDATE", table.concat(MINE.startUpdate(c), "  "), C.label) end
+elseif a.kind == "dwchesthere" then
+local ok, msg = DW.chestHere()
+setToast(msg, ok and C.good or C.warn, 6)
+elseif a.kind == "dwfuel" then
+local ok, msg = DW.fuelRun(tonumber(a.name), "you")
+setToast(msg, ok and C.good or C.warn, 6)
+elseif a.kind == "dwmark" then
+local ok, msg = DW.markHere()
+setToast(msg, ok and C.good or C.warn, 6)
+elseif a.kind == "dwunmark" then
+removeWaypoint(a.name)
+DW.ui.at = 0
+setToast("Forgot " .. a.name, C.label, 4)
+elseif a.kind == "dwstop" then
+local _, msg = DW.stopBuild("stopped by you")
+setToast(msg, C.label, 6)
+elseif a.kind == "dwbuild" then
+local x, y, z, where = DW.buildSpot()
+if not x then setToast("Where? " .. tostring(y), C.warn, 6)
+else
+local ok, msg = DW.startBuild(a.name, x, y, z, DW.ui.rot or 0, DW.ui.clear)
+if ok then setPopup("DRONE BUILD", msg, C.good) else setToast(msg, C.warn, 8) end
+end
 elseif a.kind == "supplyset" then
 
 local ok, msg = SUPPLY.add(a.target, a.skind, a.name, a.count)
@@ -373,6 +396,27 @@ local st = state.turtles[h[6]]
 if st and TT.online(st) then TT.drive(h[6], "look") end
 elseif h[5] == "tcmd" then
 TT.send(h[6][1], h[6][2], h[6][3])
+elseif h[5] == "dwnext" then
+local ok, msg = DW.nextChest()
+setToast(msg, ok and C.good or C.warn, 6)
+elseif h[5] == "dwauto" then
+setSetting("drone.fuelRuns", not DW.autoOn())
+DW.auto = nil
+setToast("Drone fuel runs " .. (DW.autoOn() and "ON" or "OFF"), C.label, 4)
+elseif h[5] == "dwsel" then
+DW.select(h[6])
+elseif h[5] == "dwrot" then
+DW.ui.rot = ((DW.ui.rot or 0) + 90) % 360
+elseif h[5] == "dwclear" then
+DW.ui.clear = not DW.ui.clear
+elseif h[5] == "dwat" then
+DW.ui.at = ((DW.ui.at or 0) + 1) % (#(state.waypoints or {}) + 1)
+elseif h[5] == "dwpause" then
+if DW.job then
+if DW.job.paused then DW.job.paused, DW.job.fails, DW.job.waitUntil = nil, 0, nil
+else DW.job.paused = "paused by you (RESUME)" end
+DW.save()
+end
 elseif h[5] == "supnext" then
 
 state.supIdx = state.supIdx or {}

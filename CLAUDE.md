@@ -622,6 +622,16 @@ PneumaticCraft drone rides, turtle mapping/surveys, and an AE2 ME network view.
   says so); it follows chunk by chunk and goes home at the end. 5 failed trips in a row -> paused; low
   air / item short -> waits (2 / 5 min). Drones place blocks the default way round (stairs / logs may
   face another way). test_dronework.lua (fake drone / chest / AE2 / world).
+  DRONE WORK PAGE (base_ui_work.lua drawWorkPage, page "work" in the DRONES group; the owner: "all
+  commands and no UI"): WORK CHEST card (CHEST > = DW.nextChest through DW.view.cands - empty
+  inventories <= 54 slots, not reserved; BLOCK UNDER ME two taps = DW.chestHere), FUEL RUNS card
+  (AUTO ON/OFF, NO FUEL turtles + run state, SEND FUEL two taps), PLACES card (SAVE WHERE I STAND =
+  DW.markHere "Place N", DELETE two taps), BUILD card (schematic buttons -> DW.select reads size +
+  materials vs AE2 ON THE TAP; AT: under you / a saved place >, TURN: 0/90/180/270 >, CLEAR FIRST;
+  BUILD two taps; while building: progress bar, now / why / anchor, PAUSE / RESUME, STOP). Drawing
+  reads only DW.view (DW.refreshView in DW.tick every 10 s while the page is open: cable chests +
+  SCHEM.list + SCHEM.cache) / DW.job / DW.sel / state. Tab badge = a dot while a job runs.
+  test_dronework.lua taps every button.
 - PLACES BY STANDING ON THEM (base_drones.lua playerBlock / posArg): chat `$drone mark <name>` (the
   block under you; `feet` = where you stand) / `$drone unmark`, console `save <name> me|feet|x y z`;
   posArg(words, i) = "x y z" | a saved place | me | feet | @player - used by `dw chest`, `schem build`.
@@ -854,7 +864,7 @@ PneumaticCraft drone rides, turtle mapping/surveys, and an AE2 ME network view.
    Slots: inset() = a shadow line on top (sunken). Only 3+ rows tall. CONFIG.style
    "plain" = no lines. Two-tap actions: actButton.
 3. Navigation: GROUPS (base_ui_core.lua) = HOME | YOU (inventory, backpacks, curios) |
-   AE2 | PLAYERS (players, chat & rides) | DRONES | TURTLES (turtles, drive, map, mining)
+   AE2 | PLAYERS (players, chat & rides) | DRONES (drones, drone work) | TURTLES (turtles, drive, map, mining)
    | SYSTEM (status, messages, settings). Row 5 = the group's pages + what the open
    page is for (PAGE_INFO name + one line). New page -> PAGE_INFO entry + a group +
    pageTabs + draw() dispatch + PAGES in run_tests/test_ticks.
@@ -890,7 +900,7 @@ PneumaticCraft drone rides, turtle mapping/surveys, and an AE2 ME network view.
 | base_factory.lua | turtle factory: keeps the fleet size, AE2 parts, the builder turtle builds new ones |
 | base_supply.lua | `supply`: storages on the wired cable kept stocked from AE2 (items + fluids) |
 | base_schem.lua | schematics: Create .nbt files dropped on the screen, unpacked + read, materials list |
-| base_dronework.lua | drone jobs: work chest, fuel runs to turtles, schematic builds (turtle keeps the site loaded) |
+| base_dronework.lua / base_ui_work.lua | drone jobs: work chest, fuel runs to turtles, schematic builds (turtle keeps the site loaded) / the DRONE WORK page |
 | base_pocket.lua / pocket.lua | the pocket remote: base side (pairing, status, actions, messages) / the program on the pocket computer |
 
 ## The owner's setup (found out the hard way)

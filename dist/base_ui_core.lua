@@ -128,6 +128,7 @@ me        = { "AE2 STORAGE", "Find, take, store, craft" },
 players   = { "PLAYERS", "Who is online, where, health" },
 access    = { "CHAT & RIDES", "Chat commands, ride requests" },
 drone     = { "DRONES", "Rides: passenger, place, air" },
+work      = { "DRONE WORK", "Builds, fuel runs, work chest" },
 turtles   = { "TURTLES", "What each turtle does, fuel" },
 drive     = { "DRIVE", "Steer one turtle by hand" },
 map       = { "MAP", "The mapped world, surveys" },
@@ -149,6 +150,8 @@ if bridge then tabs[#tabs + 1] = { "me", bridgeKind == "ME" and "AE2 STORAGE" or
 if #droneOrder > 0 then
 tabs[#tabs + 1] = { "drone", #droneOrder > 1 and "DRONES" or "DRONE",
 #droneOrder > 1 and tostring(#droneOrder) or nil }
+local busy = DW and (DW.job or DW.trip) and "\7" or nil
+tabs[#tabs + 1] = { "work", "DRONE WORK", busy, busy and C.good or nil }
 end
 if chatBox then
 local req = 0
@@ -195,7 +198,7 @@ local GROUPS = {
 { id = "you",     label = "YOU",     pages = { "inventory", "storage", "curios" } },
 { id = "me",      label = "AE2",     pages = { "me" } },
 { id = "people",  label = "PLAYERS", pages = { "players", "access" } },
-{ id = "drone",   label = nil,       pages = { "drone" } },
+{ id = "drone",   label = nil,       pages = { "drone", "work" } },
 { id = "turtles", label = "TURTLES", pages = { "turtles", "drive", "map", "mining" } },
 { id = "system",  label = "SYSTEM",  pages = { "system", "events", "settings" } },
 }
@@ -477,6 +480,7 @@ access  = "Who may use the $drone chat commands (REMOVE needs a second tap)",
 map     = "Tap the map to inspect a spot. SURVEY maps the area on screen (needs a Geo Scanner in the turtle)",
 turtles = "Select a turtle, then use the pad. On the computer:  turtle <id> goto x y z",
 drone   = "Pick a passenger + destination, then FERRY (tap twice). Type 'help' on the computer for coordinates",
+work    = "Stand ON a block, then tap BLOCK UNDER ME / SAVE WHERE I STAND. Most buttons ask CONFIRM? - tap again",
 events  = "Every message, newest first. Tap a filter to show one kind only",
 system  = "How the base is doing. The SYSTEM LOG keeps system things only (not pushed out by everyday messages)",
 settings = "Pick a group on the left, then tap - / + or the value. RESET = back to base_config.lua",
@@ -592,6 +596,8 @@ elseif state.page == "me" then
 drawMEPage(G)
 elseif state.page == "drone" then
 drawDronePage(G)
+elseif state.page == "work" then
+drawWorkPage(G)
 elseif state.page == "access" then
 drawAccessPage(G)
 elseif state.page == "turtles" then

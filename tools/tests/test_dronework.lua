@@ -5,6 +5,7 @@
 -- nobody keeps loaded gets a turtle first; fuel runs to a turtle with NO FUEL.
 local HOME = { x = 0, y = 70, z = 0 }
 local BRIDGE0 = bridge
+bridgeKind = bridgeKind or "ME"
 local CH = { x = 2, y = 69, z = 0 }
 local W
 local function key(x, y, z) return x .. "," .. y .. "," .. z end
@@ -259,5 +260,71 @@ CHECK(x == 1 and y == 2 and z == 3, "a saved place works instead of x y z")
 x, y = posArg({ "nowhere" }, 1)
 CHECK(x == nil and tostring(y):find("mark", 1, true), "an unknown place says how to mark one")
 removeWaypoint("chestA")
+------------------------------------------------------------------ the DRONE WORK page: all by tapping
+dr = world()
+state.turtles = { [9] = { id = 9, label = "T9", log = {}, lastSeen = os.clock(), pos = { x = 40, y = 64, z = 40 }, fuel = 0, task = "idle" } }
+W.tinv[key(40, 64, 40)] = {}
+CONFIG.drone.workChest, CONFIG.drone.workChestAt = nil, nil
+SETTINGS["drone.workChest"], SETTINGS["drone.workChestAt"] = nil, nil
+DW.auto = false                                      -- (no automatic run while the page is tested)
+state.page = "work"
+DW.view.at = -999
+DW.tick()
+local function hitOf(kind, val)
+  for _, h in ipairs(hits) do
+    local v = h[6]
+    if h[5] == kind and (val == nil or v == val or (type(v) == "table" and (v.kind == val or v.name == val))) then return h end
+  end
+end
+local function tap(kind, val, twice)
+  draw()
+  local h = hitOf(kind, val)
+  CHECK(h, "the page shows a button for " .. kind .. " " .. tostring(val))
+  if not h then return end
+  handleTouch(h[1], h[2])
+  if twice then draw() h = hitOf(kind, val) if h then handleTouch(h[1], h[2]) end end
+end
+CHECK(DW.view.cands[1] == "minecraft:barrel_9", "the page lists the empty barrel on the cable")
+tap("dwnext")
+CHECK(DW.chestName() == "minecraft:barrel_9", "CHEST picks it")
+state.players = { { name = "Alaory", isOwner = true, p = { x = 2.5, y = 70, z = 0.5 }, dim = DRONE_DIM } }
+det = { getPlayer = function() return { x = 2.5, y = 70, z = 0.5, dimension = "minecraft:overworld" } end }
+tap("act", "dwchesthere", true)
+local cx, cy, cz = DW.chestAt()
+CHECK(cx == CH.x and cy == CH.y and cz == CH.z, "BLOCK UNDER ME (two taps) = standing on the chest sets its spot")
+tap("act", "dwfuel", true)
+CHECK(#dr.queue == 1, "SEND FUEL starts a drone fuel run")
+runMission(dr, table.remove(dr.queue, 1)) dr.busy = false
+DW.tick()
+CHECK((W.tinv[key(40, 64, 40)]["minecraft:coal"] or 0) > 0, "... and the coal arrives")
+-- a build by tapping: pick the schematic, AT: a saved place, TURN, BUILD (two taps)
+DW.view.at = -999
+DW.tick()
+addWaypoint("Site", OX, OY + 20, OZ)
+tap("dwsel", "hut")
+CHECK(DW.sel and DW.sel.name == "hut" and DW.sel.place == 17, "tapping a schematic shows what it needs (" .. tostring(DW.sel and DW.sel.place) .. " blocks)")
+local idx
+for i, wp in ipairs(state.waypoints) do if wp.name == "Site" then idx = i end end
+for _ = 1, idx do tap("dwat") end
+CHECK(DW.ui.at == idx, "AT cycles to the saved place")
+tap("dwrot")
+CHECK(DW.ui.rot == 90, "TURN: 90")
+tap("act", "dwbuild", true)
+CHECK(DW.job and DW.job.y == OY + 20 and DW.job.rot == 90, "BUILD starts it at the saved place, turned 90")
+tap("dwpause")
+CHECK(DW.job and DW.job.paused, "PAUSE")
+tap("dwpause")
+CHECK(DW.job and not DW.job.paused, "RESUME")
+tap("act", "dwstop", true)
+CHECK(DW.job == nil, "STOP THE BUILD (two taps)")
+tap("act", "dwmark", true)
+CHECK(findWaypoint("Place 1"), "SAVE WHERE I STAND saves Place 1")
+tap("act", "Place 1", true)
+CHECK(not findWaypoint("Place 1"), "DELETE (two taps) forgets it")
+tap("dwauto")
+CHECK(DW.autoOn() == true, "AUTO: ON / OFF")
+removeWaypoint("Site")
+state.page = "home"
+
 bridge = BRIDGE0
 PERIPHS["minecraft:barrel_9"] = nil
