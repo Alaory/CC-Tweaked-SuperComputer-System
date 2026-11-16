@@ -540,6 +540,7 @@ function commsWorker()
       pcall(MINE.silentTick)             -- a mining turtle went silent: where it was last
       pcall(MINE.updTick)                -- mine update: the new miner.lua to the mining turtles (teams paused)
       pcall(CURIOS.autoTick)             -- auto-equip: keep a totem (...) on in its curios slot
+      pcall(DW.tick)                     -- drone jobs: fuel runs to turtles, schematic builds
       if TT.listDirty and codeTick % 15 == 0 then pcall(TT.saveList) end
       codeTick = codeTick + 1
       if codeTick % 15 == 7 then pcall(baseAliveTick) end    -- every 30 s: "still running"

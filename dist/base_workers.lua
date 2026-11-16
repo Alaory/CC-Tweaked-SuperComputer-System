@@ -540,6 +540,7 @@ pcall(FACTORY.tick)
 pcall(MINE.silentTick)
 pcall(MINE.updTick)
 pcall(CURIOS.autoTick)
+pcall(DW.tick)
 if TT.listDirty and codeTick % 15 == 0 then pcall(TT.saveList) end
 codeTick = codeTick + 1
 if codeTick % 15 == 7 then pcall(baseAliveTick) end

@@ -67,6 +67,7 @@ function SUPPLY.refuse(name)
   if used == "fluidBuffer" then return name .. " is the base's fluid buffer (fluidbuffer to change it) - pick another storage" end
   if used then return name .. " is the base's own " .. used .. " - pick another storage" end
   if FACTORY and FACTORY.chest == name then return name .. " is the factory chest - pick another storage" end
+  if CONFIG.drone and CONFIG.drone.workChest == name then return name .. " is the drone work chest - pick another storage" end
   if not (CONFIG.me or {}).fluidBuffer and fluidBufferMem and fluidBufferMem() == name then
     return name .. " is the base's fluid buffer (fluidbuffer to change it) - pick another storage"
   end

@@ -120,7 +120,15 @@ ok, n, log = upgrade({})
 CHECK(ok and n >= 38 and used() < before - 150000, "full files -> slim: " .. tostring(n) .. " files, " ..
       math.floor((before - used()) / 1024) .. " KB freed")
 -- upgrade full: the commented files (and it stays so); upgrade slim: back
+-- (the commented files are bigger than a 1 MB computer now: then it must refuse cleanly and
+-- leave the slim files as they are; with room - a bigger disk - it switches and back)
+local slimMe = DISK["base/base_me.lua"]
 ok, n, log = upgrade({ "full" })
+if not ok and log:find("Not enough room") then
+  CHECK(DISK["base/base_me.lua"] == slimMe, "upgrade full on a full 1 MB disk: refused, the slim files kept\n" .. log)
+  CAP = CAP + 600000
+  ok, n, log = upgrade({ "full" })
+end
 CHECK(ok and DISK["base/base_me.lua"] == readReal("base_me.lua"), "upgrade full: the commented files\n" .. log)
 ok, n, log = upgrade({})
 CHECK(not ok and log:find("up to date"), "...and it stays full\n" .. log)

@@ -260,6 +260,45 @@ if CONFIG.drone.home then
   end
 end
 
+-- MARKING PLACES (the owner: "annoying to write the coords each time for each block / chest"):
+-- stand ON a block (a chest, a corner of a build site ...) and mark it - chat  $drone mark <name>
+-- or console  save <name> me . Commands that need a spot take a saved name instead of x y z.
+-- the block under a player's feet (standing ON a chest = that chest), or where they stand (feet)
+function playerBlock(name, feet)
+  local x, y, z = playerPos(canonPlayer(name or state.owner or ""))
+  if not x then return nil, y end
+  x, y, z = math.floor(x), math.floor(y + 0.001), math.floor(z)
+  if not feet then y = y - 1 end
+  return x, y, z
+end
+-- a spot from command words, starting at words[i]: "x y z" | a saved place | "me" (the block
+-- under you) | "feet" (where you stand) | "@player" (the block under them).
+-- returns x, y, z, next index  -  or nil, why
+function posArg(words, i, who)
+  local a = words[i]
+  if not a then return nil, "where? give x y z, a saved place, or me (the block under you)" end
+  if tonumber(a) then
+    if validCoords(words[i], words[i + 1], words[i + 2]) then
+      return math.floor(tonumber(words[i])), math.floor(tonumber(words[i + 1])), math.floor(tonumber(words[i + 2])), i + 3
+    end
+    return nil, "x y z: three numbers (y -64..320)"
+  end
+  local l = a:lower()
+  if l == "me" or l == "here" or l == "under" or l == "feet" then
+    local x, y, z = playerBlock(who or state.owner, l == "feet")
+    if not x then return nil, y end
+    return x, y, z, i + 1
+  end
+  if a:sub(1, 1) == "@" then
+    local x, y, z = playerBlock(a:sub(2))
+    if not x then return nil, y end
+    return x, y, z, i + 1
+  end
+  local w = findWaypoint(a)
+  if w then return w.x, w.y, w.z, i + 1 end
+  return nil, "no saved place called '" .. a .. "' (stand on it and type  $" .. tostring(CONFIG.chat and CONFIG.chat.command or "drone") .. " mark " .. a .. "  in chat)"
+end
+
 -- sensible Minecraft coordinates? (stops typos like 1e309 or y = 9000)
 function validCoords(x, y, z)
   x, y, z = tonumber(x), tonumber(y), tonumber(z)
@@ -1391,6 +1430,8 @@ function buildMission(dr, cmd)
     return "Pick up " .. who, pickupSteps(dr, who)
   elseif cmd.kind == "drop" then
     return "Drop " .. who, dropSteps(dr, who)
+  elseif cmd.kind == "work" then                   -- a drone job (base_dronework.lua): its own steps
+    return cmd.title or "Work", cmd.steps or {}
   elseif cmd.kind == "ferry" then
     local steps = pickupSteps(dr, who)
     for _, st in ipairs(dropSteps(dr, who)) do steps[#steps + 1] = st end
@@ -1432,7 +1473,7 @@ function runMission(dr, cmd)
     return
   end
   if cmd.kind ~= "pickup" and cmd.kind ~= "fly" and cmd.kind ~= "drop" and cmd.kind ~= "ferry"
-     and cmd.kind ~= "home" then return end
+     and cmd.kind ~= "home" and cmd.kind ~= "work" then return end
 
   -- not enough air: the drone would stop working halfway
   local okP, pr = pcall(d.getDronePressure)

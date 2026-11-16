@@ -145,6 +145,7 @@ function TT.idleWhy(t)
   if t.anchor then return "anchor - keeps the base loaded", C.purple end
   if t.rescuerRole then return "rescuer - waits for a turtle in trouble", C.warn end
   if t.party then return "in the SEARCH PARTY - waits for the others", C.label end
+  if t.dwAnchor then return "keeps a drone build site loaded (schem status)", C.purple end
   local fr = TT.factoryRole(t)
   if fr then return "factory " .. fr .. " - stays at the factory (no surveys)", C.label end
   if fuel and fuel < minFuel then
@@ -1446,7 +1447,8 @@ local function problemOf(t)
     local fuel = tonumber(t.fuel)
     if fuel and fuel < 20 then t.lowFuelSince = t.lowFuelSince or now else t.lowFuelSince = nil end
     if t.stuck and idle then t.stuckSince = t.stuckSince or now else t.stuckSince = nil end
-    if t.lowFuelSince and now - t.lowFuelSince > 60 then return "fuel" end
+    -- (a drone is bringing fuel: the rescuer waits - base_dronework.lua)
+    if t.lowFuelSince and now - t.lowFuelSince > 60 and not (DW and DW.fuelBusy and DW.fuelBusy(t)) then return "fuel" end
     if t.stuckSince and now - t.stuckSince > 60 then return "stuck" end
     return nil
   end
@@ -1746,7 +1748,7 @@ function TT.homeTick()
       low = "wait"                       -- the fuel chest is busy: wait for it, do not go home first
     end
     local wait = low and 10 or idleHome
-    if low ~= "wait" and idleHome > 0 and idle and t.home and t.pos and t.pos.x and not t.held and not t.anchor and not t.party
+    if low ~= "wait" and idleHome > 0 and idle and t.home and t.pos and t.pos.x and not t.held and not t.anchor and not t.party and not t.dwAnchor
        and not t.stuck and not t.rescuer and now - t.idleSince > wait
        and (not t.idleHomeAt or now - t.idleHomeAt > 600) then
       local away = math.abs(t.pos.x - t.home.x) + math.abs(t.pos.y - t.home.y) + math.abs(t.pos.z - t.home.z)
@@ -1849,7 +1851,7 @@ function TT.available()
   local list = {}
   for id, t in pairs(state.turtles) do
     if TT.online(t) and t.pos and t.pos.x and (t.task == nil or t.task == "idle") and not t.anchor
-       and not t.rescuerRole and not t.party and not TT.factoryRole(t) then
+       and not t.rescuerRole and not t.party and not t.dwAnchor and not TT.factoryRole(t) then
       list[#list + 1] = id
     end
   end

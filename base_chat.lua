@@ -148,6 +148,7 @@ function handleChat(m)
     reply("Use: " .. c .. " home | " .. c .. " to <place" ..
           ((owner or CONFIG.chat.othersToPlayers) and "|player" or "") .. "> | " .. c .. " back | " ..
           c .. " places | " .. c .. " status | " .. c .. " stop")
+    if owner then reply("Places: " .. c .. " mark <name> (stand ON the block) | " .. c .. " unmark <name>") end
     if owner then reply("Owner: " .. c .. " allow/deny <name> | " ..
                         c .. " allowed | " .. c .. " yes/no <name> | " .. c .. " notify on/all/off") end
 
@@ -170,6 +171,21 @@ function handleChat(m)
     local cur = state.notifySubs[k]
     reply("Base messages in chat: " .. (cur and (cur.level == "all" and "ALL (everything)" or "ON (warnings + errors)")
           or "OFF") .. ".  " .. c .. " notify on | all | off")
+
+  elseif sub == "mark" or sub == "unmark" then
+    -- stand ON the block (a chest, a build corner ...) and mark it: no coordinates to type
+    if not owner then reply("Only " .. tostring(state.owner) .. " can mark places.") return end
+    local pname = words[3]
+    if not pname then reply("Use: " .. c .. " mark <name> (the block under you) | " .. c .. " mark <name> feet | " .. c .. " unmark <name>") return end
+    if pname:lower() == "base" then reply("'Base' comes from the settings (drone home).") return end
+    if sub == "unmark" then
+      reply(removeWaypoint(pname) and ("Forgot " .. pname) or ("No place called " .. pname))
+      return
+    end
+    local x, y, z = playerBlock(name, (words[4] or ""):lower() == "feet")
+    if not x then reply("Cannot mark: " .. cleanErr(y)) return end
+    addWaypoint(pname, x, y, z)
+    reply("Marked " .. pname .. " at " .. fmtPos(x, y, z) .. (((words[4] or ""):lower() == "feet") and " (where you stand)" or " (the block under you)"))
 
   elseif sub == "places" then
     local n = {}

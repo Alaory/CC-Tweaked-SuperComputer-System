@@ -261,6 +261,45 @@ end
 end
 
 
+
+
+
+function playerBlock(name, feet)
+local x, y, z = playerPos(canonPlayer(name or state.owner or ""))
+if not x then return nil, y end
+x, y, z = math.floor(x), math.floor(y + 0.001), math.floor(z)
+if not feet then y = y - 1 end
+return x, y, z
+end
+
+
+
+function posArg(words, i, who)
+local a = words[i]
+if not a then return nil, "where? give x y z, a saved place, or me (the block under you)" end
+if tonumber(a) then
+if validCoords(words[i], words[i + 1], words[i + 2]) then
+return math.floor(tonumber(words[i])), math.floor(tonumber(words[i + 1])), math.floor(tonumber(words[i + 2])), i + 3
+end
+return nil, "x y z: three numbers (y -64..320)"
+end
+local l = a:lower()
+if l == "me" or l == "here" or l == "under" or l == "feet" then
+local x, y, z = playerBlock(who or state.owner, l == "feet")
+if not x then return nil, y end
+return x, y, z, i + 1
+end
+if a:sub(1, 1) == "@" then
+local x, y, z = playerBlock(a:sub(2))
+if not x then return nil, y end
+return x, y, z, i + 1
+end
+local w = findWaypoint(a)
+if w then return w.x, w.y, w.z, i + 1 end
+return nil, "no saved place called '" .. a .. "' (stand on it and type  $" .. tostring(CONFIG.chat and CONFIG.chat.command or "drone") .. " mark " .. a .. "  in chat)"
+end
+
+
 function validCoords(x, y, z)
 x, y, z = tonumber(x), tonumber(y), tonumber(z)
 if not (x and y and z) then return false end
@@ -1391,6 +1430,8 @@ elseif cmd.kind == "pickup" then
 return "Pick up " .. who, pickupSteps(dr, who)
 elseif cmd.kind == "drop" then
 return "Drop " .. who, dropSteps(dr, who)
+elseif cmd.kind == "work" then
+return cmd.title or "Work", cmd.steps or {}
 elseif cmd.kind == "ferry" then
 local steps = pickupSteps(dr, who)
 for _, st in ipairs(dropSteps(dr, who)) do steps[#steps + 1] = st end
@@ -1432,7 +1473,7 @@ droneLog(dr, "Cannot start: no drone connected")
 return
 end
 if cmd.kind ~= "pickup" and cmd.kind ~= "fly" and cmd.kind ~= "drop" and cmd.kind ~= "ferry"
-and cmd.kind ~= "home" then return end
+and cmd.kind ~= "home" and cmd.kind ~= "work" then return end
 
 
 local okP, pr = pcall(d.getDronePressure)

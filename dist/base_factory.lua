@@ -308,6 +308,7 @@ for _, k in ipairs({ "buffer", "giveChest", "takeChest", "curiosChest", "fluidBu
 if me[k] == name then return k end
 end
 if SUPPLY and SUPPLY.isTarget and SUPPLY.isTarget(name) then return "supply" end
+if CONFIG.drone and CONFIG.drone.workChest == name then return "drone work chest" end
 end
 
 

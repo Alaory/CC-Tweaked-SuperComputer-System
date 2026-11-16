@@ -596,6 +596,35 @@ PneumaticCraft drone rides, turtle mapping/surveys, and an AE2 ME network view.
   not belong -> back into AE2, place what is missing; daily rotation per site at
   an hour), stage 3 structure "spawning" at flat spots from the map. Litematica /
   WorldEdit files are refused with a hint. tools/tests/fixtures (make_fixtures.py).
+- DRONE WORK (base_dronework.lua DW, comms tick DW.tick; dronework.dat via dataPath): PneumaticCraft
+  drones do jobs with items from AE2. Drone chunk loading is OFF on the owner's server: a drone only
+  works where a player / an online turtle (its Chunky) / the drones' home chunk keeps it loaded
+  (DW.loaded). WORK CHEST (CONFIG.drone.workChest = network name + workChestAt x y z; console `dw chest
+  [<n|name> me]`; FACTORY.reserved / SUPPLY.refuse know it): EMPTY, only the base + drones use it -
+  DW.giveToChest exports PLAIN items (FACTORY.variants fingerprint, never the owner's own), the drone
+  inventory_imports, J.carried = exported minus left in the chest; every trip starts and ends with
+  stepUnload (inventory_export into the chest -> DW.chestToAE2). One mission per trip: submitDrone
+  kind "work" {title, steps} (runMission / buildMission accept it; failures go home as usual); DW.trip
+  is read back when the drone is free (tripDone). goNear: within workFly (64) the drone FLIES (no air),
+  else travelTo. Carry = DW.slots (1 + Inventory Upgrades from getUpgrades, CONFIG.drone.slots wins)
+  x 64; one item type per trip, so no item filters are needed. FUEL RUNS (DW.fuelTick, `dw fuel <id>`,
+  `dw auto on|off` = drone.fuelRuns, `dw fuel item <item> [n]` = drone.fuelItem / fuelCount, default
+  the factory fuel or coal x32): an ONLINE turtle (= loaded by its own Chunky) with fuel < 20 for 30 s
+  -> fuel into its inventory (node idleEmptyFuel burns it); max 3 tries 10 min apart; DW.fuelBusy holds
+  the rescuer (problemOf) while flying and 3 min after; DONE / WARNING when the fuel did (not) burn.
+  SCHEMATIC BUILD (`schem build <name> <me|place|x y z> [rot 90|180|270] [clear]`, status / pause /
+  resume / stop): DW.plan = place list bottom up (y, item, chunk, x, z) + air list top down (clear);
+  fluids (buckets) skipped; progress = J.done / J.dug strings ("0"/"1" per block, saved; the plan is
+  rebuilt from the schematic after a restart - same order); DW.nextTrip = one chunk, one layer, one
+  item, <= carry (dig: 64). Placed = carried minus what came back (a taken spot is left as it is,
+  counted in skippedN). Not loaded -> a free turtle (TT.available, fuel > 2000) gets "goto" the chunk
+  middle ABOVE the build (plan.top + 3) and is t.dwAnchor (not in TT.available, no idle-home, idleWhy
+  says so); it follows chunk by chunk and goes home at the end. 5 failed trips in a row -> paused; low
+  air / item short -> waits (2 / 5 min). Drones place blocks the default way round (stairs / logs may
+  face another way). test_dronework.lua (fake drone / chest / AE2 / world).
+- PLACES BY STANDING ON THEM (base_drones.lua playerBlock / posArg): chat `$drone mark <name>` (the
+  block under you; `feet` = where you stand) / `$drone unmark`, console `save <name> me|feet|x y z`;
+  posArg(words, i) = "x y z" | a saved place | me | feet | @player - used by `dw chest`, `schem build`.
 - CURIOS (base_curios.lua CURIOS; CURIOS tab, empty slot selected): FITS = items tagged
   curios:<slot> (or curios:curio) + items listed under "#curios:<slot>" in the partial view
   (meTagCache.curioOf - those answers often carry NO tags, so nothing was ever found) +
@@ -778,7 +807,8 @@ PneumaticCraft drone rides, turtle mapping/surveys, and an AE2 ME network view.
   (hello -> ver = checksum of its startup.lua) differs (op "upd": checksum +
   compile check, then startup.lua + reboot) - STORE.updateAll in the mapWorker.
 - UPGRADE (upgrade.lua; console `upgrade [check|branch <b>]`, SYSTEM > ACTIONS
-  UPGRADE PROGRAM, or `upgrade` in a shell - also on the pocket): the newest files from
+  UPGRADE PROGRAM, or `upgrade` in a shell - also on the pocket; the FULL commented files are
+  bigger than a 1 MB computer now - `upgrade full` refuses cleanly there, upgrade_sim checks both): the newest files from
   GitHub (public repo, raw.githubusercontent.com; the exact commit from api.github.com so
   files never mix). manifest.txt = "group path size checksum" (groups base / pocket;
   base_config.lua NEVER in it) - REGENERATE IT after every change: `python3
@@ -860,6 +890,7 @@ PneumaticCraft drone rides, turtle mapping/surveys, and an AE2 ME network view.
 | base_factory.lua | turtle factory: keeps the fleet size, AE2 parts, the builder turtle builds new ones |
 | base_supply.lua | `supply`: storages on the wired cable kept stocked from AE2 (items + fluids) |
 | base_schem.lua | schematics: Create .nbt files dropped on the screen, unpacked + read, materials list |
+| base_dronework.lua | drone jobs: work chest, fuel runs to turtles, schematic builds (turtle keeps the site loaded) |
 | base_pocket.lua / pocket.lua | the pocket remote: base side (pairing, status, actions, messages) / the program on the pocket computer |
 
 ## The owner's setup (found out the hard way)
@@ -992,4 +1023,4 @@ rider down at the pickup spot.
 ## Useful console commands (on the base computer)
 help, report, tanks, mesetup, me check, me add <id>, curios check, disks
 [data|move], drones, drone <n>, charger, turtles, turtle <id> <cmd>, update,
-rescue, findlost, map [clear], exit [clear], survey, theme, events, supply, mine update.
+rescue, findlost, map [clear], exit [clear], survey, theme, events, supply, mine update, dw, schem build.

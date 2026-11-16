@@ -308,6 +308,7 @@ function FACTORY.reserved(name)
     if me[k] == name then return k end
   end
   if SUPPLY and SUPPLY.isTarget and SUPPLY.isTarget(name) then return "supply" end   -- (kept stocked: console supply)
+  if CONFIG.drone and CONFIG.drone.workChest == name then return "drone work chest" end
 end
 
 -- why no turtle is built now (nil = it can build)

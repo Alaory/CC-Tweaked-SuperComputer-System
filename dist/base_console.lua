@@ -11,7 +11,7 @@ HELP = {
 " dest <x> <y> <z>     destination = coordinates",
 " dest <waypoint>      destination = saved place",
 " dest @<player>       destination = where a player is",
-" save <name> [x y z]  save the destination",
+" save <name> [x y z|me|feet]  save a place (me = the block under you; chat: $drone mark <name>)",
 " del <name> / list    delete / show saved places",
 " players              online players and positions",
 " fly / home           fly to destination / to base",
@@ -58,6 +58,8 @@ HELP = {
 " fluidstop             end a big fluid ALL that is still moving",
 " fluidbuffer [<n>|auto]   which fluid storage AE2 fluids pass through (filling your tanks)",
 " supply [<storage> <item> <count>|<storage> fluid <fluid> <buckets>|stop <n>|now]   keep a storage on the cable stocked from AE2",
+" dw [chest <n> me|fuel <id>|fuel item <item> [n]|auto on|off]   drone jobs: work chest, fuel runs to turtles",
+" schem build <name> <me|place|x y z> [rot 90] [clear] | status | pause | resume | stop   a drone builds it",
 " mine update [stop]    the newest miner.lua to every mining turtle (teams paused first, then started again)",
 " factory [chest <name>|builder <id>|build|stop]   build turtles from AE2 parts",
 " factory recipes|learn|forget <item>|crafter <id>   recipes TAUGHT to a crafting turtle",
@@ -182,11 +184,13 @@ say("'Base' comes from CONFIG.drone.home in base_config.lua - change it there.")
 else
 local x, y, z
 if #words >= 3 then
-if #words ~= 5 or not validCoords(words[3], words[4], words[5]) then
-say("Usage: save <name> <x> <y> <z>   (numbers, y -64..320)")
+local why
+x, y, z = posArg(words, 3)
+if not x then
+why = y
+say("Usage: save <name> <x> <y> <z>  |  save <name> me  (the block under you)  |  save <name> feet - " .. tostring(why))
 return out
 end
-x, y, z = math.floor(tonumber(words[3])), math.floor(tonumber(words[4])), math.floor(tonumber(words[5]))
 else
 x, y, z = resolveDest(D)
 end
@@ -808,6 +812,52 @@ elseif cmd == "schem" or cmd == "schematics" then
 local sub = words[2]
 if sub == "delete" and words[3] then
 say(SCHEM.delete(words[3]) and ("Deleted " .. words[3]) or ("No schematic '" .. words[3] .. "'"))
+elseif sub == "build" then
+
+local name = words[3]
+if not name then
+say("Usage: schem build <name> <me | a saved place | x y z> [rot 90|180|270] [clear]")
+say("  the spot = the schematic's lowest north-west corner; me = the block under you")
+else
+local x, y, z, nx = posArg(words, 4)
+if not x then say(tostring(y))
+else
+local rot, clear = 0, false
+local i = nx
+while words[i] do
+local w = words[i]:lower()
+if w == "rot" and tonumber(words[i + 1]) then rot = tonumber(words[i + 1]) i = i + 1
+elseif w == "clear" then clear = true end
+i = i + 1
+end
+local ok, msg = DW.startBuild(name, x, y, z, rot, clear)
+say(msg)
+if ok then
+local rows, missing = DW.materials(DW.job)
+for k, r in ipairs(missing) do
+if k > 12 then say("  ... " .. (#missing - 12) .. " more short") break end
+say(string.format("  short: %-32s need %d, AE2 has %d", prettify(r.item), r.need, r.have))
+end
+say("The drone builds it bottom up (blocks are placed the default way round).  schem status | schem stop")
+end
+end
+end
+elseif sub == "stop" then
+local _, msg = DW.stopBuild("stopped by you")
+say(msg)
+elseif sub == "pause" then
+if DW.job then DW.job.paused = "paused by you (schem resume)" DW.save() say("Paused.") else say("No build is running.") end
+elseif sub == "resume" then
+if DW.job then DW.job.paused, DW.job.fails, DW.job.waitUntil = nil, 0, nil DW.save() say("Going on.") else say("No build is running.") end
+elseif sub == "status" then
+for _, l in ipairs(DW.statusLines()) do say(l) end
+if DW.job then
+local rows = DW.materials(DW.job)
+for k, r in ipairs(rows) do
+if k > 10 then say("  ... " .. (#rows - 10) .. " more items") break end
+say(string.format("  %-32s still %d, AE2 has %d%s", prettify(r.item), r.need, r.have, r.have < r.need and "  SHORT" or ""))
+end
+end
 elseif sub then
 local s, err = SCHEM.load(sub)
 if not s then say(err)
@@ -832,7 +882,68 @@ say("No schematics yet. Save one with Create's Schematic and Quill, then drag th
 say("(from .minecraft/schematics on your PC) onto this computer's screen.")
 end
 for _, n in ipairs(names) do say("  " .. n) end
-say("schem <name> = size and materials,  schem delete <name>")
+say("schem <name> = size and materials,  schem delete <name>,  schem build <name> <me|place|x y z> [rot 90] [clear]")
+end
+
+elseif cmd == "dw" or cmd == "dronework" then
+
+local sub = (words[2] or ""):lower()
+if sub == "chest" then
+if not words[3] then
+say("The WORK CHEST: an EMPTY chest / barrel on the cable that the drones can reach (near their home).")
+say("Only the base and the drones use it. Stand ON it and type:  dw chest <n|name> me")
+local n = 0
+for _, name in ipairs(peripheral.getNames()) do
+local okI, isI = pcall(peripheral.hasType, name, "inventory")
+local okS, size = pcall(peripheral.call, name, "size")
+if okI and isI and okS and tonumber(size) and tonumber(size) <= 54 and not name:find("drive", 1, true) then
+local okL, list = pcall(peripheral.call, name, "list")
+local items = 0
+for _ in pairs(okL and list or {}) do items = items + 1 end
+local used = FACTORY.reserved(name)
+n = n + 1
+say(string.format("  %2d  %s%s", n, name, used and ("   (in use: " .. used .. ")") or (items == 0 and "   (empty)" or ("   " .. items .. " stacks - not empty"))))
+state.dwChests = state.dwChests or {}
+state.dwChests[n] = name
+end
+end
+if n == 0 then say("  none found - put a wired modem on a chest and right-click it (red)") end
+else
+local name = (state.dwChests or {})[tonumber(words[3]) or -1] or words[3]
+local used = FACTORY.reserved(name)
+if not peripheral.isPresent(name) then say("No '" .. name .. "' on the cable - type  dw chest  for the list")
+elseif used and used ~= "drone work chest" then say(name .. " is already used by the base (" .. used .. ")")
+else
+local x, y, z = posArg(words, 4)
+if not x then say("Where is it? " .. tostring(y) .. "   (stand ON it: dw chest " .. words[3] .. " me)")
+else
+setSetting("drone.workChest", name)
+setSetting("drone.workChestAt", { x = x, y = y, z = z })
+say("Work chest: " .. name .. " at " .. fmtPos(x, y, z) .. ". Keep it empty - only the base and the drones use it.")
+end
+end
+end
+elseif sub == "fuel" then
+if words[3] == "item" and words[4] then
+setSetting("drone.fuelItem", SUPPLY.fullName(words[4]))
+if tonumber(words[5]) then setSetting("drone.fuelCount", math.floor(tonumber(words[5]))) end
+local it, n = DW.fuelItem()
+say("Fuel runs bring " .. n .. " " .. prettify(it))
+elseif words[3] then
+local t = TT.find and TT.find(words[3]) or state.turtles[tonumber(words[3]) or -1]
+if not t then say("No turtle '" .. words[3] .. "'")
+else
+local _, msg = DW.fuelRun(t.id, "you")
+say(msg)
+end
+else say("Usage: dw fuel <turtle id>  |  dw fuel item <item> [count]") end
+elseif sub == "auto" and (words[3] == "on" or words[3] == "off") then
+setSetting("drone.fuelRuns", words[3] == "on")
+DW.auto = nil
+say("Automatic drone fuel runs " .. words[3]:upper())
+else
+for _, l in ipairs(DW.statusLines()) do say(l) end
+say("dw chest [<n|name> me]  |  dw fuel <id>  |  dw fuel item <item> [count]  |  dw auto on|off  |  schem build ...")
 end
 
 elseif cmd == "pocket" then
