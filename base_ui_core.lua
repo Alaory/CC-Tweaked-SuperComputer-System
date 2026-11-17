@@ -113,7 +113,7 @@ end
 -- a panel: inside colour, thin frame, the title cut into the top line (amber), an
 -- optional note on the right of the top line. Clips everything drawn after it to its
 -- inside (rows y .. y+h-1, columns x+1 .. x+w-2). Returns the inner box x, y, w, h
--- (2 columns of padding, the frame rows left free).
+-- (2 columns of padding; content starts one row under the title line).
 function panel(x, y, w, h, title, opt)
   opt = opt or {}
   CLIP = nil
@@ -127,7 +127,7 @@ function panel(x, y, w, h, title, opt)
     text(x + w - #opt.right - 4, y, " " .. opt.right .. " ", opt.rcol or C.dim, C.panel)
   end
   clip(x + 1, y, w - 2, h)
-  return x + 2, y + 1, w - 4, h - 2
+  return x + 2, y + 2, w - 4, h - 3
 end
 -- the older name: a panel with a title
 function card(x, y, w, h, label) return panel(x, y, w, h, label) end
@@ -141,8 +141,11 @@ function sep(x, y, w) hline(x, y, w, C.line, C.panel, "mid") end
 function kv(x, y, w, k, v, vcol, bg)
   bg = bg or C.panel
   k, v = tostring(k), tostring(v)
-  if #k + #v + 2 > w then k = trunc(k, math.max(3, w - #v - 2)) end
-  if #v > w then v = trunc(v, w) end
+  if #k + #v + 2 > w then
+    -- too long: the key keeps up to 40% of the row, the value gets the rest
+    k = trunc(k, math.max(3, math.min(#k, math.floor(w * 0.4), w - #v - 2)))
+    v = trunc(v, math.max(1, w - #k - 2))
+  end
   text(x, y, k, C.dim, bg)
   local gap = w - #k - #v - 2
   if gap > 0 then text(x + #k + 1, y, ("."):rep(gap), C.line, bg) end

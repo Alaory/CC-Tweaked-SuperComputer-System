@@ -123,10 +123,10 @@ end
 local function kpiPanel(x, y, w, h, k)
   local ix, iy, iw = panel(x, y, w, h, k[1], { col = C.line })
   addHit(x, y, w, h, "page", k[8])
-  local bw = big(ix, iy + 1, k[2], k[7] == C.good and C.text or k[7], C.panel)
-  if iw - bw - 1 >= #k[3] then text(ix + bw + 1, iy + 2, k[3], C.dim, C.panel) end
-  text(ix, iy + 4, trunc(k[4], iw), C.text, C.panel)
-  if h >= 9 then text(ix, iy + 5, trunc(k[5], iw), C.dim, C.panel) end
+  local bw = big(ix, iy, k[2], k[7] == C.good and C.text or k[7], C.panel)
+  if iw - bw - 1 >= #k[3] then text(ix + bw + 1, iy + 1, k[3], C.dim, C.panel) end
+  text(ix, iy + 3, trunc(k[4], iw), C.text, C.panel)
+  if h >= 9 then text(ix, iy + 4, trunc(k[5], iw), C.dim, C.panel) end
   gauge(ix, y + h - 2, iw, k[6], k[7])
 end
 
