@@ -325,6 +325,18 @@ tap("dwauto")
 CHECK(DW.autoOn() == true, "AUTO: ON / OFF")
 removeWaypoint("Site")
 state.page = "home"
+-- chat: stand ON the work chest far from the monitor and type  $drone workchest
+CONFIG.drone.workChest, CONFIG.drone.workChestAt = nil, nil
+SETTINGS["drone.workChest"], SETTINGS["drone.workChestAt"] = nil, nil
+det = { getPlayer = function() return { x = 2.5, y = 70, z = 0.5, dimension = "minecraft:overworld" } end }
+local told = {}
+local tell0 = chatTell
+chatTell = function(n, t) told[#told + 1] = t end
+handleChat({ name = "Alaory", uuid = state.ownerUuid, msg = "$" .. CONFIG.chat.command .. " workchest" })
+chatTell = tell0
+cx, cy, cz = DW.chestAt()
+CHECK(cx == CH.x and cy == CH.y and cz == CH.z, "chat  workchest  = the block under you (" .. tostring(told[1]) .. ")")
+CHECK(DW.chestName() == "minecraft:barrel_9", "... and the only empty chest on the cable is picked")
 
 bridge = BRIDGE0
 PERIPHS["minecraft:barrel_9"] = nil

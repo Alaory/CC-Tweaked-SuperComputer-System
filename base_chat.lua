@@ -148,7 +148,7 @@ function handleChat(m)
     reply("Use: " .. c .. " home | " .. c .. " to <place" ..
           ((owner or CONFIG.chat.othersToPlayers) and "|player" or "") .. "> | " .. c .. " back | " ..
           c .. " places | " .. c .. " status | " .. c .. " stop")
-    if owner then reply("Places: " .. c .. " mark <name> (stand ON the block) | " .. c .. " unmark <name>") end
+    if owner then reply("Places: " .. c .. " mark <name> (stand ON the block) | " .. c .. " unmark <name> | " .. c .. " workchest (stand ON the drones' work chest)") end
     if owner then reply("Owner: " .. c .. " allow/deny <name> | " ..
                         c .. " allowed | " .. c .. " yes/no <name> | " .. c .. " notify on/all/off") end
 
@@ -186,6 +186,24 @@ function handleChat(m)
     if not x then reply("Cannot mark: " .. cleanErr(y)) return end
     addWaypoint(pname, x, y, z)
     reply("Marked " .. pname .. " at " .. fmtPos(x, y, z) .. (((words[4] or ""):lower() == "feet") and " (where you stand)" or " (the block under you)"))
+
+  elseif sub == "workchest" then
+    -- the drones' WORK CHEST: stand ON it and type this (the monitor may be far away)
+    if not owner then reply("Only " .. tostring(state.owner) .. " can set the work chest.") return end
+    local x, y, z = playerBlock(name)
+    if not x then reply("Cannot: " .. cleanErr(y)) return end
+    if not DW.chestName() then
+      pcall(DW.refreshView)                      -- (one empty chest on the cable: that is it)
+      local cands = DW.view.cands or {}
+      if #cands == 1 then setSetting("drone.workChest", cands[1]) end
+    end
+    setSetting("drone.workChestAt", { x = x, y = y, z = z })
+    DW.view.at = -999
+    if DW.chestName() then
+      reply("Work chest: " .. DW.chestName() .. " at " .. fmtPos(x, y, z) .. ". Keep it empty - only the base and the drones use it.")
+    else
+      reply("Work chest spot saved: " .. fmtPos(x, y, z) .. ". Several empty chests are on the cable - pick this one with CHEST > on the DRONE WORK page.")
+    end
 
   elseif sub == "places" then
     local n = {}

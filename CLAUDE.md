@@ -636,6 +636,10 @@ PneumaticCraft drone rides, turtle mapping/surveys, and an AE2 ME network view.
 - PLACES BY STANDING ON THEM (base_drones.lua playerBlock / posArg): chat `$drone mark <name>` (the
   block under you; `feet` = where you stand) / `$drone unmark`, console `save <name> me|feet|x y z`;
   posArg(words, i) = "x y z" | a saved place | me | feet | @player - used by `dw chest`, `schem build`.
+  The work chest is usually far from the monitor (the owner: "I can't interact with the screen far
+  away"): chat `$drone workchest` (owner) = its spot = the block under you; no chest picked yet and
+  exactly ONE empty candidate on the cable -> that one (DW.refreshView in the chat worker), else
+  CHEST > on the page / `dw chest <n> <place>`. test_dronework.lua.
 - CURIOS (base_curios.lua CURIOS; CURIOS tab, empty slot selected): FITS = items tagged
   curios:<slot> (or curios:curio) + items listed under "#curios:<slot>" in the partial view
   (meTagCache.curioOf - those answers often carry NO tags, so nothing was ever found) +
