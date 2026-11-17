@@ -10,60 +10,39 @@
 ---------------------------------------------------------------------
 -- THEME
 ---------------------------------------------------------------------
--- BLOCK UI (the look of every page - rules in CLAUDE.md "UI rules"):
--- Minecraft's own colours, in deeper, softer shades (modern, not retro). Every theme ("biome") gives each colour slot the
--- same JOB, only the shades of the FRAME change:
---   bg      page background (dark, like the menu background)
---   cards   panels (dark inventory window)
---   lines   inactive tabs, row highlights, bevel highlight of panels
---   buttons button face (Minecraft's stone button), empty slots, bar tracks
---   text    white text;  dim = Minecraft's grey text
---   accent  the selected tab / main buttons (Minecraft's blue "hover" button)
---   titles  gold, like Minecraft's gold text (card titles, headings)
--- The status colours are Minecraft's chat colours and the SAME in every
--- biome (the MAP uses them for grass, water, sand ... too): green = good,
--- yellow = attention, red = problem, cyan (aqua) = info, gold (orange), pink, purple.
--- Slot order: bg, cards, lines, buttons, text, dim, accent, titles,
---             cyan, green, yellow, orange, red, pink, purple, lime
+-- CONTROL ROOM (the look of every page - rules in CLAUDE.md "UI rules"; the owner's pick
+-- of three mockups, "B": an operations console). Near-black page, panels a shade lighter
+-- with THIN outline frames (2x3 sub-pixel lines) and the title cut into the top line,
+-- AMBER titles, a TEAL accent, status lights, segmented gauges, big numbers.
+-- Colour slots (16): a THEME only changes the frame slots - page bg, panel, lines, dim
+-- text, titles. Every other slot is FIXED: text, the accent / status colours and the
+-- MAP's colours (grass, water, sand, snow ...) look the same in every theme.
+--   black     bg      the page
+--   gray      panel   inside a panel (a shade lighter than the page)
+--   magenta   line    frames, gauge tracks, separators, quiet button faces
+--   lightGray dim     secondary text
+--   lightBlue label   amber titles, big numbers
+--   white     text    (fixed)        cyan  accent / info (fixed, teal)
+--   green good  yellow warn  red bad  orange  purple  pink  lime  blue  brown (fixed)
 local SLOTS = { colors.black, colors.gray, colors.magenta, colors.lightGray, colors.white,
                 colors.brown, colors.blue, colors.lightBlue, colors.cyan, colors.green,
                 colors.yellow, colors.orange, colors.red, colors.pink, colors.purple, colors.lime }
--- the fixed colours (status + map): Minecraft chat colours, softened (not garish)
-local FIXED = { 0x141414, 0x2E2E2E, 0x4A4A4A, 0x6F6F6F, 0xFFFFFF, 0xA89F92, 0x5A7CE6, 0xF2B33D,
-                0x52CFCF, 0x5CBF5C, 0xF0DE5C, 0xEE9F34, 0xE85C5C, 0xDE7BD6, 0xA374E6, 0x92D25C }
+local FIXED = { 0x060A0B, 0x0C1315, 0x1E3A37, 0x6F8D87, 0xE6F2EE, 0x8E6B47, 0x3D7BFF, 0xFFB238,
+                0x3FE0C8, 0x5BD46A, 0xFFD34D, 0xFF8A3D, 0xFF4D5E, 0xFF6FA8, 0xB18CFF, 0xA6E05A }
+-- the frame of each theme: page, panel, lines, dim text, titles
 THEMES = {
-  -- Minecraft's menus, made modern: stone-grey buttons and gold titles like the
-  -- game, but deeper, softer shades (not the bright flat grey of old games).
-  -- frame only: bg, cards, lines, buttons, text, dim, accent, titles (the rest = FIXED)
-  stone     = { 0x121212, 0x262626, 0x3A3A3A, 0x505050, 0xFFFFFF, 0xA8A8A8, 0x5B7FE0, 0xF2B33D },
-  deepslate = { 0x0F0F13, 0x212129, 0x34343F, 0x4A4A57, 0xF2F2F8, 0x9A9AA8, 0x6A84E0, 0xF2B33D },
-  oak       = { 0x15100A, 0x2C2117, 0x433325, 0x5E4730, 0xFFF6E8, 0xC2AE94, 0x6A9A3C, 0xF5C451 },
-  nether    = { 0x130909, 0x281414, 0x3E1F1F, 0x572B2B, 0xFFEEEE, 0xC09898, 0xCC4433, 0xF5A93A },
-  ender     = { 0x0C0A12, 0x1B1725, 0x2D2640, 0x413758, 0xF6F0FF, 0xA89CC0, 0x8C62E8, 0xEFE39C },
-  ocean     = { 0x071116, 0x112129, 0x1C3640, 0x284E5A, 0xEAFBFF, 0x94B8C2, 0x2FA8B8, 0xF5C451 },
-  -- Bedrock edition menus: dark slate boxes, LIGHT grey buttons with dark text,
-  -- the selected tab / main button green, white titles (the owner's pick)
-  bedrock   = { 0x1B1B1C, 0x313233, 0x48494A, 0xD0D1D4, 0xFFFFFF, 0xA6A6AA, 0x5A7CE6, 0xFFFFFF },
+  teal     = { bg = 0x060A0B, panel = 0x0C1315, line = 0x1E3A37, dim = 0x6F8D87, title = 0xFFB238 },
+  amber    = { bg = 0x0A0805, panel = 0x130E08, line = 0x3D2D15, dim = 0x9E8862, title = 0xFFC14D },
+  ice      = { bg = 0x070A10, panel = 0x0D131C, line = 0x23364F, dim = 0x7D90AB, title = 0x8CC8FF },
+  violet   = { bg = 0x09070F, panel = 0x110D1B, line = 0x31264B, dim = 0x8F83AE, title = 0xF2C14E },
+  graphite = { bg = 0x0A0A0A, panel = 0x141414, line = 0x323232, dim = 0x8E8E8E, title = 0xFFB238 },
+  crimson  = { bg = 0x0D0607, panel = 0x170B0D, line = 0x47212B, dim = 0xA27E84, title = 0xFFB238 },
 }
-THEME_ORDER = { "bedrock", "stone", "deepslate", "oak", "nether", "ender", "ocean" }
--- themes with LIGHT buttons: text drawn on a button / the selected tab is made
--- dark (white, gold, grey or a status colour on light grey cannot be read).
--- accent = the colour slot of the selected tab / main button (the blue slot is
--- the MAP's water, so a green accent uses the green slot).
-THEME_STYLE = { bedrock = { light = true, accent = colors.green } }
-LIGHT_FG = nil                       -- [background] = { [text colour] = readable colour }
-function themeStyle()
-  if not C then return end
-  local st = THEME_STYLE[THEME_NAME] or {}
-  C.accent = st.accent or colors.blue
-  if not st.light then LIGHT_FG = nil return end
-  local dark = {}
-  for _, c in ipairs({ C.text, C.label, colors.yellow, colors.lime, colors.cyan, colors.green,
-                       colors.orange, colors.pink, colors.lightBlue }) do dark[c] = C.ink end
-  dark[C.dim] = C.head
-  local onAccent = { [C.text] = C.ink, [C.label] = C.ink, [C.dim] = C.ink, [colors.green] = C.ink }
-  LIGHT_FG = { [C.empty] = dark, [C.accent] = onAccent }
-end
+THEME_ORDER = { "teal", "amber", "ice", "violet", "graphite", "crimson" }
+local FRAME = { [colors.black] = "bg", [colors.gray] = "panel", [colors.magenta] = "line",
+                [colors.lightGray] = "dim", [colors.lightBlue] = "title" }
+LIGHT_FG = nil                       -- (no light buttons in this look)
+function themeStyle() end
 local THEME_FILE = "theme.dat"
 
 -- the theme for this start: a fixed one (the 'theme' command, or
@@ -75,8 +54,9 @@ local function chooseTheme()
     local t = readSafe(THEME_FILE)
     if type(t) == "table" then saved = t end
   end
-  local want = saved.mode or CONFIG.theme or "random"
+  local want = saved.mode or CONFIG.theme or "teal"
   if THEMES[want] then return want, saved end
+  if want ~= "random" then return "teal", saved end           -- (a theme of the old look)
   local pick
   for _ = 1, 10 do
     pick = THEME_ORDER[math.random(#THEME_ORDER)]
@@ -85,24 +65,16 @@ local function chooseTheme()
   return pick, saved
 end
 
--- colours the MAP uses (grass, water, sand, stone, snow ...): the same in
--- every theme, so the map always looks the same and stays easy to read.
--- A theme only changes the frame: background, cards, lines, buttons, titles.
-local MAP_SLOTS = { [colors.green] = true, [colors.lime] = true, [colors.blue] = true, [colors.yellow] = true,
-                    [colors.orange] = true, [colors.white] = true, [colors.brown] = true, [colors.red] = true,
-                    [colors.cyan] = true, [colors.purple] = true, [colors.pink] = true }
-
 -- switch to a theme (also while running: the monitor gets the new colours)
 function setTheme(name)
   if not THEMES[name] then return false end
   THEME_NAME = name
   PALETTE = {}
   for i, c in ipairs(SLOTS) do
-    PALETTE[c] = (MAP_SLOTS[c] or not THEMES[name][i]) and FIXED[i] or THEMES[name][i]
+    PALETTE[c] = FRAME[c] and THEMES[name][FRAME[c]] or FIXED[i]
   end
   if mon then pcall(applyPalette, mon) end
   if win then pcall(applyPalette, win) end
-  themeStyle()
   shownRows = {}                -- every row is drawn again
   return true
 end
@@ -119,18 +91,18 @@ do
   saveTheme(saved.mode)                             -- remembers 'last' for the next pick
 end
 
+-- what each colour is FOR (pages use these names, never a slot directly)
 C = {
-  bg = colors.black, panel = colors.gray, empty = colors.lightGray, head = colors.magenta,
-  text = colors.white, dim = colors.brown, ink = colors.black,
-  accent = colors.blue, label = colors.lightBlue,
-  good = colors.green, warn = colors.yellow, bad = colors.red,
-  red = colors.red, purple = colors.purple,
+  bg = colors.black, panel = colors.gray, line = colors.magenta, dim = colors.lightGray,
+  text = colors.white, label = colors.lightBlue, accent = colors.cyan, info = colors.cyan,
+  good = colors.green, warn = colors.yellow, bad = colors.red, ink = colors.black,
+  orange = colors.orange, purple = colors.purple, pink = colors.pink, lime = colors.lime,
+  blue = colors.blue, red = colors.red,
+  head = colors.magenta, empty = colors.magenta,      -- (older names: lines / quiet faces)
 }
 
-themeStyle()
-
 -- colours an item can be tinted with
-ITEM_COLORS = {                      -- (fixed colours only: lightBlue = the gold titles)
+ITEM_COLORS = {                      -- (fixed colours only: lightBlue = the amber titles)
   colors.blue, colors.cyan, colors.green, colors.yellow, colors.orange,
   colors.red, colors.pink, colors.purple, colors.lime,
 }
@@ -306,19 +278,44 @@ end
 ---------------------------------------------------------------------
 -- HELPERS
 ---------------------------------------------------------------------
+-- CLIP: drawing never leaves the screen, nor the box set with clip() (every panel() sets
+-- its own inside) - the owner: "fix text going out of bound". Text cut by the clip
+-- ends in "~" so you can see there was more.
+CLIP = nil
+function clip(x, y, w, h) CLIP = { x, y, x + w - 1, y + h - 1 } end
+function unclip() CLIP = nil end
+local function bounds()
+  local x1, y1, x2, y2 = 1, 1, W or 9999, H or 9999
+  if CLIP then
+    x1, y1 = math.max(x1, CLIP[1]), math.max(y1, CLIP[2])
+    x2, y2 = math.min(x2, CLIP[3]), math.min(y2, CLIP[4])
+  end
+  return x1, y1, x2, y2
+end
 function fill(x, y, w, h, bg)
-  if w < 1 or h < 1 then return end
+  local x1, y1, x2, y2 = bounds()
+  local a, b = math.max(x, x1), math.min(x + w - 1, x2)
+  if b < a then return end
   win.setBackgroundColor(bg)
-  local line = (" "):rep(w)
-  for j = 0, h - 1 do
-    win.setCursorPos(x, y + j)
+  local line = (" "):rep(b - a + 1)
+  for j = math.max(y, y1), math.min(y + h - 1, y2) do
+    win.setCursorPos(a, j)
     win.write(line)
   end
 end
 
--- write text into the off-screen window
+-- write text into the off-screen window (clipped)
 function text(x, y, s, fg, bg)
-  if bg and LIGHT_FG and LIGHT_FG[bg] then fg = LIGHT_FG[bg][fg] or fg end
+  s = tostring(s)
+  local x1, y1, x2, y2 = bounds()
+  if y < y1 or y > y2 then return end
+  if x < x1 then s = s:sub(x1 - x + 1) x = x1 end
+  local room = x2 - x + 1
+  if room <= 0 or #s == 0 then return end
+  if #s > room then
+    s = s:sub(1, room)
+    if room >= 3 and s:byte(room) < 128 and s:sub(room - 1, room) ~= "  " then s = s:sub(1, room - 1) .. "~" end
+  end
   if bg then win.setBackgroundColor(bg) end
   win.setTextColor(fg)
   win.setCursorPos(x, y)
