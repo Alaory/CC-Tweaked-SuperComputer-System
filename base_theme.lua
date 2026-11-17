@@ -322,12 +322,23 @@ function text(x, y, s, fg, bg)
   win.write(s)
 end
 
--- cut a text to n characters (ends with "." when cut)
+-- cut a text to n characters (ends with "~" when cut)
 function trunc(s, n)
   if n <= 0 then return "" end
   if #s <= n then return s end
   if n == 1 then return s:sub(1, 1) end
-  return s:sub(1, n - 1) .. "."
+  return s:sub(1, n - 1) .. "~"
+end
+-- shorten a value that does not fit: first without a "(hint)" at the end, then
+-- without a " - note" at the end, only then cut (ends in "~")
+function shorten(s, n)
+  s = tostring(s)
+  if #s <= n then return s end
+  local a = s:gsub("%s*%b()%s*$", "")
+  if #a <= n and #a > 0 then return a end
+  local b = a:match("^(.-)%s+%-%s+.*$")
+  if b and #b > 0 and #b <= n then return b end
+  return trunc(a, n)
 end
 
 -- 1234567 -> "1,234,567"
@@ -373,7 +384,7 @@ end
 function wrap(s, w, maxLines)
   local lines, cur = {}, ""
   for word in s:gmatch("%S+") do
-    if #word > w then word = trunc(word, w) end
+    if #word > w then word = (w > 1) and (word:sub(1, w - 1) .. ".") or word:sub(1, w) end   -- (an abbreviation)
     if cur == "" then
       cur = word
     elseif #cur + 1 + #word <= w then

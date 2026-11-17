@@ -39,7 +39,7 @@ local ix, iy, iw = panel(x, y, w, th + 3, "FLEET", { right = #list .. " turtles 
 if #tiles == 0 then
 text(ix, iy + 1, "No turtles yet - run node.lua on a turtle (same key).", C.dim, C.panel)
 else
-local n = math.max(#tiles, 4)
+local n = math.max(#tiles, 2)
 local tw = math.floor((iw - (n - 1)) / n)
 for i, k in ipairs(tiles) do
 local tx = ix + (i - 1) * (tw + 1)
@@ -71,7 +71,7 @@ local q = MAP.queue
 meter(ax, r, aw, q.auto and "Auto-map" or "Survey", math.floor(frac * 100 + 0.5) .. "%  " .. commas(sent or 0) .. " spots", frac, C.accent)
 r = r + 2
 else
-kv(ax, r, aw, "Survey", (MAP.auto and MAP.auto.on) and "auto-map waits for a free turtle" or "none running", C.dim) r = r + 1
+kv(ax, r, aw, "Survey", (MAP.auto and MAP.auto.on) and "waiting for a turtle (auto-map)" or "none running", C.dim) r = r + 1
 end
 if FACTORY then
 local fl, fc = FACTORY.statusLine()
@@ -107,16 +107,17 @@ r = para(ax, r, aw, pl, C.label, 3)
 end
 
 local nx = x + lw + 1
-local bx, by, bw, bh = panel(nx, y2, w - lw - 1, h2, "NEEDS A LOOK", { right = #need > 0 and tostring(#need) or "none",
-rcol = #need > 0 and C.warn or C.good })
-local ny = by
 local atb = TT.lostAtBase and TT.lostAtBase() or {}
+local nn = #need + (#atb > 0 and 1 or 0)
+local bx, by, bw, bh = panel(nx, y2, w - lw - 1, h2, "NEEDS A LOOK", { right = nn > 0 and tostring(nn) or "none",
+rcol = nn > 0 and C.warn or C.good })
+local ny = by
 if #atb > 0 then
-text(bx, ny, trunc(#atb .. " silent AT THE BASE - picked up? (no rescue is sent)", bw), C.warn, C.panel)
-actButton(bx, ny + 1, math.min(bw, 28), 3, "FORGET THEM (" .. #atb .. ")", { kind = "forgetbase", name = "all", count = 0 }, false, C.warn)
-ny = ny + 5
+local ey = para(bx, ny, bw, #atb .. " silent AT THE BASE - picked up? (no rescue is sent)", C.warn, 2)
+actButton(bx, ey, math.min(bw, 28), 3, "FORGET THEM (" .. #atb .. ")", { kind = "forgetbase", name = "all", count = 0 }, false, C.warn)
+ny = ey + 4
 end
-if #need == 0 then
+if #need == 0 and #atb == 0 then
 led(bx, ny, C.good)
 text(bx + 2, ny, "Nothing needs you.", C.good, C.panel)
 end
@@ -182,7 +183,7 @@ text(ix + iw - #fs, ry + 1, fs, (tonumber(t.fuel) or 0) < 1000 and C.bad or C.di
 
 local where = t.pos and fmtPos(t.pos.x, t.pos.y, t.pos.z) or "position unknown"
 local bad = key ~= "idle" and key ~= "busy"
-text(ix + 1, ry + 2, trunc(where .. "  " .. tostring(why or ""), iw - 1), bad and stc or C.dim, bg)
+text(ix + 1, ry + 2, trunc(where .. "  " .. shorten(tostring(why or ""), math.max(1, iw - 3 - #where)), iw - 1), bad and stc or C.dim, bg)
 addHit(ix - 1, ry, iw + 2, 3, "tsel", t.id)
 end
 end

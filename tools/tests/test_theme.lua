@@ -60,3 +60,20 @@ setTheme(was)
 CHECK(fitLabel("DRONE: FLY ME THERE", 14) == "FLY ME THERE", "a prefix goes first (" .. fitLabel("DRONE: FLY ME THERE", 14) .. ")")
 CHECK(fitLabel("FIND LOST NEAR BASE", 16) == "FIND LOST NEAR", "then words from the end (" .. fitLabel("FIND LOST NEAR BASE", 16) .. ")")
 CHECK(fitLabel("STOP", 10) == "STOP", "a short label stays")
+-- cut text ends in "~" (a "." looked like the end of a sentence); a value loses its
+-- "(hint)" / " - note" before anything is cut
+CHECK(trunc("Cobblestone", 6) == "Cobbl~", "trunc ends in ~ (" .. trunc("Cobblestone", 6) .. ")")
+CHECK(shorten("off (SETTINGS > FACTORY: keep this many turtles)", 10) == "off", "shorten drops the (hint)")
+CHECK(shorten("none - the base stops when you leave", 10) == "none", "shorten drops the - note")
+CHECK(shorten("short", 10) == "short", "shorten leaves what fits")
+writes = {}
+win.write = function(s) writes[#writes + 1] = s return ow(s) end
+kv(1, 1, 30, "Factory", "off (SETTINGS > FACTORY: keep this many turtles)")
+win.write = ow
+CHECK(writes[1] == "Factory" and writes[#writes] == "off", "kv: short key whole, value without its hint (" ..
+      tostring(writes[1]) .. " / " .. tostring(writes[#writes]) .. ")")
+-- big letters: M N W are 5 pixels wide (3 cells); every width bigW says is what big() draws
+CHECK(bigW("N") == 3 and bigW("M") == 3 and bigW("W") == 3 and bigW("I") == 2, "M N W are 3 cells wide, I 2")
+for _, s in ipairs({ "INVENTORY", "12:59", "BASE", "1.2M" }) do
+  CHECK(big(1, 1, s, C.text, C.bg) == bigW(s), "big() and bigW() agree for " .. s)
+end

@@ -26,8 +26,8 @@ text(ix + 2, r, trunc(name .. (at[1] and ("  at " .. fmtPos(at[1], at[2], at[3])
 tostring(CONFIG.chat and CONFIG.chat.command or "drone") .. " workchest")), iw - 2),
 at[1] and C.text or C.warn, C.panel)
 else
-text(ix + 2, r, trunc("not set: stand ON it and type  $" .. tostring(CONFIG.chat and CONFIG.chat.command or "drone") ..
-" workchest  in chat (or CHEST > here)", iw - 2), C.warn, C.panel)
+para(ix + 2, r, iw - 2, "not set: stand ON it and type  $" .. tostring(CONFIG.chat and CONFIG.chat.command or "drone") ..
+" workchest  in chat (or CHEST > here)", C.warn, 2)
 end
 if bad and name then text(ix + 2, r + 1, trunc(bad, iw - 2), C.warn, C.panel) end
 local bw = math.floor((iw - 1) / 2)

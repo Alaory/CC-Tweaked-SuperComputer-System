@@ -108,9 +108,10 @@ local v = t.view or {}
 local R = 2
 
 local CH = math.max(3, math.min(7, math.floor((bottom - (y0 + 6) - 20) / (2 * R + 1))))
-local CW = math.max(5, math.min(CH * 2 + 2, math.floor((w - 16) / (3 * (2 * R + 1)))))
+
+local CW = math.max(4, math.min(CH * 2 + 2, math.floor((w - 4 - 5 - 2 * 6) / (3 * (2 * R + 1)))))
 local gw = (2 * R + 1) * CW
-local gap = math.max(4, math.floor((w - 4 - 3 * gw) / 3))
+local gap = math.max(6, math.floor((w - 4 - 5 - 3 * gw) / 2))
 local gy = y0 + 6
 local codes, legend = {}, {}
 local plainSeen = false
@@ -165,6 +166,7 @@ fill(cx, cy, CW - 1, CH - 1, bg)
 text(cx + math.max(0, math.floor((CW - 1 - #s) / 2)), cy, trunc(s, CW - 1), fg, bg)
 if act then
 local h = string.upper(hint)
+if #h > CW - 1 then h = ({ DOWN = "DN" })[h] or h end
 text(cx + math.max(0, math.floor((CW - 1 - #h) / 2)), cy + 1, trunc(h, CW - 1),
 (bg == C.bg or bg == C.head or bg == C.empty) and C.label or fg, bg)
 addHit(cx, cy, CW - 1, CH, "tdrive", { t.id, act })
@@ -204,7 +206,7 @@ for i, l in ipairs(wrap("Tap a block marked GO / UP / DOWN to move there (it tur
 text(x + 2, ly + 3 + i, l, C.dim, C.panel)
 end
 
-local by = math.max(ly + 6, bottom - 12)
+local by = math.max(ly + 7, bottom - 12)
 local bw = math.floor((w - 4 - 4) / 5)
 local lastW = (w - 4) - 4 * (bw + 1)
 local function bt(col, row, label, kind, value, colr, solid)

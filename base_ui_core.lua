@@ -60,10 +60,10 @@ local FONT = {
   C = "### #.. #.. #.. ###", D = "##. #.# #.# #.# ##.", E = "### #.. ##. #.. ###",
   F = "### #.. ##. #.. #..", G = "### #.. #.# #.# ###", H = "#.# #.# ### #.# #.#",
   I = "### .#. .#. .#. ###", J = "..# ..# ..# #.# ###", K = "#.# #.# ##. #.# #.#",
-  L = "#.. #.. #.. #.. ###", M = "#.# ### ### #.# #.#", N = "##. #.# #.# #.# #.#",
+  L = "#.. #.. #.. #.. ###", M = "#...# ##.## #.#.# #...# #...#", N = "#...# ##..# #.#.# #..## #...#",
   O = "### #.# #.# #.# ###", P = "### #.# ### #.. #..", Q = "### #.# #.# ### ..#",
   R = "##. #.# ##. #.# #.#", S = "### #.. ### ..# ###", T = "### .#. .#. .#. .#.",
-  U = "#.# #.# #.# #.# ###", V = "#.# #.# #.# #.# .#.", W = "#.# #.# ### ### #.#",
+  U = "#.# #.# #.# #.# ###", V = "#.# #.# #.# #.# .#.", W = "#...# #...# #.#.# ##.## #...#",
   X = "#.# #.# .#. #.# #.#", Y = "#.# #.# .#. .#. .#.", Z = "### ..# .#. #.. ###",
   [" "] = "... ... ... ... ...", ["/"] = "..# ..# .#. #.. #..", ["%"] = "#.# ..# .#. #.. #.#",
   [":"] = "... .#. ... .#. ...", ["."] = "... ... ... ... .#.", [","] = "... ... ... .#. #..",
@@ -75,31 +75,43 @@ for k, v in pairs(FONT) do
   for r in v:gmatch("%S+") do rows[#rows + 1] = r end
   FONT[k] = rows
 end
+-- a glyph's width in cells: 3 pixels wide = 2 cells, 5 pixels (M N W) = 3 cells
+-- (always one free pixel column after it)
+local function glyphOf(ch)
+  return FONT[ch] or FONT[ch:upper()] or FONT["?"]
+end
+local function cellsOf(g) return math.floor(#g[1] / 2) + 1 end
 -- width of big text in cells
-function bigW(s) return #tostring(s) * 2 end
+function bigW(s)
+  s = tostring(s)
+  local n = 0
+  for i = 1, #s do n = n + cellsOf(glyphOf(s:sub(i, i))) end
+  return n
+end
 -- big text at x y (2 rows); returns its width
 function big(x, y, s, col, bg)
   s = tostring(s)
-  local up = s:upper()
+  local at = x
   for i = 1, #s do
-    local ch = s:sub(i, i)
-    local g = FONT[ch] or FONT[up:sub(i, i)] or FONT["?"]
+    local g = glyphOf(s:sub(i, i))
+    local n = cellsOf(g)
     for cy = 0, 1 do
-      for cx = 0, 1 do
+      for cx = 0, n - 1 do
         local bits, k = 0, 1
         for py = 0, 2 do
           for pxl = 0, 1 do
             local r = g[cy * 3 + py + 1]
             local c = cx * 2 + pxl + 1
-            if r and c <= 3 and r:sub(c, c) == "#" then bits = bits + k end
+            if r and c <= #r and r:sub(c, c) == "#" then bits = bits + k end
             k = k * 2
           end
         end
-        cell(x + (i - 1) * 2 + cx, y + cy, bits, col, bg)
+        cell(at + cx, y + cy, bits, col, bg)
       end
     end
+    at = at + n
   end
-  return #s * 2
+  return at - x
 end
 
 ---------------------------------------------------------------------
@@ -141,13 +153,16 @@ function sep(x, y, w) hline(x, y, w, C.line, C.panel, "mid") end
 function kv(x, y, w, k, v, vcol, bg)
   bg = bg or C.panel
   k, v = tostring(k), tostring(v)
+  if #k + #v + 2 > w and #k + 5 <= w * 0.5 then
+    v = shorten(v, w - #k - 2)                       -- a short key stays whole; the value loses its hint
+  end
   if #k + #v + 2 > w then
     -- too long: the key keeps up to 40% of the row (all it needs when the value is short),
     -- the value gets the rest
     local kmax = math.max(3, math.min(#k, math.floor(w * 0.4)))
     if #v + kmax + 2 <= w then kmax = w - #v - 2 end
     k = trunc(k, math.max(3, math.min(#k, kmax)))
-    v = trunc(v, math.max(1, w - #k - 2))
+    v = shorten(v, math.max(1, w - #k - 2))
   end
   text(x, y, k, C.dim, bg)
   local gap = w - #k - #v - 2
@@ -559,7 +574,7 @@ function drawHeader()
   if tx + tabsW(pad, badges) > avail then pad = 1 end
   if tx + tabsW(pad, badges) > avail then badges = false end
   if tx + tabsW(pad, badges) > avail then cut = 4 end
-  hline(1, 3, W, C.line, C.bg, "bot")
+  hline(1, 3, W, C.line, C.bg, "mid")                 -- (mid: a gap above the page chips)
   for _, g in ipairs(tabs) do
     local on = groupOf(state.page) == g[1]
     local label = cut and g[2]:sub(1, cut) or g[2]
@@ -568,7 +583,7 @@ function drawHeader()
     if badges and g[3] then
       badge(tx + pad + #label + 1, 2, g[3], g[4] or (on and C.accent or C.line), (g[4] or on) and C.ink or C.text)
     end
-    if on then hline(tx, 3, w, C.accent, C.bg, "bot") end
+    if on then hline(tx, 3, w, C.accent, C.bg, "mid") end
     addHit(tx, 1, w, 3, "group", g[1])
     tx = tx + w + 1
   end

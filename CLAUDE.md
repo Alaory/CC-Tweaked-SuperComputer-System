@@ -880,9 +880,16 @@ The old Block UI (stone buttons, bedrock theme) is gone.
    line), drawPager, fitLabel. Old names still work (card, drawButton, barW, pill, stat).
 3. NOTHING OUT OF BOUNDS: text() / fill() (base_theme.lua) never draw outside the screen or
    CLIP (clip / unclip; every panel sets it, draw() / header / footer reset it); cut text ends
-   in "~". Pages still shorten (trunc) or wrap (para) their own text; button labels shorten
-   by words (fitLabel: a "WORD: " prefix first, then words from the end).
-4. USE THE SPACE: sections are as tall as their content (NEEDS YOU, fuel runs, cards) and the
+   in "~" (trunc too - "." looked like a sentence end; wrap's cut long WORDS stay "Cobb."
+   abbreviations). Pages still shorten (trunc) or wrap (para) their own text - hints / help
+   lines are WRAPPED (para), not cut; kv values go through shorten(): a "(hint)" at the end,
+   then a " - note", are dropped before anything is cut (a short key stays whole); button
+   labels shorten by words (fitLabel: a "WORD: " prefix first, then words from the end -
+   "ZOOM: OUT -" -> "OUT -"). BIG FONT: 3x5 glyphs in 2 cells, M N W 5 pixels wide in 3 cells
+   (the 3-wide N read as "n" in game); bigW = what big() draws. Header line on row 3 is a
+   MID hairline (a gap above the page chips - "bot" pressed them against it in game).
+4. USE THE SPACE: sections are as tall as their content (NEEDS YOU, SYSTEM on HOME - two columns
+   that each end in a filler: LATELY / QUICK ACTIONS; GO TO all or none; fuel runs, cards) and the
    rest goes to lists (LATELY, logs, player data); grids grow with the monitor (DRIVE, player
    cards). Check at several sizes: test_ux draws every page at 100x40, 121x50, 164x81, 200x100
    (no error, every tap area on screen).

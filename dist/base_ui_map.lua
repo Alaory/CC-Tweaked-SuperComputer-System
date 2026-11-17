@@ -185,15 +185,18 @@ button(vx + bw + 1, b1, bw, 3, "\24", C.line, "mpan", { 0, -1 })
 button(vx + 2 * (bw + 1), b1, bw, 3, "\25", C.line, "mpan", { 0, 1 })
 button(vx + 3 * (bw + 1), b1, lastW, 3, "\26", C.line, "mpan", { 1, 0 })
 local b2 = b1 + 4
-button(vx, b2, bw, 3, "ZOOM -", C.line, "mzoom", 1)
-button(vx + bw + 1, b2, bw, 3, "ZOOM +", C.line, "mzoom", -1)
+button(vx, b2, bw, 3, "ZOOM: OUT -", C.line, "mzoom", 1)
+button(vx + bw + 1, b2, bw, 3, "ZOOM: IN +", C.line, "mzoom", -1)
 button(vx + 2 * (bw + 1), b2, vw - 2 * (bw + 1), 3, "ROTATE", C.line, "mrot")
 local b3 = b2 + 4
-local cw = math.floor((vw - 3) / 4)
-button(vx, b3, cw, 3, "BASE", C.warn, "mcenter", "base")
-button(vx + cw + 1, b3, cw, 3, "TURTLE", C.good, "mcenter", "turtle")
-button(vx + 2 * (cw + 1), b3, cw, 3, "ME", C.accent, "mcenter", "me")
-actButton(vx + 3 * (cw + 1), b3, vw - 3 * (cw + 1), 3, "CLEAR", { kind = "mapclear", name = "map", count = 0 }, false, C.bad)
+
+local c1 = math.floor((vw - 3) * 6 / 25)
+local c2 = math.floor((vw - 3) * 8 / 25)
+local c3 = math.floor((vw - 3) * 4 / 25)
+button(vx, b3, c1, 3, "BASE", C.warn, "mcenter", "base")
+button(vx + c1 + 1, b3, c2, 3, "TURTLE", C.good, "mcenter", "turtle")
+button(vx + c1 + c2 + 2, b3, c3, 3, "ME", C.accent, "mcenter", "me")
+actButton(vx + c1 + c2 + c3 + 3, b3, vw - (c1 + c2 + c3 + 3), 3, "CLEAR", { kind = "mapclear", name = "map", count = 0 }, false, C.bad)
 
 local sy0 = y0 + 19
 local sx, ssy, sw = panel(rx, sy0, rw, 7, "SELECTED", { right = sel and (sel.x .. ", " .. sel.z) or nil })
@@ -286,10 +289,13 @@ local items = {
 { colors.purple, "Obsidian, amethyst" },
 }
 local half = math.floor((gw - 1) / 2)
+local cols = 2
+for _, it in ipairs(items) do if #it[2] > half - 3 then cols = 1 end end
+if cols == 1 then half = gw end
 for i, it in ipairs(items) do
-local ry = gy + 2 + math.floor((i - 1) / 2)
+local ry = gy + 2 + math.floor((i - 1) / cols)
 if ry > ly + lh - 2 then break end
-local cx = gx + ((i - 1) % 2) * (half + 1)
+local cx = gx + ((i - 1) % cols) * (half + 1)
 text(cx, ry, "  ", C.text, it[1])
 text(cx + 3, ry, trunc(it[2], half - 3), C.text, C.panel)
 end

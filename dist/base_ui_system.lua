@@ -71,7 +71,7 @@ local ly = y0 + sh + 1
 local lh = bottom - ly + 1
 card(lx, ly, leftW, lh, "SYSTEM LOG (" .. #SYSLOG .. ")")
 if #SYSLOG == 0 then
-text(ix, ly + 3, trunc("Nothing yet: base off / crashes, new turtle program, floppies ...", iw), C.dim, C.panel)
+para(ix, ly + 3, iw, "Nothing yet: base off / crashes, new turtle program, floppies ...", C.dim, 3)
 end
 local rows = math.max(1, math.floor((lh - 4) / 2))
 local offL = scrollBar(lx, ly + 1, leftW, "sysLogOff", #SYSLOG, rows)

@@ -128,11 +128,11 @@ function drawDronePage(G)
   if dx and d and d.kind ~= "waypoint" then
     button(gx, gy + 3, math.min(gw, 20), 2, "SAVE AS A PLACE", C.line, "dsave")
   else
-    text(gx, gy + 3, trunc("exact spot: dest <x> <y> <z> (console)", gw), C.dim, C.panel)
+    para(gx, gy + 3, gw, "exact spot: dest <x> <y> <z> (console)", C.dim, 2)
   end
   local px2, py2, pw2 = panel(rx + half + 1, y0, rw - half - 1, dh, "PASSENGER", { col = pass ~= "" and C.accent or C.line })
   text(px2, py2, trunc(pass ~= "" and pass or "-", pw2), C.label, C.panel)
-  text(px2, py2 + 1, trunc("pick with PASSENGER in the list below", pw2), C.dim, C.panel)
+  para(px2, py2 + 1, pw2, "pick with PASSENGER in the list below", C.dim, 2)
 
   ------------------------------------------------ actions
   local ay = y0 + dh + 1

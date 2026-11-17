@@ -172,7 +172,8 @@ local rx, rw = 2 + leftW + gap, W - (2 + leftW + gap) + 1 - 1
 local rest = y1 - y + 1
 local N = needs()
 
-local midH = math.max(12, math.min(#N * 3 + 3, math.floor((rest - gap) * 0.5)))
+local yTop = y
+local midH = math.max(4, math.min(#N * 3 + 3, math.floor((rest - gap) * 0.5)))
 local ix, iy, iw, ih = panel(2, y, leftW, midH, "NEEDS YOU", { right = #N > 0 and (#N .. " open") or "all clear",
 rcol = #N > 0 and C.warn or C.good, col = #N > 0 and C.warn or C.line })
 if #N == 0 then
@@ -199,7 +200,6 @@ end
 local s = state.sys or {}
 local A = BASE_ALIVE or {}
 local now = os.epoch("utc")
-local sx, sy, sw = panel(rx, y, rw, midH, "SYSTEM", { right = (THEME_NAME or "") .. " theme" })
 local lines = {
 { "Base running", fmtSpan and fmtSpan((now - (A.since or now)) / 1000) or "?", C.text },
 { "Computer disk", (s.pcFree and s.pcCap) and (kb(s.pcFree) .. " free of " .. kb(s.pcCap)) or "...",
@@ -216,15 +216,19 @@ bridge and C.good or C.dim },
 { "Messages", #state.noteLog .. " kept" .. ((state.noteUnread or 0) > 0 and (", " .. state.noteUnread .. " new") or ""),
 (state.noteUnread or 0) > 0 and C.warn or C.text },
 }
+local sysH = #lines + 3
+for _, l in ipairs(lines) do if l[4] then sysH = sysH + 1 end end
+sysH = math.max(6, math.min(sysH, rest - gap - 9))
+local sx, sy, sw = panel(rx, yTop, rw, sysH, "SYSTEM", { right = (THEME_NAME or "") .. " theme" })
 local r = sy
 for _, l in ipairs(lines) do
-if r > y + midH - 2 then break end
+if r > yTop + sysH - 2 then break end
 kv(sx, r, sw, l[1], l[2], l[3])
 r = r + 1
-if l[4] and r <= y + midH - 2 then gauge(sx, r, sw, l[4], (l[4] > 0.9) and C.bad or C.accent) r = r + 1 end
+if l[4] and r <= yTop + sysH - 2 then gauge(sx, r, sw, l[4], (l[4] > 0.9) and C.bad or C.accent) r = r + 1 end
 end
-y = y + midH + gap
 
+y = yTop + midH + gap
 local bh = y1 - y + 1
 if bh < 6 then return end
 local lx, ly, lw, lh = panel(2, y, leftW, bh, "LATELY", { right = "MESSAGES page: all of them" })
@@ -240,6 +244,9 @@ text(lx + 8, rr, trunc((s2:gsub("%s+", " ")), lw - 8), C.text, C.panel)
 rr = rr + 1
 end
 if rr == ly then text(lx, rr, "No messages yet.", C.dim, C.panel) end
+y = yTop + sysH + gap
+bh = y1 - y + 1
+if bh < 6 then return end
 local qx, qy, qw, qh = panel(rx, y, rw, bh, "QUICK ACTIONS", { right = "two taps" })
 local acts = quickActs()
 local cols = 2
@@ -255,7 +262,6 @@ end
 
 local gy = by + math.ceil(#acts / cols) * 4 + 1
 if gy + 3 <= y + bh - 2 then
-heading(qx, gy, qw, "GO TO")
 gy = gy + 1
 local pages = {}
 for _, g in ipairs(headerTabs()) do
@@ -266,6 +272,8 @@ local pw = math.floor((qw - (pcols - 1)) / pcols)
 local nrows = math.ceil(#pages / pcols)
 local tall = nrows * 4 <= (y + bh - 2) - gy + 1
 local step, hh = tall and 4 or 3, tall and 3 or 2
+if nrows * step - 1 > (y + bh - 2) - gy + 1 then pages = {} end
+if #pages > 0 then heading(qx, gy - 1, qw, "GO TO") end
 for i, m in ipairs(pages) do
 local c = (i - 1) % pcols
 local yy = gy + math.floor((i - 1) / pcols) * step
