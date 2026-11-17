@@ -189,11 +189,18 @@ local function patView()
   local list = {}
   for i, p in ipairs(MEX.patterns or {}) do
     if not state.patType or p.type == state.patType then
-      local nm = itemName(p.out)
+      local nm
+      if p.out then nm = itemName(p.out)
+      else
+        -- no output name (a chemical): named by what goes in, listed after the named ones
+        local ins = {}
+        for k2, x in ipairs(p.ins) do if k2 <= 2 then ins[#ins + 1] = itemName(x.name) end end
+        nm = "~chemical" .. (#ins > 0 and (" from " .. table.concat(ins, ", ")) or " (nothing named)")
+      end
       local c = nm:sub(1, 1):upper()
       local L = state.patLetter
       if not L or (L == "#" and not c:match("%a")) or c == L then
-        list[#list + 1] = { p = p, name = nm, key = p.out .. "|" .. p.type .. "|" .. i }
+        list[#list + 1] = { p = p, name = nm, key = tostring(p.out) .. "|" .. p.type .. "|" .. i }
       end
     end
   end
@@ -265,14 +272,15 @@ local function patternsPanel(x, y, w, h)
     local bg = rowBg(ix, ry, iw, on)
     local tag = v.p.type
     local amt = v.p.outN > 1 and ("x" .. v.p.outN .. "  ") or ""
-    text(ix + 1, ry, trunc(v.name, iw - #tag - #amt - 3), on and C.accent or C.text, bg)
+    local shown = v.name:gsub("^~", "")
+    text(ix + 1, ry, trunc(shown, iw - #tag - #amt - 3), on and C.accent or (v.p.out and C.text or C.dim), bg)
     text(ix + iw - #tag - #amt, ry, amt .. tag, C.dim, bg)
     addHit(ix, ry, iw, 1, "patsel", v.key)
   end
   if not sel then return end
   -- the picked one: what goes in (vs what AE2 has), what comes out, CRAFT
   local dy = bottom - detailH + 2
-  heading(ix, dy - 1, iw, ("MAKES " .. sel.p.outN .. " x " .. sel.name):upper())
+  heading(ix, dy - 1, iw, (sel.p.out and ("MAKES " .. sel.p.outN .. " x " .. sel.name) or "MAKES A CHEMICAL"):upper())
   local r = dy
   for _, inp in ipairs(sel.p.ins) do
     if r > bottom - 4 then break end
@@ -283,9 +291,18 @@ local function patternsPanel(x, y, w, h)
        enough and C.dim or C.bad)
     r = r + 1
   end
-  local used = MEX.byIn and MEX.byIn[sel.p.out]
+  if (sel.p.unknownIn or 0) > 0 and r <= bottom - 4 then
+    text(ix, r, "+ " .. sel.p.unknownIn .. " chemical(s) the bridge cannot name", C.dim, C.panel)
+    r = r + 1
+  end
+  local used = sel.p.out and MEX.byIn and MEX.byIn[sel.p.out]
   if r <= bottom - 4 then
     text(ix, r, sel.p.type .. " pattern" .. (used and ("  -  used in " .. used .. " other pattern(s)") or ""), C.dim, C.panel)
+  end
+  if not sel.p.out then
+    para(ix, bottom - 2, iw, "Its output is a chemical: this Advanced Peripherals cannot name it, so it cannot be crafted from here " ..
+         "(an AE2 terminal can).", C.dim, 3)
+    return
   end
   local _, isFluid = haveOf(sel.p.out)
   local cw = math.floor((iw - 3) / 4)

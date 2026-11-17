@@ -28,8 +28,13 @@ end
 end
 
 
+
+
+local UNNAMED = "not named by the bridge"
+MEX.UNNAMED = UNNAMED
 local function nameOf(res)
-if type(res) ~= "table" then return res and tostring(res) or "?" end
+if res == nil then return UNNAMED end
+if type(res) ~= "table" then return tostring(res) end
 local n = res.displayName or res.label
 if not n then
 for _, k in ipairs({ "name", "id", "chemical", "gas", "fluid", "item", "key", "what" }) do
@@ -41,7 +46,7 @@ if type(inner) == "string" then n = (v.displayName and inner) or prettify(inner)
 end
 end
 end
-n = n or "?"
+n = n or UNNAMED
 return (cleanName and cleanName(n)) or n
 end
 MEX.nameOf = nameOf
@@ -157,11 +162,18 @@ function MEX.setPatterns(pats)
 local list, byOut, byIn = {}, {}, {}
 for _, p in pairs(pats) do
 if type(p) == "table" then
-local po = type(p.primaryOutput) == "table" and p.primaryOutput or (type(p.outputs) == "table" and p.outputs[1]) or {}
-local e = { out = tostring(po.name or "?"), outN = tonumber(po.count or po.amount) or 1,
-type = tostring(p.patternType or "?"), ins = {} }
+
+
+local po = type(p.primaryOutput) == "table" and p.primaryOutput or nil
+if not (po and po.name) and type(p.outputs) == "table" then
+for _, o in pairs(p.outputs) do if type(o) == "table" and o.name then po = o break end end
+end
+po = po or {}
+local e = { out = po.name and tostring(po.name) or nil, outN = tonumber(po.count or po.amount) or 1,
+type = tostring(p.patternType or "unknown"), ins = {}, unknownIn = 0 }
 for _, inp in pairs(type(p.inputs) == "table" and p.inputs or {}) do
-local pi = type(inp) == "table" and (inp.primaryInput or inp) or {}
+local pi = type(inp) == "table" and (inp.primaryInput or (inp.name and inp)) or nil
+if not (type(pi) == "table" and pi.name) then e.unknownIn = e.unknownIn + 1 end
 if type(pi) == "table" and pi.name then
 local n = (tonumber(pi.count or pi.amount) or 1) * (tonumber(inp.multiplier) or 1)
 local found
@@ -170,8 +182,10 @@ if found then found.n = found.n + n else e.ins[#e.ins + 1] = { name = tostring(p
 end
 end
 list[#list + 1] = e
+if e.out then
 byOut[e.out] = byOut[e.out] or {}
 table.insert(byOut[e.out], e)
+end
 for _, x in ipairs(e.ins) do byIn[x.name] = (byIn[x.name] or 0) + 1 end
 end
 end

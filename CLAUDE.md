@@ -830,7 +830,12 @@ PneumaticCraft drone rides, turtle mapping/surveys, and an AE2 ME network view.
   output's name (patsel; cached in MEX.pv; scroll "patOff"), the picked one (state.patSel, else the AE2
   page's picked item) = its inputs with what AE2 has (SHORT in red) + CRAFT x1/x16/x64/x256 (fluids in B;
   act craft / fcraft). Storage panel <= 30 % and drives <= 35 % of the column: patterns get the room.
-  `me raw` prints each busy CPU's job as the bridge gives it (jobs still named "?" in game).
+  `me raw` prints each busy CPU's job as the bridge gives it. IN GAME it showed jobs as only
+  { bridgeId = -1, quantity = 400000 } (no resource) and a fluid as { type = {...}, name = "pneumaticcraft:oil",
+  tags } - and AP's parseGenericStack turns ONLY items and fluids into Lua: a Mekanism CHEMICAL comes back
+  as nothing (null). So: a job with no resource = MEX.UNNAMED "not named by the bridge"; a pattern with no
+  output name (200+ processing patterns showed "?") = "chemical from <first inputs>", listed after the named
+  ones, picked = "MAKES A CHEMICAL" + "N chemical(s) the bridge cannot name" (e.unknownIn), NO craft button.
   SUPPLY FULL rules: a target taking none while AE2 has the fluid / item = "full", no warning (the owner
   got "AE2 has no xp_fluid_source" again and again - 2.1 billion B in AE2, the tank simply full).
 - PLAYERS page (base_ui_players.lua): a LIST (online players, then who left this run; tap =

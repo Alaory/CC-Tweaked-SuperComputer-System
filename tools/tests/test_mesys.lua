@@ -166,6 +166,35 @@ local n = 0
 for _, hh in ipairs(hits) do if hh[5] == "patsel" then n = n + 1 end end
 CHECK(state.patType == "processing" and n == 1 and s:find("Torch", 1, true), "filtered: only the processing pattern (" .. n .. ")")
 state.patType, state.patSel, MEX.pv = nil, nil, nil
+-- in game: chemical outputs / inputs come back EMPTY (200+ patterns showed "?"), and some busy
+-- CPUs' jobs are only { bridgeId = -1, quantity = 400000 } (`me raw`)
+local gp, gc = bridge.getPatterns, bridge.getCraftingCPUs
+bridge.getPatterns = function() local l = gp()
+  l[#l + 1] = { patternType = "processing", inputs = { { primaryInput = { name = "mekanism:salt", count = 1 }, multiplier = 1 },
+                                                       { multiplier = 1 } } }
+  return l end
+bridge.getCraftingCPUs = function() local l = gc()
+  l[#l + 1] = { name = "Unnamed", isBusy = true, storage = 2000, coProcessors = 3136, craftingJob = { bridgeId = -1, quantity = 400000 } }
+  return l end
+MEX.patAt, MEX.pv = -1e9, nil
+MEX.read()
+local unnamedJob
+for _, t in ipairs(MEX.data.tasks) do if t.qty == 400000 then unnamedJob = t end end
+CHECK(unnamedJob and unnamedJob.name == MEX.UNNAMED, "a job with no resource: 'not named by the bridge' (" .. tostring(unnamedJob and unnamedJob.name) .. ")")
+s = screen()
+CHECK(s:find("chemical from Salt", 1, true) and not s:find("\n%?%s"), "a chemical pattern is named by what goes in")
+local chemRow
+for _, hh in ipairs(hits) do if hh[5] == "patsel" and tostring(hh[6]):find("^nil|processing") then chemRow = hh end end
+CHECK(chemRow, "the chemical pattern can be picked")
+if chemRow then handleTouch(chemRow[1], chemRow[2]) end
+s = screen()
+local craftBtn = false
+for _, hh in ipairs(hits) do if hh[5] == "act" and hh[6].kind == "craft" then craftBtn = true end end
+CHECK(s:find("MAKES A CHEMICAL", 1, true) and s:find("1 chemical(s) the bridge cannot name", 1, true) and not craftBtn,
+      "picked: it makes a chemical, an unnamed input counted, no CRAFT button")
+bridge.getPatterns, bridge.getCraftingCPUs = gp, gc
+state.patSel, MEX.pv, MEX.patAt = nil, nil, -1e9
+MEX.read()
 
 -- an OLD bridge: none of the new functions
 local new = bridge
