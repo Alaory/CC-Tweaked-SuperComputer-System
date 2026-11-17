@@ -358,7 +358,15 @@ local bw = math.max(6, math.floor(w * 0.18))
 local nameW = math.max(4, w - 3 - bw - numW - 2)
 text(x + 2, y, trunc(name, nameW), selected and C.accent or C.text, bg)
 local f = math.max(0, math.min(1, tonumber(frac) or 0)) ^ 0.35
-gauge(x + w - numW - 2 - bw, y, bw, f, col, bg)
+
+
+local bx = x + w - numW - 2 - bw
+local halves = math.floor(f * bw * 2 + 0.5)
+if halves > 0 then
+local full = math.floor(halves / 2)
+if full > 0 then hline(bx, y, full, col, bg, "mid") end
+if halves % 2 == 1 then cell(bx + full, y, 4, col, bg) end
+end
 text(x + w - #vs, y, vs, selected and C.text or C.dim, bg)
 end
 

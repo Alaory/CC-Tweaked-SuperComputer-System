@@ -25,7 +25,7 @@ function keepRow(x, y, w, sel, kind)
 heading(x, y, w, "KEEP A STORAGE FILLED")
 local list = (SUPPLY.cache or {})[kind] or {}
 if #list == 0 then
-text(x, y + 1, trunc("No storage for this on the cable - wired modem on it, then type supply", w), C.dim, C.panel)
+para(x, y + 1, w, "No storage for this on the cable - put a wired modem on it, then type supply", C.dim, 3)
 return
 end
 state.supIdx = state.supIdx or {}
@@ -188,7 +188,7 @@ addStore("Fluid storage", me.fstorage, true)
 addStore("Chemical storage", me.cstorage, true)
 local en = me.energy or {}
 local hasEn = en.stored and en.cap and en.cap > 0
-local nh = 3 + (hasEn and 3 or 0) + 3 * #storages + ((en.usage or en.inj) and 1 or 0) + 4
+local nh = 3 + (hasEn and 3 or 0) + 3 * #storages + ((en.usage or en.inj) and 1 or 0) + 5
 local online = me.online ~= false
 local nx, ny, nw = panel(rx, y0, rw, nh, "NETWORK", { right = online and "ONLINE" or "OFFLINE", rcol = online and C.good or C.bad })
 local r = ny
@@ -212,7 +212,9 @@ local owed, kinds = 0, 0
 if owedCount then owed, kinds = owedCount() end
 if owed > 0 then text(nx, r, trunc(owed .. " item(s) of " .. kinds .. " kinds wait in the buffer - retried by itself", nw), C.warn, C.panel) end
 local fb = me.fluidBuf and (" + " .. me.fluidBuf) or ""
-actButton(nx, y0 + nh - 4, nw, 3, "BUFFER -> ME  (empties " .. tostring(chestBridge("give")) .. fb .. ")",
+
+text(nx, y0 + nh - 5, trunc("Buffer: " .. tostring(chestBridge("give")) .. fb, nw), C.dim, C.panel)
+actButton(nx, y0 + nh - 4, nw, 3, "EMPTY THE BUFFER INTO AE2",
 { kind = "flushbuf", name = "buffer", count = 0 }, false, C.purple)
 
 local selMap = (mtype == "fluids" and me.byNameF) or (mtype == "chemicals" and me.byNameC) or me.byName
@@ -290,7 +292,8 @@ local how = manual and tostring(manual) or (auto and (auto .. " (found)")) or
 if c and c.ok == false then
 text(sx, ly, trunc("NO " .. label .. " CHEST on the " .. mdir .. " side of the Inventory Manager - type mesetup", sw), C.bad, C.panel)
 else
-text(sx, ly, trunc(label .. " chest: " .. mdir .. " of the manager, bridge: " .. how, sw), C.dim, C.panel)
+
+text(sx, ly, shorten(label .. " chest: " .. mdir .. " of the manager (bridge: " .. how .. ")", sw), C.dim, C.panel)
 end
 end
 if chestManagerDir("give") == chestManagerDir("take") then chestLine("give", "BUFFER", py + ph - 3)

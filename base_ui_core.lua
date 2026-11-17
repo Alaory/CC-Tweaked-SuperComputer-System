@@ -358,7 +358,15 @@ function drawBarRow(x, y, w, name, vs, frac, col, selected, numW)
   local nameW = math.max(4, w - 3 - bw - numW - 2)
   text(x + 2, y, trunc(name, nameW), selected and C.accent or C.text, bg)
   local f = math.max(0, math.min(1, tonumber(frac) or 0)) ^ 0.35
-  gauge(x + w - numW - 2 - bw, y, bw, f, col, bg)
+  -- a thin solid bar (half-cell steps): the segmented gauge's ticks lined up from row to
+  -- row in a long list and drew vertical stripes (the owner's AE2 screenshot)
+  local bx = x + w - numW - 2 - bw
+  local halves = math.floor(f * bw * 2 + 0.5)
+  if halves > 0 then
+    local full = math.floor(halves / 2)
+    if full > 0 then hline(bx, y, full, col, bg, "mid") end
+    if halves % 2 == 1 then cell(bx + full, y, 4, col, bg) end         -- (the left half of the middle row)
+  end
   text(x + w - #vs, y, vs, selected and C.text or C.dim, bg)
 end
 -- a selectable row: highlighted when on (line colour + accent marker)

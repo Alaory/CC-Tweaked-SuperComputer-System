@@ -26,10 +26,30 @@ local v = get(fn)
 if v ~= nil then return tonumber(v) or v end
 end
 end
+
+
 local function nameOf(res)
-if type(res) ~= "table" then return tostring(res or "?") end
-local n = res.displayName or (res.name and prettify(tostring(res.name))) or "?"
+if type(res) ~= "table" then return res and tostring(res) or "?" end
+local n = res.displayName or res.label
+if not n then
+for _, k in ipairs({ "name", "id", "chemical", "gas", "fluid", "item", "key", "what" }) do
+local v = res[k]
+if type(v) == "string" and v ~= "" then n = prettify(v) break end
+if type(v) == "table" then
+local inner = v.displayName or v.name or v.id
+if type(inner) == "string" then n = (v.displayName and inner) or prettify(inner) break end
+end
+end
+end
+n = n or "?"
 return (cleanName and cleanName(n)) or n
+end
+MEX.nameOf = nameOf
+local function idOf(res)
+if type(res) ~= "table" then return nil end
+for _, k in ipairs({ "name", "id", "chemical", "gas", "fluid", "item" }) do
+if type(res[k]) == "string" then return res[k] end
+end
 end
 
 
@@ -66,7 +86,7 @@ if type(c) == "table" then
 local job = type(c.craftingJob) == "table" and c.craftingJob or nil
 d.cpus[#d.cpus + 1] = { name = tostring(c.name or "Unnamed"), busy = c.isBusy == true,
 storage = tonumber(c.storage), co = tonumber(c.coProcessors), mode = c.selectionMode,
-job = job and { name = nameOf(job.resource), qty = tonumber(job.quantity) or 0,
+job = job and { name = nameOf(job.resource), item = idOf(job.resource), qty = tonumber(job.quantity) or 0,
 done = tonumber(job.crafted), f = tonumber(job.completion) } or nil }
 end
 end
@@ -80,9 +100,25 @@ d.tasks = {}
 for _, t in pairs(tasks) do
 if type(t) == "table" then
 local res = type(t.resource) == "table" and t.resource or {}
-d.tasks[#d.tasks + 1] = { name = nameOf(res), item = res.name, qty = tonumber(t.quantity) or 0,
+d.tasks[#d.tasks + 1] = { name = nameOf(res), item = idOf(res), qty = tonumber(t.quantity) or 0,
 done = tonumber(t.crafted) or 0, f = tonumber(t.completion) or 0, bid = tonumber(t.bridge_id),
 cpu = type(t.cpu) == "table" and t.cpu.name or nil, id = t.id }
+end
+end
+end
+
+
+if d.cpus then
+d.tasks = d.tasks or {}
+for _, c in ipairs(d.cpus) do
+if c.busy and c.job then
+local dup = false
+for _, t in ipairs(d.tasks) do if t.cpu == c.name and t.name == c.job.name then dup = true end end
+if not dup then
+d.tasks[#d.tasks + 1] = { name = c.job.name, item = c.job.item, qty = c.job.qty, done = c.job.done or 0,
+f = c.job.f or ((c.job.done and c.job.qty > 0) and c.job.done / c.job.qty) or 0,
+cpu = c.name, fromCpu = true }
+end
 end
 end
 end

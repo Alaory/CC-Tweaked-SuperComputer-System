@@ -52,7 +52,22 @@ MEX.readAt, MEX.patAt, MEX.data = -1e9, -1e9, nil
 MEX.read()
 local d = MEX.data
 CHECK(d.cpus and #d.cpus == 2 and d.cpus[1].busy and d.cpus[1].job.name == "Stick", "CPUs: 2, the big one busy with Sticks")
-CHECK(d.tasks and #d.tasks == 1 and d.tasks[1].cpu == "Big CPU", "the running job and its CPU")
+CHECK(d.tasks and #d.tasks == 1 and d.tasks[1].cpu == "Big CPU", "the running job and its CPU (the CPU's own job not doubled)")
+-- the owner's bridge: getCraftingTasks lists only ITS jobs -> busy CPUs' jobs are added
+local gct = bridge.getCraftingTasks
+bridge.getCraftingTasks = function() return {} end
+local cpus0 = bridge.getCraftingCPUs
+bridge.getCraftingCPUs = function() local l = cpus0()
+  l[#l + 1] = { name = "Unnamed", isBusy = true, storage = 29272571904, coProcessors = 3136,
+                craftingJob = { quantity = 10, resource = { chemical = "mekanism:oxygen" } } }
+  return l end
+MEX.read()
+CHECK(#MEX.data.tasks == 2, "jobs from the busy CPUs when the bridge's own list is empty (" .. #MEX.data.tasks .. ")")
+CHECK(MEX.data.tasks[2].name == "Oxygen", "a job whose resource has no name/displayName is still named (" ..
+      tostring(MEX.data.tasks[2].name) .. ")")
+CHECK(fmtBytes(29272571904) == "27 GB" and compact(8862200000) == "8.86b", "bytes / billions read right")
+bridge.getCraftingTasks, bridge.getCraftingCPUs = gct, cpus0
+MEX.read()
 CHECK(d.drives and #d.drives[1].cells == 2, "the drive with its 2 cells")
 local ext
 for _, s in ipairs(d.store) do if s.kind == "Item" then ext = s.ext end end

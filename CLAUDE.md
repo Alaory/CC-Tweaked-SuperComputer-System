@@ -819,6 +819,13 @@ PneumaticCraft drone rides, turtle mapping/surveys, and an AE2 ME network view.
   (+ CANCEL), YOUR CRAFT REQUESTS (state badge, missing items), STORAGE + ENERGY (cells + storage buses),
   DRIVES (cells two to a row; old bridge: the AE2 page's cell sums), PATTERNS (count by type; the AE2
   page's picked item: made from / used in). The chip shows "N jobs". test_mesys.lua (new + old bridge).
+  IN GAME (owner's screenshots, 7 CPUs, storage buses only, 1012 patterns): getCraftingTasks lists only
+  the jobs the BRIDGE started ("0 running" with 4 CPUs busy) -> the busy CPUs' jobs are added (deduped by
+  cpu + name); a job resource without name/displayName (chemicals ...) -> nameOf tries id / chemical /
+  fluid / item ...; DRIVES drawn only when the bridge lists drives or the AE2 page has cell sums;
+  pattern badges wrap. compact() goes on to b / t (8862.2m was 8.86b); fmtBytes for CPU bytes.
+  drawBarRow (1-row lists: AE2 items) = a THIN SOLID bar in half cells - the segmented gauge's ticks
+  lined up row after row into vertical stripes.
 - PLAYERS page (base_ui_players.lua): a LIST (online players, then who left this run; tap =
   state.playerSel, hit "psel"; scroll "playersOff") + EVERYTHING about the picked one: WHERE
   (dimension + how long in it, position, from the base with compass direction, under ground /

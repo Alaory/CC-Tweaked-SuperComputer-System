@@ -27,7 +27,7 @@ for _, c in ipairs(cpus) do
 if r + 1 > y + h - 2 then break end
 local tag = c.busy and "BUSY" or "IDLE"
 local bw = badge(ix + iw - #tag - 2, r, tag, c.busy and C.warn or C.good)
-local info = (c.storage and (compact(c.storage) .. "B") or "") .. (c.co and ("  " .. c.co .. " co-proc") or "")
+local info = (c.storage and fmtBytes(c.storage) or "") .. (c.co and ("  " .. c.co .. " co-proc") or "")
 text(ix, r, trunc(c.name, iw - bw - #info - 3), C.text, C.panel)
 text(ix + iw - bw - 1 - #info, r, info, C.dim, C.panel)
 if c.job then
@@ -57,8 +57,8 @@ text(ix, y + h - 2, "+" .. (#tasks - i + 1) .. " more", C.dim, C.panel)
 break
 end
 local bw = (canX and t.item) and 10 or 0
-meter(ix, r, iw - (bw > 0 and bw + 1 or 0), t.name .. (t.cpu and ("  (" .. t.cpu .. ")") or ""),
-commas(t.done) .. " / " .. commas(t.qty), t.f, C.good)
+meter(ix, r, iw - (bw > 0 and bw + 1 or 0), t.name .. ((t.cpu and t.cpu ~= "Unnamed") and ("  (" .. t.cpu .. ")") or ""),
+(t.done and t.done > 0 and (commas(t.done) .. " / ") or "") .. commas(t.qty), t.f, C.good)
 if bw > 0 then
 actButton(ix + iw - bw, r, bw, 2, "CANCEL", { kind = "mecancel", name = t.item, count = 0, label = t.name }, false, C.bad)
 end
@@ -184,11 +184,15 @@ return
 end
 local byType = {}
 for _, p in ipairs(MEX.patterns) do byType[p.type] = (byType[p.type] or 0) + 1 end
-local bx = ix
+local bx, by = ix, iy
 for _, t in ipairs({ "crafting", "processing", "smithing", "stonecutting", "unknown" }) do
-if byType[t] then bx = bx + badge(bx, iy, byType[t] .. " " .. t, C.line, C.text) + 1 end
+if byType[t] then
+local lab = " " .. byType[t] .. " " .. t .. " "
+if bx > ix and bx + #lab > ix + iw then bx, by = ix, by + 1 end
+bx = bx + badge(bx, by, byType[t] .. " " .. t, C.line, C.text) + 1
 end
-local r = iy + 2
+end
+local r = by + 2
 local sel = state.meSel
 if not sel then
 para(ix, r, iw, "Pick an item on the AE2 page: what it is made from and what uses it shows here.", C.dim, 2)
@@ -256,10 +260,19 @@ storagePanel(rx, y0, rw, sh)
 CLIP = nil
 local dy = y0 + sh + 1
 local rest = y1 - dy + 1
-local dh = math.max(5, math.floor(rest * 0.55))
+
+
+local hasDrives = d.drives or #((state.me or {}).cellTypes or {}) > 0
+local py = dy
+if hasDrives then
+local need = 3
+for _, dr in ipairs(d.drives or {}) do need = need + 3 + math.ceil(#dr.cells / 2) end
+if not d.drives then need = 3 + 2 * #((state.me or {}).cellTypes or {}) end
+local dh = math.max(5, math.min(need, math.floor(rest * 0.6)))
 drivesPanel(rx, dy, rw, dh)
 CLIP = nil
-local py = dy + dh + 1
+py = dy + dh + 1
+end
 if y1 - py + 1 >= 5 then patternsPanel(rx, py, rw, y1 - py + 1) end
 CLIP = nil
 end

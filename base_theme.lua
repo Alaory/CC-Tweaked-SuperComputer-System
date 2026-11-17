@@ -356,7 +356,19 @@ function compact(n)
     return s .. "k"
   end
   if n < 1000000 then return math.floor(n / 1000) .. "k" end
-  return string.format("%.1fm", n / 1000000):gsub("%.0m$", "m")
+  -- (an AE2 network reaches billions: "8862.2m" read as millions - it is 8.86b)
+  if n < 1e9 then return (string.format("%.1fm", n / 1000000):gsub("%.0m$", "m")) end
+  if n < 1e12 then return (string.format("%.2fb", n / 1e9):gsub("%.?0+b$", "b")) end
+  return (string.format("%.2ft", n / 1e12):gsub("%.?0+t$", "t"))
+end
+-- bytes as B / KB / MB / GB / TB (AE2 crafting CPUs, cells)
+function fmtBytes(n)
+  n = tonumber(n) or 0
+  local units = { "B", "KB", "MB", "GB", "TB", "PB" }
+  local i = 1
+  while n >= 1024 and i < #units do n, i = n / 1024, i + 1 end
+  if i == 1 then return math.floor(n) .. " B" end
+  return (string.format(n < 10 and "%.1f" or "%.0f", n):gsub("%.0$", "")) .. " " .. units[i]
 end
 
 -- every item gets its own colour while there are free ones
