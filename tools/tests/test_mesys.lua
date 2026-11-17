@@ -112,7 +112,7 @@ CHECK(s:find("CRAFTING CPUS", 1, true) and s:find("Big CPU", 1, true) and s:find
 CHECK(s:find("MISSING", 1, true) and s:find("missing: 3 x Iron Ingot", 1, true), "page: your request and what it misses")
 CHECK(s:find("ME Drive", 1, true) and s:find("1k ME Storage Cell", 1, true), "page: drives and cells")
 CHECK(s:find("Items in storage buses", 1, true), "page: external storage")
-CHECK(s:find("makes 4 (crafting) from 2 Oak Planks", 1, true), "page: the picked item's recipe")
+CHECK(s:find("MAKES 4 X STICK", 1, true) and s:find("2 x Oak Planks", 1, true), "page: the AE2 page's picked item -> its pattern")
 CHECK(s:find("AE2 SYSTEM 1 job", 1, true), "the chip shows running jobs")
 -- CANCEL (two taps) -> cancelCraftingTasks for the item
 local function hitOf(kind, name)
@@ -130,6 +130,43 @@ if h then
   if a then runAction(a) end
 end
 CHECK(cancelled[1] == "minecraft:stick", "CANCEL cancelled the Stick jobs (" .. tostring(cancelled[1]) .. ")")
+-- PATTERNS can be used (the owner: "i cant interact with the patterns"): pick one, see what
+-- goes in vs what AE2 has, CRAFT from it; filter by type
+state.meSel = nil
+s = screen()
+local function hitK(kind, val)
+  for _, hh in ipairs(hits) do if hh[5] == kind and (val == nil or hh[6] == val) then return hh end end
+end
+local row = hitK("patsel")
+CHECK(row, "pattern rows can be tapped")
+if row then handleTouch(row[1], row[2]) end
+s = screen()
+CHECK(s:find("MAKES 4 X STICK", 1, true) and s:find("SHORT - AE2 has 0", 1, true), "a picked pattern: what goes in, what is short")
+local crafted
+local ci = bridge.craftItem
+bridge.craftItem = function(f) crafted = f return ci(f) end
+local cb
+for _, hh in ipairs(hits) do if hh[5] == "act" and hh[6].kind == "craft" and hh[6].count == 16 then cb = hh end end
+CHECK(cb, "CRAFT x16 under the picked pattern")
+if cb then
+  handleTouch(cb[1], cb[2]) screen()
+  for _, hh in ipairs(hits) do if hh[5] == "act" and hh[6].kind == "craft" and hh[6].count == 16 then cb = hh end end
+  handleTouch(cb[1], cb[2])
+  local a = table.remove(state.actionQueue, 1)
+  state.busy = false
+  if a then runAction(a) end
+end
+CHECK(crafted and crafted.name == "minecraft:stick" and crafted.count == 16, "two taps on CRAFT x16 asked AE2 for 16 sticks")
+bridge.craftItem = ci
+local pt = hitK("pattype", "processing")
+CHECK(pt, "a PROCESSING filter button")
+if pt then handleTouch(pt[1], pt[2]) end
+s = screen()
+local n = 0
+for _, hh in ipairs(hits) do if hh[5] == "patsel" then n = n + 1 end end
+CHECK(state.patType == "processing" and n == 1 and s:find("Torch", 1, true), "filtered: only the processing pattern (" .. n .. ")")
+state.patType, state.patSel, MEX.pv = nil, nil, nil
+
 -- an OLD bridge: none of the new functions
 local new = bridge
 bridge = { getItems = function() return {} end, craftItem = function() return true end }

@@ -385,6 +385,16 @@ function handleCommand(line)
   elseif cmd == "me" and (words[2] == "jobs" or words[2] == "cpus") then
     if MEX and bridge then pcall(MEX.read) end
     for _, l in ipairs(MEX and MEX.lines() or { "no bridge" }) do print(l) end
+  elseif cmd == "me" and words[2] == "raw" then
+    -- what the bridge says about each busy CPU's job, as it came (a job named "?" on the page)
+    local ok, cpus = pcall(bridge and bridge.getCraftingCPUs or error)
+    if not ok or type(cpus) ~= "table" then print("getCraftingCPUs: " .. tostring(cpus)) else
+      for _, c in pairs(cpus) do
+        if type(c) == "table" and c.isBusy then
+          print((c.name or "Unnamed") .. ": " .. textutils.serialize(c.craftingJob or "no job"):gsub("%s+", " "):sub(1, 400))
+        end
+      end
+    end
   elseif cmd == "me" and words[2] == "cancel" and words[3] then
     local ok, err = MEX.cancel(words[3])
     print(ok and ("Cancelled the jobs for " .. words[3]) or ("Not cancelled: " .. tostring(err)))

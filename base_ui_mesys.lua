@@ -176,49 +176,124 @@ local function drivesPanel(x, y, w, h)
   end
 end
 
+-- the patterns to list: filtered by type and first letter, sorted by the output's name
+-- (cached: 1000+ patterns are not sorted on every draw)
+local function itemName(n)
+  local me = state.me or {}
+  local e = (me.byName and me.byName[n]) or (me.byNameF and me.byNameF[n])
+  return (e and e.display) or prettify(tostring(n))
+end
+local function patView()
+  local key = tostring(MEX.patterns) .. "|" .. tostring(state.patType or "all") .. "|" .. tostring(state.patLetter or "")
+  if MEX.pv and MEX.pv.key == key then return MEX.pv.list end
+  local list = {}
+  for i, p in ipairs(MEX.patterns or {}) do
+    if not state.patType or p.type == state.patType then
+      local nm = itemName(p.out)
+      local c = nm:sub(1, 1):upper()
+      local L = state.patLetter
+      if not L or (L == "#" and not c:match("%a")) or c == L then
+        list[#list + 1] = { p = p, name = nm, key = p.out .. "|" .. p.type .. "|" .. i }
+      end
+    end
+  end
+  table.sort(list, function(a2, b2) return a2.name < b2.name end)
+  MEX.pv = { key = key, list = list }
+  return list
+end
+-- what AE2 has of an item / fluid (0 when not known)
+local function haveOf(n)
+  local me = state.me or {}
+  local e = (me.byName and me.byName[n]) or (me.byNameF and me.byNameF[n])
+  return e and (tonumber(e.count) or 0) or 0, (me.byNameF and me.byNameF[n]) ~= nil
+end
+
 local function patternsPanel(x, y, w, h)
   local ix, iy, iw = panel(x, y, w, h, "PATTERNS", { right = MEX.patterns and (#MEX.patterns .. " patterns") or nil })
   if not MEX.patterns then
     nope(ix, iy, iw, "The pattern list")
     return
   end
+  local bottom = y + h - 2
+  -- type filter (2-row buttons, wrap)
   local byType = {}
   for _, p in ipairs(MEX.patterns) do byType[p.type] = (byType[p.type] or 0) + 1 end
-  local bx, by = ix, iy
+  local chips = { { nil, "ALL " .. #MEX.patterns } }
   for _, t in ipairs({ "crafting", "processing", "smithing", "stonecutting", "unknown" }) do
-    if byType[t] then
-      local lab = " " .. byType[t] .. " " .. t .. " "
-      if bx > ix and bx + #lab > ix + iw then bx, by = ix, by + 1 end    -- (next line - never cut)
-      bx = bx + badge(bx, by, byType[t] .. " " .. t, C.line, C.text) + 1
-    end
+    if byType[t] then chips[#chips + 1] = { t, t:upper() .. " " .. byType[t] } end
   end
-  local r = by + 2
-  local sel = state.meSel
-  if not sel then
-    para(ix, r, iw, "Pick an item on the AE2 page: what it is made from and what uses it shows here.", C.dim, 2)
-    return
+  local bx, by = ix, iy
+  for _, c in ipairs(chips) do
+    local bw = #c[2] + 2
+    if bx > ix and bx + bw > ix + iw then bx, by = ix, by + 3 end
+    local on = state.patType == c[1]
+    button(bx, by, bw, 2, c[2], on and C.accent or C.line, "pattype", c[1] or "all", on)
+    bx = bx + bw + 1
   end
-  local known = state.me and state.me.byName and state.me.byName[sel]
-  heading(ix, r, iw, (known and known.display or prettify(sel)):upper())
-  r = r + 1
-  local list = MEX.byOut and MEX.byOut[sel] or {}
-  if #list == 0 then
-    text(ix, r, "No pattern makes it.", C.dim, C.panel)
+  -- first letter (2-row buttons)
+  local ly = by + 3
+  local toks = { { "ALL", false } }
+  for c = 65, 90 do toks[#toks + 1] = { string.char(c), string.char(c) } end
+  toks[#toks + 1] = { "#", "#" }
+  local lw = math.max(2, math.floor((iw - 5) / (#toks - 1)))
+  local lx = ix
+  for k, t in ipairs(toks) do
+    local tw = (k == 1) and 5 or lw                         -- ("ALL" + its margins)
+    if lx + tw - 1 > ix + iw - 1 then break end
+    local on = (state.patLetter == (t[2] or nil))
+    button(lx, ly, tw, 2, t[1], on and C.accent or C.line, "patletter", t[2] or "all", on)
+    lx = lx + tw
+  end
+  -- the picked pattern (by its key; else the item picked on the AE2 page)
+  local view = patView()
+  local sel
+  for _, v in ipairs(view) do if v.key == state.patSel then sel = v end end
+  if not sel and state.meSel and MEX.byOut and MEX.byOut[state.meSel] then
+    for _, v in ipairs(view) do if v.p.out == state.meSel then sel = v break end end
+  end
+  local detailH = sel and math.min(8 + #sel.p.ins, math.floor(h * 0.5)) or 0
+  -- the list (1 row per pattern; tap = pick; arrows in the top line scroll)
+  local r0 = ly + 3
+  local rows = math.max(1, (bottom - detailH) - r0 + 1)
+  local off = scrollBar(x, y, w, "patOff", #view, rows)
+  if #view == 0 then text(ix, r0, "No pattern matches this filter.", C.dim, C.panel) end
+  for i = 1, rows do
+    local v = view[off + i]
+    if not v then break end
+    local ry = r0 + i - 1
+    local on = sel and v.key == sel.key
+    local bg = rowBg(ix, ry, iw, on)
+    local tag = v.p.type
+    local amt = v.p.outN > 1 and ("x" .. v.p.outN .. "  ") or ""
+    text(ix + 1, ry, trunc(v.name, iw - #tag - #amt - 3), on and C.accent or C.text, bg)
+    text(ix + iw - #tag - #amt, ry, amt .. tag, C.dim, bg)
+    addHit(ix, ry, iw, 1, "patsel", v.key)
+  end
+  if not sel then return end
+  -- the picked one: what goes in (vs what AE2 has), what comes out, CRAFT
+  local dy = bottom - detailH + 2
+  heading(ix, dy - 1, iw, ("MAKES " .. sel.p.outN .. " x " .. sel.name):upper())
+  local r = dy
+  for _, inp in ipairs(sel.p.ins) do
+    if r > bottom - 4 then break end
+    local have = haveOf(inp.name)
+    local enough = have >= inp.n
+    led(ix, r, enough and C.good or C.bad)
+    kv(ix + 2, r, iw - 2, commas(inp.n) .. " x " .. itemName(inp.name), (enough and "" or "SHORT - ") .. "AE2 has " .. compact(have),
+       enough and C.dim or C.bad)
     r = r + 1
   end
-  for _, p in ipairs(list) do
-    if r > y + h - 2 then break end
-    local parts = {}
-    for _, inp in ipairs(p.ins) do
-      local kn = state.me and state.me.byName and state.me.byName[inp.name]
-      parts[#parts + 1] = commas(inp.n) .. " " .. ((kn and kn.display) or prettify(inp.name))
-    end
-    r = para(ix, r, iw, "makes " .. p.outN .. " (" .. p.type .. ") from " .. table.concat(parts, ", "), C.text,
-             math.max(1, y + h - 1 - r))
+  local used = MEX.byIn and MEX.byIn[sel.p.out]
+  if r <= bottom - 4 then
+    text(ix, r, sel.p.type .. " pattern" .. (used and ("  -  used in " .. used .. " other pattern(s)") or ""), C.dim, C.panel)
   end
-  local used = MEX.byIn and MEX.byIn[sel]
-  if r <= y + h - 2 then
-    text(ix, r, used and ("Used in " .. used .. " other pattern(s)") or "No pattern uses it.", C.dim, C.panel)
+  local _, isFluid = haveOf(sel.p.out)
+  local cw = math.floor((iw - 3) / 4)
+  local amounts = isFluid and { { "1 B", 1000 }, { "16 B", 16000 }, { "64 B", 64000 }, { "256 B", 256000 } }
+                  or { { "x1", 1 }, { "x16", 16 }, { "x64", 64 }, { "x256", 256 } }
+  for k, a2 in ipairs(amounts) do
+    actButton(ix + (k - 1) * (cw + 1), bottom - 2, (k == 4) and (iw - 3 * (cw + 1)) or cw, 3, "CRAFT " .. a2[1],
+              { kind = isFluid and "fcraft" or "craft", name = sel.p.out, count = a2[2] }, false, C.good)
   end
 end
 
@@ -255,7 +330,7 @@ function drawMESysPage(G)
     if s.inner then sh = sh + 2 end
     if s.ext then sh = sh + 2 end
   end
-  sh = math.max(6, sh + 3 + 4)
+  sh = math.max(6, math.min(sh + 3 + 4, math.floor((y1 - y0 + 1) * 0.3)))   -- (patterns need the room)
   storagePanel(rx, y0, rw, sh)
   CLIP = nil
   local dy = y0 + sh + 1
@@ -268,7 +343,7 @@ function drawMESysPage(G)
     local need = 3
     for _, dr in ipairs(d.drives or {}) do need = need + 3 + math.ceil(#dr.cells / 2) end
     if not d.drives then need = 3 + 2 * #((state.me or {}).cellTypes or {}) end
-    local dh = math.max(5, math.min(need, math.floor(rest * 0.6)))
+    local dh = math.max(5, math.min(need, math.floor(rest * 0.35)))
     drivesPanel(rx, dy, rw, dh)
     CLIP = nil
     py = dy + dh + 1

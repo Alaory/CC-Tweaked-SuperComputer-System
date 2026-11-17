@@ -250,6 +250,15 @@ r.lastMoved, r.lastAt = moved, os.clock()
 SUPPLY.dirty = true
 end
 r.state = (moved > 0) and "filled" or "short"
+
+
+
+if moved == 0 and (tonumber(r.keep) or 0) >= SUPPLY.FULL then
+local me = state.me or {}
+local known = (r.kind == "fluid" and me.byNameF or me.byName) or {}
+local e = known[r.name]
+if e and (tonumber(e.count) or 0) > 0 then r.why, r.state = nil, "full" end
+end
 r.busy = moved > 0 and (have + moved) < (tonumber(r.keep) or 0)
 
 if r.why and not r.warned then

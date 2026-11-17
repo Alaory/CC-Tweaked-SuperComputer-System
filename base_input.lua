@@ -461,6 +461,14 @@ function handleTouch(tx, ty)
           msg = CONFIG.chat.command .. (h[5] == "acc_yes" and " yes " or " no ") .. h[6] }
         os.queueEvent("chat_cmd")
         setToast((h[5] == "acc_yes" and "Approved " or "Declined ") .. h[6], C.label, 4)
+      elseif h[5] == "patsel" then
+        state.patSel = (state.patSel ~= h[6]) and h[6] or nil       -- (AE2 SYSTEM: pick a pattern; again = let go)
+      elseif h[5] == "pattype" then
+        state.patType = (h[6] ~= "all") and h[6] or nil
+        state.patOff, MEX.pv = 0, nil
+      elseif h[5] == "patletter" then
+        state.patLetter = (h[6] ~= "all") and h[6] or nil
+        state.patOff, MEX.pv = 0, nil
       elseif h[5] == "dscroll" then
         state[h[6][1]] = math.max(0, (state[h[6][1]] or 0) + h[6][2])
       elseif h[5] == "dsel" then

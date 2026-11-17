@@ -825,7 +825,14 @@ PneumaticCraft drone rides, turtle mapping/surveys, and an AE2 ME network view.
   fluid / item ...; DRIVES drawn only when the bridge lists drives or the AE2 page has cell sums;
   pattern badges wrap. compact() goes on to b / t (8862.2m was 8.86b); fmtBytes for CPU bytes.
   drawBarRow (1-row lists: AE2 items) = a THIN SOLID bar in half cells - the segmented gauge's ticks
-  lined up row after row into vertical stripes.
+  lined up row after row into vertical stripes. PATTERNS can be USED (the owner: "i cant interact with
+  the patterns"): type filter (pattype) + first letter (patletter) buttons, a 1-row list sorted by the
+  output's name (patsel; cached in MEX.pv; scroll "patOff"), the picked one (state.patSel, else the AE2
+  page's picked item) = its inputs with what AE2 has (SHORT in red) + CRAFT x1/x16/x64/x256 (fluids in B;
+  act craft / fcraft). Storage panel <= 30 % and drives <= 35 % of the column: patterns get the room.
+  `me raw` prints each busy CPU's job as the bridge gives it (jobs still named "?" in game).
+  SUPPLY FULL rules: a target taking none while AE2 has the fluid / item = "full", no warning (the owner
+  got "AE2 has no xp_fluid_source" again and again - 2.1 billion B in AE2, the tank simply full).
 - PLAYERS page (base_ui_players.lua): a LIST (online players, then who left this run; tap =
   state.playerSel, hit "psel"; scroll "playersOff") + EVERYTHING about the picked one: WHERE
   (dimension + how long in it, position, from the base with compass direction, under ground /

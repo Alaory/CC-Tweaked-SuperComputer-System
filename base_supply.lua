@@ -250,6 +250,15 @@ function SUPPLY.fill(r)
     SUPPLY.dirty = true
   end
   r.state = (moved > 0) and "filled" or "short"
+  -- FULL ("as much as goes in"): the target taking none while AE2 still HAS it = it is full -
+  -- not a shortage (the owner got "AE2 has no xp_fluid_source" again and again: 2.1 billion
+  -- B in AE2, the tank behind an Entangled block simply full)
+  if moved == 0 and (tonumber(r.keep) or 0) >= SUPPLY.FULL then
+    local me = state.me or {}
+    local known = (r.kind == "fluid" and me.byNameF or me.byName) or {}
+    local e = known[r.name]
+    if e and (tonumber(e.count) or 0) > 0 then r.why, r.state = nil, "full" end
+  end
   r.busy = moved > 0 and (have + moved) < (tonumber(r.keep) or 0)    -- (still taking it: come straight back)
   -- one warning when it starts running short, again only after it worked
   if r.why and not r.warned then

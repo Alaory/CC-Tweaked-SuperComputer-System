@@ -305,3 +305,27 @@ out = table.concat(handleCommand("supply stop 2") or {}, "\n")
 CHECK(#SUPPLY.rules == 2 and out:find("stopped", 1, true), "supply stop 2")
 out = table.concat(handleCommand("supply stop all") or {}, "\n")
 CHECK(#SUPPLY.rules == 0, "supply stop all")
+
+-- FULL ("as much as goes in"): a full tank that takes nothing while AE2 still has the fluid
+-- is FULL, not "AE2 has none" (the owner got that warning again and again for 2.1 billion B
+-- of XP fluid behind an Entangled block)
+do
+  PERIPHS["entangled:tile_3"] = { types = { "entangled:tile", "fluid_storage" }, obj = {
+    tanks = function() return { { name = "justdirethings:xp_fluid_source", amount = 64000 } } end } }
+  local exp1 = bridge.exportFluid
+  bridge.exportFluid = function() return 0 end                     -- takes none: full
+  state.me = state.me or {}
+  state.me.byNameF = { ["justdirethings:xp_fluid_source"] = { name = "justdirethings:xp_fluid_source", count = 2147483647 } }
+  local r = { target = "entangled:tile_3", kind = "fluid", name = "justdirethings:xp_fluid_source", keep = SUPPLY.FULL }
+  local said = {}
+  local push2 = pushNote
+  pushNote = function(t, m) said[#said + 1] = tostring(m) end
+  SUPPLY.fill(r)
+  CHECK(r.why == nil and r.state == "full" and #said == 0, "FULL + a full tank + AE2 has it = full, no warning (" .. tostring(r.why) .. ")")
+  state.me.byNameF["justdirethings:xp_fluid_source"].count = 0
+  r.warned = nil
+  SUPPLY.fill(r)
+  CHECK(r.why ~= nil and #said == 1, "FULL but AE2 really has none: warned once")
+  pushNote, bridge.exportFluid = push2, exp1
+  PERIPHS["entangled:tile_3"] = nil
+end

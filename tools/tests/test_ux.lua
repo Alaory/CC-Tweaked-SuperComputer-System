@@ -4,7 +4,7 @@
 -- INVENTORY page has no OVERVIEW box and keeps a big DETAILS box.
 local PAGES = { "home", "inventory", "players", "env", "mesys", "storage", "curios", "me", "drone", "access",
                 "turtles", "drive", "map", "mining", "system", "events", "settings" }
-local ROWS_OK = { item = true, meitem = true, dscroll = true, tsel = true, evitem = true }
+local ROWS_OK = { item = true, meitem = true, dscroll = true, tsel = true, evitem = true, patsel = true }
 local was = state.page
 setTheme("teal")
 for _, p in ipairs(PAGES) do
