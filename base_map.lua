@@ -1284,14 +1284,27 @@ local function packRound(q, ids, k)
   local out = {}
   -- 1. spots given back unscanned / a small SURVEY: ALL first (a round of its own - the
   --    band waits): shared out EVENLY between all free turtles (dealEven), up to BATCH each
-  local n0, take = #q.redo, {}
-  local cap = #ids * BATCH
+  -- (a round is short - 2 x packSpots each - and takes the spots NEAREST the pack: the
+  --  given-back list can hold spots from anywhere; 64 scattered ones each sent turtles across
+  --  the map while the whole pack waited for them - "now turtles dont survey")
+  local n0, cand = #q.redo, {}
+  local cap = #ids * 2 * k
+  local cx, cz = 0, 0
+  for _, id in ipairs(ids) do cx, cz = cx + pos[id][1], cz + pos[id][2] end
+  cx, cz = cx / #ids, cz / #ids
   for _ = 1, n0 do
     local p = table.remove(q.redo, 1)
     if MAP.spotDone(p[1], p[2]) or not MAP.inArea(p[1], p[2]) then
       -- done meanwhile / outside the work area now
-    elseif nearPlayer(p[1], p[2]) or #take >= cap then q.redo[#q.redo + 1] = p
-    else take[#take + 1] = p end
+    elseif nearPlayer(p[1], p[2]) then q.redo[#q.redo + 1] = p
+    else cand[#cand + 1] = p end
+  end
+  local take = {}
+  if #cand > 0 then
+    table.sort(cand, function(a, b) return math.abs(a[1] - cx) + math.abs(a[2] - cz) < math.abs(b[1] - cx) + math.abs(b[2] - cz) end)
+    for i, p in ipairs(cand) do
+      if i <= cap then take[#take + 1] = p else q.redo[#q.redo + 1] = p end
+    end
   end
   why.redo = #q.redo
   if #take > 0 then return dealEven(take, ids, q.step) end

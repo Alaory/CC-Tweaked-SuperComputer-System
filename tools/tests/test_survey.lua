@@ -143,6 +143,31 @@ end
 CONFIG.map.pack = nil
 MAP.queue = nil
 
+-- 2d. PACK + a long given-back list scattered over the map: a round stays short (2 x packSpots
+--     each) and takes the spots NEAREST the pack - 64 scattered spots each kept the whole pack
+--     waiting for turtles crossing the map ("now turtles dont survey")
+CONFIG.map.pack = true
+fleet(10)
+DONE = {}
+MAP.queue = nil
+MAP.queueSurvey(-9000, 7000, -1500, 15000, 8, nil)
+local q5 = MAP.queue
+q5.redo = {}
+for i = 1, 300 do q5.redo[#q5.redo + 1] = { HOME.x + (i % 30) * 17 + ((i > 150) and 3000 or 0), HOME.z + math.floor(i / 30) * 17 } end
+local m5 = #state.tOut
+MAP.feedSurvey()
+local most5, far5, got5 = 0, 0, 0
+for _, x in ipairs(batchesSent(m5)) do
+  got5 = got5 + 1
+  most5 = math.max(most5, #x.spots)
+  for _, p in ipairs(x.spots) do if p[1] > HOME.x + 2000 then far5 = far5 + 1 end end
+end
+CHECK(got5 == 10 and most5 <= 6, "pack + 300 given-back spots: all 10 get some, at most 6 each (" .. got5 .. ", " .. most5 .. ")")
+CHECK(far5 == 0, "the round takes the spots nearest the pack, not the far ones (" .. far5 .. " far)")
+CHECK(#q5.redo == 300 - 60, "the rest stay in the list for later rounds (" .. #q5.redo .. ")")
+CONFIG.map.pack = nil
+MAP.queue = nil
+
 -- 3. a turtle that still holds a batch (idle, no result yet) is not given a new one
 --    (without pack mode - the pack waits for its members anyway)
 CONFIG.map.pack = false

@@ -118,7 +118,10 @@ PneumaticCraft drone rides, turtle mapping/surveys, and an AE2 ME network view.
   - all start at the base, so 36 spots went to 6 of 10 turtles; WITHOUT pack the first free turtle took up
   to 64 (1 of 10). Now: spots in rows (snake), cut into one piece per free turtle (by t.packRate, BATCH
   each at most), each piece to the nearest turtle; non-pack mode deals nextBatch(BATCH * free) the same
-  way after the loop. test_survey.lua 2c (old code: 6 / 1 of 10). The next round
+  way after the loop. test_survey.lua 2c (old code: 6 / 1 of 10). PACK rounds of given-back spots stay
+  SHORT: at most 2 x packSpots per turtle, the ones NEAREST the pack (centre of the free turtles) first,
+  the rest stay in q.redo - the first dealEven let each take up to 64 scattered spots and the whole pack
+  waited for turtles crossing the map ("now turtles dont survey"). test_survey.lua 2d. The next round
   only when the whole pack is done (or after packWait 300 s; q.wave.t is saved with the queue - a time from before a
   base restart is ahead of the new clock and is reset, else the limit never ran out). Keeps them ~20 blocks apart
   so one wake-up (rescuer / player) reaches all.
