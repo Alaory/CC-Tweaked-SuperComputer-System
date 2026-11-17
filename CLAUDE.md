@@ -800,6 +800,25 @@ PneumaticCraft drone rides, turtle mapping/surveys, and an AE2 ME network view.
   system/events/settings); a group with several pages shows small sub-tabs on
   row 5 (hit "page"); the top tab is hit "group" -> openGroup (last page used).
   pageTabs() lists the pages that exist; headerTabs() the groups.
+- AE2 SYSTEM (base_meplus.lua MEX, page "mesys" base_ui_mesys.lua in the AE2 group; console `me jobs` /
+  `me cpus`, `me cancel <item>`): the rest of the ME Bridge. AP source dev/1.21.1 MEBridgePeripheral has
+  isOnline, getCraftingCPUs {name, isBusy, storage, coProcessors, craftingJob {quantity, crafted, completion,
+  resource}}, getCraftingTasks (same job details + bridge_id, cpu), getDrives {name, usedBytes, totalBytes,
+  cells {item, usedBytes, bytes, type}, position, priority}, getPatterns {patternType, primaryOutput,
+  inputs {primaryInput, multiplier}}, get{Total,Used,Available}External{Item,Fluid,Chemical}Storage,
+  cancelCraftingTasks(filter), craftItem/craftFluid -> a JOB OBJECT (getId, isDone, isCanceled,
+  isCraftingStarted, isCalculationNotSuccessful, getMissingItems, getItemProgress, getTotalItems, cancel)
+  + event "me_crafting" (error, id, CALCULATION_STARTED / CRAFTING_STARTED / MISSING_ITEMS / JOB_DONE /
+  JOB_CANCELED / NOT_CRAFTABLE). The owner's server is OLDER: every function looked up by NAME (MEX.has);
+  missing = the panel says "not on this ME Bridge". MEX.read (page worker: the page every 3 s, else 60 s;
+  patterns every 5 min -> MEX.byOut / byIn). craftME / craftFluidME go through MEX.craft (keeps true /
+  false, err): MEX.jobs (newest 20) followed by the event (MEX.event from the event loop -> MEX.jobTick in
+  the comms tick) or by asking the object every 10 s -> notes CRAFTED / CANNOT CRAFT (missing ...) /
+  CANCELLED; an old bridge's boolean answer = "SENT". CANCEL (two taps, act mecancel, runAction first
+  thing): the job object's cancel(), else cancelCraftingTasks{name}. Page: CRAFTING CPUS, CRAFTING NOW
+  (+ CANCEL), YOUR CRAFT REQUESTS (state badge, missing items), STORAGE + ENERGY (cells + storage buses),
+  DRIVES (cells two to a row; old bridge: the AE2 page's cell sums), PATTERNS (count by type; the AE2
+  page's picked item: made from / used in). The chip shows "N jobs". test_mesys.lua (new + old bridge).
 - PLAYERS page (base_ui_players.lua): a LIST (online players, then who left this run; tap =
   state.playerSel, hit "psel"; scroll "playersOff") + EVERYTHING about the picked one: WHERE
   (dimension + how long in it, position, from the base with compass direction, under ground /
@@ -937,7 +956,7 @@ The old Block UI (stone buttons, bedrock theme) is gone.
    teal with a bar, badges), a big amber clock + owner + LIVE light on the right; row 4 = the
    group's page chips + what the page is for. Body = rows 6 .. H-1 (geometry()); footer row H =
    FOOT_HINT[page] + LIVE; message boxes (drawNotes) framed in their colour, bottom-right.
-6. Navigation: GROUPS (base_ui_core.lua) = HOME | YOU (inventory, backpacks, curios) | AE2 |
+6. Navigation: GROUPS (base_ui_core.lua) = HOME | YOU (inventory, backpacks, curios) | AE2 (storage, system) |
    PLAYERS (players, world, chat & rides) | DRONES (drones, drone work) | TURTLES (turtles, drive, map,
    mining) | SYSTEM (status, messages, settings). New page -> PAGE_INFO entry + a group +
    pageTabs + draw() dispatch + PAGES in run_tests/test_ticks/test_ux.
@@ -968,6 +987,7 @@ The old Block UI (stone buttons, bedrock theme) is gone.
 | base_supply.lua | `supply`: storages on the wired cable kept stocked from AE2 (items + fluids) |
 | base_schem.lua | schematics: Create .nbt files dropped on the screen, unpacked + read, materials list |
 | base_dronework.lua / base_ui_work.lua | drone jobs: work chest, fuel runs to turtles, schematic builds (turtle keeps the site loaded) / the DRONE WORK page |
+| base_meplus.lua / base_ui_mesys.lua | more of the ME Bridge: CPUs, jobs (cancel), your craft requests followed, drives, patterns, storage buses / the AE2 SYSTEM page |
 | base_env.lua / base_ui_env.lua | the Environment Detector: time, weather, moon, light, mobs around the base / the WORLD page |
 | base_pocket.lua / pocket.lua | the pocket remote: base side (pairing, status, actions, messages) / the program on the pocket computer |
 

@@ -268,6 +268,12 @@ end
 end
 
 
+if bridge and MEX then
+local okM, didM = pcall(MEX.tick, page == "mesys")
+if okM and didM then did = true end
+end
+
+
 if envDet and ENV then
 local okE, didE = pcall(ENV.tick, page == "env")
 if okE and didE then did = true end
@@ -547,6 +553,7 @@ pcall(MINE.silentTick)
 pcall(MINE.updTick)
 pcall(CURIOS.autoTick)
 pcall(DW.tick)
+if MEX then pcall(MEX.jobTick) end
 if TT.listDirty and codeTick % 15 == 0 then pcall(TT.saveList) end
 codeTick = codeTick + 1
 if codeTick % 15 == 7 then pcall(baseAliveTick) end
@@ -733,6 +740,9 @@ elseif ev == "chat" then
 
 state.chatInbox[#state.chatInbox + 1] = { uuid = a, name = b, msg = c, hidden = d }
 os.queueEvent("chat_cmd")
+
+elseif ev == "me_crafting" or ev == "rs_crafting" then
+if MEX then MEX.event(a, b, c) end
 
 elseif ev == "playerChangedDimension" then
 rememberDim(a, c)

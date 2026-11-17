@@ -382,6 +382,12 @@ else
 say("Could not check: " .. tostring(r))
 end
 
+elseif cmd == "me" and (words[2] == "jobs" or words[2] == "cpus") then
+if MEX and bridge then pcall(MEX.read) end
+for _, l in ipairs(MEX and MEX.lines() or { "no bridge" }) do print(l) end
+elseif cmd == "me" and words[2] == "cancel" and words[3] then
+local ok, err = MEX.cancel(words[3])
+print(ok and ("Cancelled the jobs for " .. words[3]) or ("Not cancelled: " .. tostring(err)))
 elseif cmd == "me" and words[2] == "check" then
 
 

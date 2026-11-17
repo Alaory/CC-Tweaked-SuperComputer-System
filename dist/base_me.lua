@@ -1759,6 +1759,7 @@ end
 
 
 function craftFluidME(name, mb)
+if MEX then return MEX.craft(name, mb, true) end
 local ok, r, e = callx(bridge, "craftFluid", { name = name, amount = mb })
 if not ok then return false, tostring(r) end
 if not r then return false, tostring(e or "craft request failed") end
@@ -1767,6 +1768,7 @@ end
 
 
 function craftME(name, count)
+if MEX then return MEX.craft(name, count, false) end
 local ok, r, e = callx(bridge, "craftItem", { name = name, count = count })
 if not ok then return false, tostring(r) end
 if r == nil then return false, tostring(e or "craft request failed") end
@@ -1775,6 +1777,13 @@ end
 
 
 function runAction(a)
+
+if a.kind == "mecancel" then
+local ok, err = MEX.cancel(a.name, a.key)
+setToast(ok and ("Cancelled: " .. tostring(a.label or a.name)) or ("Not cancelled: " .. tostring(err)), ok and C.good or C.warn, 8)
+MEX.readAt = -1e9
+return
+end
 local disp = prettify(a.name)
 local known = state.me and state.me.byName and state.me.byName[a.name]
 if known then disp = known.display end

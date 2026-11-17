@@ -267,6 +267,12 @@ function pageWorker()
       end
     end
 
+    -- more of the ME Bridge (CPUs, jobs, drives, patterns): the AE2 SYSTEM page every 3 s
+    if bridge and MEX then
+      local okM, didM = pcall(MEX.tick, page == "mesys")
+      if okM and didM then did = true end
+    end
+
     -- the Environment Detector: the WORLD page every 2 s (+ a scan), else once a minute
     if envDet and ENV then
       local okE, didE = pcall(ENV.tick, page == "env")
@@ -547,6 +553,7 @@ function commsWorker()
       pcall(MINE.updTick)                -- mine update: the new miner.lua to the mining turtles (teams paused)
       pcall(CURIOS.autoTick)             -- auto-equip: keep a totem (...) on in its curios slot
       pcall(DW.tick)                     -- drone jobs: fuel runs to turtles, schematic builds
+      if MEX then pcall(MEX.jobTick) end -- your AE2 craft requests: done / missing items / cancelled
       if TT.listDirty and codeTick % 15 == 0 then pcall(TT.saveList) end
       codeTick = codeTick + 1
       if codeTick % 15 == 7 then pcall(baseAliveTick) end    -- every 30 s: "still running"
@@ -733,6 +740,9 @@ function uiLoop()
       -- uuid, name, message, isHidden: handled by the chat worker
       state.chatInbox[#state.chatInbox + 1] = { uuid = a, name = b, msg = c, hidden = d }
       os.queueEvent("chat_cmd")
+
+    elseif ev == "me_crafting" or ev == "rs_crafting" then
+      if MEX then MEX.event(a, b, c) end          -- (error, job id, status) from the bridge
 
     elseif ev == "playerChangedDimension" then
       rememberDim(a, c)

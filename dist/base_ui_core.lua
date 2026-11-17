@@ -417,6 +417,7 @@ curios    = { "CURIOS", "Rings, belts, charms you wear" },
 me        = { "AE2 STORAGE", "Find, take, store, craft" },
 players   = { "PLAYERS", "Who is online, where, health" },
 env       = { "WORLD", "Time, weather, mobs around" },
+mesys     = { "AE2 SYSTEM", "CPUs, jobs, drives, patterns" },
 access    = { "CHAT & RIDES", "Chat commands, ride requests" },
 drone     = { "DRONES", "Rides: passenger, place, air" },
 work      = { "DRONE WORK", "Builds, fuel runs, work chest" },
@@ -442,7 +443,11 @@ tabs[#tabs + 1] = { "env", "WORLD", hn > 0 and (hn .. " mobs") or nil }
 end
 if invCaps.storage then tabs[#tabs + 1] = { "storage", "BACKPACKS" } end
 if invCaps.curios then tabs[#tabs + 1] = { "curios", "CURIOS" } end
-if bridge then tabs[#tabs + 1] = { "me", bridgeKind == "ME" and "AE2 STORAGE" or (bridgeKind .. " STORAGE") } end
+if bridge then
+tabs[#tabs + 1] = { "me", bridgeKind == "ME" and "AE2 STORAGE" or (bridgeKind .. " STORAGE") }
+local nj = MEX and MEX.data and MEX.data.tasks and #MEX.data.tasks or 0
+tabs[#tabs + 1] = { "mesys", bridgeKind == "ME" and "AE2 SYSTEM" or (bridgeKind .. " SYSTEM"), nj > 0 and (nj .. (nj == 1 and " job" or " jobs")) or nil }
+end
 if #droneOrder > 0 then
 tabs[#tabs + 1] = { "drone", #droneOrder > 1 and "DRONES" or "DRONE",
 #droneOrder > 1 and tostring(#droneOrder) or nil }
@@ -492,7 +497,7 @@ end
 local GROUPS = {
 { id = "home",    label = "HOME",    pages = { "home" } },
 { id = "you",     label = "YOU",     pages = { "inventory", "storage", "curios" } },
-{ id = "me",      label = "AE2",     pages = { "me" } },
+{ id = "me",      label = "AE2",     pages = { "me", "mesys" } },
 { id = "people",  label = "PLAYERS", pages = { "players", "env", "access" } },
 { id = "drone",   label = nil,       pages = { "drone", "work" } },
 { id = "turtles", label = "TURTLES", pages = { "turtles", "drive", "map", "mining" } },
@@ -660,6 +665,7 @@ end
 FOOT_HINT = {
 players = "Tap a player on the left - everything known about them on the right",
 env = "The Environment Detector: game time, weather, moon, light, living things nearby",
+mesys = "Crafting CPUs and jobs (CANCEL takes two taps), your craft requests, drives, patterns",
 storage = "What is inside your backpacks and tanks",
 curios  = "Tap a slot: store a worn item in AE2 / move it to you, or put on what fits (two taps)",
 me      = "Pick an item, then use the buttons - buttons that do something ask CONFIRM? first",
@@ -771,6 +777,8 @@ drawMessage("MONITOR TOO SMALL",
 { "Use a bigger monitor, or set textScale to 0.5 in CONFIG." }, C.warn)
 elseif state.page == "home" then
 drawHomePage(G)
+elseif state.page == "mesys" then
+drawMESysPage(G)
 elseif state.page == "env" then
 drawEnvPage(G)
 elseif state.page == "players" then
