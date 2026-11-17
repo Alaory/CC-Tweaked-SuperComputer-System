@@ -100,12 +100,22 @@ PneumaticCraft drone rides, turtle mapping/surveys, and an AE2 ME network view.
   had one get t.recall (saved in turtles.dat) - TT.receive stops their survey job
   (also when they resume it after being offline), then sends them home. The queue file is written only when it changed (or once a minute). PACK mode
   (CONFIG.map.pack, default on; SETTINGS > MAP): the free turtles get spots in
-  ROUNDS (q.wave): n*packSpots (3) consecutive spiral spots shared out in turn
-  (side by side, 17 blocks apart), by measured speed (t.packRate from
-  batchResult) so they finish together; the next round only when the whole
-  pack is done (or after packWait 300 s; q.wave.t is saved with the queue - a time from before a
-  base restart is ahead of the new clock and is reset, else the limit never ran out). Keeps them ~20 blocks apart (sim:
-  83% of free-running speed) so one wake-up (rescuer / player) reaches all.
+  ROUNDS (q.wave) from a BAND of rings (MAP.packRound; q.band {rings, f, own}, q.bandOwn):
+  one spiral ring per turtle (only rings that still have work - a mapped area round the
+  base left turtles sharing a ring), turtle j KEEPS ring j; each round every ring gives
+  the same stretch of the way round (~packSpots (3) spots), so the turtles move side by
+  side 17 blocks apart, 17-block hops on the ground. (Before: the round's consecutive
+  spots were dealt IN TURN along one line - 51-block hops over the others' spots = a sky
+  highway trip per spot, the owner saw them follow each other in a line, only the front
+  one scanning; sim with travel: 13% of free-running speed, now ~84%.) A busy member's
+  ring goes to the nearest ring's turtle; extra turtles share the busiest ring (by
+  t.packRate); spots given back (q.redo) go first, each to the nearest turtle. q.cursor
+  stays at the band's first ring (plain mode / an auto-map cursor go on from there:
+  nothing lost); MAP.queuePos = progress inside the band. test_survey_pack.lua (travel
+  model, grouped pieces), test_survey.lua 2b (pack on/off mid-survey). The next round
+  only when the whole pack is done (or after packWait 300 s; q.wave.t is saved with the queue - a time from before a
+  base restart is ahead of the new clock and is reset, else the limit never ran out). Keeps them ~20 blocks apart
+  so one wake-up (rescuer / player) reaches all.
   t.packWait -> TT.idleWhy "waiting for the rest of the pack". A turtle still holding
   a batch (q.out[id]) is never free (its batch is reclaimed after 30 s idle first -
   overwriting it lost the unscanned spots). SURVEY: ALL for small areas also goes through

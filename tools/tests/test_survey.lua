@@ -81,6 +81,44 @@ CHECK(twice == 0, "no spot twice (" .. twice .. ")")
 CHECK(outside == 0, "no spot outside the area (" .. outside .. ")")
 CHECK(not back, "progress never goes back")
 
+-- 2b. the same with PACK turned off and on again in the middle (a band of rings
+--     open): still every spot exactly once
+fleet(4)
+DONE = {}
+MAP.queue = nil
+total = MAP.queueSurvey(X1, Z1, X2, Z2, 8, nil)
+handed, twice, outside = 0, 0, 0
+local switched = 0
+for round = 1, 900 do
+  CLOCK = CLOCK + 20
+  for _, t in pairs(state.turtles) do t.lastSeen = CLOCK end
+  if round % 2 == 0 then
+    CONFIG.map.pack = (CONFIG.map.pack == false) and nil or false
+    switched = switched + 1
+  end
+  local m0 = #state.tOut
+  MAP.feedSurvey()
+  if not MAP.queue then break end
+  for _, x in ipairs(batchesSent(m0)) do
+    for _, p in ipairs(x.spots) do
+      if p[1] < X1 or p[1] > X2 or p[2] < Z1 or p[2] > Z2 then outside = outside + 1 end
+      if DONE[p[1] .. "," .. p[2]] then twice = twice + 1 end
+      DONE[p[1] .. "," .. p[2]] = true
+      handed = handed + 1
+    end
+    state.turtles[x.id].task = "survey"
+  end
+  for id, t in pairs(state.turtles) do
+    if t.task == "survey" then t.task = "idle" MAP.batchResult(id, true) end
+  end
+end
+CONFIG.map.pack = nil
+CHECK(switched > 2, "pack mode was switched during the survey (" .. switched .. ", " .. total .. " spots)")
+CHECK(MAP.queue == nil, "pack on/off: the survey finished")
+CHECK(handed == total, "pack on/off: every spot handed out (" .. handed .. " of " .. total .. ")")
+CHECK(twice == 0, "pack on/off: no spot twice (" .. twice .. ")")
+CHECK(outside == 0, "pack on/off: no spot outside the area (" .. outside .. ")")
+
 -- 3. a turtle that still holds a batch (idle, no result yet) is not given a new one
 --    (without pack mode - the pack waits for its members anyway)
 CONFIG.map.pack = false

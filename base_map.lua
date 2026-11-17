@@ -1048,6 +1048,10 @@ local function spiral(n)
   return -k + 1 + m, -k                               -- bottom, going right
 end
 MAP.spiral = spiral
+-- ring r of the spiral: its first index, its number of spots; the ring of index i
+function MAP.ringStart(r) if r <= 0 then return 0 end return (2 * r - 1) * (2 * r - 1) end
+function MAP.ringLen(r) if r <= 0 then return 1 end return 8 * r end
+function MAP.ringOf(i) if i <= 0 then return 0 end return math.ceil((math.sqrt(i + 1) - 1) / 2) end
 
 -- ===== AUTO-MAP: always a survey running, from the base outward =====
 -- When no survey is running, the base starts (or continues) one that spirals
@@ -1105,7 +1109,7 @@ end
 -- how far around the base auto-map has got (blocks)
 function MAP.autoRadius()
   local q = MAP.queue
-  local cur = (q and q.auto) and q.cursor or (MAP.auto.cursor or 0)
+  local cur = (q and q.auto) and MAP.queuePos(q) or (MAP.auto.cursor or 0)
   local step = (q and q.step) or (2 * (CONFIG.map.scanRadius or 8) + 1)
   return math.max(0, math.ceil((math.sqrt(cur + 1) - 1) / 2) - 1) * step
 end
@@ -1137,6 +1141,12 @@ local function nextBatch(q, want)
   end
   q.lastWhy = why
   q.redo = q.redo or {}
+  -- pack mode was on (a band of rings open): go on from that band's first ring
+  -- (done spots are skipped - nothing of the band is lost)
+  if q.band then
+    q.cursor = math.min(q.cursor, MAP.ringStart(q.band.rings and q.band.rings[1] or 0))
+    q.band = nil
+  end
   -- first the spots a turtle gave back unscanned (see MAP.reclaim) - each looked at once
   local n0 = #q.redo
   for _ = 1, n0 do
@@ -1181,6 +1191,212 @@ local function nextBatch(q, want)
   why.redo = #q.redo
   return out
 end
+
+-- ===== PACK: every turtle its own RING of the spiral =====
+-- The old pack dealt one round's spots in turn along ONE line of the spiral
+-- (A B C A B C ...): every turtle hopped 51 blocks over the others' spots (over
+-- 48 = up to the sky highway and down again for every hop) and they followed
+-- each other in a line - the one in front scanned, the rest were travelling.
+-- Now a BAND of n rings (one per turtle; rings with nothing left are left out)
+-- is swept round together: turtle j keeps ring j, and each round every turtle
+-- gets the next ~k spots of its own
+-- ring (the same stretch of the way round), so they move side by side, 17
+-- blocks apart, each hop 17 blocks on the ground, never across another's spots.
+-- q.band = { rings = { r1, r2 .. }, f = how far round (0..1), own = { [j] = id } }
+-- (q.cursor stays at or before the band's first ring while it is open: an auto-map cursor
+--  saved from it, or pack mode turned off, goes on from there - nothing lost)
+local function near(a, b) return math.abs(a[1] - b[1]) + math.abs(a[2] - b[2]) end
+
+local function packRound(q, ids, k)
+  local total = q.cols * q.rows
+  local rad = math.floor((q.cols - 1) / 2)
+  local threats, range = {}, 0
+  if TT and TT.threats then threats, range = TT.threats() end
+  local why = { near = 0, done = 0, redo = 0 }
+  local function nearPlayer(x, z)
+    if #threats == 0 then return false end
+    local who = TT.nearThreat(x, z, threats, range)
+    if who then why.near, why.who = why.near + 1, who end
+    return who ~= nil
+  end
+  q.lastWhy = why
+  q.redo = q.redo or {}
+  local pos, rate = {}, {}
+  for _, id in ipairs(ids) do
+    local t = state.turtles[id]
+    pos[id] = { t.pos.x, t.pos.z }
+    rate[id] = tonumber(t.packRate) or 0.01
+  end
+  local out = {}
+  -- 1. spots given back unscanned first: each to the turtle whose way it is nearest
+  --    (a round of its own - the band waits)
+  local n0, last, cnt, got = #q.redo, {}, {}, false
+  for _, id in ipairs(ids) do last[id], cnt[id] = pos[id], 0 end
+  for _ = 1, n0 do
+    local p = table.remove(q.redo, 1)
+    if MAP.spotDone(p[1], p[2]) or not MAP.inArea(p[1], p[2]) then
+      -- done meanwhile / outside the work area now
+    elseif nearPlayer(p[1], p[2]) then q.redo[#q.redo + 1] = p
+    else
+      local best, bd
+      for _, id in ipairs(ids) do
+        if cnt[id] < 2 * k then
+          local d = near(last[id], p)
+          if not best or d < bd then best, bd = id, d end
+        end
+      end
+      if best then
+        out[best] = out[best] or {}
+        table.insert(out[best], p)
+        last[best], cnt[best], got = p, cnt[best] + 1, true
+      else q.redo[#q.redo + 1] = p end              -- (all full: next round)
+    end
+  end
+  why.redo = #q.redo
+  if got then return out end
+  -- 2. the band
+  local checked, outside = 0, 0
+  local packSize = tonumber(CONFIG.map.packSize) or 8
+  local function spotAt(r, s)
+    local dx, dz = spiral(MAP.ringStart(r) + s)
+    return q.cx + dx * q.step, q.cz + dz * q.step
+  end
+  local function skip(x, z)
+    return (q.rect and (x < q.x1 or x > q.x2 or z < q.z1 or z > q.z2)) or not MAP.inArea(x, z)
+  end
+  while q.cursor < total do
+    local b = q.band
+    if not b then
+      -- a new band: the next rings that still have something to scan (a mapped
+      -- area round the base would leave turtles without a ring - they shared
+      -- one and hopped over each other again)
+      local want = math.max(1, math.min(#ids, packSize))
+      local rings, r = {}, MAP.ringOf(q.cursor)
+      while #rings < want and r <= rad do
+        local work = false
+        for s = 0, MAP.ringLen(r) - 1 do
+          local x, z = spotAt(r, s)
+          if skip(x, z) then outside = outside + 1
+          else
+            checked = checked + 1
+            if not MAP.spotDone(x, z) then work = true break end
+          end
+          if checked >= 3000 or outside >= 40000 then break end
+        end
+        if not work and (checked >= 3000 or outside >= 40000) then break end   -- (that ring: next time)
+        if work then rings[#rings + 1] = r
+        elseif #rings == 0 then q.cursor = math.max(q.cursor, MAP.ringStart(r + 1)) end   -- all done: past it
+        r = r + 1
+      end
+      if #rings == 0 then
+        if r > rad then q.cursor = total end
+        break
+      end
+      b = { rings = rings, f = 0, own = {} }
+      -- the same turtles keep the same place in the band (inner / outer): nobody crosses
+      for j, id in pairs(q.bandOwn or {}) do if j <= #rings then b.own[j] = id end end
+      q.band = b
+    end
+    local rings = b.rings
+    -- this round's stretch of the way round: on average k spots per ring
+    local Psum = 0
+    for _, r in ipairs(rings) do Psum = Psum + MAP.ringLen(r) end
+    local f1 = b.f + math.max(0.000001, k * #rings / Psum)
+    if f1 > 0.999999 then f1 = 1 end
+    local tracks, any = {}, false
+    for j, r in ipairs(rings) do
+      local list, P = {}, MAP.ringLen(r)
+      local s0 = math.ceil(b.f * P - 0.000001)
+      local s1 = (f1 >= 1) and P or math.ceil(f1 * P - 0.000001)
+      for s = s0, s1 - 1 do
+        local x, z = spotAt(r, s)
+        if skip(x, z) then outside = outside + 1                -- outside the area / border: cheap skip
+        else
+          checked = checked + 1
+          if MAP.spotDone(x, z) then q.skipped = q.skipped + 1 why.done = why.done + 1
+          elseif nearPlayer(x, z) then q.redo[#q.redo + 1] = { x, z }       -- later
+          else list[#list + 1] = { x, z } any = true end
+        end
+      end
+      tracks[j] = list
+    end
+    b.f = f1
+    if f1 >= 1 then
+      -- round the whole band: on with the rings after it
+      q.cursor = math.min(total, MAP.ringStart(rings[#rings] + 1))
+      q.bandOwn, q.band = b.own, nil
+    end
+    if any then
+      local n = #rings
+      -- who takes which ring: its own from before; a new turtle the nearest free ring
+      local owner, has, free = {}, {}, {}
+      for _, id in ipairs(ids) do free[id] = true end
+      for j = 1, n do
+        local id = b.own[j]
+        if id and free[id] and not has[id] then owner[j], has[id] = { id }, true end
+      end
+      for _, id in ipairs(ids) do
+        if not has[id] then
+          local bj, bd
+          for j = 1, n do
+            if not owner[j] and tracks[j][1] then
+              local d = near(pos[id], tracks[j][1])
+              if not bj or d < bd then bj, bd = j, d end
+            end
+          end
+          if bj then owner[bj], has[id], b.own[bj] = { id }, true, id end
+        end
+      end
+      -- a ring whose turtle is not free (busy, offline): the turtle on the nearest ring takes it too
+      for j = 1, n do
+        if #tracks[j] > 0 and not owner[j] then
+          local bj
+          for d = 1, n do
+            if owner[j - d] then bj = j - d break end
+            if owner[j + d] then bj = j + d break end
+          end
+          if bj then for _, p in ipairs(tracks[j]) do table.insert(tracks[bj], p) end end
+          tracks[j] = {}
+        end
+      end
+      -- more turtles than rings (they came after the band started): they share the
+      -- busiest ring - a piece of it each
+      for _, id in ipairs(ids) do
+        if not has[id] then
+          local bj, bv
+          for j = 1, n do
+            if owner[j] and #tracks[j] > 1 then
+              local v = #tracks[j] / (#owner[j] + 1)
+              if not bj or v > bv then bj, bv = j, v end
+            end
+          end
+          if bj then table.insert(owner[bj], id) has[id] = true end
+        end
+      end
+      -- each ring's stretch (in order round the ring) in one piece per turtle, by speed
+      for j = 1, n do
+        local o, list = owner[j], tracks[j]
+        if o and #list > 0 then
+          local rs, acc, at = 0, 0, 1
+          for _, id in ipairs(o) do rs = rs + rate[id] end
+          for i, id in ipairs(o) do
+            acc = acc + rate[id]
+            local upto = (i == #o) and #list or math.floor(#list * acc / rs + 0.5)
+            for c = at, upto do
+              out[id] = out[id] or {}
+              table.insert(out[id], list[c])
+            end
+            at = math.max(at, upto + 1)
+          end
+        end
+      end
+      return out
+    end
+    if checked >= 3000 or outside >= 40000 then break end
+  end
+  return out
+end
+MAP.packRound = packRound
 
 -- A turtle stopped working on its batch (finished, failed, low on fuel, gave
 -- up after restarts, result lost ...): every spot of it that is still not in
@@ -1358,40 +1574,34 @@ function MAP.feedSurvey()
       for _, id in ipairs(packFree) do state.turtles[id].packWait = true end
     else
       table.sort(packFree)
-      local n = math.min(#packFree, tonumber(CONFIG.map.packSize) or 8)
       local k = tonumber(CONFIG.map.packSpots) or 3
-      local spots = nextBatch(q, n * k)
-      n = math.min(n, #spots)
+      local lists = {}
+      if q.spiral then
+        lists = packRound(q, packFree, k)            -- each turtle its own ring (see packRound)
+      else
+        -- (a row-by-row queue: one piece of the line each, never in turn)
+        local n = math.min(#packFree, tonumber(CONFIG.map.packSize) or 8)
+        local spots = nextBatch(q, n * k)
+        for c, p in ipairs(spots) do
+          local id = packFree[math.min(n, math.floor((c - 1) * n / #spots) + 1)]
+          lists[id] = lists[id] or {}
+          table.insert(lists[id], p)
+        end
+      end
       local ids = {}
-      -- spots in turn, side by side along the way - a faster turtle (measured:
-      -- t.packRate, spots per second) gets more, so the pack finishes together
-      local lists, cnt = {}, {}
-      for i = 1, n do lists[i], cnt[i] = {}, 0 end
-      for _, p in ipairs(spots) do
-        local best, bestV
-        for i = 1, n do
-          local rate = tonumber(state.turtles[packFree[i]].packRate) or 0.01
-          local v = (cnt[i] + 1) / rate
-          if not best or v < bestV then best, bestV = i, v end
-        end
-        cnt[best] = cnt[best] + 1
-        lists[best][#lists[best] + 1] = p
-      end
-      for i = 1, n do
-        local mine = lists[i]
-        local id = packFree[i]
+      for _, id in ipairs(packFree) do
+        local mine = lists[id]
         local t = state.turtles[id]
-        if #mine == 0 then mine = nil end
-        if mine then
-        TT.sendSpots(id, mine, q.r)
-        q.out = q.out or {}
-        q.out[id] = mine
-        t.queueAt, t.packWait = os.clock(), nil
-        q.sent = q.sent + #mine
-        ids[#ids + 1] = id
+        if mine and #mine > 0 then
+          TT.sendSpots(id, mine, q.r)
+          q.out = q.out or {}
+          q.out[id] = mine
+          t.queueAt, t.packWait = os.clock(), nil
+          q.sent = q.sent + #mine
+          ids[#ids + 1] = id
         end
       end
-      if n > 0 then
+      if #ids > 0 then
         q.wave = { t = os.clock(), ids = ids }
         busy, q.changed = true, true
       end
@@ -1430,25 +1640,36 @@ function MAP.feedSurvey()
 end
 
 -- progress for the screen: done fraction, spots total
+-- how far the queue got, as a spiral index (a pack band counts as far as it went round)
+function MAP.queuePos(q)
+  local b = q and q.band
+  if not b then return q and q.cursor or 0 end
+  local rs = b.rings or {}
+  if #rs == 0 then return q.cursor end
+  local a, z = MAP.ringStart(rs[1]), math.min(q.cols * q.rows, MAP.ringStart(rs[#rs] + 1))
+  return math.max(q.cursor, a + (z - a) * (b.f or 0))
+end
+
 function MAP.surveyProgress()
   local q = MAP.queue
   if not q then return nil end
   local total = q.cols * q.rows
+  local cur = MAP.queuePos(q)
   if q.rect then
     -- spots of the area only (the spiral square is bigger): done = how far the
     -- spiral got, as a share of the area's spots it has passed
     local inArea = math.max(1, (math.floor((q.x2 - q.x1) / q.step) + 1) * (math.floor((q.z2 - q.z1) / q.step) + 1))
-    local k = math.max(0, math.ceil((math.sqrt(q.cursor + 1) - 1) / 2))     -- the ring it is on
+    local k = math.max(0, (math.sqrt(cur + 1) - 1) / 2)                      -- the ring it is on
     local half = k * q.step
     local w = math.min(q.x2, q.cx + half) - math.max(q.x1, q.cx - half)
     local h = math.min(q.z2, q.cz + half) - math.max(q.z1, q.cz - half)
     local passed = (math.floor(math.max(0, w) / q.step) + 1) * (math.floor(math.max(0, h) / q.step) + 1)
-    if q.cursor >= total then passed = inArea end
+    if cur >= total then passed = inArea end
     local again = q.redo and #q.redo or 0
     return math.min(1, passed / inArea), inArea, q.sent, q.skipped, again
   end
   local again = q.redo and #q.redo or 0
-  return q.cursor / total, total, q.sent, q.skipped, again
+  return cur / total, total, q.sent, q.skipped, again
 end
 
 -- one screen cell to the right (r) and one down (d), as world x/z steps
