@@ -114,11 +114,14 @@ ok, n, log = upgrade({})
 CHECK(ok and DISK["base/base_ui_core.lua"] == slimOf("base_ui_core.lua"), "tight space: still updated\n" .. log)
 
 -- a computer with the FULL files (installed by hand / an older upgrade): made slim
-fresh(nil, true)
+-- (the full files no longer fit a 1 MB computer at all: this one has a bigger disk; after the
+--  switch to slim it is back to 1 MB, so "upgrade full" below must refuse cleanly)
+fresh(1572864, true)
 local before = used()
 ok, n, log = upgrade({})
 CHECK(ok and n >= 38 and used() < before - 150000, "full files -> slim: " .. tostring(n) .. " files, " ..
       math.floor((before - used()) / 1024) .. " KB freed")
+CAP = math.max(used() + 1, 1048576)
 -- upgrade full: the commented files (and it stays so); upgrade slim: back
 -- (the commented files are bigger than a 1 MB computer now: then it must refuse cleanly and
 -- leave the slim files as they are; with room - a bigger disk - it switches and back)

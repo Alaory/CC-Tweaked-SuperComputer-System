@@ -1029,6 +1029,9 @@ say("mine drop <id> = a lost miner out of its team,  mine forget <id> = off the 
 say("mine update = the newest miner.lua to all of them (teams paused, started again after)")
 end
 
+elseif cmd == "env" or cmd == "world" then
+if envDet then pcall(ENV.read, true) end
+for _, l in ipairs(ENV.lines()) do print(l) end
 elseif cmd == "away" then
 
 if AWAY.on then

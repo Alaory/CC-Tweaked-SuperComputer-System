@@ -267,6 +267,12 @@ function pageWorker()
       end
     end
 
+    -- the Environment Detector: the WORLD page every 2 s (+ a scan), else once a minute
+    if envDet and ENV then
+      local okE, didE = pcall(ENV.tick, page == "env")
+      if okE and didE then did = true end
+    end
+
     -- turtles avoid other players: their positions are needed on every page
     -- (and for AWAY mode: is the owner online? - every 30 s)
     local avoid = next(state.turtles) and (tonumber(CONFIG.turtles.avoidRange or 100) or 0) > 0

@@ -416,6 +416,7 @@ storage   = { "BACKPACKS", "Inside backpacks and tanks" },
 curios    = { "CURIOS", "Rings, belts, charms you wear" },
 me        = { "AE2 STORAGE", "Find, take, store, craft" },
 players   = { "PLAYERS", "Who is online, where, health" },
+env       = { "WORLD", "Time, weather, mobs around" },
 access    = { "CHAT & RIDES", "Chat commands, ride requests" },
 drone     = { "DRONES", "Rides: passenger, place, air" },
 work      = { "DRONE WORK", "Builds, fuel runs, work chest" },
@@ -434,6 +435,11 @@ function pageTabs()
 local tabs = { { "home", "HOME" }, { "inventory", "INVENTORY" } }
 local np = det and #(state.players or {}) or 0
 tabs[#tabs + 1] = { "players", "PLAYERS", np > 0 and tostring(np) or nil }
+if envDet then
+local hn = ENV.data and ENV.data.count and ENV.data.count.hostile or 0
+
+tabs[#tabs + 1] = { "env", "WORLD", hn > 0 and (hn .. " mobs") or nil }
+end
 if invCaps.storage then tabs[#tabs + 1] = { "storage", "BACKPACKS" } end
 if invCaps.curios then tabs[#tabs + 1] = { "curios", "CURIOS" } end
 if bridge then tabs[#tabs + 1] = { "me", bridgeKind == "ME" and "AE2 STORAGE" or (bridgeKind .. " STORAGE") } end
@@ -487,7 +493,7 @@ local GROUPS = {
 { id = "home",    label = "HOME",    pages = { "home" } },
 { id = "you",     label = "YOU",     pages = { "inventory", "storage", "curios" } },
 { id = "me",      label = "AE2",     pages = { "me" } },
-{ id = "people",  label = "PLAYERS", pages = { "players", "access" } },
+{ id = "people",  label = "PLAYERS", pages = { "players", "env", "access" } },
 { id = "drone",   label = nil,       pages = { "drone", "work" } },
 { id = "turtles", label = "TURTLES", pages = { "turtles", "drive", "map", "mining" } },
 { id = "system",  label = "SYSTEM",  pages = { "system", "events", "settings" } },
@@ -653,6 +659,7 @@ end
 
 FOOT_HINT = {
 players = "Tap a player on the left - everything known about them on the right",
+env = "The Environment Detector: game time, weather, moon, light, living things nearby",
 storage = "What is inside your backpacks and tanks",
 curios  = "Tap a slot: store a worn item in AE2 / move it to you, or put on what fits (two taps)",
 me      = "Pick an item, then use the buttons - buttons that do something ask CONFIRM? first",
@@ -764,6 +771,8 @@ drawMessage("MONITOR TOO SMALL",
 { "Use a bigger monitor, or set textScale to 0.5 in CONFIG." }, C.warn)
 elseif state.page == "home" then
 drawHomePage(G)
+elseif state.page == "env" then
+drawEnvPage(G)
 elseif state.page == "players" then
 drawPlayersPage(G)
 elseif state.page == "me" then

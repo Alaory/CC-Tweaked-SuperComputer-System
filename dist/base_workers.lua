@@ -268,6 +268,12 @@ end
 end
 
 
+if envDet and ENV then
+local okE, didE = pcall(ENV.tick, page == "env")
+if okE and didE then did = true end
+end
+
+
 
 local avoid = next(state.turtles) and (tonumber(CONFIG.turtles.avoidRange or 100) or 0) > 0
 if det and not fresh("players", avoid and 10 or 30) then

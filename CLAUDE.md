@@ -810,6 +810,22 @@ PneumaticCraft drone rides, turtle mapping/surveys, and an AE2 ME network view.
   (base_players.lua, memory only): first / joined (playerJoin event), dim + dimSince, last
   reading, speed / vy, online / left (playerLeave or gone from getOnlinePlayers).
   test_players_page.lua.
+- ENVIRONMENT DETECTOR (base_env.lua ENV, WORLD page base_ui_env.lua "env" in the PLAYERS group,
+  console `env` / `world`): ENV.read (page worker via ENV.tick: the WORLD page every 2 s + a scan
+  every scanEvery 5 s, else once a minute) - biome, light (block / sky / daylight), getTime (TOTAL
+  world time: ENV.clock -> day number, HH:MM with tick 0 = 06:00, night 13000-23000, seconds to the
+  change), slime chunk, dimension, listDimensions (once), weather, canSleepHere, Mekanism radiation.
+  Names differ by version (AP source dev/1.21.1 = the owner's: getMoonId + getMoonName,
+  scanEntities(radius) LIVING things only {name (display name), health, maxHealth, baby/inLove for
+  animals, x y z RELATIVE}, an operation with cost/cooldown -> nil + "Radius exceeds max value";
+  0.8 docs: getMoon() -> id, name; scanEntities(range, detailed, filter)) - each looked up by name.
+  ENV.scan: CONFIG.env.range (16) refused for "radius/range" -> smaller (ENV.range remembered); any
+  other error (cooldown) kept as d.scanErr, the old list stays. ENV.kind: player (online list),
+  hostile (ENV.HOSTILE by name or aggressive), animal (has baby), other. Page: GAME TIME / WEATHER /
+  MOON (drawn 12x12 sub-pixels, dark side C.line) / LIGHT, AROUND THE BASE (counts + nearest first:
+  distance, compass, up/down, health), HERE, DIMENSIONS (players in each from state.players). The
+  WORLD chip shows "N mobs" (no badge colour - it would take over the PLAYERS group badge). The
+  preview world has a fake 0.7 detector (ENVDET). test_env.lua.
 - SETTINGS page (base_ui_settings.lua, SETTING_GROUPS): click-only - num (-/+ by
   step, min/max), cycle, bool, pos ("USE MY POSITION" / "BLOCK UNDER ME" from
   the Player Detector, tap twice), custom (theme, chat messages, auto-map).
@@ -916,7 +932,7 @@ The old Block UI (stone buttons, bedrock theme) is gone.
    group's page chips + what the page is for. Body = rows 6 .. H-1 (geometry()); footer row H =
    FOOT_HINT[page] + LIVE; message boxes (drawNotes) framed in their colour, bottom-right.
 6. Navigation: GROUPS (base_ui_core.lua) = HOME | YOU (inventory, backpacks, curios) | AE2 |
-   PLAYERS (players, chat & rides) | DRONES (drones, drone work) | TURTLES (turtles, drive, map,
+   PLAYERS (players, world, chat & rides) | DRONES (drones, drone work) | TURTLES (turtles, drive, map,
    mining) | SYSTEM (status, messages, settings). New page -> PAGE_INFO entry + a group +
    pageTabs + draw() dispatch + PAGES in run_tests/test_ticks/test_ux.
 7. HOME (base_ui_home.lua): a row of live numbers (turtles, drones, AE2, mining, map, players -
@@ -946,6 +962,7 @@ The old Block UI (stone buttons, bedrock theme) is gone.
 | base_supply.lua | `supply`: storages on the wired cable kept stocked from AE2 (items + fluids) |
 | base_schem.lua | schematics: Create .nbt files dropped on the screen, unpacked + read, materials list |
 | base_dronework.lua / base_ui_work.lua | drone jobs: work chest, fuel runs to turtles, schematic builds (turtle keeps the site loaded) / the DRONE WORK page |
+| base_env.lua / base_ui_env.lua | the Environment Detector: time, weather, moon, light, mobs around the base / the WORLD page |
 | base_pocket.lua / pocket.lua | the pocket remote: base side (pairing, status, actions, messages) / the program on the pocket computer |
 
 ## The owner's setup (found out the hard way)

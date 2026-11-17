@@ -42,8 +42,29 @@ local drone2 = {
   getDronePosition = function() return -5294, 15, 10846 end, getAction = function() return "pneumaticcraft:teleport" end,
   isActionDone = function() return false end,
 }
+-- an Environment Detector like Advanced Peripherals 0.7 for 1.21.1 (getMoonId / getMoonName,
+-- scanEntities(radius): living things only, x y z relative to the detector)
+ENVDET = {
+  getBiome = function() return "minecraft:plains" end, getBlockLightLevel = function() return 11 end,
+  getSkyLightLevel = function() return 15 end, getDayLightLevel = function() return 13 end,
+  getTime = function() return 24000 * 41 + 11800 end, isSlimeChunk = function() return true end,
+  getDimension = function() return "minecraft:overworld" end,
+  listDimensions = function() return { "minecraft:overworld", "minecraft:the_nether", "minecraft:the_end",
+                                       "javd:void", "twilightforest:twilight_forest" } end,
+  getMoonId = function() return 2 end, getMoonName = function() return "Third quarter" end,
+  isRaining = function() return true end, isThunder = function() return false end, isSunny = function() return false end,
+  canSleepHere = function() return false end,
+  scanEntities = function(r)
+    if r > 16 then return nil, "Radius exceeds max value" end
+    return { { name = "Zombie", health = 14, maxHealth = 20, x = 6.5, y = -1, z = -9.2 },
+             { name = "Creeper", health = 20, maxHealth = 20, x = -3.1, y = 0, z = 4.4 },
+             { name = "Cow", health = 10, maxHealth = 10, baby = true, inLove = false, x = 12, y = 0, z = 3 },
+             { name = "Alaory", health = 18, maxHealth = 20, x = 2, y = 0, z = 2 } }
+  end,
+}
 PERIPHS = {
   right = { types = { "monitor" }, obj = nil },
+  environment_detector_0 = { types = { "environment_detector" }, obj = ENVDET },
   inventory_manager_3 = { types = { "inventory_manager" }, obj = inv },
   player_detector_1 = { types = { "player_detector" }, obj = det },
   chat_box_0 = { types = { "chat_box" }, obj = { sendMessageToPlayer = function() end } },

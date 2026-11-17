@@ -1029,6 +1029,9 @@ function handleCommand(line)
       say("mine update = the newest miner.lua to all of them (teams paused, started again after)")
     end
 
+  elseif cmd == "env" or cmd == "world" then
+    if envDet then pcall(ENV.read, true) end
+    for _, l in ipairs(ENV.lines()) do print(l) end
   elseif cmd == "away" then
     -- the last WHILE YOU WERE AWAY report (or the live one while away)
     if AWAY.on then
