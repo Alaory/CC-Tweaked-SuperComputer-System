@@ -751,7 +751,9 @@ local right = n.when .. ((n.times and n.times > 1) and (" x" .. n.times) or "")
 text(x + 3 + kw, by, " " .. trunc(n.title or "", nw - kw - #right - 12) .. " ", C.text, C.panel)
 text(x + nw - #right - 7, by, " " .. right .. " ", C.dim, C.panel)
 text(x + nw - 4, by, " x ", C.ink, n.col)
-for k, l in ipairs(b.lines) do text(ix, iy + k, l, C.text, C.panel) end
+
+
+for k, l in ipairs(b.lines) do text(ix, iy + k - 1, l, C.text, C.panel) end
 if n.exp and n.life and n.life > 0 then
 gauge(ix, by + h - 1, iw, (n.exp - now) / n.life, n.col)
 end

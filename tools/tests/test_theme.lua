@@ -77,3 +77,22 @@ CHECK(bigW("N") == 3 and bigW("M") == 3 and bigW("W") == 3 and bigW("I") == 2, "
 for _, s in ipairs({ "INVENTORY", "12:59", "BASE", "1.2M" }) do
   CHECK(big(1, 1, s, C.text, C.bg) == bigW(s), "big() and bigW() agree for " .. s)
 end
+-- message boxes: every line of the message is ON the screen (a line drawn one row too low
+-- landed under the timer bar - one-line warnings showed as empty boxes in game)
+do
+  state.notes = {}
+  local ua = USER_ACTION
+  USER_ACTION = true
+  pushNote("WARNING", "Turtle 12 is out of fuel", C.warn, 60)
+  pushNote("WARNING", "Supply entangled:tile_3: justdirethings:xp_fluid_source - AE2 has no xp_fluid_source or the tank takes none", C.warn, 60)
+  USER_ACTION = ua
+  state.page = "home"
+  hits = {}
+  draw()
+  local all = {}
+  for y = 1, H do all[#all + 1] = (MONITOR.getLine(y)) end
+  local s = table.concat(all, "\n")
+  CHECK(s:find("Turtle 12 is out of fuel", 1, true), "a one-line message is shown in its box")
+  CHECK(s:find("takes none", 1, true), "the LAST line of a longer message is shown too")
+  state.notes = {}
+end

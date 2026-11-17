@@ -27,7 +27,7 @@ base base_supply.lua 19688 1390bb7a
 base base_theme.lua 17650 8f627bc8
 base base_turtles.lua 106753 bda2e957
 base base_ui_chat.lua 5324 057af588
-base base_ui_core.lua 36673 9e6151fc
+base base_ui_core.lua 36846 0d3ff309
 base base_ui_drive.lua 16138 4de03b41
 base base_ui_drone.lua 10578 e71681bb
 base base_ui_env.lua 11053 2e164c54
@@ -77,7 +77,7 @@ slim:base base_supply.lua 14825 3e655c85 dist/base_supply.lua
 slim:base base_theme.lua 10589 6e16f695 dist/base_theme.lua
 slim:base base_turtles.lua 73589 a35ccc7c dist/base_turtles.lua
 slim:base base_ui_chat.lua 4262 56e2d3cf dist/base_ui_chat.lua
-slim:base base_ui_core.lua 27115 afff7687 dist/base_ui_core.lua
+slim:base base_ui_core.lua 27121 8bea5a69 dist/base_ui_core.lua
 slim:base base_ui_drive.lua 13196 c1739a3b dist/base_ui_drive.lua
 slim:base base_ui_drone.lua 9000 b88608b2 dist/base_ui_drone.lua
 slim:base base_ui_env.lua 8993 0700d4eb dist/base_ui_env.lua
