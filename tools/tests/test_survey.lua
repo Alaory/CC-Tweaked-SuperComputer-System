@@ -168,6 +168,49 @@ CHECK(#q5.redo == 300 - 60, "the rest stay in the list for later rounds (" .. #q
 CONFIG.map.pack = nil
 MAP.queue = nil
 
+-- 2e. the owner's game: a big survey started right after STOP ALL / HOME - 1 turtle free, the
+--     map around the base already done (thousands of spots: the band search needs several calls),
+--     then 11 more turtles come back. The band must not stay 1 ring wide ("1 sent" for ages).
+CONFIG.map.pack = true
+fleet(12)
+for id, t in pairs(state.turtles) do if id ~= 21 then t.task = "going home" end end
+local DONE6 = {}
+MAP.spotDone = function(x, z) return DONE6[x .. "," .. z] or math.max(math.abs(x - HOME.x), math.abs(z - HOME.z)) < 1200 end
+MAP.queue = nil
+MAP.queueSurvey(HOME.x - 3400, HOME.z - 3600, HOME.x + 3400, HOME.z + 3600, 8, nil)
+local q6 = MAP.queue
+local function feed6()
+  CLOCK = CLOCK + 3
+  for _, t in pairs(state.turtles) do t.lastSeen = CLOCK end
+  local m = #state.tOut
+  MAP.feedSurvey()
+  local got = batchesSent(m)
+  for _, x in ipairs(got) do
+    for _, p in ipairs(x.spots) do DONE6[p[1] .. "," .. p[2]] = true end
+    state.turtles[x.id].task = "idle"
+    state.turtles[x.id].queueAt = CLOCK - 100
+    MAP.batchResult(x.id, true)
+  end
+  return got
+end
+for _ = 1, 40 do feed6() if q6.band then break end end
+CHECK(q6.band and #q6.band.rings == 1, "1 free turtle: a 1-ring band (" .. (q6.band and #q6.band.rings or 0) .. ")")
+for _, t in pairs(state.turtles) do t.task = "idle" end          -- the others are back
+local most, seen = 0, {}
+for _ = 1, 60 do
+  local got = feed6()
+  for _, x in ipairs(got) do seen[x.id] = true end
+  most = math.max(most, #got)
+  if q6.band and #q6.band.rings >= 10 and most >= 10 then break end
+end
+local nSeen = 0
+for _ in pairs(seen) do nSeen = nSeen + 1 end
+CHECK(q6.band and #q6.band.rings == 12, "the band is rebuilt as wide as the pack: 12 rings (" .. (q6.band and #q6.band.rings or 0) .. ")")
+CHECK(most >= 10 and nSeen == 12, "rounds use (nearly) every turtle again (" .. most .. " in a round, " .. nSeen .. " in all)")
+MAP.spotDone = function(x, z) return DONE[x .. "," .. z] end
+CONFIG.map.pack = nil
+MAP.queue = nil
+
 -- 3. a turtle that still holds a batch (idle, no result yet) is not given a new one
 --    (without pack mode - the pack waits for its members anyway)
 CONFIG.map.pack = false

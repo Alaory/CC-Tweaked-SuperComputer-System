@@ -1147,6 +1147,7 @@ local function nextBatch(q, want)
     q.cursor = math.min(q.cursor, MAP.ringStart(q.band.rings and q.band.rings[1] or 0))
     q.band = nil
   end
+  q.pend = nil
   -- first the spots a turtle gave back unscanned (see MAP.reclaim) - each looked at once
   local n0 = #q.redo
   for _ = 1, n0 do
@@ -1310,7 +1311,7 @@ local function packRound(q, ids, k)
   if #take > 0 then return dealEven(take, ids, q.step) end
   -- 2. the band
   local checked, outside = 0, 0
-  local packSize = tonumber(CONFIG.map.packSize) or 8
+  local packSize = tonumber(CONFIG.map.packSize) or 32
   local function spotAt(r, s)
     local dx, dz = spiral(MAP.ringStart(r) + s)
     return q.cx + dx * q.step, q.cz + dz * q.step
@@ -1318,14 +1319,36 @@ local function packRound(q, ids, k)
   local function skip(x, z)
     return (q.rect and (x < q.x1 or x > q.x2 or z < q.z1 or z > q.z2)) or not MAP.inArea(x, z)
   end
+  local want = math.max(1, math.min(#ids, packSize))
+  -- a band narrower than the free pack (it began while most turtles were away - after STOP ALL /
+  -- HOME only 1 was free: ONE ring for 31 turtles, ~3 spots a round, "1 sent" in the owner's game):
+  -- what is left of it goes back to the list (handed out evenly, nearest first) and a band as
+  -- wide as the pack starts after it
+  if q.band and q.band.rings and #q.band.rings < want and want - #q.band.rings >= math.max(2, math.ceil(want / 4)) then
+    local b = q.band
+    for _, r in ipairs(b.rings) do
+      local P = MAP.ringLen(r)
+      for s = math.ceil(b.f * P - 0.000001), P - 1 do
+        local x, z = spotAt(r, s)
+        if not skip(x, z) then q.redo[#q.redo + 1] = { x, z } end
+      end
+    end
+    q.cursor = math.min(total, MAP.ringStart(b.rings[#b.rings] + 1))
+    q.bandOwn, q.band, q.pend = b.own, nil, nil
+    q.changed = true
+    why.redo = #q.redo
+    return out                                       -- (the next round hands those out first)
+  end
   while q.cursor < total do
     local b = q.band
     if not b then
       -- a new band: the next rings that still have something to scan (a mapped
       -- area round the base would leave turtles without a ring - they shared
-      -- one and hopped over each other again)
-      local want = math.max(1, math.min(#ids, packSize))
-      local rings, r = {}, MAP.ringOf(q.cursor)
+      -- one and hopped over each other again). Looking through mapped rings may take
+      -- several calls (3000 checks each): what was found is kept in q.pend, so the
+      -- band is as wide as the pack (it was cut at whatever the first call found)
+      local pend = q.pend or { rings = {}, r = MAP.ringOf(q.cursor) }
+      local rings, r = pend.rings, pend.r
       while #rings < want and r <= rad do
         local work = false
         for s = 0, MAP.ringLen(r) - 1 do
@@ -1342,6 +1365,11 @@ local function packRound(q, ids, k)
         elseif #rings == 0 then q.cursor = math.max(q.cursor, MAP.ringStart(r + 1)) end   -- all done: past it
         r = r + 1
       end
+      if #rings < want and r <= rad and (checked >= 3000 or outside >= 40000) then
+        q.pend = { rings = rings, r = r }            -- (out of checks: go on looking next time)
+        break
+      end
+      q.pend = nil
       if #rings == 0 then
         if r > rad then q.cursor = total end
         break
@@ -1642,7 +1670,7 @@ function MAP.feedSurvey()
         lists = packRound(q, packFree, k)            -- each turtle its own ring (see packRound)
       else
         -- (a row-by-row queue: one piece of the line each, never in turn)
-        local n = math.min(#packFree, tonumber(CONFIG.map.packSize) or 8)
+        local n = math.min(#packFree, tonumber(CONFIG.map.packSize) or 32)
         local spots = nextBatch(q, n * k)
         for c, p in ipairs(spots) do
           local id = packFree[math.min(n, math.floor((c - 1) * n / #spots) + 1)]

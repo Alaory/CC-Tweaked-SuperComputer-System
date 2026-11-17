@@ -121,7 +121,15 @@ PneumaticCraft drone rides, turtle mapping/surveys, and an AE2 ME network view.
   way after the loop. test_survey.lua 2c (old code: 6 / 1 of 10). PACK rounds of given-back spots stay
   SHORT: at most 2 x packSpots per turtle, the ones NEAREST the pack (centre of the free turtles) first,
   the rest stay in q.redo - the first dealEven let each take up to 64 scattered spots and the whole pack
-  waited for turtles crossing the map ("now turtles dont survey"). test_survey.lua 2d. The next round
+  waited for turtles crossing the map ("now turtles dont survey"). test_survey.lua 2d. BAND WIDTH (the
+  owner: BIG SURVEY "1 sent" for ages, one turtle flying alone): the band's width was fixed when it began -
+  started right after STOP ALL / HOME with 1 free turtle = ONE ring for 31 turtles (~3 spots a round); also
+  the ring search stopped at its 3000-check budget with whatever it had found (a big mapped area round the
+  base). Now: want = min(free, CONFIG.map.packSize = 32 (was 8!), SETTINGS > MAP "Pack: turtles side by
+  side"); a band narrower than want by >= max(2, want/4) is ENDED - its unfinished spots (f..1 of each
+  ring) go to q.redo (handed out evenly, nearest first), cursor past it - and a full band starts; the ring
+  search keeps what it found in q.pend across calls. test_survey.lua 2e (old code: 1 ring, 3 turtles a
+  round). The next round
   only when the whole pack is done (or after packWait 300 s; q.wave.t is saved with the queue - a time from before a
   base restart is ahead of the new clock and is reset, else the limit never ran out). Keeps them ~20 blocks apart
   so one wake-up (rescuer / player) reaches all.
