@@ -820,8 +820,14 @@ PneumaticCraft drone rides, turtle mapping/surveys, and an AE2 ME network view.
   animals, x y z RELATIVE}, an operation with cost/cooldown -> nil + "Radius exceeds max value";
   0.8 docs: getMoon() -> id, name; scanEntities(range, detailed, filter)) - each looked up by name.
   ENV.scan: CONFIG.env.range (16) refused for "radius/range" -> smaller (ENV.range remembered); any
-  other error (cooldown) kept as d.scanErr, the old list stays. ENV.kind: player (online list),
-  hostile (ENV.HOSTILE by name or aggressive), animal (has baby), other. Page: GAME TIME / WEATHER /
+  other error (cooldown) kept as d.scanErr, the old list stays. IN GAME (owner's screenshot) the
+  name is the entity TYPE ("minecraft:player", "minecraft:zombie") and players carry a baby flag
+  too (the owner showed as "1 ANIMAL"): ENV.kind = player ("minecraft:player" / online name),
+  hostile (ENV.HOSTILE by the id's path, "cave_spider" -> "cave spider", or aggressive), animal
+  (inLove / baby), other; ENV.nameOf: ids prettified, a player = state.ownerUuid match / the ONLY
+  player near the base / "Player". DIMENSIONS: players' dims first (count + names wrapped), base,
+  rest; UUID-named dims (ENV.privateDim: spatial cells, compact machine rooms) folded into one
+  line; ENV.dimName adds the mod ("End (blue_skies)" vs "The End"). Radiation <= 1 uSv "(normal)". Page: GAME TIME / WEATHER /
   MOON (drawn 12x12 sub-pixels, dark side C.line) / LIGHT, AROUND THE BASE (counts + nearest first:
   distance, compass, up/down, health), HERE, DIMENSIONS (players in each from state.players). The
   WORLD chip shows "N mobs" (no badge colour - it would take over the PLAYERS group badge). The

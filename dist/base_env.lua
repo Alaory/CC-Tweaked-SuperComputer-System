@@ -39,13 +39,55 @@ for _, n in ipairs({ "zombie", "husk", "drowned", "skeleton", "stray", "bogged",
 "ender dragon", "illusioner", "creaking" }) do ENV.HOSTILE[n] = true end
 
 
+
+
 function ENV.kind(e)
-local n = tostring(e.name or ""):lower()
+local n = tostring(e.displayName or e.name or ""):lower()
+if n == "minecraft:player" or n == "player" then return "player" end
 if state.online and state.online[n] then return "player" end
 for _, p in ipairs(state.players or {}) do if tostring(p.name):lower() == n then return "player" end end
-if ENV.HOSTILE[n] or e.aggressive == true then return "hostile" end
-if e.baby ~= nil or e.inLove ~= nil then return "animal" end
+local short = n:gsub("^[%w_%-%.]+:", ""):gsub("_", " ")
+if ENV.HOSTILE[short] or e.aggressive == true then return "hostile" end
+if e.inLove ~= nil or e.baby ~= nil then return "animal" end
 return "other"
+end
+
+
+
+function ENV.nameOf(e, kind)
+local raw = tostring(e.displayName or e.name or "?")
+if kind == "player" then
+if not raw:find(":", 1, true) and raw:lower() ~= "player" then return raw end
+if e.uuid and state.ownerUuid and tostring(e.uuid):lower() == tostring(state.ownerUuid):lower() then
+return tostring(state.owner)
+end
+local h0 = CONFIG.drone and CONFIG.drone.home
+local near
+for _, p in ipairs(state.players or {}) do
+local pp = p.p
+if h0 and pp and pp.x and p.dim == (DRONE_DIM or "minecraft:overworld")
+and math.abs(pp.x - h0.x) + math.abs(pp.z - h0.z) <= (tonumber(ENV.range) or 16) + 64 then
+if near then return "Player" end
+near = p.name
+end
+end
+return near or "Player"
+end
+if raw:find(":", 1, true) then return prettify(raw) end
+return raw
+end
+
+
+function ENV.privateDim(id)
+return tostring(id):lower():find("%x%x%x%x%x%x%x%x%-%x%x%x%x%-%x%x%x%x%-%x%x%x%x%-%x%x%x%x%x%x%x%x%x%x%x%x") ~= nil
+end
+
+function ENV.dimName(id)
+id = tostring(id)
+local ns = id:match("^([^:]+):")
+local n = prettify(id)
+if ns and ns ~= "minecraft" then n = n .. " (" .. ns .. ")" end
+return n
 end
 
 
@@ -129,9 +171,9 @@ if type(e) == "table" and tonumber(e.x) then
 local x, y, z = tonumber(e.x), tonumber(e.y) or 0, tonumber(e.z)
 local k = ENV.kind(e)
 count[k] = count[k] + 1
-out[#out + 1] = { name = tostring(e.name or "?"), kind = k, x = x, y = y, z = z,
+out[#out + 1] = { name = ENV.nameOf(e, k), kind = k, x = x, y = y, z = z,
 dist = math.sqrt(x * x + y * y + z * z),
-hp = tonumber(e.health), max = tonumber(e.maxHealth), baby = e.baby == true }
+hp = tonumber(e.health), max = tonumber(e.maxHealth), baby = e.baby == true and k ~= "player" }
 end
 end
 table.sort(out, function(a, b) return a.dist < b.dist end)

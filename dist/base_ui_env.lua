@@ -166,32 +166,63 @@ local function row(k, v, col) if v ~= nil and r <= y + h - 2 then kv(ix, r, iw, 
 row("Biome", d.biome and prettify(tostring(d.biome)))
 row("Dimension", d.dim and prettify(tostring(d.dim)), d.dim and dimColor(d.dim))
 row("Slime chunk", d.slime == nil and nil or (d.slime and "YES - slimes spawn below Y 40" or "no"), d.slime and C.good or nil)
-row("Radiation", d.rad or (d.radRaw and (string.format("%.2f", d.radRaw) .. " Sv/h")), (d.radRaw and d.radRaw > 0.0001) and C.warn or nil)
+
+local radTxt = d.rad or (d.radRaw and (string.format("%.2f", d.radRaw) .. " Sv/h"))
+if radTxt and d.radRaw and d.radRaw <= 0.000001 then radTxt = radTxt .. " (normal)" end
+row("Radiation", radTxt, (d.radRaw and d.radRaw > 0.0001) and C.warn or nil)
 row("Detector", picked and picked.env or "?", C.dim)
 end
 
 local function dimsPanel(x, y, w, h)
 local d = ENV.data or {}
-local dims = d.dims or {}
-local ix, iy, iw = panel(x, y, w, h, "DIMENSIONS", { right = #dims > 0 and (#dims .. " in this world") or nil })
-if #dims == 0 then text(ix, iy, "not known", C.dim, C.panel) return end
+local all = d.dims or {}
 
-local who = {}
+local who, unknown = {}, 0
 for _, p in ipairs(state.players or {}) do
-if p.dim then who[p.dim] = who[p.dim] or {} table.insert(who[p.dim], p.name) end
+if p.dim then who[p.dim] = who[p.dim] or {} table.insert(who[p.dim], p.name)
+elseif p.p or (state.online and state.online[tostring(p.name):lower()]) then unknown = unknown + 1 end
 end
+
+
+local dims, private = {}, 0
+for _, dn in ipairs(all) do
+if ENV.privateDim(dn) and not who[dn] then private = private + 1 else dims[#dims + 1] = dn end
+end
+local function rank(dn) return (who[dn] and (1000 + #who[dn])) or (dn == d.dim and 500) or 0 end
+table.sort(dims, function(a, b)
+local ra, rb = rank(a), rank(b)
+if ra ~= rb then return ra > rb end
+return ENV.dimName(a) < ENV.dimName(b)
+end)
+local ix, iy, iw = panel(x, y, w, h, "DIMENSIONS", { right = #all > 0 and (#all .. " in this world") or nil })
+if #all == 0 then text(ix, iy, "not known", C.dim, C.panel) return end
+local bottom = y + h - 2
 local r = iy
 for i, dn in ipairs(dims) do
-if r > y + h - 2 then
-text(ix, y + h - 2, "+" .. (#dims - i + 1) .. " more", C.dim, C.panel)
+if r > bottom then break end
+if r == bottom and i < #dims then
+text(ix, r, "+" .. (#dims - i + 1) .. " more" .. (private > 0 and (", " .. private .. " private") or ""), C.dim, C.panel)
+private = 0
+r = r + 1
 break
 end
-local here = d.dim == dn
-local names = who[dn] and table.concat(who[dn], ", ") or ""
-led(ix, r, names ~= "" and dimColor(dn) or C.line)
-kv(ix + 2, r, iw - 2, prettify(dn) .. (here and "  (base)" or ""), names ~= "" and names or "-",
-names ~= "" and C.text or C.dim)
+local list = who[dn]
+led(ix, r, list and dimColor(dn) or C.line)
+kv(ix + 2, r, iw - 2, ENV.dimName(dn) .. (d.dim == dn and "  (base)" or ""),
+list and (#list .. (#list == 1 and " player" or " players")) or "-", list and C.text or C.dim)
 r = r + 1
+if list and r <= bottom then
+table.sort(list, function(a, b) return a:lower() < b:lower() end)
+r = para(ix + 2, r, iw - 2, table.concat(list, ", "), C.dim, math.min(3, bottom - r + 1))
+end
+end
+if private > 0 and r <= bottom then
+led(ix, r, C.line)
+kv(ix + 2, r, iw - 2, private .. " private dimensions", "spatial cells, rooms ...", C.dim)
+r = r + 1
+end
+if unknown > 0 and r <= bottom then
+para(ix, r, iw, unknown .. " player(s) in a dimension the detector cannot name", C.dim, 2)
 end
 end
 
