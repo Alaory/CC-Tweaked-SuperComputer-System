@@ -193,6 +193,11 @@ local function feed6()
   end
   return got
 end
+-- (while it looks past the mapped land, the progress moves and the panel can say so)
+local p0 = MAP.queuePos(q6)
+feed6()
+CHECK(q6.band or (q6.pend and MAP.queuePos(q6) > p0 and MAP.looking), "looking for rings: the progress moves (" ..
+      tostring(p0) .. " -> " .. tostring(MAP.queuePos(q6)) .. ")")
 for _ = 1, 40 do feed6() if q6.band then break end end
 CHECK(q6.band and #q6.band.rings == 1, "1 free turtle: a 1-ring band (" .. (q6.band and #q6.band.rings or 0) .. ")")
 for _, t in pairs(state.turtles) do t.task = "idle" end          -- the others are back

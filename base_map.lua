@@ -1309,8 +1309,14 @@ local function packRound(q, ids, k)
   end
   why.redo = #q.redo
   if #take > 0 then return dealEven(take, ids, q.step) end
-  -- 2. the band
+  -- 2. the band. How much is looked at per call: by TIME (0.3 s, at least 3000 spots) - a fixed
+  -- 3000 made a big mapped area round the base take minutes to look past while every turtle
+  -- sat idle ("0 sent" in the owner's game)
   local checked, outside = 0, 0
+  local stopAt = os.clock() + (tonumber(CONFIG.map.lookTime) or 0.3)
+  local function outOfTime()
+    return (checked >= 3000 and os.clock() >= stopAt) or checked >= 60000 or outside >= 200000
+  end
   local packSize = tonumber(CONFIG.map.packSize) or 32
   local function spotAt(r, s)
     local dx, dz = spiral(MAP.ringStart(r) + s)
@@ -1358,18 +1364,19 @@ local function packRound(q, ids, k)
             checked = checked + 1
             if not MAP.spotDone(x, z) then work = true break end
           end
-          if checked >= 3000 or outside >= 40000 then break end
+          if outOfTime() then break end
         end
-        if not work and (checked >= 3000 or outside >= 40000) then break end   -- (that ring: next time)
+        if not work and outOfTime() then break end   -- (that ring: next time)
         if work then rings[#rings + 1] = r
         elseif #rings == 0 then q.cursor = math.max(q.cursor, MAP.ringStart(r + 1)) end   -- all done: past it
         r = r + 1
       end
-      if #rings < want and r <= rad and (checked >= 3000 or outside >= 40000) then
+      if #rings < want and r <= rad and outOfTime() then
         q.pend = { rings = rings, r = r }            -- (out of checks: go on looking next time)
+        MAP.looking = { r = r, rad = rad, found = #rings, want = want }
         break
       end
-      q.pend = nil
+      q.pend, MAP.looking = nil, nil
       if #rings == 0 then
         if r > rad then q.cursor = total end
         break
@@ -1474,7 +1481,7 @@ local function packRound(q, ids, k)
       end
       return out
     end
-    if checked >= 3000 or outside >= 40000 then break end
+    if outOfTime() then break end
   end
   return out
 end
@@ -1733,6 +1740,8 @@ end
 -- how far the queue got, as a spiral index (a pack band counts as far as it went round)
 function MAP.queuePos(q)
   local b = q and q.band
+  -- (looking for rings with work: count the rings looked through - the % stood still for minutes)
+  if not b and q and q.pend and q.pend.r then return math.max(q.cursor, math.min(q.cols * q.rows, MAP.ringStart(q.pend.r))) end
   if not b then return q and q.cursor or 0 end
   local rs = b.rings or {}
   if #rs == 0 then return q.cursor end

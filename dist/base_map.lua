@@ -1310,7 +1310,13 @@ end
 why.redo = #q.redo
 if #take > 0 then return dealEven(take, ids, q.step) end
 
+
+
 local checked, outside = 0, 0
+local stopAt = os.clock() + (tonumber(CONFIG.map.lookTime) or 0.3)
+local function outOfTime()
+return (checked >= 3000 and os.clock() >= stopAt) or checked >= 60000 or outside >= 200000
+end
 local packSize = tonumber(CONFIG.map.packSize) or 32
 local function spotAt(r, s)
 local dx, dz = spiral(MAP.ringStart(r) + s)
@@ -1358,18 +1364,19 @@ else
 checked = checked + 1
 if not MAP.spotDone(x, z) then work = true break end
 end
-if checked >= 3000 or outside >= 40000 then break end
+if outOfTime() then break end
 end
-if not work and (checked >= 3000 or outside >= 40000) then break end
+if not work and outOfTime() then break end
 if work then rings[#rings + 1] = r
 elseif #rings == 0 then q.cursor = math.max(q.cursor, MAP.ringStart(r + 1)) end
 r = r + 1
 end
-if #rings < want and r <= rad and (checked >= 3000 or outside >= 40000) then
+if #rings < want and r <= rad and outOfTime() then
 q.pend = { rings = rings, r = r }
+MAP.looking = { r = r, rad = rad, found = #rings, want = want }
 break
 end
-q.pend = nil
+q.pend, MAP.looking = nil, nil
 if #rings == 0 then
 if r > rad then q.cursor = total end
 break
@@ -1474,7 +1481,7 @@ end
 end
 return out
 end
-if checked >= 3000 or outside >= 40000 then break end
+if outOfTime() then break end
 end
 return out
 end
@@ -1733,6 +1740,8 @@ end
 
 function MAP.queuePos(q)
 local b = q and q.band
+
+if not b and q and q.pend and q.pend.r then return math.max(q.cursor, math.min(q.cols * q.rows, MAP.ringStart(q.pend.r))) end
 if not b then return q and q.cursor or 0 end
 local rs = b.rings or {}
 if #rs == 0 then return q.cursor end

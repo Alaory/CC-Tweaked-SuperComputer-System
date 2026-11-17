@@ -535,6 +535,7 @@ tick = os.startTimer(2)
 state.commsTickAt = os.clock()
 if KNOW.dirty and os.clock() - KNOW.saved > 30 then pcall(KNOW.save) end
 local okF, errF = pcall(MAP.feedSurvey)
+MAP.feedErr = (not okF) and tostring(errF) or nil
 if not okF and (not state.feedErrAt or os.clock() - state.feedErrAt > 60) then
 state.feedErrAt = os.clock()
 setToast("Big survey error: " .. tostring(errF), C.bad)

@@ -535,6 +535,7 @@ function commsWorker()
       state.commsTickAt = os.clock()
       if KNOW.dirty and os.clock() - KNOW.saved > 30 then pcall(KNOW.save) end
       local okF, errF = pcall(MAP.feedSurvey)  -- a big survey: next batch to each idle turtle
+      MAP.feedErr = (not okF) and tostring(errF) or nil              -- (shown on the BIG SURVEY panel)
       if not okF and (not state.feedErrAt or os.clock() - state.feedErrAt > 60) then
         state.feedErrAt = os.clock()
         setToast("Big survey error: " .. tostring(errF), C.bad)

@@ -129,7 +129,12 @@ PneumaticCraft drone rides, turtle mapping/surveys, and an AE2 ME network view.
   side"); a band narrower than want by >= max(2, want/4) is ENDED - its unfinished spots (f..1 of each
   ring) go to q.redo (handed out evenly, nearest first), cursor past it - and a full band starts; the ring
   search keeps what it found in q.pend across calls. test_survey.lua 2e (old code: 1 ring, 3 turtles a
-  round). The next round
+  round). LOOKING PAST MAPPED LAND (the owner: "0 sent", 7 % for minutes, every turtle "got nothing"): the
+  ring search and the windows check by TIME (outOfTime: >= 3000 checks AND CONFIG.map.lookTime 0.3 s, cap
+  60000 / 200000 outside) instead of a fixed 3000 a call; MAP.queuePos counts q.pend.r (the % moved only
+  when a band ended); MAP.looking {r, rad, found, want} + MAP.feedErr (the comms tick) -> the BIG SURVEY
+  panel says "looking past mapped land for unmapped rings: ring N of M (k of n found)" / "ERROR: ...".
+  The `survey` console prints every turtle's state and runs one hand-out with its error. The next round
   only when the whole pack is done (or after packWait 300 s; q.wave.t is saved with the queue - a time from before a
   base restart is ahead of the new clock and is reset, else the limit never ran out). Keeps them ~20 blocks apart
   so one wake-up (rescuer / player) reaches all.

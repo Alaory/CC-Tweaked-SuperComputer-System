@@ -251,7 +251,16 @@ function drawMapPage(G)
     text(bx, by + 2, trunc(string.format("%d%% of %s spots", math.floor(frac * 100), compact(total)), bw2), C.text, C.panel)
     text(bx, by + 3, trunc(string.format("%s sent, %s mapped before", compact(sent), compact(skipped)) ..
          ((again or 0) > 0 and (", " .. again .. " to redo") or ""), bw2), C.dim, C.panel)
-    text(bx, by + 4, trunc(MAP.auto.on and "auto-map goes on after this one" or "", bw2), C.dim, C.panel)
+    -- what it is doing right now (the owner waited with "0 sent" and could not tell why)
+    local L = MAP.looking
+    if MAP.feedErr then
+      para(bx, by + 4, bw2, "ERROR: " .. MAP.feedErr, C.bad, 2)
+    elseif q.pend and L then
+      para(bx, by + 4, bw2, "looking past mapped land for unmapped rings: ring " .. L.r .. " of " .. L.rad ..
+           " (" .. L.found .. " of " .. L.want .. " found)", C.label, 2)
+    else
+      text(bx, by + 4, trunc(MAP.auto.on and "auto-map goes on after this one" or "", bw2), C.dim, C.panel)
+    end
     ly = ly + 10
   else
     local on = MAP.auto.on
