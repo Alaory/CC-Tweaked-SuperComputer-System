@@ -626,7 +626,9 @@ PneumaticCraft drone rides, turtle mapping/surveys, and an AE2 ME network view.
   DRONE WORK PAGE (base_ui_work.lua drawWorkPage, page "work" in the DRONES group; the owner: "all
   commands and no UI"): WORK CHEST card (CHEST > = DW.nextChest through DW.view.cands - empty
   inventories <= 54 slots, not reserved; BLOCK UNDER ME two taps = DW.chestHere), FUEL RUNS card
-  (AUTO ON/OFF, NO FUEL turtles + run state, SEND FUEL two taps), PLACES card (SAVE WHERE I STAND =
+  (AUTO ON/OFF; FUEL: <item> > = DW.nextFuel through DW.view.fuels - only fuels AE2 has, read in
+  refreshView; x<n> PER RUN > = DW.nextFuelCount 8/16/32/64 - the owner asked "how do I set the fuel
+  type"; NO FUEL turtles + run state, SEND FUEL two taps), PLACES card (SAVE WHERE I STAND =
   DW.markHere "Place N", DELETE two taps), BUILD card (schematic buttons -> DW.select reads size +
   materials vs AE2 ON THE TAP; AT: under you / a saved place >, TURN: 0/90/180/270 >, CLEAR FIRST;
   BUILD two taps; while building: progress bar, now / why / anchor, PAUSE / RESUME, STOP). Drawing

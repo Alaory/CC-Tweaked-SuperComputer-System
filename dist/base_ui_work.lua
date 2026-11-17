@@ -51,7 +51,15 @@ rcol = #list > 0 and C.warn or C.good })
 button(ix + iw - 14, iy, 14, 3, on and "AUTO: ON" or "AUTO: OFF", on and C.good or C.line, "dwauto", nil, on)
 para(ix, iy, iw - 16, "A turtle with NO FUEL is still on (its Chunky keeps it loaded): a drone brings it " ..
 count .. " " .. prettify(item) .. " from AE2.", C.dim, 3)
-local yy = iy + 4
+
+local nf = #(DW.view.fuels or {})
+local fw = math.floor((iw - 1) * 0.68)
+local have
+for _, e in ipairs(DW.view.fuels or {}) do if e.name == item then have = e.have end end
+button(ix, iy + 4, fw, 3, "FUEL: " .. prettify(item) .. (nf > 1 and " >" or "") .. (have and ("  (" .. compact(have) .. " in AE2)") or ""),
+have == 0 and C.warn or C.line, "dwfuelnext")
+button(ix + fw + 1, iy + 4, iw - fw - 1, 3, "x" .. count .. " PER RUN >", C.line, "dwfuelcount")
+local yy = iy + 8
 if #list == 0 then
 led(ix, yy, C.good)
 text(ix + 2, yy, "No turtle is out of fuel.", C.good, C.panel)
@@ -207,7 +215,7 @@ local nf = 0
 for _, t in pairs(state.turtles) do
 if (TT.online(t) and tonumber(t.fuel) and tonumber(t.fuel) < 20) or DW.runs[t.id] then nf = nf + 1 end
 end
-local fh = math.max(10, math.min(9 + nf * 3, math.floor((rest - 1) / 2)))
+local fh = math.max(14, math.min(13 + nf * 3, math.floor((rest - 1) / 2)))
 chestPanel(2, y0, lw, ch)
 fuelPanel(2, y0 + ch + 1, lw, fh)
 placesPanel(2, y0 + ch + 1 + fh + 1, lw, th - ch - fh - 2)

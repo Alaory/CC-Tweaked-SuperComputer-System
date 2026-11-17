@@ -399,6 +399,12 @@ function handleTouch(tx, ty)
       elseif h[5] == "dwnext" then                     -- DRONE WORK: the next empty chest on the cable
         local ok, msg = DW.nextChest()
         setToast(msg, ok and C.good or C.warn, 6)
+      elseif h[5] == "dwfuelnext" then                 -- DRONE WORK: the next fuel AE2 has
+        local ok, msg = DW.nextFuel()
+        setToast(msg, ok and C.good or C.warn, 5)
+      elseif h[5] == "dwfuelcount" then
+        local _, msg = DW.nextFuelCount()
+        setToast(msg, C.good, 4)
       elseif h[5] == "dwauto" then
         setSetting("drone.fuelRuns", not DW.autoOn())
         DW.auto = nil

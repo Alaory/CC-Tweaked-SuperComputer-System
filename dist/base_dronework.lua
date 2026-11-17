@@ -617,10 +617,10 @@ end
 
 
 
-DW.view = { cands = {}, schems = {}, at = -999 }
+DW.view = { cands = {}, schems = {}, fuels = {}, at = -999 }
 DW.ui = { rot = 0, clear = false, at = 0 }
 function DW.refreshView()
-local v = { cands = {}, schems = {}, at = now() }
+local v = { cands = {}, schems = {}, fuels = {}, at = now() }
 v.bad = DW.notReady()
 
 for _, name in ipairs(peripheral.getNames()) do
@@ -635,6 +635,17 @@ end
 end
 end
 table.sort(v.cands)
+
+local item = DW.fuelItem()
+local seen = {}
+for _, f in ipairs({ item, "minecraft:coal", "minecraft:charcoal", "minecraft:coal_block", "minecraft:blaze_rod",
+"minecraft:lava_bucket", CONFIG.factory and CONFIG.factory.fuel }) do
+if f and not seen[f] then
+seen[f] = true
+local okV, have = pcall(FACTORY.variants, f)
+if (okV and (tonumber(have) or 0) > 0) or f == item then v.fuels[#v.fuels + 1] = { name = f, have = okV and tonumber(have) or 0 } end
+end
+end
 local okL, list = pcall(SCHEM.list)
 local seen = {}
 for name in pairs(okL and list or {}) do seen[name] = true end
@@ -660,6 +671,24 @@ if not x then return false, "where are you? " .. tostring(y) end
 setSetting("drone.workChestAt", { x = x, y = y, z = z })
 DW.view.at = -999
 return true, "Work chest " .. DW.chestName() .. " at " .. fmtPos(x, y, z)
+end
+
+DW.COUNTS = { 8, 16, 32, 64 }
+function DW.nextFuel()
+local f = DW.view.fuels or {}
+if #f == 0 then return false, "AE2 has no fuel item (coal, charcoal, coal blocks, blaze rods, lava buckets)" end
+local cur, pick = DW.fuelItem(), f[1].name
+for i, e in ipairs(f) do if e.name == cur then pick = f[i % #f + 1].name end end
+setSetting("drone.fuelItem", pick)
+local _, n = DW.fuelItem()
+return true, "Fuel runs bring " .. n .. " " .. prettify(pick)
+end
+function DW.nextFuelCount()
+local _, n = DW.fuelItem()
+local pick = DW.COUNTS[1]
+for i, c in ipairs(DW.COUNTS) do if c == n then pick = DW.COUNTS[i % #DW.COUNTS + 1] end end
+setSetting("drone.fuelCount", pick)
+return true, "Fuel runs bring " .. pick .. " " .. prettify((DW.fuelItem()))
 end
 
 function DW.markHere()

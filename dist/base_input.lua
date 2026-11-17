@@ -399,6 +399,12 @@ TT.send(h[6][1], h[6][2], h[6][3])
 elseif h[5] == "dwnext" then
 local ok, msg = DW.nextChest()
 setToast(msg, ok and C.good or C.warn, 6)
+elseif h[5] == "dwfuelnext" then
+local ok, msg = DW.nextFuel()
+setToast(msg, ok and C.good or C.warn, 5)
+elseif h[5] == "dwfuelcount" then
+local _, msg = DW.nextFuelCount()
+setToast(msg, C.good, 4)
 elseif h[5] == "dwauto" then
 setSetting("drone.fuelRuns", not DW.autoOn())
 DW.auto = nil
