@@ -119,6 +119,30 @@ CHECK(handed == total, "pack on/off: every spot handed out (" .. handed .. " of 
 CHECK(twice == 0, "pack on/off: no spot twice (" .. twice .. ")")
 CHECK(outside == 0, "pack on/off: no spot outside the area (" .. outside .. ")")
 
+-- 2c. SURVEY: ALL on a small area uses EVERY free turtle (the owner: "it seems to send half
+--     of the turtles") - pack on and off: 10 turtles, ~30 spots -> all 10 get a share
+for _, packOn in ipairs({ true, false }) do
+  CONFIG.map.pack = packOn
+  fleet(10)
+  DONE = {}
+  MAP.queue = nil
+  MAP.queueSurvey(-9000, 7000, -1500, 15000, 8, nil)       -- (a big one running: auto-map like)
+  local q = MAP.queue
+  q.cursor = q.cols * q.rows                               -- (its spiral done: only the new area is left)
+  local n = MAP.addSurvey(-5000, 10000, -4900, 10085, 8)
+  local m0 = #state.tOut
+  MAP.feedSurvey()
+  local got, most = 0, 0
+  for _, x in ipairs(batchesSent(m0)) do
+    got = got + 1
+    most = math.max(most, #x.spots)
+  end
+  CHECK(got == 10 and most <= math.ceil(n / 10) + 1, (packOn and "pack" or "no pack") .. ": " .. n ..
+        " spots shared by all 10 free turtles (" .. got .. " got some, at most " .. most .. " each)")
+end
+CONFIG.map.pack = nil
+MAP.queue = nil
+
 -- 3. a turtle that still holds a batch (idle, no result yet) is not given a new one
 --    (without pack mode - the pack waits for its members anyway)
 CONFIG.map.pack = false

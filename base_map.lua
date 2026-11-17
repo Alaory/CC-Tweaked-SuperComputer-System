@@ -1207,6 +1207,60 @@ end
 --  saved from it, or pack mode turned off, goes on from there - nothing lost)
 local function near(a, b) return math.abs(a[1] - b[1]) + math.abs(a[2] - b[2]) end
 
+-- EVERY free turtle a share: the spots in rows (snake), cut into one piece per turtle (by
+-- measured speed), each piece to the free turtle nearest to it. (SURVEY: ALL on a small
+-- area put its spots in q.redo, and they were dealt in a CHAIN - nearest turtle with room,
+-- 6 each: all turtles start at the base, so 30 spots went to 5 turtles and the rest of the
+-- fleet waited; without PACK the first free turtle took everything.)
+local function dealEven(spots, ids, step)
+  local out = {}
+  if #spots == 0 or #ids == 0 then return out end
+  step = step or 17
+  table.sort(spots, function(a, b)
+    local ra, rb = math.floor(a[2] / step), math.floor(b[2] / step)
+    if ra ~= rb then return ra < rb end
+    if ra % 2 == 0 then return a[1] < b[1] end
+    return a[1] > b[1]
+  end)
+  local n = math.min(#ids, #spots)
+  local rate, rs = {}, 0
+  for _, id in ipairs(ids) do
+    local t = state.turtles[id]
+    rate[id] = (t and tonumber(t.packRate)) or 0.01
+  end
+  -- the n fastest share (all of them when there are spots enough)
+  local use = {}
+  for _, id in ipairs(ids) do use[#use + 1] = id end
+  table.sort(use, function(a, b) return rate[a] > rate[b] end)
+  while #use > n do table.remove(use) end
+  for _, id in ipairs(use) do rs = rs + rate[id] end
+  -- the pieces, in order along the rows
+  local pieces, at, acc = {}, 1, 0
+  for i = 1, n do
+    acc = acc + rate[use[i]]
+    local upto = (i == n) and #spots or math.max(at, math.floor(#spots * acc / rs + 0.5))
+    local piece = {}
+    for c = at, upto do piece[#piece + 1] = spots[c] end
+    if #piece > 0 then pieces[#pieces + 1] = piece end
+    at = upto + 1
+  end
+  -- each piece to the nearest turtle still without one (biggest pieces first)
+  local left = {}
+  for _, id in ipairs(use) do left[id] = true end
+  for _, piece in ipairs(pieces) do
+    local mid = piece[math.floor((#piece + 1) / 2)]
+    local best, bd
+    for id in pairs(left) do
+      local t = state.turtles[id]
+      local d = (t and t.pos and t.pos.x) and near({ t.pos.x, t.pos.z }, mid) or 1e9
+      if not best or d < bd or (d == bd and id < best) then best, bd = id, d end
+    end
+    if best then out[best], left[best] = piece, nil end
+  end
+  return out
+end
+MAP.dealEven = dealEven
+
 local function packRound(q, ids, k)
   local total = q.cols * q.rows
   local rad = math.floor((q.cols - 1) / 2)
@@ -1228,32 +1282,19 @@ local function packRound(q, ids, k)
     rate[id] = tonumber(t.packRate) or 0.01
   end
   local out = {}
-  -- 1. spots given back unscanned first: each to the turtle whose way it is nearest
-  --    (a round of its own - the band waits)
-  local n0, last, cnt, got = #q.redo, {}, {}, false
-  for _, id in ipairs(ids) do last[id], cnt[id] = pos[id], 0 end
+  -- 1. spots given back unscanned / a small SURVEY: ALL first (a round of its own - the
+  --    band waits): shared out EVENLY between all free turtles (dealEven), up to BATCH each
+  local n0, take = #q.redo, {}
+  local cap = #ids * BATCH
   for _ = 1, n0 do
     local p = table.remove(q.redo, 1)
     if MAP.spotDone(p[1], p[2]) or not MAP.inArea(p[1], p[2]) then
       -- done meanwhile / outside the work area now
-    elseif nearPlayer(p[1], p[2]) then q.redo[#q.redo + 1] = p
-    else
-      local best, bd
-      for _, id in ipairs(ids) do
-        if cnt[id] < 2 * k then
-          local d = near(last[id], p)
-          if not best or d < bd then best, bd = id, d end
-        end
-      end
-      if best then
-        out[best] = out[best] or {}
-        table.insert(out[best], p)
-        last[best], cnt[best], got = p, cnt[best] + 1, true
-      else q.redo[#q.redo + 1] = p end              -- (all full: next round)
-    end
+    elseif nearPlayer(p[1], p[2]) or #take >= cap then q.redo[#q.redo + 1] = p
+    else take[#take + 1] = p end
   end
   why.redo = #q.redo
-  if got then return out end
+  if #take > 0 then return dealEven(take, ids, q.step) end
   -- 2. the band
   local checked, outside = 0, 0
   local packSize = tonumber(CONFIG.map.packSize) or 8
@@ -1533,19 +1574,8 @@ function MAP.feedSurvey()
        and (not t.queueAt or os.clock() - t.queueAt > 30) then
       MAP.reclaim(id)
     end
-    if free and pack then
-      packFree[#packFree + 1] = id                -- handed out together below
-    elseif free and (q.cursor < total or (q.redo and #q.redo > 0)) then
-      local spots = nextBatch(q)
-      if #spots > 0 then
-        TT.sendSpots(id, spots, q.r)
-        q.out = q.out or {}
-        q.out[id] = spots
-        t.queueAt = os.clock()
-        q.sent = q.sent + #spots
-        busy = true
-        q.changed = true
-      end
+    if free then
+      packFree[#packFree + 1] = id                -- handed out together below (pack or not)
     end
   end
   -- a turtle silent for 10 min (unloaded, or deleted by a server crash) still
@@ -1556,6 +1586,25 @@ function MAP.feedSurvey()
     if not t or (not TT.online(t) and t.seenEpoch and nowE - t.seenEpoch > (tonumber(CONFIG.map.reclaimOffline) or 600) * 1000) then
       MAP.reclaim(id)
       q.changed = true
+    end
+  end
+  -- no pack: every free turtle its own batch - the next spots cut EVENLY between them
+  -- (before, the first free turtle took up to 64 and a small survey left the rest idle)
+  if not pack and #packFree > 0 and (q.cursor < total or (q.redo and #q.redo > 0)) then
+    table.sort(packFree)
+    local spots = nextBatch(q, BATCH * #packFree)
+    local lists = dealEven(spots, packFree, q.step)
+    for _, id in ipairs(packFree) do
+      local mine = lists[id]
+      if mine and #mine > 0 then
+        local t = state.turtles[id]
+        TT.sendSpots(id, mine, q.r)
+        q.out = q.out or {}
+        q.out[id] = mine
+        t.queueAt = os.clock()
+        q.sent = q.sent + #mine
+        busy, q.changed = true, true
+      end
     end
   end
   -- the pack: a new round only when the whole pack is done with the last one
