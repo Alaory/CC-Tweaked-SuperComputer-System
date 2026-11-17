@@ -492,6 +492,8 @@ function handleTouch(tx, ty)
         state[h[6][1]] = state[h[6][1]] + h[6][2]
       elseif h[5] == "praw" then
         state.rawView[h[6]] = not state.rawView[h[6]] or nil
+      elseif h[5] == "psel" then
+        state.playerSel = h[6]                       -- (PLAYERS page: the picked player)
       elseif h[5] == "item" then
         if h[6] and h[6] ~= selName then selName = h[6] else selName = nil end
       elseif h[5] == "ndismiss" then

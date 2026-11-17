@@ -733,9 +733,11 @@ rememberDim(a, c)
 
 elseif ev == "playerJoin" then
 rememberDim(a, b)
+pcall(playerJoined, a, b)
 
 elseif ev == "playerLeave" then
 forgetDim(a)
+pcall(playerLeft, a)
 
 elseif ev == "terminate" then
 state.running = false

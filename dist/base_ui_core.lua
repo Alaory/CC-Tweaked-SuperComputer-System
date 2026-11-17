@@ -652,7 +652,7 @@ end
 
 
 FOOT_HINT = {
-players = "Tap a player for everything the detector knows",
+players = "Tap a player on the left - everything known about them on the right",
 storage = "What is inside your backpacks and tanks",
 curios  = "Tap a slot: store a worn item in AE2 / move it to you, or put on what fits (two taps)",
 me      = "Pick an item, then use the buttons - buttons that do something ask CONFIRM? first",
@@ -789,6 +789,10 @@ state.sysSeen = #SYSLOG
 drawSystemPage(G)
 elseif state.page == "settings" then
 drawSettingsPage(G)
+elseif state.status == "owneroff" then
+drawMessage("YOU ARE OFFLINE",
+{ (state.owner or "The owner") .. " is not on the server - the Inventory Manager can only read",
+"your inventory while you are online. Everything else keeps running." }, C.label)
 elseif state.status == "nocard" then
 drawMessage("NO PLAYER LINKED",
 { "Bind a Memory Card to yourself (right-click with it),",

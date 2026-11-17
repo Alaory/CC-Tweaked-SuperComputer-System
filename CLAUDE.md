@@ -520,6 +520,14 @@ PneumaticCraft drone rides, turtle mapping/surveys, and an AE2 ME network view.
   never leaves AWAY.on stuck (no report ever again + a days-old snapshot). Going offline is noted once
   in the SYSTEM log; console `away` shows the owner, the player-list source and how long offline.
   test_away_store.lua, test_ticks.lua (coming back in a messy world).
+  THE REAL REASON IT NEVER STARTED (fixed): the Inventory Manager's getOwner() answers only
+  while the card's player is ON the server (AP looks the player up) - at log-off state.owner
+  became nil, AWAY.ownerOnline() "could not tell" (nil) and nothing ever happened (the tests
+  set state.owner by hand). Now rememberOwner -> owner.dat (OWNER_SAVED, base_players.lua);
+  knownOwner() = state.owner / saved / CONFIG.owner; refreshInventory keeps the name while
+  offline with state.status "owneroff" ("YOU ARE OFFLINE" screen); AWAY.ownerOnline uses
+  knownOwner. test_away_owner.lua fakes the real getOwner (nil while offline) - the old code
+  fails it.
   NOTE cfg helpers (MINE.cfg / AWAY.cfg): `type(t)=="table" and t[k]` gives
   false, not nil - use an if (fixed; the mining cfg was never sent before).
 - TURTLE FACTORY (base_factory.lua FACTORY, comms tick FACTORY.tick every 10 s,
@@ -792,6 +800,16 @@ PneumaticCraft drone rides, turtle mapping/surveys, and an AE2 ME network view.
   system/events/settings); a group with several pages shows small sub-tabs on
   row 5 (hit "page"); the top tab is hit "group" -> openGroup (last page used).
   pageTabs() lists the pages that exist; headerTabs() the groups.
+- PLAYERS page (base_ui_players.lua): a LIST (online players, then who left this run; tap =
+  state.playerSel, hit "psel"; scroll "playersOff") + EVERYTHING about the picked one: WHERE
+  (dimension + how long in it, position, from the base with compass direction, under ground /
+  in the air from MAP.get, nearest turtle / saved place, from you), NOW (health in hearts, air,
+  moving speed from two readings, body from eyeHeight, facing + looking from yaw / pitch, online
+  for / joined), THE BASE AND <name> (drones: allowed or not, turtles avoid them or not, bed =
+  respawnPosition, the $drone back spot) and every raw DETECTOR DATA value. PLAYER_INFO
+  (base_players.lua, memory only): first / joined (playerJoin event), dim + dimSince, last
+  reading, speed / vy, online / left (playerLeave or gone from getOnlinePlayers).
+  test_players_page.lua.
 - SETTINGS page (base_ui_settings.lua, SETTING_GROUPS): click-only - num (-/+ by
   step, min/max), cycle, bool, pos ("USE MY POSITION" / "BLOCK UNDER ME" from
   the Player Detector, tap twice), custom (theme, chat messages, auto-map).

@@ -43,15 +43,17 @@ end
 
 
 function AWAY.ownerOnline()
-if not det or not state.owner then return nil end
+
+local owner = knownOwner and knownOwner() or state.owner
+if not det or not owner then return nil end
 
 if state.online and state.onlineT and os.clock() - state.onlineT < 120 then
-return state.online[tostring(state.owner):lower()] == true
+return state.online[tostring(owner):lower()] == true
 end
 if not fresh("players", 120) then return nil end
 
 for _, e in ipairs(state.players or {}) do
-if (e.isOwner or tostring(e.name):lower() == tostring(state.owner):lower()) and e.p then return true end
+if (e.isOwner or tostring(e.name):lower() == tostring(owner):lower()) and e.p then return true end
 end
 return false
 end

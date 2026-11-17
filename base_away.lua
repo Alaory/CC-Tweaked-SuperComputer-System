@@ -43,15 +43,17 @@ end
 
 -- is the owner online? true / false, or nil when we cannot tell
 function AWAY.ownerOnline()
-  if not det or not state.owner then return nil end
+  -- (knownOwner: the name stays known while you are offline - getOwner() does not)
+  local owner = knownOwner and knownOwner() or state.owner
+  if not det or not owner then return nil end
   -- the server's list of online players (getOnlinePlayers, read with the players)
   if state.online and state.onlineT and os.clock() - state.onlineT < 120 then
-    return state.online[tostring(state.owner):lower()] == true
+    return state.online[tostring(owner):lower()] == true
   end
   if not fresh("players", 120) then return nil end
   -- no online list: the owner counts as online only when the detector FOUND them
   for _, e in ipairs(state.players or {}) do
-    if (e.isOwner or tostring(e.name):lower() == tostring(state.owner):lower()) and e.p then return true end
+    if (e.isOwner or tostring(e.name):lower() == tostring(owner):lower()) and e.p then return true end
   end
   return false
 end

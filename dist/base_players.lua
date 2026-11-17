@@ -105,6 +105,50 @@ return set, false
 end
 
 
+
+
+PLAYER_INFO = PLAYER_INFO or {}
+local function infoOf(name)
+local k = tostring(name):lower()
+local i = PLAYER_INFO[k]
+if not i then i = { name = name } PLAYER_INFO[k] = i end
+return i
+end
+
+function playerJoined(name, dim)
+if type(name) ~= "string" then return end
+local i = infoOf(name)
+local now = os.epoch("utc")
+i.first, i.joined, i.online, i.left = now, true, true, nil
+if type(dim) == "string" then i.dim, i.dimSince = dim, now end
+end
+function playerLeft(name)
+if type(name) ~= "string" then return end
+local i = infoOf(name)
+i.online, i.left = false, os.epoch("utc")
+end
+
+local function notePlayer(e)
+local i = infoOf(e.name)
+local now = os.epoch("utc")
+i.name, i.online, i.left = e.name, true, nil
+i.first = i.first or now
+if e.dim and e.dim ~= i.dim then i.dim, i.dimSince = e.dim, i.dim and now or i.first end
+local p = e.p
+if not (p and tonumber(p.x)) then return end
+if i.t and now - i.t >= 1000 then
+local dt = (now - i.t) / 1000
+if i.sdim == e.dim then
+i.speed = math.sqrt((p.x - i.x) ^ 2 + (p.z - i.z) ^ 2) / dt
+i.vy = (p.y - i.y) / dt
+else
+i.speed, i.vy = nil, nil
+end
+end
+if not i.t or now - i.t >= 1000 then i.x, i.y, i.z, i.t, i.sdim = p.x, p.y, p.z, now, e.dim end
+end
+
+
 function refreshPlayers(full)
 if not det then return end
 local owner = state.owner
@@ -115,7 +159,7 @@ state.t.players, state.t.owner = os.clock(), os.clock()
 return
 end
 
-local names = {}
+local names, readOnline = {}, false
 if full and det.getOnlinePlayers then
 local ok, r = pcall(det.getOnlinePlayers)
 if ok and type(r) == "table" then
@@ -125,7 +169,7 @@ local on = {}
 for _, n in pairs(r) do
 if type(n) == "string" then names[#names + 1] = n on[n:lower()] = true end
 end
-state.online, state.onlineT = on, os.clock()
+state.online, state.onlineT, readOnline = on, os.clock(), true
 end
 end
 if not full then names = owner and { owner } or {} end
@@ -185,6 +229,16 @@ end
 if full then
 state.players = entries
 state.t.players = os.clock()
+local on = state.online or {}
+for _, e in ipairs(entries) do
+if on[tostring(e.name):lower()] or e.p then pcall(notePlayer, e) end
+end
+
+if readOnline then
+for k, i in pairs(PLAYER_INFO) do
+if i.online and not on[k] then i.online, i.left = false, os.epoch("utc") end
+end
+end
 end
 if ownerE then
 state.player, state.playerDim, state.playerMsg = ownerE.p, ownerE.dim, ownerE.err
@@ -197,8 +251,31 @@ state.t.owner = os.clock()
 end
 
 
+
+
+
+
+OWNER_FILE = "owner.dat"
+do
+local t = readSafe(OWNER_FILE)
+OWNER_SAVED = type(t) == "table" and type(t.name) == "string" and t.name ~= "" and t.name or nil
+OWNER_UUID = type(t) == "table" and t.uuid or nil
+end
+function rememberOwner(name, uuid)
+if type(name) ~= "string" or name == "" then return end
+if OWNER_SAVED == name and (uuid == nil or OWNER_UUID == uuid) then return end
+OWNER_SAVED, OWNER_UUID = name, uuid or OWNER_UUID
+saveFileSafe(OWNER_FILE, serialSmall({ name = name, uuid = OWNER_UUID }))
+end
+
+function knownOwner()
+return state.owner or OWNER_SAVED or (type(CONFIG.owner) == "string" and CONFIG.owner ~= "" and CONFIG.owner) or nil
+end
+
+
 function refreshInventory()
 if not inv then
+state.owner = state.owner or knownOwner()
 state.status = "offline"
 state.err = "Inventory Manager disconnected - waiting for it to come back..."
 state.t.inv = os.clock()
@@ -211,6 +288,20 @@ state.ownerUuid = (okO and b and type(a) == "string") and a or nil
 if type(owner) == "string" then
 local stripped = owner:gsub("^%x+%-%x+%-%x+%-%x+%-%x+%s*", "")
 if stripped ~= "" then owner = stripped end
+end
+if type(owner) == "string" and owner ~= "" then
+rememberOwner(owner, state.ownerUuid)
+state.ownerOff = nil
+else
+owner = nil
+local was = knownOwner()
+if was then
+
+state.owner, state.ownerOff = was, true
+state.status = "owneroff"
+state.t.inv = os.clock()
+return
+end
 end
 state.owner = owner
 if not owner then
