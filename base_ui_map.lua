@@ -37,7 +37,7 @@ end
 function drawMapPage(G)
   local y0, bottom = G.y0, G.y1
   local V = MAP.view()
-  local sideW = 38
+  local sideW = W >= 150 and 44 or 38
   local lx = 2
   local mapW = W - 3 - sideW
   local rx = lx + mapW + 1
@@ -45,11 +45,10 @@ function drawMapPage(G)
   local rix, riw = rx + 2, rw - 4
 
   ------------------------------------------------ the map
-  card(lx, y0, mapW, bottom - y0 + 1, "MAP")
   local cTop, cRight, cBottom, cLeft, upName = MAP.compass()
-  local scale = "UP: " .. upName .. "   " ..
-                (V.zoom == 1 and "1 cell = 1 block" or ("1 cell = " .. V.zoom .. " blocks"))
-  text(lx + mapW - #scale - 3, y0 + 1, scale, C.dim, C.panel)
+  local scale = "UP: " .. upName .. "   " .. (V.zoom == 1 and "1 cell = 1 block" or ("1 cell = " .. V.zoom .. " blocks"))
+  panel(lx, y0, mapW, bottom - y0 + 1, "MAP", { right = scale })
+  CLIP = nil
   local g = { mx0 = lx + 1, my0 = y0 + 2, mw = mapW - 2, mh = bottom - y0 - 2 }
   state.mapGeom = g
   local bgEmpty = blitc(C.bg)
@@ -176,32 +175,28 @@ function drawMapPage(G)
   end
 
   ------------------------------------------------ right column: view controls
-  card(rx, y0, rw, 17, "VIEW")
-  actButton(rx + rw - 15, y0 + 1, 13, 2, "CLEAR MAP", { kind = "mapclear", name = "map", count = 0 })
-  kv(rix, y0 + 3, riw, "Centre", V.cx .. ", " .. V.cz)
-  kv(rix, y0 + 4, riw, "Chunks (overview)", tostring(MAP.ovN))
-  kv(rix, y0 + 5, riw, "Chunks (detail)", tostring(#MAP.order))
-
-  local bw = math.floor((riw - 3) / 4)
-  local b1 = y0 + 7
-  drawButton(rix,                b1, bw, 2, "\27",  C.empty, C.text, "mpan", { -1, 0 })
-  drawButton(rix + bw + 1,       b1, bw, 2, "\24",  C.empty, C.text, "mpan", { 0, -1 })
-  drawButton(rix + 2 * (bw + 1), b1, bw, 2, "\25",  C.empty, C.text, "mpan", { 0, 1 })
-  drawButton(rix + 3 * (bw + 1), b1, bw, 2, "\26",  C.empty, C.text, "mpan", { 1, 0 })
-  local b2 = y0 + 10
-  drawButton(rix,                b2, bw, 2, "ZOOM -", C.empty, C.text, "mzoom", 1)
-  drawButton(rix + bw + 1,       b2, bw, 2, "ZOOM +", C.empty, C.text, "mzoom", -1)
-  drawButton(rix + 2 * (bw + 1), b2, bw * 2 + 1, 2, "ROTATE", C.empty, C.text, "mrot")
-  local b3 = y0 + 13
-  text(rix, b3, "CENTRE ON", C.dim, C.panel)
-  local cw = math.floor((riw - 2) / 3)
-  drawButton(rix,                b3 + 1, cw, 2, "BASE",   C.empty, C.text, "mcenter", "base")
-  drawButton(rix + cw + 1,       b3 + 1, cw, 2, "TURTLE", C.empty, C.text, "mcenter", "turtle")
-  drawButton(rix + 2 * (cw + 1), b3 + 1, cw, 2, "ME",     C.empty, C.text, "mcenter", "me")
-
-  ------------------------------------------------ selected block
-  local sy0 = y0 + 18
-  card(rx, sy0, rw, 7, "SELECTED")
+  local vx, vy, vw = panel(rx, y0, rw, 18, "VIEW", { right = V.cx .. ", " .. V.cz })
+  kv(vx, vy, vw, "Chunks mapped", commas(MAP.ovN or 0) .. "  (" .. #MAP.order .. " in detail)")
+  local bw = math.floor((vw - 3) / 4)
+  local lastW = vw - 3 * (bw + 1)
+  local b1 = vy + 2
+  button(vx, b1, bw, 3, "\27", C.line, "mpan", { -1, 0 })
+  button(vx + bw + 1, b1, bw, 3, "\24", C.line, "mpan", { 0, -1 })
+  button(vx + 2 * (bw + 1), b1, bw, 3, "\25", C.line, "mpan", { 0, 1 })
+  button(vx + 3 * (bw + 1), b1, lastW, 3, "\26", C.line, "mpan", { 1, 0 })
+  local b2 = b1 + 4
+  button(vx, b2, bw, 3, "ZOOM -", C.line, "mzoom", 1)
+  button(vx + bw + 1, b2, bw, 3, "ZOOM +", C.line, "mzoom", -1)
+  button(vx + 2 * (bw + 1), b2, vw - 2 * (bw + 1), 3, "ROTATE", C.line, "mrot")
+  local b3 = b2 + 4
+  local cw = math.floor((vw - 3) / 4)
+  button(vx, b3, cw, 3, "BASE", C.warn, "mcenter", "base")
+  button(vx + cw + 1, b3, cw, 3, "TURTLE", C.good, "mcenter", "turtle")
+  button(vx + 2 * (cw + 1), b3, cw, 3, "ME", C.accent, "mcenter", "me")
+  actButton(vx + 3 * (cw + 1), b3, vw - 3 * (cw + 1), 3, "CLEAR", { kind = "mapclear", name = "map", count = 0 }, false, C.bad)
+  ------------------------------------------------ selected spot
+  local sy0 = y0 + 19
+  local sx, ssy, sw = panel(rx, sy0, rw, 7, "SELECTED", { right = sel and (sel.x .. ", " .. sel.z) or nil })
   if sel then
     local hgt, blk = MAP.get(sel.x, sel.z)
     local whole = false
@@ -209,101 +204,94 @@ function drawMapPage(G)
       hgt, blk = MAP.getOverview(sel.x, sel.z)
       whole = hgt ~= nil
     end
-    kv(rix, sy0 + 3, riw, whole and "Chunk (overview)" or "Column", sel.x .. ", " .. sel.z)
     if hgt then
-      kv(rix, sy0 + 4, riw, whole and "Mostly" or "Top block", trunc(prettify(MAP.names[blk] or "?"), riw - 12))
-      kv(rix, sy0 + 5, riw, whole and "Average height" or "Height", "Y " .. hgt)
+      kv(sx, ssy, sw, whole and "Mostly (chunk)" or "Top block", prettify(MAP.names[blk] or "?"))
+      kv(sx, ssy + 1, sw, whole and "Average height" or "Height", "Y " .. hgt)
     else
-      text(rix, sy0 + 4, "Not scanned yet", C.dim, C.panel)
+      text(sx, ssy, "Not scanned yet", C.dim, C.panel)
     end
   else
-    text(rix, sy0 + 3, "Tap the map to inspect a spot", C.dim, C.panel)
+    text(sx, ssy, "Tap the map to look at a spot.", C.dim, C.panel)
   end
-
   ------------------------------------------------ turtle actions
   local ty0 = sy0 + 8
-  card(rx, ty0, rw, 11, "TURTLE")
+  if ty0 + 12 > bottom then return end
   local t = state.tSel and state.turtles[state.tSel]
+  local tx, tyy, tw = panel(rx, ty0, rw, 13, "TURTLE", { right = t and (TT.online(t) and "online" or "OFFLINE") or nil,
+                                                          rcol = t and (TT.online(t) and C.good or C.bad) or nil })
+  local nfree = #TT.available()
   if not t then
-    text(rix, ty0 + 3, trunc("Select a turtle on the TURTLES tab", riw), C.dim, C.panel)
+    para(tx, tyy, tw, "Pick a turtle on the TURTLES page to scan or survey with it alone.", C.dim, 2)
     if next(state.turtles) then
-      actButton(rix, ty0 + 8, riw, 2, "SURVEY: ALL TURTLES (" .. #TT.available() .. ")",
-                { kind = "surveyall", name = "all", count = 0 }, true)
+      actButton(tx, tyy + 6, tw, 3, "SURVEY: ALL TURTLES (" .. nfree .. ")", { kind = "surveyall", name = "all", count = 0 }, true)
     end
   else
-    kv(rix, ty0 + 3, riw, trunc(t.label, riw - 12), TT.online(t) and "online" or "OFFLINE",
-       TT.online(t) and C.good or C.bad)
-    text(rix, ty0 + 4, trunc(tostring(t.task or "idle"), riw), C.dim, C.panel)
-    local tw = math.floor((riw - 2) / 3)
-    drawButton(rix, ty0 + 5, tw, 2, "SCAN HERE", C.empty, C.text, "tcmd",
-               { t.id, "scan", { CONFIG.map.scanRadius } })
-    drawButton(rix + tw + 1, ty0 + 5, tw, 2, "STOP", C.bad, C.ink, "tcmd", { t.id, "stop", {} })
-    drawButton(rix + 2 * (tw + 1), ty0 + 5, riw - 2 * (tw + 1), 2, "STOP ALL", C.bad, C.ink, "tstopall")
-    local hw = math.floor((riw - 1) / 2)
-    local nfree = #TT.available()
-    actButton(rix, ty0 + 8, hw, 2, "SURVEY: ALL (" .. nfree .. ")",
-              { kind = "surveyall", name = "all", count = 0 }, true)
-    actButton(rix + hw + 1, ty0 + 8, riw - hw - 1, 2, "SURVEY: THIS ONE",
-              { kind = "survey", name = tostring(t.id), count = 0 }, true)
+    text(tx, tyy, trunc(t.label .. "  -  " .. tostring(t.task or "idle"), tw), C.text, C.panel)
+    local w3 = math.floor((tw - 2) / 3)
+    button(tx, tyy + 2, w3, 3, "SCAN HERE", C.line, "tcmd", { t.id, "scan", { CONFIG.map.scanRadius } })
+    button(tx + w3 + 1, tyy + 2, w3, 3, "STOP", C.bad, "tcmd", { t.id, "stop", {} })
+    button(tx + 2 * (w3 + 1), tyy + 2, tw - 2 * (w3 + 1), 3, "STOP ALL", C.bad, "tstopall", nil, true)
+    local hw = math.floor((tw - 1) / 2)
+    actButton(tx, tyy + 6, hw, 3, "SURVEY: ALL (" .. nfree .. ")", { kind = "surveyall", name = "all", count = 0 }, true)
+    actButton(tx + hw + 1, tyy + 6, tw - hw - 1, 3, "SURVEY: THIS ONE", { kind = "survey", name = tostring(t.id), count = 0 }, false, C.accent)
   end
-
   ------------------------------------------------ a survey in progress / auto-map
-  local ly = ty0 + 12
+  local ly = ty0 + 14
   local frac, total, sent, skipped, again = MAP.surveyProgress()
   local q = MAP.queue
-  if frac and not q.auto then
-    card(rx, ly, rw, 7, "BIG SURVEY")
-    drawButton(rix + riw - 8, ly + 1, 8, 2, "STOP", C.bad, C.ink, "mqstop")
-    barW(rix, ly + 3, riw, math.floor(frac * riw + 0.5), C.good)
-    text(rix, ly + 4, trunc(string.format("%d%% of %s spots", math.floor(frac * 100), compact(total)), riw), C.text, C.panel)
-    text(rix, ly + 5, trunc(string.format("%s sent, %s mapped before", compact(sent), compact(skipped)) ..
-         ((again or 0) > 0 and (", " .. again .. " to redo") or ""), riw), C.dim, C.panel)
-    text(rix, ly + 6, trunc(MAP.auto.on and "Auto-map goes on after this one" or "", riw), C.dim, C.panel)
-    ly = ly + 8
+  if ly + 8 > bottom then
+    -- (a short monitor: no room for the survey box and the legend)
+  elseif frac and not q.auto then
+    local bx, by, bw2 = panel(rx, ly, rw, 9, "BIG SURVEY", { right = math.floor(frac * 100) .. "%" })
+    button(bx + bw2 - 8, by - 1, 8, 2, "STOP", C.bad, "mqstop", nil, true)
+    gauge(bx, by + 1, bw2, frac, C.good)
+    text(bx, by + 2, trunc(string.format("%d%% of %s spots", math.floor(frac * 100), compact(total)), bw2), C.text, C.panel)
+    text(bx, by + 3, trunc(string.format("%s sent, %s mapped before", compact(sent), compact(skipped)) ..
+         ((again or 0) > 0 and (", " .. again .. " to redo") or ""), bw2), C.dim, C.panel)
+    text(bx, by + 4, trunc(MAP.auto.on and "auto-map goes on after this one" or "", bw2), C.dim, C.panel)
+    ly = ly + 10
   else
-    -- auto-map: always a survey running, spiralling out from the base
     local on = MAP.auto.on
-    card(rx, ly, rw, 6, "AUTO-MAP")
-    drawButton(rix + riw - 10, ly + 1, 10, 2, on and "ON" or "OFF", on and C.good or C.empty,
-               on and C.ink or C.text, "mauto")
+    local ax, ay, aw = panel(rx, ly, rw, 8, "AUTO-MAP", { right = on and "ON" or "OFF", rcol = on and C.good or C.dim })
+    button(ax + aw - 12, ay, 12, 3, on and "TURN OFF" or "TURN ON", on and C.line or C.good, "mauto", nil, not on)
     local radius = math.floor(MAP.autoRadius())
     local line1, col1
-    if not on then line1, col1 = "Off - turtles only survey when you tell them", C.dim
+    if not on then line1, col1 = "Off - turtles survey only when you tell them", C.dim
     elseif MAP.auto.done then line1, col1 = "Done: the whole world is surveyed", C.good
     elseif MAP.full then line1, col1 = "Paused: the map floppies are full - add an EMPTY floppy", C.warn
     elseif q and q.auto then line1, col1 = "Surveying from the base outward", C.good
     else line1, col1 = "Waiting for a free turtle", C.dim end
-    text(rix, ly + 3, trunc(line1, riw), col1, C.panel)
-    text(rix, ly + 4, trunc("Done around the base: " .. radius .. " blocks" ..
-         (q and q.auto and (again or 0) > 0 and (", " .. again .. " to redo") or ""), riw), C.dim, C.panel)
-    ly = ly + 7
+    para(ax, ay, aw - 14, line1, col1, 2)
+    text(ax, ay + 3, trunc(radius .. " blocks around the base are done" ..
+         (q and q.auto and (again or 0) > 0 and (", " .. again .. " to redo") or ""), aw), C.dim, C.panel)
+    ly = ly + 9
   end
-
   ------------------------------------------------ what the colours mean
   local lh = bottom - ly + 1
-  if lh >= 5 then
-    card(rx, ly, rw, lh, "LEGEND")
-    -- the letters on the map
-    local mk = { { "B", C.warn, "base" }, { "@", C.accent, "you" }, { "D", colors.pink, "drone" },
-                 { "T", C.good, "turtle" } }
-    local mx = rix
+  if lh >= 6 then
+    local gx, gy, gw = panel(rx, ly, rw, lh, "LEGEND")
+    local mk = { { "B", C.warn, "base" }, { "@", C.accent, "you" }, { "D", colors.pink, "drone" }, { "T", C.good, "turtle" },
+                 { "!", C.bad, "stuck" } }
+    local mx = gx
     for _, m in ipairs(mk) do
-      if mx + 3 + #m[3] > rix + riw then break end
-      text(mx, ly + 2, m[1], C.ink, m[2])
-      text(mx + 2, ly + 2, m[3], C.dim, C.panel)
+      if mx + 3 + #m[3] > gx + gw then break end
+      text(mx, gy, m[1], C.ink, m[2])
+      text(mx + 2, gy, m[3], C.dim, C.panel)
       mx = mx + 4 + #m[3]
     end
     local items = {
-      { colors.green, "Grass, plants" }, { colors.lime, "Trees, leaves" },
-      { colors.blue, "Water" }, { colors.yellow, "Sand, gravel" },
-      { colors.orange, "Dirt, wood, clay" }, { colors.white, "Snow, ice" },
-      { colors.brown, "Stone, buildings" }, { colors.red, "Lava, nether" },
-      { colors.cyan, "Warped, prismarine" }, { colors.purple, "Obsidian, amethyst" },
+      { colors.green, "Grass, plants" }, { colors.lime, "Trees, leaves" }, { colors.blue, "Water" },
+      { colors.yellow, "Sand, gravel" }, { colors.orange, "Dirt, wood, clay" }, { colors.white, "Snow, ice" },
+      { colors.brown, "Stone, buildings" }, { colors.red, "Lava, nether" }, { colors.cyan, "Warped, prismarine" },
+      { colors.purple, "Obsidian, amethyst" },
     }
-    for i = 1, math.min(#items, lh - 5) do
-      local it = items[i]
-      text(rix, ly + 3 + i, "  ", C.text, it[1])
-      text(rix + 3, ly + 3 + i, it[2], C.text, C.panel)
+    local half = math.floor((gw - 1) / 2)
+    for i, it in ipairs(items) do
+      local ry = gy + 2 + math.floor((i - 1) / 2)
+      if ry > ly + lh - 2 then break end
+      local cx = gx + ((i - 1) % 2) * (half + 1)
+      text(cx, ry, "  ", C.text, it[1])
+      text(cx + 3, ry, trunc(it[2], half - 3), C.text, C.panel)
     end
   end
 end

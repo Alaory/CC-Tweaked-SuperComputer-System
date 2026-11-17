@@ -228,7 +228,7 @@ function drawHomePage(G)
   local bh = y1 - y + 1
   if bh < 6 then return end
   local lx, ly, lw, lh = panel(2, y, leftW, bh, "LATELY", { right = "MESSAGES page: all of them" })
-  addHit(2, y, 20, 1, "page", "events")
+  addHit(2, y, 20, 2, "page", "events")
   local rr = ly
   for _, e in ipairs(state.noteLog or {}) do
     if rr > y + bh - 2 then break end

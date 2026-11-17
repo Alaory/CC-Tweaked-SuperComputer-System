@@ -27,7 +27,7 @@
 local SLOTS = { colors.black, colors.gray, colors.magenta, colors.lightGray, colors.white,
                 colors.brown, colors.blue, colors.lightBlue, colors.cyan, colors.green,
                 colors.yellow, colors.orange, colors.red, colors.pink, colors.purple, colors.lime }
-local FIXED = { 0x060A0B, 0x0C1315, 0x1E3A37, 0x6F8D87, 0xE6F2EE, 0x8E6B47, 0x3D7BFF, 0xFFB238,
+local FIXED = { 0x060A0B, 0x0C1315, 0x1E3A37, 0x6F8D87, 0xE6F2EE, 0x9C968C, 0x3D7BFF, 0xFFB238,
                 0x3FE0C8, 0x5BD46A, 0xFFD34D, 0xFF8A3D, 0xFF4D5E, 0xFF6FA8, 0xB18CFF, 0xA6E05A }
 -- the frame of each theme: page, panel, lines, dim text, titles
 THEMES = {

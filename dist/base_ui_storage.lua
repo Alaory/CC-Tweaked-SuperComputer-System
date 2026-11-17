@@ -8,19 +8,12 @@ function me_available() return bridge ~= nil and inv ~= nil end
 
 
 function drawStorageCard(x, y, w, h, sInfo)
-card(x, y, w, h)
-local ix, iw = x + 2, w - 4
-local where = " " .. sInfo.where .. " "
-fill(ix, y + 1, 1, 1, colorFor(sInfo.name))
-text(ix + 2, y + 1, trunc(sInfo.display, iw - #where - 4), C.text, C.panel)
-text(x + w - #where - 2, y + 1, where, C.ink, C.accent)
-
-local r = y + 3
+local ix, iy, iw = panel(x, y, w, h, sInfo.display, { right = sInfo.where, rcol = C.accent })
+local r = iy
 if sInfo.isItem and sInfo.size > 0 and not sInfo.err then
 local frac = sInfo.used / sInfo.size
 local col = frac < 0.6 and C.good or (frac < 0.85 and C.warn or C.bad)
-kv(ix, r, iw, "Slots used", sInfo.used .. " / " .. sInfo.size)
-barW(ix, r + 1, iw, math.floor(frac * iw + 0.5), col)
+meter(ix, r, iw, "Slots used", sInfo.used .. " / " .. sInfo.size, frac, col)
 r = r + 3
 end
 
@@ -56,7 +49,7 @@ end
 
 if sInfo.isFluid then
 r = r + 1
-if r <= bottom then text(ix, r, "FLUIDS", C.label, C.panel); r = r + 1 end
+if r <= bottom then heading(ix, r, iw, "FLUIDS"); r = r + 1 end
 if #sInfo.tanks == 0 and r <= bottom then
 text(ix, r, "Empty", C.dim, C.panel)
 end
@@ -74,11 +67,11 @@ for _, t in ipairs(sInfo.tanks) do if (t.amount or 0) > 0 and t.name then tk = t
 local by, bw = y + h - 5, math.floor((iw - 1) / 2)
 if tk then
 actButton(ix, by, bw, 3, "EMPTY INTO ME",
-{ kind = "fempty1", name = tk.name, count = tk.amount, ref = sInfo.ref })
+{ kind = "fempty1", name = tk.name, count = tk.amount, ref = sInfo.ref }, false, C.purple)
 local room = (tk.capacity or 0) - tk.amount
 if room > 0 then
-actButton(ix + bw + 1, by, bw, 3, "TOP UP FROM ME",
-{ kind = "ftop1", name = tk.name, count = room, ref = sInfo.ref })
+actButton(ix + bw + 1, by, iw - bw - 1, 3, "TOP UP FROM ME",
+{ kind = "ftop1", name = tk.name, count = room, ref = sInfo.ref }, false, C.info)
 end
 else
 text(ix, by + 1, trunc("Empty - fill it from the ME tab (FLUIDS)", iw), C.dim, C.panel)
@@ -254,18 +247,18 @@ if it then
 kv(ix, top + 4, iw, "Worn", trunc(it.displayName or prettify(it.name), iw - 8))
 local n = tonumber(it.count) or 1
 if bridge then
-actButton(ix, by, iw, 3, "STORE IN ME", { kind = "cstore", name = it.name, count = n,
-slotType = row.name, slotNo = slotNo }, true)
+actButton(ix, by, iw, 3, "STORE IN AE2", { kind = "cstore", name = it.name, count = n,
+slotType = row.name, slotNo = slotNo }, false, C.purple)
 by = by + 4
 end
 actButton(ix, by, iw, 3, "TO INVENTORY", { kind = "cunequip", name = it.name, count = n,
-slotType = row.name, slotNo = slotNo })
+slotType = row.name, slotNo = slotNo }, false, C.info)
 by = by + 4
 if bridge and CURIOS and by + 2 <= bottom then
 local on = CURIOS.ruleOf(row.name, it.name)
-drawButton(ix, by, iw, 3, on and "AUTO-EQUIP: ON (tap = off)" or "KEEP ONE ON (AUTO-EQUIP)",
-on and C.accent or C.empty, C.text, "cauto",
-{ row.name, it.name, it.displayName and cleanName(it.displayName) or prettify(it.name) })
+button(ix, by, iw, 3, on and "AUTO-EQUIP: ON (tap = off)" or "KEEP ONE ON (AUTO-EQUIP)",
+on and C.accent or C.line, "cauto",
+{ row.name, it.name, it.displayName and cleanName(it.displayName) or prettify(it.name) }, on)
 by = by + 4
 end
 if by <= bottom then text(ix, by, trunc("Tap twice to confirm. AUTO = put a new one on from AE2 when it is used up.", iw), C.dim, C.panel) end
@@ -278,8 +271,9 @@ text(ix, by, trunc("No ME Bridge: nothing to put on from it.", iw), C.dim, C.pan
 return
 end
 local all = state.curiosAll
-text(ix, by, all and "EVERYTHING IN AE2" or "FITS HERE (in AE2)", C.label, C.panel)
-drawButton(ix + iw - 12, by, 12, 1, all and "ONLY FITTING" or "SHOW ALL", C.empty, C.text, "callfits")
+heading(ix, by, iw - 16, all and "EVERYTHING IN AE2" or "FITS HERE (in AE2)")
+button(ix + iw - 14, by, 14, 2, all and "ONLY FITTING" or "SHOW ALL", C.line, "callfits")
+by = by + 1
 local me = state.me
 if not me or not me.items then
 text(ix, by + 2, "Reading the ME network...", C.dim, C.panel)
@@ -304,13 +298,13 @@ text(ix, by + 7, trunc("are only found after they were worn once)", iw), C.dim, 
 end
 return
 end
-local per = math.max(1, math.floor((bottom - by - 3) / 3))
+local per = math.max(1, math.floor((bottom - by - 4) / 3))
 local pages2 = math.max(1, math.ceil(#fits / per))
 state.curiosFitPage = math.max(1, math.min(state.curiosFitPage or 1, pages2))
 if pages2 > 1 then
-text(ix, bottom - 1, "page " .. state.curiosFitPage .. "/" .. pages2, C.dim, C.panel)
-drawButton(ix + iw - 17, bottom - 1, 8, 1, "< PREV", C.empty, C.text, "pg", { "curiosFitPage", -1 })
-drawButton(ix + iw - 8, bottom - 1, 8, 1, "NEXT >", C.empty, C.text, "pg", { "curiosFitPage", 1 })
+text(ix, bottom - 2, "page " .. state.curiosFitPage .. "/" .. pages2, C.dim, C.panel)
+button(ix + iw - 19, bottom - 2, 9, 2, "< PREV", C.line, "pg", { "curiosFitPage", -1 })
+button(ix + iw - 9, bottom - 2, 9, 2, "NEXT >", C.line, "pg", { "curiosFitPage", 1 })
 end
 local first = (state.curiosFitPage - 1) * per
 for k = 1, per do
@@ -323,10 +317,9 @@ text(ix, ry, trunc(e.display, iw - 18), C.text, C.panel)
 text(ix, ry + 1, trunc(compact(e.count) .. " in AE2" .. ((not tagged and learned[e.name]) and ", worn before" or
 (not tagged and " - may not fit" or "")), iw - 18), C.dim, C.panel)
 actButton(ix + iw - 17, ry, 10, 2, "PUT ON", { kind = "cequip", name = e.name, count = 1,
-slotType = row.name, slotNo = slotNo })
+slotType = row.name, slotNo = slotNo }, false, C.accent)
 if CURIOS then
-drawButton(ix + iw - 6, ry, 6, 2, "AUTO", on and C.accent or C.empty, on and C.text or C.dim, "cauto",
-{ row.name, e.name, e.display })
+button(ix + iw - 6, ry, 6, 2, "AUTO", on and C.accent or C.line, "cauto", { row.name, e.name, e.display }, on)
 end
 end
 end

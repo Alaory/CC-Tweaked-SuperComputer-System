@@ -53,7 +53,7 @@ SETTING_GROUPS = {
         if nxt == "random" then THEME_MODE = "random" saveTheme(nil)
         else setTheme(nxt) THEME_MODE = nxt saveTheme(nxt) end
       end },
-    cyc("style", "Look", "block = Minecraft-style edges on boxes and buttons, plain = no edges", "block", { "block", "plain" }),
+    cyc("style", "Look", "block = thin frame lines around panels and buttons, plain = no frame lines", "block", { "block", "plain" }),
     cyc("notes.show", "Message boxes for", "which messages get a box (all are in EVENTS anyway; your taps always)",
         "important", { "important", "errors", "all", "none" },
         function(v) return ({ important = "warnings+errors", errors = "errors only", all = "everything", none = "none" })[v] or tostring(v) end),
@@ -300,54 +300,48 @@ function drawSettingsPage(G)
   local y0, bottom = G.y0, G.y1
   state.setGroup = math.max(1, math.min(#SETTING_GROUPS, state.setGroup or 1))
   ------------------------------------------------ groups (left)
-  local lw = 20
-  card(2, y0, lw, bottom - y0 + 1, "GROUPS")
+  local lw = 24
+  local gx, gy, gw, gh = panel(2, y0, lw, bottom - y0 + 1, "GROUPS")
+  local step = math.max(3, math.min(4, math.floor((gh + 1) / #SETTING_GROUPS)))
   for i, g in ipairs(SETTING_GROUPS) do
     local on = state.setGroup == i
-    drawButton(4, y0 + 1 + i * 3 - 1, lw - 4, 2, g.name, on and C.accent or C.empty, on and C.ink or C.text,
-               "setgroup", i)
+    button(gx, gy + (i - 1) * step, gw, step - 1, g.name, on and C.accent or C.line, "setgroup", i, on)
   end
-  text(4, bottom - 3, trunc("Saved in", lw - 4), C.dim, C.panel)
-  text(4, bottom - 2, trunc("settings.dat", lw - 4), C.dim, C.panel)
-
   ------------------------------------------------ the settings of the group
   local rx = 2 + lw + 1
   local rw = W - rx
-  local rix, riw = rx + 2, rw - 4
   local g = SETTING_GROUPS[state.setGroup]
-  card(rx, y0, rw, bottom - y0 + 1, g.name)
-  local per = 3
-  local rows = math.max(1, math.floor((bottom - y0 - 3) / per))
-  local off = scrollBar(rx, y0 + 1, rw, "setOff" .. state.setGroup, #g.list, rows)
+  local rix, riy, riw, rih = panel(rx, y0, rw, bottom - y0 + 1, g.name, { right = #g.list .. " settings" })
+  local per = 4
+  local rows = math.max(1, math.floor((rih + 1) / per))
+  local off = scrollBar(rx, y0, rw, "setOff" .. state.setGroup, #g.list, rows)
   -- controls on the right: [RESET] [ - ] [   value   ] [ + ]
-  local vw = math.min(22, math.floor(riw * 0.3))
-  local ctlW = 8 + 1 + 5 + 1 + vw + 1 + 5
+  local vw = math.min(26, math.floor(riw * 0.3))
+  local ctlW = 9 + 1 + 6 + 1 + vw + 1 + 6
   for i = 1, math.min(rows, #g.list - off) do
     local idx = off + i
     local def = g.list[idx]
-    local ry = y0 + 3 + (i - 1) * per
+    local ry = riy + (i - 1) * per
     local labW = riw - ctlW - 2
+    if i > 1 then hline(rix, ry - 1, riw, C.line, C.panel, "mid") end
     text(rix, ry, trunc(def.label, labW), C.text, C.panel)
-    text(rix, ry + 1, trunc(def.hint or "", labW), C.dim, C.panel)
+    para(rix, ry + 1, labW, def.hint or "", C.dim, 2)
     local v = valueOf(def)
     local cx = rix + riw - ctlW
-    -- RESET only when it differs from base_config.lua
     local changed = def.path and isChanged(def.path)
-    if changed then drawButton(cx, ry, 8, 2, "RESET", C.empty, C.warn, "setreset", idx) end
-    local bx = cx + 9
+    if changed then button(cx, ry, 9, 3, "RESET", C.warn, "setreset", idx) end
+    local bx = cx + 10
     if def.kind == "pos" then
-      local w2 = ctlW - 9
+      local w2 = ctlW - 10
       text(bx, ry, trunc(v, w2), v == "not set" and C.warn or C.text, C.panel)
-      actButton(bx, ry + 1, w2, 1, def.mode == "under" and "BLOCK UNDER ME" or "USE MY POSITION",
+      actButton(bx, ry + 1, w2, 2, def.mode == "under" and "BLOCK UNDER ME" or "USE MY POSITION",
                 { kind = "setpos", name = tostring(idx), count = 0 }, true)
     else
       local on = (v == "ON")
-      local step = (def.kind == "num")
-      -- big enough to hit with a click: 2 rows high
-      drawButton(bx, ry, 5, 2, step and "-" or "<", C.empty, C.text, "setdec", idx)
-      drawButton(bx + 6, ry, vw, 2, trunc(v, vw - 2), on and C.good or (changed and C.label or C.head),
-                 on and C.ink or (changed and C.ink or C.text), "setinc", idx)
-      drawButton(bx + 7 + vw, ry, 5, 2, step and "+" or ">", C.empty, C.text, "setinc", idx)
+      local stepK = (def.kind == "num")
+      button(bx, ry, 6, 3, stepK and "-" or "<", C.line, "setdec", idx)
+      button(bx + 7, ry, vw, 3, v, on and C.good or (changed and C.label or C.line), "setinc", idx, on or changed)
+      button(bx + 8 + vw, ry, 6, 3, stepK and "+" or ">", C.line, "setinc", idx)
     end
   end
 end

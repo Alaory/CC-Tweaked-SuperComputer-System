@@ -28,7 +28,8 @@ PneumaticCraft drone rides, turtle mapping/surveys, and an AE2 ME network view.
   "queued" forever, idle turtles never sent home.) test_lost_timer.lua.
 - **Peripheral calls belong in workers or fetch functions, never in drawing
   code.** Drawing reads `state.*` only.
-- Drawing: everything is drawn into an off-screen window `win`; `flushWindow()`
+- Drawing: everything is drawn into an off-screen window `win` (text / fill CLIPPED to the
+  screen and the current panel - UI rules 3); `flushWindow()`
   copies only changed rows to the monitor (big performance win - keep it).
   The MAP image (state.mapImage) is rebuilt at once when the VIEW changes, but
   for new map data (MAP.version - every scan) at most every 5 s: with many
@@ -751,12 +752,9 @@ PneumaticCraft drone rides, turtle mapping/surveys, and an AE2 ME network view.
   search party), status why "at the base: picked up?", FLEET card line + FORGET THEM (n)
   (forgetbase -> TT.forgetAtBase), console `forget base`. test_party.lua. feedSurvey reclaims the batch of
   a turtle silent > CONFIG.map.reclaimOffline (600 s).
-- Themes (base_theme.lua): THEMES = 6 Minecraft biomes (see UI rules), same JOB per colour slot.
-  The 11 slots the MAP uses (MAP_SLOTS: green lime blue yellow orange white
-  brown red cyan purple pink) always keep the midnight colours; a theme only
-  changes the frame (bg, cards, lines, buttons, titles). Chosen at start: theme.dat {mode, last} or
-  CONFIG.theme, default "random" (never the same as last time). `theme
-  [name|random]` switches live (setTheme) and saves. Keep new themes dark.
+- Themes (base_theme.lua): see UI rules 1 - control-room colour variants (teal default, amber,
+  ice, violet, graphite, crimson); only the frame slots change. `theme [name|random]` switches
+  live (setTheme) and saves (theme.dat {mode, last}; default CONFIG.theme or "teal").
 - FLUID "ALL" (moveFluid, base_me.lua): Advanced Peripherals moves only a part per call; the old
   64-call cap stopped ALL half way (64 x the per-call amount). Now it calls while something moves,
   until done or `budget` s (20; also max 4000 calls) -> 3rd result true; runAction puts the REST at
@@ -844,43 +842,49 @@ PneumaticCraft drone rides, turtle mapping/surveys, and an AE2 ME network view.
 - `tools/preview/` draws the monitor outside the game (Lua 5.3 + Pillow); use
   it to check screen changes. It is not game code.
 
-## UI rules ("Block UI" - every page follows them)
-1. Minecraft's look done MODERN (the owner: liked the stone-button / gold-title look,
-   but not "like a 2001 game"; the flat new-1.20-menu look was NOT liked): stone-grey
-   buttons, gold titles, the blue selected tab - in deeper, softer shades. THEMES are
-   biomes (stone default, deepslate, oak, nether, ender, ocean; `theme` / SETTINGS); a
-   theme only changes the FRAME (bg, cards, lines, buttons, text, dim, accent, titles).
-   BEDROCK theme (the owner's pick, first in THEME_ORDER; `theme bedrock`): dark slate
-   boxes, LIGHT grey buttons, green selected tab / main button, white titles. THEME_STYLE
-   {light, accent}: C.accent = the green SLOT (the blue slot is the MAP's water - never
-   recolour it); LIGHT_FG makes text() draw white / gold / grey / status text DARK on a
-   light button or the green tab (test_theme.lua). Check new pages in bedrock too.
-   Status + map colours are Minecraft's chat colours, softened, FIXED (base_theme.lua
-   FIXED): green good, yellow attention, red problem, cyan info, orange, pink, purple.
-   Never hard-code a frame colour - use C.* (C.label = gold titles, C.accent = blue
-   selected / main button, C.empty = button face, C.head = lines / dark slot).
-2. No thick 3D frames: round() = two THIN lines (2x3 pixel chars, 1/3 row): panels a
-   soft light line on top (C.head), every box / button a soft SHADOW under it (C.bg).
-   Slots: inset() = a shadow line on top (sunken). Only 3+ rows tall. CONFIG.style
-   "plain" = no lines. Two-tap actions: actButton.
-3. Navigation: GROUPS (base_ui_core.lua) = HOME | YOU (inventory, backpacks, curios) |
-   AE2 | PLAYERS (players, chat & rides) | DRONES (drones, drone work) | TURTLES (turtles, drive, map, mining)
-   | SYSTEM (status, messages, settings). Row 5 = the group's pages + what the open
-   page is for (PAGE_INFO name + one line). New page -> PAGE_INFO entry + a group +
-   pageTabs + draw() dispatch + PAGES in run_tests/test_ticks.
-4. HOME (base_ui_home.lua, the start page): status line, every page as a big button
-   (gold name, white "what it is for", live badge) grouped like the tabs, QUICK ACTIONS
-   (two taps: stop all / all home / update turtles / drone to base / save map; act
-   kind "quick" -> POCKET.act). Nobody has to hunt for a tab.
-5. UX (test_ux.lua): every button / tab at least 2 ROWS tall (drawButton h=2 = label row +
-   a 2/3 row + shadow; tabButton = thin top edge + label; 1-row list rows only with a gap
-   row). snapTouch (base_input.lua): a tap 1 row / 1 column off a button counts for the
-   nearest one. Text never cut mid-sentence: shorten it or wrap() it. PAGE_INFO
-   descriptions <= 30 characters (HOME buttons). No boxes that only repeat something
-   (INVENTORY: OVERVIEW / EQUIPMENT boxes gone - armour + offhand are a row in the
-   INVENTORY box, slots ~square: ch = 0.62 * cw; DETAILS gets the room).
-6. Check every screen change with tools/preview (render.py draws the 2x3 pixel
-   characters, so edges show) in the stone theme.
+## UI rules ("CONTROL ROOM" - every page follows them)
+The owner picked mockup "B" of three (sidebar app / control room / coloured tiles) and asked
+for it "with more work: good widgets and colours, use all the space, no text out of bounds".
+The old Block UI (stone buttons, bedrock theme) is gone.
+1. LOOK: an operations console. Near-black page (C.bg), panels a shade lighter (C.panel)
+   with THIN frames (2x3 sub-pixel lines on the outer pixels, C.line) and the title cut into
+   the top line in AMBER (C.label); TEAL accent (C.accent = cyan slot) for the open tab /
+   main buttons; status colours fixed: green good, yellow warn, red bad, cyan info, orange,
+   purple, pink, lime. THEMES (base_theme.lua THEMES / THEME_ORDER: teal default, amber, ice,
+   violet, graphite, crimson) change ONLY the frame slots (bg, panel, line, dim, title) - the
+   map / status slots are FIXED (brown = the map's stone grey). An old saved theme name ->
+   teal. CONFIG.style "plain" = no frame lines. Never hard-code a slot: use C.*.
+2. KIT (base_ui_core.lua): panel(x,y,w,h,title,{right,rcol,col,tcol}) -> inner x, y(+2), w-4,
+   h-3 and CLIPS to its inside; button(x,y,w,h,label,col,kind,value,solid) (3+ rows = framed
+   ghost or solid; 2 rows = a face + thin edge); actButton(.., act, primary, col) (CONFIRM?
+   on the first tap); gauge (segmented ticks), meter (kv + gauge), big (3x5 pixel font,
+   2 rows), kv (key / dotted leader / value - long values never push the key out), heading,
+   para (wrapped), badge, led, cell / hline / frame (sub-pixels), spark, drawCell (sunken
+   slot, item-colour stripe, amber count), drawBarRow, rowBg, scrollBar (arrows in the top
+   line), drawPager, fitLabel. Old names still work (card, drawButton, barW, pill, stat).
+3. NOTHING OUT OF BOUNDS: text() / fill() (base_theme.lua) never draw outside the screen or
+   CLIP (clip / unclip; every panel sets it, draw() / header / footer reset it); cut text ends
+   in "~". Pages still shorten (trunc) or wrap (para) their own text; button labels shorten
+   by words (fitLabel: a "WORD: " prefix first, then words from the end).
+4. USE THE SPACE: sections are as tall as their content (NEEDS YOU, fuel runs, cards) and the
+   rest goes to lists (LATELY, logs, player data); grids grow with the monitor (DRIVE, player
+   cards). Check at several sizes: test_ux draws every page at 100x40, 121x50, 164x81, 200x100
+   (no error, every tap area on screen).
+5. HEADER (rows 1-5): the title in big letters (if room), GROUP tabs (label row 2, the open one
+   teal with a bar, badges), a big amber clock + owner + LIVE light on the right; row 4 = the
+   group's page chips + what the page is for. Body = rows 6 .. H-1 (geometry()); footer row H =
+   FOOT_HINT[page] + LIVE; message boxes (drawNotes) framed in their colour, bottom-right.
+6. Navigation: GROUPS (base_ui_core.lua) = HOME | YOU (inventory, backpacks, curios) | AE2 |
+   PLAYERS (players, chat & rides) | DRONES (drones, drone work) | TURTLES (turtles, drive, map,
+   mining) | SYSTEM (status, messages, settings). New page -> PAGE_INFO entry + a group +
+   pageTabs + draw() dispatch + PAGES in run_tests/test_ticks/test_ux.
+7. HOME (base_ui_home.lua): a row of live numbers (turtles, drones, AE2, mining, map, players -
+   what is connected; tap = its page), NEEDS YOU (each problem + a button to its page), SYSTEM,
+   LATELY (messages), QUICK ACTIONS (two taps) and GO TO (every page).
+8. Every tap area at least 2 ROWS (test_ux; 1-row list rows only: item, meitem, dscroll, tsel,
+   evitem); snapTouch: a tap 1 row / column off a button counts. PAGE_INFO descriptions <= 30.
+9. Check every screen change with tools/preview (render.py draws the sub-pixels) - test_theme
+   checks themes, clipping, kv and fitLabel.
 
 ## Files
 | File | What |

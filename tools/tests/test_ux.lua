@@ -6,7 +6,7 @@ local PAGES = { "home", "inventory", "players", "storage", "curios", "me", "dron
                 "turtles", "drive", "map", "mining", "system", "events", "settings" }
 local ROWS_OK = { item = true, meitem = true, dscroll = true, tsel = true, evitem = true }
 local was = state.page
-setTheme("bedrock")
+setTheme("teal")
 for _, p in ipairs(PAGES) do
   state.page = p
   local ok, err = pcall(draw)
@@ -32,10 +32,10 @@ CHECK(x == 15 and y == 10, "a tap on a button is never moved")
 -- INVENTORY: no OVERVIEW box, DETAILS gets the room
 state.page = "inventory"
 local titles = {}
-local oc = card
-card = function(cx, cy, w, h, l) if l then titles[l] = h end return oc(cx, cy, w, h, l) end
+local op = panel
+panel = function(cx, cy, w, h, l, o) if l then titles[l] = h end return op(cx, cy, w, h, l, o) end
 draw()
-card = oc
+panel = op
 CHECK(not titles.OVERVIEW and not titles.EQUIPMENT, "inventory: no OVERVIEW / EQUIPMENT boxes")
 CHECK((titles.DETAILS or 0) >= 12, "inventory: DETAILS at least 12 rows (" .. tostring(titles.DETAILS) .. ")")
 state.page = was
@@ -60,4 +60,28 @@ if #keys >= 2 then
   if tab then handleTouch(tab[1] + 1, tab[2] + 1) end
   CHECK(state.drone == drones[keys[2]], "tapping Drone 2 selects it")
 end
+state.page = was
+-- every page draws at several monitor sizes (small to big) and every tap area is on screen
+local W0, H0 = W, H
+for _, sz in ipairs({ { 100, 40 }, { 121, 50 }, { 164, 81 }, { 200, 100 } }) do
+  W, H = sz[1], sz[2]
+  win = window.create(mon, 1, 1, W, H, false)
+  applyPalette(win)
+  state.mapImage = nil
+  for _, p in ipairs(PAGES) do
+    state.page = p
+    local ok, err = pcall(draw)
+    CHECK(ok, p .. " draws at " .. W .. "x" .. H .. " (" .. tostring(err) .. ")")
+    for _, h in ipairs(hits) do
+      if h[1] < 1 or h[2] < 1 or h[3] > W or h[4] > H then
+        CHECK(false, p .. " at " .. W .. "x" .. H .. ": a tap area off the screen (" .. tostring(h[5]) .. ")")
+        break
+      end
+    end
+  end
+end
+W, H = W0, H0
+win = window.create(mon, 1, 1, W, H, false)
+applyPalette(win)
+state.mapImage = nil
 state.page = was

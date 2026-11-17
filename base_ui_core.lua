@@ -32,7 +32,7 @@ function hline(x, y, w, col, bg, where)
 end
 -- a thin outline: the frame sits on the OUTER pixels of the box
 function frame(x, y, w, h, col, bg)
-  if w < 2 or h < 2 then return end
+  if w < 2 or h < 2 or CONFIG.style == "plain" then return end
   hline(x + 1, y, w - 2, col, bg, "top")
   hline(x + 1, y + h - 1, w - 2, col, bg, "bot")
   for j = y + 1, y + h - 2 do
@@ -142,8 +142,11 @@ function kv(x, y, w, k, v, vcol, bg)
   bg = bg or C.panel
   k, v = tostring(k), tostring(v)
   if #k + #v + 2 > w then
-    -- too long: the key keeps up to 40% of the row, the value gets the rest
-    k = trunc(k, math.max(3, math.min(#k, math.floor(w * 0.4), w - #v - 2)))
+    -- too long: the key keeps up to 40% of the row (all it needs when the value is short),
+    -- the value gets the rest
+    local kmax = math.max(3, math.min(#k, math.floor(w * 0.4)))
+    if #v + kmax + 2 <= w then kmax = w - #v - 2 end
+    k = trunc(k, math.max(3, math.min(#k, kmax)))
     v = trunc(v, math.max(1, w - #k - 2))
   end
   text(x, y, k, C.dim, bg)
@@ -235,10 +238,21 @@ end
 -- A button. 3+ rows: a thin frame in `col` with the label in the middle (ghost), or
 -- filled with `col` and dark text (solid). 2 rows: a face in the line colour (or `col`
 -- when solid) with the label, a thin edge under it. Tap area = the whole box.
+-- a label that fits w: whole as long as it fits; else without a "WORD: " prefix, then
+-- word by word from the end (never cut mid-word unless one word is too long)
+function fitLabel(s, w)
+  s = tostring(s)
+  if #s <= w then return s end
+  local short = s:gsub("^[%w%s]+:%s+", "", 1)
+  if #short <= w then return short end
+  while #short > w and short:find(" ", 1, true) do short = short:gsub("%s*%S+$", "") end
+  if #short <= w and #short > 0 then return short end
+  return trunc(s, w)
+end
 function button(x, y, w, h, label, col, kind, value, solid)
   col = col or C.accent
   label = tostring(label)
-  local l = trunc(label, math.max(1, (w >= #label + 2) and w - 2 or w))
+  local l = (#label + 2 <= w) and label or fitLabel(label, math.max(1, w - 2))
   local ly = y + math.floor((h - 1) / 2)
   if h >= 3 then
     if solid then
