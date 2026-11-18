@@ -7,7 +7,9 @@
 -- internet (the same as `upgrade`): speech comes from a text-to-speech service
 -- (music.madefor.cc/tts, DFPWM audio) and is played with cc.audio.dfpwm. Short phrases are
 -- cached on the data floppy (voice/, at most CONFIG.voice.cacheKB) so they are not fetched again.
---   GREET     a player comes near the base (CONFIG.voice.range of the drone home, the overworld):
+--   WHO IS AT THE BASE: the Environment Detector's scan (players right at the system, every 5 s);
+--             without one, the Player Detector within CONFIG.voice.range of the drone home.
+--   GREET     a player comes near the base:
 --             the owner "Welcome back" + what needs a look, allowed players "Hello", strangers
 --             a chime + "Visitor near the base". Once per greetEvery (600 s) each.
 --   ANNOUNCE  the monitor's warnings / errors (pushNote -> VOICE.note) - only when someone is
@@ -20,7 +22,7 @@
 -- Console: voice [on|off|say <text>|greet|announce|chat|alarm on|off|volume <0-3>|range <n>|name <w>]
 
 VOICE = VOICE or {}
-VOICE.VERSION = 1
+VOICE.VERSION = 2
 VOICE.queue = VOICE.queue or {}
 VOICE.near = VOICE.near or {}           -- [name] = true while near the base
 VOICE.greeted = VOICE.greeted or {}     -- [name] = os.clock() of the last greeting
@@ -53,8 +55,60 @@ local function homePos() return CONFIG.drone and CONFIG.drone.home end
 local function inOverworld(e)
   return e.dim == nil or e.dim == (DRONE_DIM or "minecraft:overworld")
 end
+-- WHO IS AT THE BASE: the ENVIRONMENT DETECTOR's own scan (living things within its radius,
+-- CONFIG.env.range - it only sees players really standing at the system; the owner's wish).
+-- The scan gives the entity TYPE, not always the name: the name comes from ENV.nameOf (the
+-- owner's uuid / the only player the Player Detector has near the base), else the Player
+-- Detector's players nearest the base are matched to the unnamed ones. Scanned here every
+-- scanEvery (5) s. No Environment Detector (or `voice detector off`): the Player Detector's
+-- positions within CONFIG.voice.range of the base, as before.
+function VOICE.useEnv()
+  return VOICE.cfg("detector", true) ~= false and envDet ~= nil and ENV ~= nil and ENV.scan ~= nil
+end
+function VOICE.scanNow()
+  if not VOICE.useEnv() then return end
+  local every = tonumber(VOICE.cfg("scanEvery", 5)) or 5
+  if not ENV.scanAt or os.clock() - ENV.scanAt >= every then pcall(ENV.scan) end
+end
+local function envPlayers()
+  local d = ENV.data
+  if not (d and d.ents) then return {} end
+  local out, unnamed = {}, {}
+  local taken = {}
+  for _, e in ipairs(d.ents) do
+    if e.kind == "player" then
+      local n = tostring(e.name or "")
+      if n ~= "" and n ~= "Player" then
+        taken[n:lower()] = true
+        out[#out + 1] = { name = n, dist = e.dist, env = true }
+      else
+        unnamed[#unnamed + 1] = e
+      end
+    end
+  end
+  -- unnamed ones: the Player Detector's online players nearest the base, not named yet
+  if #unnamed > 0 then
+    local h = homePos()
+    local cands = {}
+    for _, pe in ipairs(state.players or {}) do
+      local pp = pe.p
+      local online = not state.online or state.online[tostring(pe.name):lower()]
+      if online and pp and tonumber(pp.x) and h and inOverworld(pe) and not taken[tostring(pe.name):lower()] then
+        cands[#cands + 1] = { name = pe.name, d = math.abs(pp.x - h.x) + math.abs(pp.z - h.z) }
+      end
+    end
+    table.sort(cands, function(a, b) return a.d < b.d end)
+    for i, e in ipairs(unnamed) do
+      local c = cands[i]
+      out[#out + 1] = { name = c and c.name or "someone", dist = e.dist, env = true, guessed = true }
+    end
+  end
+  return out
+end
+
 -- players near the base now: { {name, e, dist} }
 function VOICE.nearPlayers()
+  if VOICE.useEnv() then return envPlayers() end
   local h = homePos()
   local out = {}
   if not (h and h.x) then return out end
@@ -293,6 +347,7 @@ end
 -- every 2 s: greetings, the alarm
 function VOICE.tick()
   local now = os.clock()
+  VOICE.scanNow()                                 -- (the Environment Detector looks again)
   local nearNow = {}
   for _, p in ipairs(VOICE.nearPlayers()) do
     nearNow[p.name] = true
@@ -300,7 +355,9 @@ function VOICE.tick()
       local last = VOICE.greeted[p.name]
       if not last or now - last > (tonumber(VOICE.cfg("greetEvery", 600)) or 600) then
         VOICE.greeted[p.name] = now
-        if isOwner(p.name) then
+        if p.name == "someone" then
+          VOICE.say("Hello there.", "minecraft:block.note_block.chime")
+        elseif isOwner(p.name) then
           VOICE.say("Welcome back, " .. p.name .. ". " .. VOICE.statusText(true), "minecraft:block.note_block.chime")
         elseif isFriend(p.name) then
           VOICE.say("Hello, " .. p.name .. ".", "minecraft:block.note_block.chime")
@@ -365,6 +422,7 @@ function VOICE.command(words)
   elseif a == "volume" and tonumber(words[3]) then
     setSetting("voice.volume", math.max(0, math.min(3, tonumber(words[3]))))
     say("Volume " .. VOICE.cfg("volume", 2) .. " (0-3)")
+  elseif a == "detector" then onoff("detector", "Who is at the base comes from the Environment Detector")
   elseif a == "range" and tonumber(words[3]) then
     setSetting("voice.range", math.max(8, math.min(256, math.floor(tonumber(words[3])))))
     say("It hears / greets people within " .. VOICE.cfg("range", 64) .. " blocks of the base")
@@ -377,12 +435,21 @@ function VOICE.command(words)
         ", " .. sps .. " speaker(s)" .. (sps == 0 and " - put a Speaker next to the computer or on the cable" or ""))
     say("  greet " .. (VOICE.cfg("greet", true) and "on" or "off") .. ", warnings " .. (VOICE.cfg("announce", true) and "on" or "off") ..
         ", chat " .. (VOICE.cfg("chat", true) and "on" or "off") .. ", alarm " .. (VOICE.cfg("alarm", false) and "on" or "off") ..
-        ", volume " .. VOICE.cfg("volume", 2) .. ", range " .. VOICE.cfg("range", 64))
+        ", volume " .. VOICE.cfg("volume", 2))
+    if VOICE.useEnv() then
+      local names = {}
+      for _, p in ipairs(VOICE.nearPlayers()) do names[#names + 1] = p.name end
+      say("  At the base (Environment Detector, " .. tostring(ENV.range or (CONFIG.env and CONFIG.env.range) or 16) .. " blocks): " ..
+          (#names > 0 and table.concat(names, ", ") or "nobody"))
+    else
+      say("  At the base (Player Detector, within " .. VOICE.cfg("range", 64) .. " blocks): " ..
+          (envDet and "detector switched off - voice detector on" or "no Environment Detector - using the Player Detector"))
+    end
     say("  In chat near the base:  " .. VOICE.cfg("name", "base") .. ", status?  (also: turtles, mining, survey, time, weather, who)")
     say("  Cache: " .. (VOICE.cacheDir() or "none (no data floppy with room)"))
     if VOICE.err then say("  Last problem: " .. VOICE.err) end
     if VOICE.lastSaid then say("  Last said: " .. VOICE.lastSaid.text) end
-    say("  voice on|off | say <text> | greet|announce|chat|alarm on|off | volume <0-3> | range <n> | name <word> | remove")
+    say("  voice on|off | say <text> | greet|announce|chat|alarm|detector on|off | volume <0-3> | range <n> | name <word> | remove")
   end
   return out
 end

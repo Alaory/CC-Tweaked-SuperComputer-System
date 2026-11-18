@@ -927,8 +927,12 @@ PneumaticCraft drone rides, turtle mapping/surveys, and an AE2 ME network view.
   text-to-speech service music.madefor.cc/tts?text= (DFPWM; the owner tested `speaker play` on it in game) ->
   cc.audio.dfpwm decoder -> playAudio on EVERY speaker (peripheral.hasType speaker; waits for
   speaker_audio_empty, gives up after 40 tries); phrases <= 80 chars cached on the data floppy (voice/<hash>.dfpwm,
-  CONFIG.voice.cacheKB 200, oldest out first; never on the computer). GREET (VOICE.tick every 2 s, state.players
-  within CONFIG.voice.range 64 of the drone home, overworld, online): owner "Welcome back" + statusText,
+  CONFIG.voice.cacheKB 200, oldest out first; never on the computer). WHO IS AT THE BASE = the ENVIRONMENT DETECTOR's scan (the
+  owner: "it makes sure the player is near the system"; VOICE.useEnv, `voice detector on|off`): VOICE.tick
+  runs ENV.scan every voice.scanEvery 5 s; players in ENV.data.ents (kind player, radius CONFIG.env.range) -
+  named by ENV.nameOf (owner uuid / only player near the base), unnamed ones get the Player Detector's
+  online players nearest the base (else "someone" -> "Hello there."). No detector -> state.players within
+  CONFIG.voice.range 64 of the drone home, overworld, online. GREET (VOICE.tick every 2 s): owner "Welcome back" + statusText,
   allowed "Hello", strangers chime + "Visitor near the base" (greetEvery 600 s each). ANNOUNCE: WARNING / ERROR
   notes only while someone is near, one per 20 s, the same title not within 5 min. CHAT: "<name>, question"
   (CONFIG.voice.name "base"; "baseball" is not) from someone near -> chatTell + spoken; the owner far away ->

@@ -2,6 +2,8 @@
 -- greets players coming near the base, says warnings only when someone can hear them, answers
 -- "base, status?" in chat, the alarm, speech cached on the floppy, nothing when it is off.
 local HOME = CONFIG.drone.home or { x = 0, y = 64, z = 0 }
+local realEnvDet = envDet
+envDet = nil                 -- (parts 1-9: no Environment Detector - the Player Detector within range)
 CONFIG.drone.home = HOME
 -- a data floppy with the add-on on it
 addDrive("drive_7", "disk7")
@@ -149,4 +151,47 @@ out = handleCommand("voice remove")
 CHECK(not fs.exists("disk7/voice_addon.lua") and VOICE == nil, "voice remove deletes it from the floppy")
 out = handleCommand("voice")
 CHECK(table.concat(out, "\n"):find("voice install", 1, true), "not installed: `voice` says how to install it")
+
+-- 10. WITH the Environment Detector: who is at the base = its scan (players right at the system).
+--     The Player Detector alone (within 64 blocks) is not enough any more.
+put("disk7/voice_addon.lua", io.open(SRC_DIR .. "/voice_addon.lua"):read("a"))
+VOICE = nil
+loadAddon("voice_addon.lua")
+PERIPHS["speaker_0"] = { types = { "speaker" }, obj = { playAudio = function() return true end, playSound = function() return true end } }
+local SCAN = {}
+envDet = setmetatable({ scanEntities = function(r) return SCAN end }, { __index = realEnvDet or {} })
+ENV.scanAt, ENV.range = -100, nil
+state.ownerUuid = "u-owner"
+setSetting("voice.greet", true)                          -- (part 8 switched it off)
+state.players = {}
+place(owner, 40)                                         -- 40 blocks off: the Player Detector sees it
+place("Steve", 6000)
+VOICE.queue, VOICE.near, VOICE.greeted = {}, {}, {}
+VOICE.tick()
+CHECK(VOICE.useEnv() and #VOICE.queue == 0, "in Player Detector range but NOT seen by the Environment Detector: no greeting")
+SCAN = { { name = "minecraft:player", uuid = "u-owner", x = 3, y = 0, z = 2, health = 20, maxHealth = 20 } }
+CLOCK = CLOCK + 6
+VOICE.tick()
+CHECK(said():find("Welcome back, " .. owner, 1, true), "the detector sees the owner at the system: welcomed: " .. said())
+VOICE.queue = {}
+-- an unnamed player in the scan: the nearest online player the Player Detector knows (Steve is far)
+place("Steve", 12)
+SCAN = { { name = "minecraft:player", uuid = "u-owner", x = 3, y = 0, z = 2 }, { name = "minecraft:player", x = -4, y = 0, z = 1 } }
+CLOCK = CLOCK + 6
+VOICE.tick()
+CHECK(said():find("Visitor near the base: Steve", 1, true), "an unnamed player at the system gets the nearest known name: " .. said())
+VOICE.queue = {}
+-- the owner walks off (out of the detector's scan): warnings are no longer said
+SCAN = {}
+CLOCK = CLOCK + 6
+VOICE.tick()
+VOICE.noteSeen, VOICE.noteAt = {}, nil
+VOICE.note("SOMETHING", "went wrong", C.warn)
+CHECK(#VOICE.queue == 0, "nobody at the system (scan empty): warnings are not said")
+local o2 = handleCommand("voice")
+CHECK(table.concat(o2, "\n"):find("Environment Detector", 1, true), "`voice` says who is at the base comes from the Environment Detector")
+handleCommand("voice detector off")
+CHECK(not VOICE.useEnv(), "voice detector off: back to the Player Detector")
+setSetting("voice.detector", true)
+envDet = realEnvDet
 http = nil
