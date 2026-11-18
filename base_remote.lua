@@ -215,6 +215,9 @@ function remoteWorker()
     local ev = { os.pullEventRaw() }
     if ev[1] == "remote_alive" then
       REMOTE.alive, REMOTE.fails, REMOTE.why = os.clock(), 0, nil
+    elseif ev[1] == "pocket_local" then
+      REMOTE.alive = os.clock()
+      pcall(POCKET.receiveLocal, ev[2])
     elseif ev[1] == "remote_cmd" then
       REMOTE.alive = os.clock()
       pcall(REMOTE.run, ev[2], ev[3])

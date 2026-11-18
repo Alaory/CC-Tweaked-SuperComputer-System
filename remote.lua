@@ -1,7 +1,9 @@
--- remote.lua - the base's console in your web browser (started by the base, see base_remote.lua).
--- Runs inside Cloud Catcher (cloud.lua) in its own tab: what you type here goes to the base
--- program as an event, the base runs it like a command typed on its own screen and sends the
--- answer back. Typing "shell" opens a normal CraftOS shell (exit = back here).
+-- remote.lua - the base in your web browser (started by the base, see base_remote.lua).
+-- Runs inside Cloud Catcher (cloud.lua) in its own tab. It opens on the MENU: the pocket
+-- remote's tap screen (pocket.lua in "local" mode - HOME / RIDE / BOTS / MINE / MSG / +, click
+-- the buttons). Its CMD tab = typed commands: what you type goes to the base program as an
+-- event, the base runs it like a command typed on its own screen and sends the answer back.
+-- "menu" = back to the buttons, "shell" = a normal CraftOS shell (exit = back here).
 
 local function banner()
   term.setBackgroundColor(colors.black)
@@ -11,7 +13,7 @@ local function banner()
   print("BASE REMOTE CONSOLE")
   term.setTextColor(colors.white)
   print("Type a base command (help, turtles, survey, away, events, mine, factory ...).")
-  print("'shell' = a normal shell, 'clear' = clear the screen.")
+  print("'menu' = back to the buttons, 'shell' = a normal shell, 'clear' = clear the screen.")
   print("")
 end
 
@@ -65,29 +67,59 @@ local function readLine()
   return line, quit
 end
 
-banner()
-alive()
+-- typed commands; returns "menu" or "quit"
+local function console()
+  banner()
+  alive()
+  while true do
+    if term.isColor() then term.setTextColor(colors.yellow) end
+    write("base> ")
+    term.setTextColor(colors.white)
+    local line, quit = readLine()
+    if quit or line == nil then return "quit" end
+    line = line:gsub("^%s+", ""):gsub("%s+$", "")
+    if line ~= "" then history[#history + 1] = line end
+    if line == "menu" or line == "back" then
+      return "menu"
+    elseif line == "clear" or line == "cls" then
+      banner()
+    elseif line == "shell" then
+      print("A normal shell - type 'exit' to come back.")
+      shell.run("shell")
+      banner()
+    elseif line ~= "" then
+      n = n + 1
+      local req = os.getComputerID() .. ":" .. os.epoch("utc") .. ":" .. n
+      os.queueEvent("remote_cmd", req, line)
+      local out, why = waitAnswer(req)
+      if why == "quit" then return "quit" end
+      for _, l in ipairs(out or {}) do print(l) end
+    end
+  end
+end
+
+-- the buttons: pocket.lua in local mode (next to this file); returns "cmd", "quit" or "error"
+local POCKET_PATH = fs.combine(fs.getDir(shell and shell.getRunningProgram() or ""), "pocket.lua")
+local function menu()
+  if not fs.exists(POCKET_PATH) then return "nomenu" end
+  local env = setmetatable({ shell = shell, multishell = multishell }, { __index = _G })
+  local fn, err = loadfile(POCKET_PATH, "t", env)
+  if not fn then printError(tostring(err)) return "error" end
+  local ok, res = pcall(fn, "local")
+  if not ok then printError(tostring(res)) return "error" end
+  return res
+end
+
+local mode = "menu"
 while true do
-  if term.isColor() then term.setTextColor(colors.yellow) end
-  write("base> ")
-  term.setTextColor(colors.white)
-  local line, quit = readLine()
-  if quit or line == nil then break end
-  line = line:gsub("^%s+", ""):gsub("%s+$", "")
-  if line ~= "" then history[#history + 1] = line end
-  if line == "clear" or line == "cls" then
-    banner()
-  elseif line == "shell" then
-    print("A normal shell - type 'exit' to come back.")
-    shell.run("shell")
-    banner()
-  elseif line ~= "" then
-    n = n + 1
-    local req = os.getComputerID() .. ":" .. os.epoch("utc") .. ":" .. n
-    os.queueEvent("remote_cmd", req, line)
-    local out, why = waitAnswer(req)
-    if why == "quit" then break end
-    for _, l in ipairs(out or {}) do print(l) end
+  if mode == "menu" then
+    local r = menu()
+    if r == "quit" then break end
+    mode = "cmd"
+    if r == "nomenu" then print("(pocket.lua is not on this computer - run upgrade for the buttons)") end
+  else
+    if console() == "quit" then break end
+    mode = "menu"
   end
 end
 print("Remote console closed.")

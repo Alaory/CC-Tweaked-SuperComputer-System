@@ -975,6 +975,15 @@ PneumaticCraft drone rides, turtle mapping/surveys, and an AE2 ME network view.
   the open page connects by itself. The chat message also has a COPY (copy_to_clipboard) part. Codes the
   base makes have NO look-alike characters (REMOTE.newToken alphabet "34679ADEFGHJLMNRTYabdefghmnqrty" - the
   owner misread O/Q/0 off the screen) and `remote` shows them in groups of 4 (REMOTE.groups).
+  BUTTONS IN THE BROWSER (the owner: typed commands are "kinda hard to use"): remote.lua opens on the MENU =
+  the REAL pocket.lua in LOCAL mode (loadfile with its own env, fn("local"); pocket.lua is now in the BASE
+  manifest group too, ~21 KB slim): no modem / pairing / pocket.dat / startup install (LOCAL guard - it
+  must never replace the base computer's startup.lua), sendBase -> os.queueEvent("pocket_local", m) ->
+  remoteWorker -> POCKET.receiveLocal -> POCKET.serve (the same req / act code as a paired pocket, sysLog
+  "Remote: ...") -> "pocket_local_reply" -> handle (no signature: same computer). POCKET.note also queues
+  the warnings for it while REMOTE.running(). Extra CMD tab -> typed console; `menu` -> back. mainLocal says
+  "remote_alive" every 5 s, ends on "remote_quit". test_remote_menu.lua (51 x 19, every tab, CMD, an act
+  reaches turtle 7, a warning arrives).
 - UPGRADE (upgrade.lua; console `upgrade [check|branch <b>]`, SYSTEM > ACTIONS
   UPGRADE PROGRAM, or `upgrade` in a shell - also on the pocket; the FULL commented files are
   bigger than a 1 MB computer now - `upgrade full` refuses cleanly there, upgrade_sim checks both): the newest files from
