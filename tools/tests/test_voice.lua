@@ -54,7 +54,7 @@ CHECK(#VOICE.queue == 0, "a warning with nobody near the base is not said")
 -- 2. the owner comes home: welcome back + a status, with a chime
 place(owner, 10)
 VOICE.tick()
-CHECK(said():find("Welcome back, " .. owner, 1, true) and VOICE.queue[1].sound, "the owner is welcomed back: " .. said())
+CHECK(said():find(owner, 1, true) and said():find("working", 1, true) and VOICE.queue[1].sound, "the owner is welcomed back (+ how the turtles are): " .. said())
 speakAll()
 CHECK(#gets == 1 and gets[1]:find("music.madefor.cc/tts", 1, true) and played > 0, "spoken: text-to-speech fetched, played on the speaker")
 CHECK(fs.list("disk7/voice")[1] ~= nil, "the phrase is kept on the DATA floppy (voice/)")
@@ -84,7 +84,8 @@ CHECK(#VOICE.queue == 0, "info messages are not said")
 -- 5. a stranger comes near: "Visitor"; the alarm only when switched on
 place("Steve", 20)
 VOICE.tick()
-CHECK(said():find("Visitor near the base: Steve", 1, true) and not said():find("Intruder", 1, true), "a stranger: visitor, no alarm (off by default): " .. said())
+CHECK(said():find("Steve", 1, true) and said():find("not seen you before", 1, true) and not said():find("Intruder", 1, true),
+      "a stranger met for the first time: introduced, no alarm (off by default): " .. said())
 VOICE.queue = {}
 setSetting("voice.alarm", true)
 place("Steve", 9000) VOICE.tick()
@@ -172,19 +173,20 @@ CHECK(VOICE.useEnv() and #VOICE.queue == 0, "in Player Detector range but NOT se
 SCAN = { { name = "minecraft:player", uuid = "u-owner", x = 3, y = 0, z = 2, health = 20, maxHealth = 20 } }
 CLOCK = CLOCK + 6
 VOICE.tick()
-CHECK(said():find("Welcome back, " .. owner, 1, true), "the detector sees the owner at the system: welcomed: " .. said())
+CHECK(said():find(owner, 1, true), "the detector sees the owner at the system: welcomed: " .. said())
 VOICE.queue = {}
 -- an unnamed player in the scan: the nearest online player the Player Detector knows (Steve is far)
 place("Steve", 12)
 SCAN = { { name = "minecraft:player", uuid = "u-owner", x = 3, y = 0, z = 2 }, { name = "minecraft:player", x = -4, y = 0, z = 1 } }
 CLOCK = CLOCK + 6
 VOICE.tick()
-CHECK(said():find("Visitor near the base: Steve", 1, true), "an unnamed player at the system gets the nearest known name: " .. said())
+CHECK(said():find("Steve", 1, true), "an unnamed player at the system gets the nearest known name: " .. said())
 VOICE.queue = {}
 -- the owner walks off (out of the detector's scan): warnings are no longer said
 SCAN = {}
 CLOCK = CLOCK + 6
 VOICE.tick()
+VOICE.queue = {}                                         -- (a goodbye may have been said)
 VOICE.noteSeen, VOICE.noteAt = {}, nil
 VOICE.note("SOMETHING", "went wrong", C.warn)
 CHECK(#VOICE.queue == 0, "nobody at the system (scan empty): warnings are not said")
@@ -193,5 +195,108 @@ CHECK(table.concat(o2, "\n"):find("Environment Detector", 1, true), "`voice` say
 handleCommand("voice detector off")
 CHECK(not VOICE.useEnv(), "voice detector off: back to the Player Detector")
 setSetting("voice.detector", true)
+
+-- 11. FUN (the owner: "make it interactive"): reactions to chat, its name anywhere, jokes, songs,
+--     where is a turtle, remembered people, strangers hanging around, hurt players, night, mobs,
+--     small talk - all only while someone is at the base, with cooldowns
+SCAN = { { name = "minecraft:player", uuid = "u-owner", x = 2, y = 0, z = 1, health = 20, maxHealth = 20 } }
+CLOCK = CLOCK + 6
+VOICE.tick()
+VOICE.queue = {}
+told = {}
+chatTell = function(name, text) told[#told + 1] = text end
+CHECK(VOICE.chat({ name = owner, msg = "hi everyone" }) and said():find(owner, 1, true), "hi near the base: it says hi back: " .. said())
+VOICE.queue = {}
+CHECK(not VOICE.chat({ name = owner, msg = "thanks" }), "not twice within 15 s (cooldown)")
+CLOCK = CLOCK + 50
+CHECK(VOICE.chat({ name = owner, msg = "gg" }) and said():find("ood game", 1, true) or said():find("G G", 1, true), "gg -> good game: " .. said())
+VOICE.queue = {}
+local isJoke = function(t) for _, j in ipairs(VOICE.JOKES) do if j == t then return true end end return false end
+CHECK(VOICE.chat({ name = owner, msg = "can the base tell me a joke" }) and #VOICE.queue == 1 and isJoke(told[#told]),
+      "its name ANYWHERE in a sentence: answered (a joke): " .. tostring(told[#told]))
+VOICE.queue = {}
+VOICE.chat({ name = owner, msg = "base, sing" })
+local tuneQueued = false
+for _, q in ipairs(VOICE.queue) do if q.tune then tuneQueued = true end end
+CHECK(tuneQueued, "base, sing -> a tune on the note blocks")
+local notes = 0
+PERIPHS["speaker_0"].obj.playNote = function() notes = notes + 1 return true end
+speakAll()
+CHECK(notes >= 4, "the tune is played note by note (" .. notes .. ")")
+state.turtles = state.turtles or {}
+state.turtles[63] = { id = 63, label = "Turtle 63", pos = { x = HOME.x + 300, y = 70, z = HOME.z - 400 }, task = "survey", lastSeen = CLOCK, log = {} }
+told = {}
+VOICE.chat({ name = owner, msg = "base where is turtle 63" })
+CHECK(told[1] and told[1]:find("500 blocks north-east", 1, true), "where is turtle 63 -> how far and which way: " .. tostring(told[1]))
+told = {}
+VOICE.chat({ name = owner, msg = "base how are you" })
+CHECK(told[1] and (told[1]:find("great", 1, true) or told[1]:find("need", 1, true) or told[1]:find("behaving", 1, true) or told[1]:find("humming", 1, true)),
+      "how are you -> its mood: " .. tostring(told[1]))
+told = {}
+VOICE.chat({ name = owner, msg = "base what can you do" })
+CHECK(told[1] and told[1]:find("joke", 1, true), "what can you do -> the list: " .. tostring(told[1]))
+-- a hurt player at the base
+VOICE.queue = {}
+SCAN = { { name = "minecraft:player", uuid = "u-owner", x = 2, y = 0, z = 1, health = 4, maxHealth = 20 } }
+CLOCK = CLOCK + 6
+VOICE.tick()
+CHECK(said():find("hurt", 1, true) or said():find("health is low", 1, true), "a hurt player is told: " .. said())
+VOICE.queue = {}
+-- a stranger hanging around for 2 minutes
+place("Mallory", 12)
+state.online["mallory"] = true
+SCAN = { { name = "minecraft:player", uuid = "u-owner", x = 2, y = 0, z = 1, health = 20, maxHealth = 20 }, { name = "Mallory", x = -3, y = 0, z = 2 } }
+CLOCK = CLOCK + 6
+VOICE.tick()
+CHECK(said():find("Mallory", 1, true), "a new stranger is noticed: " .. said())
+VOICE.queue = {}
+CLOCK = CLOCK + 130
+VOICE.tick()
+CHECK(said():find("standing here for a while", 1, true), "a stranger standing around for 2 minutes is asked: " .. said())
+VOICE.queue = {}
+-- remembered: the owner's record on the data floppy
+CHECK(VOICE.mem()[owner:lower()] and VOICE.mem()[owner:lower()].visits >= 1, "it remembers who it met (on the data floppy)")
+-- night falls while someone is there
+ENV.data = ENV.data or {}
+ENV.data.ents = {}
+ENV.data.time = 6000
+CLOCK = CLOCK + 6
+VOICE.tick()
+VOICE.queue = {}
+ENV.data.time = 13500
+CLOCK = CLOCK + 6
+VOICE.tick()
+CHECK(said():find("sun is setting", 1, true) or said():find("Night is falling", 1, true), "night falls: it says so: " .. said())
+VOICE.queue = {}
+-- a creeper right next to a player
+local ME = { kind = "player", name = owner, dist = 2, hp = 20, max = 20 }
+ENV.data.ents = { ME, { kind = "hostile", name = "Creeper", dist = 3 } }
+VOICE.alarmAt.close = nil
+CLOCK = CLOCK + 6
+local okScan = ENV.scan
+ENV.scan = function() end                               -- (keep the fake mob list)
+VOICE.tick()
+CHECK(said():find("creeper right next to you", 1, true), "a creeper right next to you: warned (alarm off): " .. said())
+VOICE.queue = {}
+-- small talk after a while
+ENV.data.ents = { ME }
+VOICE.nextChat = CLOCK - 1
+VOICE.lastSaid = nil
+CLOCK = CLOCK + 6
+VOICE.tick()
+CHECK(#VOICE.queue == 1, "small talk while someone stays: " .. said())
+VOICE.queue = {}
+-- fun off: no reactions, no small talk; questions still answered
+setSetting("voice.fun", false)
+CLOCK = CLOCK + 100
+CHECK(not VOICE.chat({ name = owner, msg = "lol" }), "fun off: no reactions")
+VOICE.nextChat = CLOCK - 1
+VOICE.tick()
+CHECK(#VOICE.queue == 0, "fun off: no small talk")
+told = {}
+CHECK(VOICE.chat({ name = owner, msg = "base, status" }) and told[1], "fun off: questions are still answered")
+setSetting("voice.fun", true)
+ENV.scan = okScan
+chatTell = oldTell
 envDet = realEnvDet
 http = nil

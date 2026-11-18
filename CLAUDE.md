@@ -941,6 +941,21 @@ PneumaticCraft drone rides, turtle mapping/surveys, and an AE2 ME network view.
   Environment Detector (ENV.data.ents) -> bell + spoken, once per 5 min, only when someone is near. Settings
   via `voice on|off|greet|announce|chat|alarm on|off|volume <0-3>|range <n>|name <word>` (setSetting voice.*;
   VOICE.cfg uses an if - false stays false). test_voice.lua (fake speaker / http / dfpwm, players walking up).
+  FUN (v3; the owner: "make it interactive, react to players / strangers, listen to chat"; voice.fun, default
+  on; `voice fun on|off`, `voice chatter <min>` (10, 0 = never), `voice sing|joke|forget`): CHAT - its name as a
+  WORD anywhere in a sentence -> VOICE.answer (also: joke, fact, sing (VOICE.TUNES on playNote, queue item
+  .tune), who are you, how are you (mood = VOICE.needCount), what can you do, where is turtle <n|name>
+  (VOICE.whereText: blocks + compass from the drone home, task / offline), thanks, good / bad bot);
+  REACTIONS (VOICE.REACT: hi, thanks, gg, lol (50 %), good night, bye, brb, i'm back, creeper) from someone AT
+  the base - spoken only, 15 s between any two, 45 s per player. GREETINGS vary (partOfDay from ENV.clock);
+  MEMORY (VOICE.mem: first / last / visits per player, dataFile voice_memory.dat): first meeting introduced
+  ("I am watching you" for strangers), owner back after > 1 h "Long time no see ... away <span>". EVENTS
+  (VOICE.tick): goodbyes (60 %), a stranger standing around 2 min asked, a hurt player (hp <= 6, 3 min apart),
+  night falls / morning and rain / thunder / clear only when they CHANGE, a hostile within 6 of the detector
+  ("creeper right next to you", 2 min apart; the alarm stays separate), good news (DONE notes, a new turtle,
+  once a minute), small talk (fact / joke / tip) every ~chatter min while someone stays and nothing was said
+  for 60 s. Everything only while someone is at the base; questions are never actions. test_voice.lua part 11
+  (passes with 20 random seeds).
 - REMOVED AGAIN: remote access in a web browser (Cloud Catcher; base_remote.lua / remote.lua / pocket.lua
   in local mode on the base) - the owner: "taking space and seems useless". removeOldFiles (base_theme.lua,
   run by inventory.lua at start) deletes its files (remote.lua, base_remote.lua, cloud.lua on the computer
