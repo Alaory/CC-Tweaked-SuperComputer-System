@@ -9,7 +9,7 @@ CONFIG.drone.home = HOME
 addDrive("drive_7", "disk7")
 local function put(p, t) local h = fs.open(p, "w") h.write(t) h.close() end
 put("disk7/base_data", "data")
-put("disk7/voice_addon.lua", io.open(SRC_DIR .. "/voice_addon.lua"):read("a"))
+put("disk7/voice_addon.lua", io.open(SRC_DIR .. "/dist/voice_addon.lua"):read("a"))     -- (the slim copy - what voice install puts there)
 if dataPathReset then dataPathReset() end
 CHECK(addonPath("voice_addon.lua") == "disk7/voice_addon.lua", "the add-on is found on the data floppy")
 VOICE = nil
@@ -113,6 +113,7 @@ chatTell = function(name, text) told[#told + 1] = name .. ": " .. text end
 CHECK(VOICE.chat({ name = owner, msg = "base, status?" }) and told[1] and told[1]:find("working", 1, true)
       and said():find("working", 1, true), "base, status? -> answered in chat and out loud: " .. tostring(told[1]))
 VOICE.queue, told = {}, {}
+VOICE.convo, VOICE.pend = {}, {}
 CHECK(not VOICE.chat({ name = owner, msg = "baseball is fun" }), "baseball is not for the base")
 CHECK(VOICE.chat({ name = owner, msg = "Base what time is it" }) and told[1], "a question about the time is answered: " .. tostring(told[1]))
 place("Steve", 9000)
@@ -160,7 +161,7 @@ CHECK(table.concat(out, "\n"):find("voice install", 1, true), "not installed: `v
 
 -- 10. WITH the Environment Detector: who is at the base = its scan (players right at the system).
 --     The Player Detector alone (within 64 blocks) is not enough any more.
-put("disk7/voice_addon.lua", io.open(SRC_DIR .. "/voice_addon.lua"):read("a"))
+put("disk7/voice_addon.lua", io.open(SRC_DIR .. "/dist/voice_addon.lua"):read("a"))     -- (the slim copy - what voice install puts there)
 VOICE = nil
 loadAddon("voice_addon.lua")
 PERIPHS["speaker_0"] = { types = { "speaker" }, obj = { playAudio = function() return true end, playSound = function() return true end } }
@@ -210,13 +211,25 @@ VOICE.tick()
 VOICE.queue = {}
 told = {}
 chatTell = function(name, text) told[#told + 1] = text end
-CHECK(VOICE.chat({ name = owner, msg = "hi everyone" }) and said():find(owner, 1, true), "hi near the base: it says hi back: " .. said())
+-- (talking to someone ELSE next to them: chat is not for the base, it only reacts now and then)
+place("Steve", 10)
+SCAN = { { name = "minecraft:player", uuid = "u-owner", x = 2, y = 0, z = 1, health = 20, maxHealth = 20 }, { name = "minecraft:player", x = -3, y = 0, z = 0 } }
+CLOCK = CLOCK + 6
+VOICE.tick()
+VOICE.queue, VOICE.convo, VOICE.pend = {}, {}, {}
+told = {}
+CHECK(VOICE.chat({ name = owner, msg = "hi everyone" }) and said():find(owner, 1, true) and #told == 0, "hi to others near the base: it says hi too (spoken only): " .. said())
 VOICE.queue = {}
 CHECK(not VOICE.chat({ name = owner, msg = "thanks" }), "not twice within 15 s (cooldown)")
 CLOCK = CLOCK + 50
 CHECK(VOICE.chat({ name = owner, msg = "gg" }) and said():find("ood game", 1, true) or said():find("G G", 1, true), "gg -> good game: " .. said())
 VOICE.queue = {}
-local isJoke = function(t) for _, j in ipairs(VOICE.JOKES) do if j == t then return true end end return false end
+place("Steve", 9000)
+SCAN = { { name = "minecraft:player", uuid = "u-owner", x = 2, y = 0, z = 1, health = 20, maxHealth = 20 } }
+CLOCK = CLOCK + 6
+VOICE.tick()
+VOICE.queue = {}
+local isJoke = function(t) for _, j in ipairs(VOICE.JOKES) do if t and t:sub(1, #j) == j then return true end end return false end
 CHECK(VOICE.chat({ name = owner, msg = "can the base tell me a joke" }) and #VOICE.queue == 1 and isJoke(told[#told]),
       "its name ANYWHERE in a sentence: answered (a joke): " .. tostring(told[#told]))
 VOICE.queue = {}
@@ -354,9 +367,13 @@ told = {}
 VOICE.tick()
 CHECK(told[1] and told[1]:find("check the furnace", 1, true), "the reminder comes after 2 minutes: " .. tostring(told[1]))
 CHECK(ask("base shh"):find("quiet", 1, true) and VOICE.isQuiet(), "shh -> quiet for a while")
-VOICE.queue = {}
+VOICE.queue, VOICE.convo, VOICE.pend = {}, {}, {}
 CLOCK = CLOCK + 60
+place("Steve", 10)
+ENV.data.ents = { { kind = "player", name = owner, dist = 2 }, { kind = "player", name = "Steve", dist = 3 } }
 CHECK(not VOICE.chat({ name = owner, msg = "hello all" }), "quiet: no reactions")
+place("Steve", 9000)
+ENV.data.ents = { { kind = "player", name = owner, dist = 2 } }
 CHECK(ask("base talk to me") ~= "" and not VOICE.isQuiet(), "talk to me -> talking again")
 CHECK(ask("base where am i"):find("You are at", 1, true), "where am I")
 CHECK(ask("base say hello world") == "hello world", "say <text> (owner)")
@@ -420,6 +437,48 @@ CHECK(said():find("While you were away, 1 visitor came: Alex", 1, true) and said
 CHECK(askAs(owner, "base messages"):find("Alex", 1, true) and told[1]:find("bread", 1, true), "base, messages -> the visitor's message")
 CHECK(askAs(owner, "base clear messages"):find("gone", 1, true) and #B.msgs == 0, "clear messages")
 CHECK(not VOICE.lonelyDays(), "the owner is back: not lonely any more")
+
+-- 16. REAL PLAYERS (the owner: "they never use the words you expect, they misspell, and they have never
+--     seen this computer"): typos, chat shorthand, no name, numbers from a menu, yes / no, two-step message
+VOICE.convo, VOICE.pend, VOICE.games = {}, {}, {}
+local stranger = "Kevin"
+state.online = { ["kevin"] = true }                     -- (the owner offline 23+ days: lonely mode)
+B.lastOff = os.epoch("utc") - 23 * 86400000
+place("Kevin", 3)
+ENV.data.ents = { { kind = "player", name = "Kevin", dist = 3, hp = 20, max = 20 } }
+local function say2(msg) told = {} VOICE.queue = {} VOICE.chat({ name = stranger, msg = msg }) return told[#told] or "" end
+-- never heard of "base": a plain question, alone with the computer, is answered
+CHECK(say2("hello?? who r u"):find("I am", 1, true), "'hello?? who r u' (no name) -> who it is: " .. told[1])
+-- in the conversation now: misspelled, no name, no question mark
+CHECK(isJoke(say2("tell me a joek pls")), "'tell me a joek pls' -> a joke: " .. tostring(told[1]))
+CHECK(say2("wat is this place"):find("base", 1, true), "'wat is this place' -> the tour: " .. told[1])
+CHECK(say2("yeah"):find(owner .. "'s base", 1, true), "the tour asks 'want to know who lives here?' - 'yeah' -> the answer: " .. told[1])
+-- not understood: it says so and gives a numbered list
+local m1 = say2("uhh how do i blorp the zorp")
+CHECK(m1:find("1:", 1, true) and m1:find("2:", 1, true), "'uhh how do i blorp the zorp' (not known) -> sorry + a numbered menu: " .. m1)
+CHECK(said():find("number", 1, true), "... spoken: type a number")
+-- a number from the menu
+CHECK(say2("1"):find(owner .. "'s base", 1, true), "typing 1 -> the first choice (who lives here): " .. told[1])
+-- a two-step message
+CHECK(say2("can i leave a mesage for the owner"):find("What should the message say", 1, true), "a message without text -> it asks what to say: " .. told[1])
+CHECK(say2("Nice place! I left some bread in the chest :)"):find("give your message", 1, true), "the next line is the message")
+CHECK(B.msgs[#B.msgs] and B.msgs[#B.msgs].text:find("bread", 1, true), "... saved for the owner: " .. tostring(B.msgs[#B.msgs] and B.msgs[#B.msgs].text))
+-- more sloppy ways to say things
+CHECK(say2("lets play a gaem"):find("Which game", 1, true), "'lets play a gaem' -> the game menu")
+CHECK(say2("2"):find("Rock, paper or scissors", 1, true), "2 -> rock paper scissors")
+CHECK(say2("sisors"):find("I pick", 1, true), "'sisors' (misspelled) still plays: " .. told[1])
+CHECK(say2("whos the owner of this place"):find(owner, 1, true), "'whos the owner of this place' -> the owner: " .. told[1])
+CHECK(say2("hows the wether"):find("weather", 1, true), "'hows the wether' -> the weather: " .. told[1])
+CHECK(say2("is there any tresure here") ~= "", "'is there any tresure here' -> answered: " .. told[1])
+CHECK(say2("bye!"):find("Bye", 1, true) or told[1]:find("See you", 1, true), "bye -> goodbye")
+-- chat that is NOT for the base (two players talking) gets no menu
+place("Steve", 4)
+state.online["steve"] = true
+ENV.data.ents = { { kind = "player", name = "Kevin", dist = 3 }, { kind = "player", name = "Steve", dist = 4 } }
+VOICE.convo, VOICE.pend = {}, {}
+CHECK(say2("dude look at this cool build") == "", "two players chatting: nothing in chat, no menu")
+CHECK(say2("hey computer, what time is it") ~= "", "... but 'computer' / a question is answered")
+place("Steve", 9000)
 ENV.scan = okScan
 chatTell = oldTell
 envDet = realEnvDet

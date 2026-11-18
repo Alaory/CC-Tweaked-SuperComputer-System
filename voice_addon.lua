@@ -131,6 +131,11 @@ local function isOwner(name)
   local o = knownOwner and knownOwner() or state.owner
   return o and tostring(name):lower() == tostring(o):lower()
 end
+local function ownerName() return knownOwner and knownOwner() or state.owner end
+local function ownerOnline()
+  local o = ownerName()
+  return o and state.online and state.online[tostring(o):lower()] and true or false
+end
 local function isFriend(name)
   return state.access and state.access.allowed and state.access.allowed[tostring(name):lower()] ~= nil
 end
@@ -178,10 +183,11 @@ local function hash(s)
 end
 -- the cache folder on a DATA floppy (never on the computer)
 function VOICE.cacheDir()
+  local best
   for _, d in ipairs(mountedDisks and mountedDisks() or {}) do
-    if d.data and (d.free or 0) > 48 * 1024 then return fs.combine(d.mount, "voice") end
+    if d.data and (d.free or 0) > 16 * 1024 and (not best or d.free > best.free) then best = d end
   end
-  return nil
+  return best and fs.combine(best.mount, "voice") or nil
 end
 local function cacheUsed(dir)
   local n = 0
@@ -192,12 +198,16 @@ end
 -- the audio (DFPWM bytes) for a sentence: from the cache, else the web
 function VOICE.audio(text)
   local key = hash(text:lower())
+  -- (a phrase saved before is read from whichever floppy holds it - also a full one)
+  for _, d in ipairs(mountedDisks and mountedDisks() or {}) do
+    local cp = fs.combine(fs.combine(d.mount, "voice"), key .. ".dfpwm")
+    if fs.exists(cp) then
+      local h = fs.open(cp, "rb")
+      if h then local dd = h.readAll() h.close() if dd and #dd > 0 then return dd end end
+    end
+  end
   local dir = VOICE.cacheDir()
   local path = dir and fs.combine(dir, key .. ".dfpwm")
-  if path and fs.exists(path) then
-    local h = fs.open(path, "rb")
-    if h then local d = h.readAll() h.close() if d and #d > 0 then return d end end
-  end
   if not (http and http.get) then return nil, "no internet on this computer (http is off)" end
   local url = VOICE.TTS .. textutils.urlEncode(text)
   local ok, h, err = pcall(http.get, url, nil, true)
@@ -467,8 +477,15 @@ function VOICE.gameReply(who, q, strict)
     if g.tries >= 8 then VOICE.games[k] = nil return "Out of tries. It was " .. g.n .. "." end
     return n < g.n and "Higher." or "Lower."
   elseif g.kind == "quiz" then
+    local qw = words(q)
     for _, a in ipairs(g.a) do
-      if q:find(" " .. a .. " ", 1, true) then
+      local all = true
+      for aw in a:gmatch("%S+") do
+        local hit = false
+        for _, w in ipairs(qw) do if VOICE.same(w, aw) then hit = true end end
+        if not hit then all = false end
+      end
+      if all then
         VOICE.games[k] = nil
         local m = VOICE.mem()
         m[k] = m[k] or {}
@@ -486,7 +503,10 @@ function VOICE.gameReply(who, q, strict)
     if g.tries >= 3 then VOICE.games[k] = nil return "Not quite. The answer was " .. g.a[1] .. "." end
     return "Not quite. Try again."
   elseif g.kind == "rps" then
-    local yours = (q:find(" rock ", 1, true) and "rock") or (q:find(" paper ", 1, true) and "paper") or (q:find(" scissors ", 1, true) and "scissors")
+    local yours
+    for _, w in ipairs(words(q)) do
+      for _, o in ipairs({ "rock", "paper", "scissors", "stone" }) do if VOICE.same(w, o) then yours = (o == "stone") and "rock" or o end end
+    end
     if not yours then return nil end
     VOICE.games[k] = nil
     local mine = pick({ "rock", "paper", "scissors" })
@@ -619,7 +639,7 @@ function VOICE.extraAnswer(q, who)
 end
 
 -- an answer to a question (the words around the base's name)
-function VOICE.answer(q, who)
+function VOICE.answer(q, who, strict)
   q = " " .. tostring(q or ""):lower():gsub("[%p]", " ") .. " "
   local function has(...) for _, w in ipairs({ ... }) do if q:find(" " .. w .. " ", 1, true) then return true end end return false end
   local function phrase(...) for _, w in ipairs({ ... }) do if q:find(w, 1, true) then return true end end return false end
@@ -632,6 +652,8 @@ function VOICE.answer(q, who)
     if not isOwner(who) and not isFriend(who) then return "That is a secret. I only tell my friends where my turtles are." end
     return VOICE.whereText(q:match("where is (.-)%s*$") or q:match("where s (.-)%s*$") or q:match("find (.-)%s*$"))
   end
+  if strict then return nil end                    -- (no intent found: the loose one-word checks below - "how", "who",
+                                                   --  "base" - would answer anything with the status)
   if has("joke", "jokes", "funny", "laugh") then return pick(VOICE.JOKES) end
   if has("fact", "facts") then return VOICE.factText() end
   if has("sing", "song", "music", "dance") then
@@ -669,8 +691,7 @@ function VOICE.answer(q, who)
   if has("time", "day", "night", "clock") then return VOICE.timeText() end
   if has("weather", "rain", "raining", "storm") then return VOICE.weatherText() end
   if has("who", "online", "players") then return VOICE.whoText() end
-  return pick({ "I did not get that. Ask me: status, a joke, where is turtle five, or what can you do.",
-                "Hmm? Try: " .. VOICE.botName() .. ", what can you do?" })
+  return nil                                       -- (nothing fits: VOICE.converse shows the menu)
 end
 
 -- ===== the hooks the base calls =====
@@ -735,37 +756,378 @@ VOICE.REACT = {
   { phrases = { "i m back", "im back", "i am back" }, lines = { "Welcome back, {name}!", "There you are again." } },
   { words = { "creeper" }, lines = { "Aw man.", "Where? I do not see one. Yet." }, chance = 0.5 },
 }
+-- ===== UNDERSTANDING PLAYERS (the owner: "players will never respond in the words you expect, they make
+-- spelling mistakes, and they have never seen this computer before") =====
+-- Chat is normalized (lower case, no punctuation, "hellooo" -> "helloo", chat shorthand expanded), every word
+-- is compared LOOSELY (VOICE.same: a typo or two allowed by length) and matched to an INTENT by meaning
+-- (VOICE.INTENTS: key words / short phrases, the best score wins) - not exact sentences. Nobody has to know
+-- its name: a CONVERSATION stays open 90 s after it spoke to a player; alone with it, a question / hello /
+-- "computer" counts; in lonely mode everything a visitor types. Not understood -> it says so and shows a
+-- NUMBERED MENU in chat (type 1, 2, 3 ...); yes / no answers its questions; "leave a message" asks what to say.
+local SHORT = { u = "you", ur = "your", r = "are", y = "why", wat = "what", wut = "what", whats = "what is", whos = "who is",
+  wheres = "where is", hows = "how is", im = "i am", ive = "i have", dont = "do not", cant = "can not", wont = "will not",
+  pls = "please", plz = "please", thx = "thanks", ty = "thanks", tysm = "thanks", k = "ok", kk = "ok", okey = "ok",
+  ppl = "people", hru = "how are you", wyd = "what are you doing", idk = "i do not know", n = "and", b4 = "before",
+  gr8 = "great", luv = "love", msg = "message", sup = "hello", yo = "hello", hai = "hi", hii = "hi", heya = "hello",
+  hiya = "hello", howdy = "hello", yea = "yes", yeah = "yes", yep = "yes", yup = "yes", ya = "yes", sure = "yes",
+  okay = "yes", ok = "yes", nah = "no", nope = "no", naw = "no" }
+-- words of a chat message, cleaned up
+function VOICE.norm(text)
+  local t = tostring(text or ""):lower():gsub("'", ""):gsub("[%p]", " ")
+  t = t:gsub("(%a)%1%1+", "%1%1")                -- ("hellooooo" -> "helloo")
+  local out = {}
+  for w in t:gmatch("%S+") do
+    local e = SHORT[w]
+    if e then for x in e:gmatch("%S+") do out[#out + 1] = x end else out[#out + 1] = w end
+  end
+  return out
+end
+-- edit distance (with swapped letters), stops early past max
+local function dist(a, b, max)
+  if math.abs(#a - #b) > max then return max + 1 end
+  local p2, p1 = nil, {}
+  for j = 0, #b do p1[j] = j end
+  for i = 1, #a do
+    local cur, best = { [0] = i }, i
+    local ai = a:byte(i)
+    for j = 1, #b do
+      local cost = (ai == b:byte(j)) and 0 or 1
+      local v = math.min(p1[j] + 1, cur[j - 1] + 1, p1[j - 1] + cost)
+      if p2 and i > 1 and j > 1 and ai == b:byte(j - 1) and a:byte(i - 1) == b:byte(j) then v = math.min(v, p2[j - 2] + 1) end
+      cur[j] = v
+      if v < best then best = v end
+    end
+    if best > max then return max + 1 end
+    p2, p1 = p1, cur
+  end
+  return p1[#b]
+end
+VOICE.dist = dist
+-- the same word, loosely: plural / a typo (1 for 4-6 letters, 2 from 7); short words exactly
+function VOICE.same(w, k)
+  if w == k or w == k .. "s" or k == w .. "s" or w == k .. "es" then return true end
+  if #k < 4 or #w < 4 then return false end         -- ("the" is not "them")
+  if w:sub(1, 1) ~= k:sub(1, 1) then return false end   -- (typos keep the first letter: "that" is not "what")
+  local max = (#k >= 7) and 2 or 1
+  return dist(w, k, max) <= max
+end
+local function hasWord(ws, k)
+  for _, w in ipairs(ws) do if VOICE.same(w, k) then return true end end
+  return false
+end
+-- intents: keys = words or short phrases (all of a phrase's words somewhere in the message); canon =
+-- what the old answer code understands; nil canon = pass the cleaned message on (it has a part to read:
+-- the message text, the minutes, the turtle number)
+VOICE.INTENTS = {
+  { id = "menu", keys = { "help", "options", "commands", "menu", "what can you do", "what can i ask", "what can i say",
+      "what do i say", "what do i do", "how does this work", "how do i talk", "what should i ask", "list" } },
+  { id = "whereturtle", keys = { "where turtle", "find turtle", "where is turtle", "locate turtle" } },
+  { id = "remind", keys = { "remind me", "reminder", "timer", "alarm clock" } },
+  { id = "remember", keys = { "remember", "write down", "note down" } },
+  { id = "notes", canon = "my notes", keys = { "my notes", "my list", "what did i say", "notes" } },
+  { id = "say", keys = { "say" } },
+  { id = "clearmsg", canon = "clear messages", keys = { "clear messages", "delete messages", "remove messages" } },
+  { id = "readmsg", canon = "messages", keys = { "messages", "any messages", "inbox", "mail", "read message" } },
+  { id = "message", keys = { "leave a message", "message", "letter", "leave note", "tell him", "tell her", "tell them", "tell the owner" } },
+  { id = "quiet", canon = "shh", keys = { "shh", "shush", "be quiet", "quiet", "stop talking", "silence", "shut up", "mute" } },
+  { id = "talk", canon = "talk to me", keys = { "talk to me", "unmute", "speak again", "you can talk" } },
+  { id = "score", canon = "my score", keys = { "my score", "my points", "leaderboard", "scores" } },
+  { id = "guess", canon = "guess my number", keys = { "guess number", "guessing", "number game", "guess" } },
+  { id = "rps", canon = "rock paper scissors", keys = { "rock paper scissors", "rock paper", "rps", "scissors" } },
+  { id = "quiz", canon = "quiz", keys = { "quiz", "trivia", "riddle", "test me", "ask me a question", "ask me something" } },
+  { id = "coin", canon = "flip a coin", keys = { "coin", "flip", "heads or tails", "heads", "tails" } },
+  { id = "dice", canon = "roll a dice", keys = { "dice", "die", "roll" } },
+  { id = "number", canon = "pick a number", keys = { "random number", "pick a number" } },
+  { id = "sing", canon = "sing", keys = { "sing", "song", "music", "dance", "tune", "melody" } },
+  { id = "games", keys = { "game", "games", "play", "bored", "boring", "fun", "something to do" } },
+  { id = "joke", canon = "tell me a joke", keys = { "joke", "funny", "make me laugh", "laugh", "humor", "humour" } },
+  { id = "story", canon = "tell me a story", keys = { "story", "stories", "tale", "once upon" } },
+  { id = "fact", canon = "fun fact", keys = { "fact", "facts", "something interesting", "tell me something", "teach me" } },
+  { id = "roast", canon = "roast me", keys = { "roast", "insult" } },
+  { id = "compliment", canon = "compliment me", keys = { "compliment", "say something nice", "cheer me up", "sad" } },
+  { id = "eight", canon = "magic 8 ball will i", keys = { "8 ball", "eight ball", "magic ball", "predict", "future", "fortune" } },
+  { id = "owner", canon = "who lives here", keys = { "who lives here", "who lives", "owner", "owns", "whose", "belongs", "creator",
+      "who made", "who built", "who is the owner", "who is in charge", "your master", "your boss", "who are your", "player who" } },
+  { id = "lonely", canon = "what happened", keys = { "what happened", "happened", "lonely", "alone", "abandoned", "empty",
+      "where is everyone", "nobody here", "anyone here", "where did", "left" } },
+  { id = "stay", canon = "can i stay", keys = { "can i stay", "stay", "live here", "move in", "can i have", "can i take", "keep" } },
+  { id = "treasure", canon = "treasure", keys = { "treasure", "loot", "diamonds", "secret", "hidden" } },
+  { id = "tour", keys = { "tour", "what is this", "what is this place", "this place", "where am i at", "show me", "explain",
+      "what is here", "what do you do", "what are you for", "what is that", "what is going on", "what is all this" } },
+  { id = "who", canon = "who are you", keys = { "who are you", "what are you", "your name", "who is this", "who is that",
+      "who is talking", "who said", "what is your name", "introduce" } },
+  { id = "alive", canon = "are you alive", keys = { "alive", "sentient", "real", "human", "robot", "ai", "conscious", "person" } },
+  { id = "mood", canon = "how are you", keys = { "how are you", "how you doing", "how do you feel", "are you ok", "feeling", "mood" } },
+  { id = "love", canon = "i love you", keys = { "love you", "love", "marry", "be my friend", "friend", "cute" } },
+  { id = "status", canon = "status", keys = { "status", "report", "how is the base", "everything ok", "how are things", "overview" } },
+  { id = "turtles", canon = "turtles", keys = { "turtles", "turtle", "bots" } },
+  { id = "mining", canon = "mining", keys = { "mining", "mine", "miners", "ores", "ore" } },
+  { id = "survey", canon = "survey", keys = { "map", "survey", "mapping", "explore", "exploring" } },
+  { id = "realtime", canon = "real time", keys = { "real time", "irl", "real world" } },
+  { id = "time", canon = "time", keys = { "time", "clock", "what day", "day", "night", "late" } },
+  { id = "weather", canon = "weather", keys = { "weather", "rain", "raining", "storm", "sunny", "snow" } },
+  { id = "online", canon = "who is online", keys = { "online", "who is on", "players", "people" } },
+  { id = "whereami", canon = "where am i", keys = { "where am i", "my position", "coords", "coordinates", "lost", "where is home" } },
+  { id = "mobs", canon = "mobs", keys = { "mobs", "monsters", "animals", "outside", "creepers", "zombies", "danger", "safe" } },
+  { id = "thanks", canon = "thanks", keys = { "thanks", "thank", "appreciate", "cheers" } },
+  { id = "bye", keys = { "bye", "goodbye", "cya", "see you", "leaving", "gotta go", "later", "good night" } },
+  { id = "hello", canon = "hello", keys = { "hello", "hi", "hey", "greetings", "good morning", "good evening", "good afternoon", "anyone there", "hellooo" } },
+}
+-- the best intent for some words (the most / longest keys found); nil = none
+function VOICE.intent(ws)
+  local best, bs = nil, 0
+  for _, it in ipairs(VOICE.INTENTS) do
+    local score = 0
+    for _, key in ipairs(it.keys) do
+      local n, all = 0, true
+      for kw in key:gmatch("%S+") do
+        if hasWord(ws, kw) then n = n + 1 else all = false end
+      end
+      if all and n > score then score = n end
+    end
+    if score > bs then best, bs = it, score end
+  end
+  return best, bs
+end
+-- every word fixed to the nearest known word (so the old answers that read the text understand it)
+local VOCAB
+function VOICE.fix(ws)
+  if not VOCAB then
+    VOCAB = {}
+    for _, it in ipairs(VOICE.INTENTS) do for _, key in ipairs(it.keys) do for kw in key:gmatch("%S+") do VOCAB[kw] = true end end end
+    for _, w in ipairs({ "minutes", "minute", "seconds", "hours", "about", "turtle", "where", "message", "remember", "remind",
+                         "should", "will", "please", "number" }) do VOCAB[w] = true end
+  end
+  local out = {}
+  for i, w in ipairs(ws) do
+    local best = w
+    if not VOCAB[w] and #w >= 4 and not tonumber(w) then
+      local bd = 3
+      for v in pairs(VOCAB) do
+        if #v >= 4 and v:sub(1, 1) == w:sub(1, 1) then
+          local max = (#v >= 7) and 2 or 1
+          local d = dist(w, v, max)
+          if d <= max and d < bd then best, bd = v, d end
+        end
+      end
+    end
+    out[i] = best
+  end
+  return out
+end
+
 local function nearName(who)
   for _, p in ipairs(VOICE.nearPlayers()) do if p.name:lower() == tostring(who):lower() then return true end end
   return false
+end
+local function othersNear(who)
+  local n = 0
+  for _, p in ipairs(VOICE.nearPlayers()) do if p.name:lower() ~= tostring(who):lower() then n = n + 1 end end
+  return n
+end
+VOICE.convo = VOICE.convo or {}       -- [player lower] = os.clock() until it listens without its name
+VOICE.pend = VOICE.pend or {}         -- [player lower] = { kind = "yesno" | "msg" | "menu", ... , till }
+function VOICE.openConvo(who, secs) VOICE.convo[tostring(who):lower()] = os.clock() + (secs or 90) end
+
+-- the numbered menus (in chat - readable; spoken: one short line)
+function VOICE.menuItems(who)
+  if isOwner(who) or isFriend(who) then
+    return { { "how is the base", "status" }, { "where are the turtles", "turtles" }, { "tell me a joke", "tell me a joke" },
+             { "play a game", "#games" }, { "my notes", "my notes" }, { "what else can you do", "#more" } }
+  end
+  return { { "who lives here", "who lives here" }, { "give me a tour", "#tour" }, { "tell me a joke", "tell me a joke" },
+           { "play a game", "#games" }, { "leave a message for the owner", "#message" }, { "what else can you do", "#more" } }
+end
+local GAMES = { { "guess my number", "guess my number" }, { "rock paper scissors", "rock paper scissors" }, { "a quiz", "quiz" },
+                { "flip a coin", "flip a coin" }, { "roll a dice", "roll a dice" }, { "the magic 8 ball", "magic 8 ball will i" } }
+function VOICE.showMenu(who, items, title)
+  local lines = {}
+  for i, it in ipairs(items) do lines[#lines + 1] = i .. ": " .. it[1] end
+  VOICE.pend[tostring(who):lower()] = { kind = "menu", items = items, till = os.clock() + 180 }
+  return (title or "You can ask me anything in chat. Or type a number:") .. "  " .. table.concat(lines, "   "),
+         "I put a list in your chat. Just type a number."
+end
+function VOICE.tourText()
+  local o = tostring(ownerName() or "my owner")
+  local okS, d = pcall(POCKET.status)
+  local parts = { "This is " .. o .. "'s base, and I am " .. VOICE.botName() .. ", the computer that runs it." }
+  if okS and type(d) == "table" then
+    local n = 0
+    for _, v in pairs(d.counts or {}) do n = n + v end
+    if n > 0 then parts[#parts + 1] = "I command " .. plural(n, "turtle", "turtles") .. ". They fly out, map the whole world and come home." end
+    if #(d.mining or {}) > 0 then parts[#parts + 1] = "Mining teams dig for ores in a mining dimension." end
+    if #(d.drones or {}) > 0 then parts[#parts + 1] = plural(#d.drones, "drone", "drones") .. " fly people around." end
+  end
+  parts[#parts + 1] = "The big screen shows everything I do."
+  return table.concat(parts, " ")
+end
+local YES = { yes = true, y = true, please = true, go = true, alright = true, absolutely = true, definitely = true }
+local NO = { no = true, n = true, never = true, later = true, stop = true }
+
+-- chat in an open conversation that is not for the base: a little spoken reaction, or nothing
+function VOICE.smallReact(ws, who)
+  for _, r in ipairs(VOICE.REACT) do
+    for _, w in ipairs(r.words or {}) do
+      if hasWord(ws, w) or ws[1] == w then return nil, fill(pick(r.lines), who) end
+    end
+  end
+  return nil
+end
+-- what to answer a player (chat text; spoken text) - everything goes through here
+function VOICE.converse(who, raw, direct)
+  if direct == nil then direct = true end
+  local k = tostring(who):lower()
+  local word = tostring(VOICE.cfg("name", "base")):lower()
+  local ws = {}
+  for _, w in ipairs(VOICE.norm(raw)) do if not VOICE.same(w, word) then ws[#ws + 1] = w end end
+  local now = os.clock()
+  local P = VOICE.pend[k]
+  if P and now > P.till then VOICE.pend[k], P = nil, nil end
+  -- waiting for the text of a message
+  if P and P.kind == "msg" then
+    VOICE.pend[k] = nil
+    local text = tostring(raw):gsub("^%s+", ""):gsub("%s+$", "")
+    if #ws == 0 or (NO[ws[1]] and #ws == 1) then return "OK, no message." end
+    return VOICE.lonelyAnswer("leave a message " .. text:lower(), who) or "Saved."
+  end
+  -- a yes / no question it asked
+  if P and P.kind == "yesno" and #ws > 0 and #ws <= 3 then
+    if YES[ws[1]] then VOICE.pend[k] = nil return VOICE.converse(who, P.yes) end
+    if NO[ws[1]] then VOICE.pend[k] = nil return pick({ "OK.", "No problem.", "Alright." }) end
+  end
+  -- a number from the menu (a guessing game takes numbers first - VOICE.gameReply)
+  if P and P.kind == "menu" and #ws == 1 and tonumber(ws[1]) then
+    local it = P.items[tonumber(ws[1])]
+    if it then
+      VOICE.pend[k] = nil
+      return VOICE.converse(who, it[2])
+    end
+  end
+  -- nothing at all ("?", "...", just its name): the menu
+  if #ws == 0 then return VOICE.showMenu(who, VOICE.menuItems(who)) end
+  local fixed = VOICE.fix(ws)
+  local text = table.concat(fixed, " ")
+  local it, score = VOICE.intent(fixed)
+  -- (in a conversation, but not clearly for the base: only short messages or strong matches count -
+  --  "that was a fun day" is chat, not "games")
+  if not direct and it and #ws > 3 and score < 2 then it = nil end
+  local id = it and it.id
+  if raw == "#games" or id == "games" then return VOICE.showMenu(who, GAMES, "Which game? Type a number:") end
+  if raw == "#tour" or id == "tour" then
+    local t = VOICE.tourText()
+    VOICE.pend[k] = { kind = "yesno", yes = "who lives here", till = now + 120 }
+    return t .. " Want to know who lives here? Type yes or no."
+  end
+  if raw == "#more" then
+    return VOICE.showMenu(who, { { "a story", "tell me a story" }, { "a fun fact", "fun fact" }, { "sing a song", "sing" },
+      { "where am i", "where am i" }, { "any monsters around", "mobs" }, { "how are you", "how are you" },
+      { "remind me in 5 minutes to ...", "#remindhelp" }, { "be quiet for a while", "shh" } }, "More things - type a number:")
+  end
+  if raw == "#remindhelp" then return "Just type it, like: remind me in 5 minutes to check the furnace." end
+  if raw == "#message" or id == "message" then
+    -- the text after the word "message" (or "tell him ..."), else ask for it
+    local after
+    for i, w in ipairs(fixed) do
+      if (w == "message" or w == "letter" or w == "note") and not after then
+        local rest = {}
+        for j = i + 1, #ws do rest[#rest + 1] = ws[j] end
+        while rest[1] and (rest[1] == "for" or rest[1] == "to" or rest[1] == "that" or rest[1] == "saying" or rest[1] == "says"
+                           or rest[1] == "the" or rest[1] == "owner" or rest[1] == tostring(ownerName() or ""):lower()
+                           or rest[1] == "him" or rest[1] == "her") do table.remove(rest, 1) end
+        after = table.concat(rest, " ")
+      end
+    end
+    if not after or after == "" then
+      VOICE.pend[k] = { kind = "msg", till = now + 180 }
+      return isOwner(who) and "What should I tell visitors? Type it in chat." or "What should the message say? Just type it in chat."
+    end
+    return VOICE.lonelyAnswer("leave a message " .. after, who)
+  end
+  if id == "bye" then VOICE.convo[k] = nil return fill(pick({ "Bye {name}! Come back soon.", "See you, {name}." }), who) end
+  -- the answer code (the intent's own words, or the cleaned message for the ones that read details)
+  if not direct and not it then return VOICE.smallReact(ws, who) end
+  local q = (it and it.canon) or text
+  local ans = VOICE.answer(" " .. q .. " ", who, not it)
+  if not ans and it and it.canon then ans = VOICE.answer(" " .. text .. " ", who) end
+  if ans then
+    if id == "joke" and math.random() < 0.4 then
+      VOICE.pend[k] = { kind = "yesno", yes = "tell me a joke", till = now + 60 }
+      ans = ans .. " Want another one?"
+    end
+    return ans
+  end
+  -- not understood. Only chat in an open conversation ("gg", "lol", "ok"): a little reaction or nothing -
+  -- never the menu for that. Meant for the base (its name, a question, "computer" ...): say so + the menu.
+  if not direct then return VOICE.smallReact(ws, who) end
+  VOICE.misses = (VOICE.misses or 0) + 1
+  local c, sp = VOICE.showMenu(who, VOICE.menuItems(who), pick({ "Sorry, I did not get that.", "Hmm, I am not sure what you mean.",
+                                                                  "I did not understand, sorry." }) .. " Type a number:")
+  return c, sp
+end
+
+-- is this chat message meant for the base? (no name needed in a conversation / alone with it)
+local QWORDS = { who = true, what = true, where = true, why = true, how = true, can = true, is = true, are = true, ["do"] = true,
+                 does = true, will = true, could = true, would = true, hello = true, hi = true, hey = true }
+local BOTWORDS = { "computer", "robot", "machine", "screen", "voice", "speaker", "bot", "hello", "anyone", "somebody" }
+-- asking for something ("tell me a joek pls", "lets play", "show me") - also clearly for the base in a conversation
+local ASKWORDS = { please = true, tell = true, show = true, give = true, gimme = true, lets = true, wanna = true, teach = true,
+                   explain = true, sing = true, help = true }
+function VOICE.addressed(who, raw, near)
+  local k = tostring(who):lower()
+  local ws = VOICE.norm(raw)
+  local word = tostring(VOICE.cfg("name", "base")):lower()
+  -- "direct" = clearly for the base; "convo" = in an open conversation (small talk is not answered with menus)
+  for i, w in ipairs(ws) do
+    if w == word or ((i == 1 or i == #ws) and #word >= 4 and VOICE.same(w, word)) then return "direct" end
+  end
+  if VOICE.pend[k] and os.clock() < VOICE.pend[k].till then return "direct" end
+  local alone = near and othersNear(who) == 0
+  local looks = tostring(raw):find("?", 1, true) or (ws[1] and QWORDS[ws[1]]) or (ws[2] and QWORDS[ws[2]])  -- ("uhh how do i ...")
+  local callsIt = false                                  -- ("hey computer ..." - for the base, even with others around)
+  for _, w in ipairs(ws) do if w == "computer" or w == "robot" or w == "bot" then callsIt = true end end
+  if callsIt and near then return "direct" end
+  if not looks then for _, b in ipairs(BOTWORDS) do if hasWord(ws, b) then looks = true end end end
+  if not looks then for _, w in ipairs(ws) do if ASKWORDS[w] then looks = true end end end
+  if VOICE.convo[k] and os.clock() < VOICE.convo[k] then return looks and "direct" or "convo" end
+  if not near or not alone then return nil end           -- (talking to someone else next to them)
+  if VOICE.lonelyDays() then return "direct" end         -- (a visitor alone with a lonely computer)
+  if looks then return "direct" end
+  return nil
 end
 function VOICE.chat(m)
   if VOICE.cfg("chat", true) == false or type(m) ~= "table" then return false end
   local text = tostring(m.msg or "")
   local who = tostring(m.name or "")
+  local k = who:lower()
   local word = tostring(VOICE.cfg("name", "base")):lower()
-  local low = " " .. text:lower():gsub("[%p]", " ") .. " "
   local near = nearName(who)
+  local ws = VOICE.norm(text)
+  local low = " " .. table.concat(ws, " ") .. " "
+  local hasName = false
+  for _, w in ipairs(ws) do if w == word then hasName = true end end
+  local function reply(c, sp)
+    if not c then return end
+    if chatTell then chatTell(who, c) end
+    if near then VOICE.say(sp or c) end
+    VOICE.openConvo(who)
+  end
   -- a running game (guess my number / quiz / rock paper scissors): the reply needs no name
   -- (with its name in it, it is a question - only a CORRECT quiz answer / a number / rock paper
   --  scissors counts for a game then; "base, status?" during a quiz is not a wrong answer)
-  local hasName = low:find(" " .. word .. " ", 1, true) ~= nil
   if near or isOwner(who) then
-    local g = VOICE.gameReply(who, (low:gsub(hasName and (" " .. word .. " ") or "\0", " "):gsub("^%s+", ""):gsub("%s+$", "")), hasName)
-    if g then
-      if chatTell then chatTell(who, g) end
-      if near then VOICE.say(g) end
-      return true
-    end
+    local q = {}
+    for _, w in ipairs(ws) do if w ~= word then q[#q + 1] = w end end
+    local g = VOICE.gameReply(who, table.concat(q, " "), hasName)
+    if g then reply(g) return true end
   end
-  -- its name as a WORD anywhere ("baseball" is not it): an answer
-  if low:find(" " .. word .. " ", 1, true) then
+  -- meant for the base: understood loosely and answered (spoken at the base + privately in chat)
+  local how = VOICE.addressed(who, text, near)
+  if how then
     if not near and not isOwner(who) then return false end
-    local q = low:gsub(" " .. word .. " ", " ", 1)
-    local answer = VOICE.answer(q, who)
-    if chatTell then chatTell(who, answer) end
-    if near then VOICE.say(answer) end
-    return true
+    local c, sp = VOICE.converse(who, text, how == "direct")
+    if c then reply(c, sp) return true end
+    if sp and near and not VOICE.isQuiet() then VOICE.say(sp) return true end    -- (a small reaction, spoken only)
+    if how == "direct" then return true end
   end
   -- just talking near the base: a reaction now and then (spoken only, nothing in chat)
   if not near or VOICE.cfg("fun", true) == false or VOICE.isQuiet() then return false end
@@ -798,11 +1160,6 @@ function VOICE.base()
   local b = m["#base"]
   b.visitors, b.msgs = b.visitors or {}, b.msgs or {}
   return b
-end
-local function ownerName() return knownOwner and knownOwner() or state.owner end
-local function ownerOnline()
-  local o = ownerName()
-  return o and state.online and state.online[tostring(o):lower()] and true or false
 end
 local function oresNow()
   local okS, d = pcall(POCKET.status)

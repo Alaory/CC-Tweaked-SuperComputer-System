@@ -985,6 +985,21 @@ PneumaticCraft drone rides, turtle mapping/surveys, and an AE2 ME network view.
   (owner), who visited (owner), who lives here / where is your owner (last seen date), what happened / lonely, can
   I stay, treasure. Owner back -> "While you were away, N visitors came: ... M messages for you". Strangers never
   get turtle positions ("That is a secret"). Console `voice message <text>`, `voice visitors`. test_voice 14-15.
+  v6 UNDERSTANDING (the owner: "players never use the words you expect, misspell, and have never seen this
+  computer"): VOICE.norm (lower case, no punctuation, "hellooo" squashed, chat shorthand SHORT: u r wat whos pls
+  yea nah ...) -> VOICE.fix (each word to the nearest known word: VOICE.same = plural or 1 typo for 4-6 letters,
+  2 from 7, both >= 4 letters, SAME FIRST LETTER - "that" is not "what") -> VOICE.intent (VOICE.INTENTS: key words
+  / phrases, best score; canon = the words the old VOICE.answer understands). WHO IS IT FOR (VOICE.addressed ->
+  "direct" | "convo" | nil): its name; "computer" / "robot" / "bot" (even with others near); a pending question;
+  a CONVERSATION (VOICE.convo, 90 s after it spoke to that player) - a question ("?", a question word in the
+  first 2 words) or an ask (ASKWORDS: please tell show lets ...) = direct, else convo; alone with it: a question
+  / hello; lonely mode: everything. convo + no intent (or a weak one in a long message: "that was a fun day")
+  -> only a small spoken reaction, NEVER a menu. direct + not understood -> "Sorry ..." + a NUMBERED MENU in chat
+  (VOICE.showMenu / menuItems: visitors get who lives here / tour / joke / game / leave a message / more); VOICE.pend
+  per player: a menu number, yes / no (the tour: "want to know who lives here?", jokes: "want another one?"), the
+  text of a message ("can i leave a mesage" -> "what should it say?" -> the next line). No intent -> VOICE.answer
+  STRICT (only the parts that read details: lonely / extra answers / where is - the loose one-word checks "how",
+  "who", "base" answered anything with the status). test_voice part 16 (passes with 60 random seeds).
 - REMOVED AGAIN: remote access in a web browser (Cloud Catcher; base_remote.lua / remote.lua / pocket.lua
   in local mode on the base) - the owner: "taking space and seems useless". removeOldFiles (base_theme.lua,
   run by inventory.lua at start) deletes its files (remote.lua, base_remote.lua, cloud.lua on the computer
