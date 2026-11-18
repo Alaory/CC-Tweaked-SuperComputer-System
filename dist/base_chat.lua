@@ -125,6 +125,8 @@ end
 
 
 function handleChat(m)
+
+if VOICE and VOICE.chat and not tostring(m.msg or ""):find("^%$") then pcall(VOICE.chat, m) end
 local text = tostring(m.msg or ""):gsub("^%$", "")
 local words = {}
 for w in text:gmatch("%S+") do words[#words + 1] = w end

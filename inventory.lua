@@ -68,9 +68,10 @@ end
 buildWindow()
 if baseStartCheck then pcall(baseStartCheck) end      -- was the base off? (base_workers.lua)
 if removeOldFiles then pcall(removeOldFiles, dir) end   -- (files of a feature taken out again)
+if loadAddon then pcall(loadAddon, "voice_addon.lua") end  -- optional: the base talks (on a data floppy)
 
 local okRun, errRun = pcall(parallel.waitForAny, uiLoop, invWorker, pageWorker, actionWorker,
-                   droneWorker, terminalWorker, chatWorker, commsWorker, mapWorker, supplyWorker)
+                   droneWorker, terminalWorker, chatWorker, commsWorker, mapWorker, supplyWorker, addonWorker)
 
 pcall(MAP.save)                     -- map changes of the last minute
 if baseExit then

@@ -467,3 +467,61 @@ function removeOldFiles(dir)
   end
   return gone
 end
+
+-- ===== OPTIONAL ADD-ONS (kept on a DATA FLOPPY, not on the 1 MB computer) =====
+-- voice_addon.lua (the base talks): `voice install` downloads it onto a data floppy, the base
+-- loads it at start when it finds it there (or next to inventory.lua), `voice remove` deletes it.
+function addonPath(file)
+  for _, d in ipairs(mountedDisks()) do
+    local p = fs.combine(d.mount, file)
+    if fs.exists(p) then return p end
+  end
+  local here = fs.combine(BASE_DIR or "", file)
+  if fs.exists(here) then return here end
+  return nil
+end
+function loadAddon(file)
+  local p = addonPath(file)
+  if not p then return false, "not installed" end
+  local h = fs.open(p, "r")
+  if not h then return false, "cannot read " .. p end
+  local text = h.readAll() or ""
+  h.close()
+  local fn, err = load(text, "@" .. p, "t", _ENV)
+  if not fn then return false, tostring(err) end
+  local ok, e = pcall(fn)
+  if not ok then return false, tostring(e) end
+  os.queueEvent("addon_loaded")
+  return true, p
+end
+-- download an add-on (upgrade.lua fetch mode: checked + compiles) onto a data floppy
+function installAddon(file, group, log)
+  log = log or function() end
+  local up = fs.combine(BASE_DIR or "", "upgrade.lua")
+  local fn = fs.exists(up) and loadfile(up, "t", _ENV)
+  if not fn then return false, "upgrade.lua is missing next to inventory.lua" end
+  local okR, done, body = pcall(fn, { fetch = file, group = group, dir = BASE_DIR or "", log = log })
+  if not (okR and done and type(body) == "string") then return false, "the download did not work (see above)" end
+  local best
+  for _, d in ipairs(mountedDisks()) do
+    if d.data and (d.free or 0) > #body + 16 * 1024 and (not best or d.free > best.free) then best = d end
+  end
+  if not best then
+    return false, "no DATA floppy with room (" .. math.ceil(#body / 1024 + 16) .. " KB) - add-ons are kept off the computer. Put a floppy in a drive and type  disks data"
+  end
+  local old = addonPath(file)
+  local p = fs.combine(best.mount, file)
+  if not saveFileSafe(p, body) then return false, "could not save it on " .. best.mount end
+  if old and old ~= p then pcall(fs.delete, old) end
+  return loadAddon(file)
+end
+function removeAddon(file)
+  local n = 0
+  while true do
+    local p = addonPath(file)
+    if not p then break end
+    if not pcall(fs.delete, p) or fs.exists(p) then break end
+    n = n + 1
+  end
+  return n
+end

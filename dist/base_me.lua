@@ -93,6 +93,7 @@ noteLogAdd({ title = title, msg = msg, col = col, when = realTime("%d.%m %H:%M")
 if state.page ~= "events" then state.noteUnread = (state.noteUnread or 0) + 1 end
 if notifyChat then pcall(notifyChat, title, msg, col) end
 if POCKET then pcall(POCKET.note, title, msg, col) end
+if VOICE and VOICE.note then pcall(VOICE.note, title, msg, col) end
 os.queueEvent("inv_update")
 end
 

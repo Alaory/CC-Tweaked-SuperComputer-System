@@ -762,3 +762,17 @@ end
 end
 end
 
+
+
+
+function addonWorker()
+while state.running do
+if VOICE and VOICE.loop then
+local ok, err = pcall(VOICE.loop)
+if not ok then VOICE.err = tostring(err) end
+sleep(5)
+else
+waitFor(30, "addon_loaded")
+end
+end
+end

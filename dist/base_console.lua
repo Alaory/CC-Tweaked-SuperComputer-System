@@ -28,6 +28,7 @@ HELP = {
 " turtle <id> log [n]  the turtle's last n log lines in full",
 " turtle <id> diag     its disk, files, saved job and gear (answer in its log)",
 " survey               the big survey: progress, what each turtle is waiting for",
+" voice [install]      the base talks (an optional add-on on a data floppy + a Speaker)",
 " survey auto [on|off] auto-map: turtles keep surveying from the base outward",
 " theme [name|random]  the monitor's colours (random = a different one each start)",
 " uptime               how long the base runs, and when it was off (and why)",
@@ -960,6 +961,24 @@ say("Automatic drone fuel runs " .. words[3]:upper())
 else
 for _, l in ipairs(DW.statusLines()) do say(l) end
 say("dw chest [<n|name> me]  |  dw fuel <id>  |  dw fuel item <item> [count]  |  dw auto on|off  |  schem build ...")
+end
+
+elseif cmd == "voice" then
+
+local a = (words[2] or ""):lower()
+if a == "install" or a == "update" then
+local ok, msg = installAddon("voice_addon.lua", "voice", say)
+say(ok and ("Installed on " .. tostring(msg) .. " - the base talks. Try:  voice say hello") or ("Not installed: " .. tostring(msg)))
+elseif a == "remove" then
+local n = removeAddon("voice_addon.lua")
+VOICE = nil
+say(n > 0 and "Removed - the base is quiet (settings kept)." or "It was not installed.")
+elseif VOICE and VOICE.command then
+for _, l in ipairs(VOICE.command(words)) do say(l) end
+else
+say("The base can TALK (an optional add-on, kept on a data floppy): greets people near the base,")
+say("says warnings out loud, answers  base, status?  in chat. Needs a Speaker next to the computer")
+say("or on the cable, a data floppy with ~40 KB free and the internet. Type:  voice install")
 end
 
 elseif cmd == "pocket" then

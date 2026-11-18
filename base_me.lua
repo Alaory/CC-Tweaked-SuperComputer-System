@@ -93,6 +93,7 @@ function pushNote(title, msg, col, secs)
   if state.page ~= "events" then state.noteUnread = (state.noteUnread or 0) + 1 end
   if notifyChat then pcall(notifyChat, title, msg, col) end    -- '$drone notify' (base_chat.lua)
   if POCKET then pcall(POCKET.note, title, msg, col) end        -- the pocket remote (base_pocket.lua)
+  if VOICE and VOICE.note then pcall(VOICE.note, title, msg, col) end   -- out loud (voice_addon.lua)
   os.queueEvent("inv_update")
 end
 

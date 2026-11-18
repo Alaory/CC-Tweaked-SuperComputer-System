@@ -68,9 +68,10 @@ end
 buildWindow()
 if baseStartCheck then pcall(baseStartCheck) end
 if removeOldFiles then pcall(removeOldFiles, dir) end
+if loadAddon then pcall(loadAddon, "voice_addon.lua") end
 
 local okRun, errRun = pcall(parallel.waitForAny, uiLoop, invWorker, pageWorker, actionWorker,
-droneWorker, terminalWorker, chatWorker, commsWorker, mapWorker, supplyWorker)
+droneWorker, terminalWorker, chatWorker, commsWorker, mapWorker, supplyWorker, addonWorker)
 
 pcall(MAP.save)
 if baseExit then

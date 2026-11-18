@@ -917,6 +917,26 @@ PneumaticCraft drone rides, turtle mapping/surveys, and an AE2 ME network view.
   inventory.lua (STORE.code, must compile) goes to every helper whose version
   (hello -> ver = checksum of its startup.lua) differs (op "upd": checksum +
   compile check, then startup.lua + reboot) - STORE.updateAll in the mapWorker.
+- THE BASE TALKS (voice_addon.lua VOICE - an OPTIONAL ADD-ON kept on a DATA FLOPPY, not on the computer):
+  console `voice install` = installAddon (base_theme.lua: upgrade.lua fetch mode, manifest group "voice" +
+  slim:voice - NOT a base_* name, so never installed on the computer) -> saved on the data floppy with most
+  room -> loadAddon (fs.open + load with the shared _ENV; also at every start from inventory.lua: any mounted
+  disk, else next to inventory.lua); `voice remove` (removeAddon, VOICE = nil). addonWorker (base_workers.lua,
+  in inventory.lua's list) runs VOICE.loop (waits for "addon_loaded" while none). Hooks in the base: pushNote ->
+  VOICE.note, handleChat -> VOICE.chat (not $ messages), console `voice ...` -> VOICE.command. Speech = the
+  text-to-speech service music.madefor.cc/tts?text= (DFPWM; the owner tested `speaker play` on it in game) ->
+  cc.audio.dfpwm decoder -> playAudio on EVERY speaker (peripheral.hasType speaker; waits for
+  speaker_audio_empty, gives up after 40 tries); phrases <= 80 chars cached on the data floppy (voice/<hash>.dfpwm,
+  CONFIG.voice.cacheKB 200, oldest out first; never on the computer). GREET (VOICE.tick every 2 s, state.players
+  within CONFIG.voice.range 64 of the drone home, overworld, online): owner "Welcome back" + statusText,
+  allowed "Hello", strangers chime + "Visitor near the base" (greetEvery 600 s each). ANNOUNCE: WARNING / ERROR
+  notes only while someone is near, one per 20 s, the same title not within 5 min. CHAT: "<name>, question"
+  (CONFIG.voice.name "base"; "baseball" is not) from someone near -> chatTell + spoken; the owner far away ->
+  chat only; QUESTIONS ONLY (status, turtles, mining, survey, time, weather, who - POCKET.status / ENV data),
+  never actions. ALARM (voice.alarm, default OFF): a stranger arriving / a hostile within alarmRange 12 of the
+  Environment Detector (ENV.data.ents) -> bell + spoken, once per 5 min, only when someone is near. Settings
+  via `voice on|off|greet|announce|chat|alarm on|off|volume <0-3>|range <n>|name <word>` (setSetting voice.*;
+  VOICE.cfg uses an if - false stays false). test_voice.lua (fake speaker / http / dfpwm, players walking up).
 - REMOVED AGAIN: remote access in a web browser (Cloud Catcher; base_remote.lua / remote.lua / pocket.lua
   in local mode on the base) - the owner: "taking space and seems useless". removeOldFiles (base_theme.lua,
   run by inventory.lua at start) deletes its files (remote.lua, base_remote.lua, cloud.lua on the computer
@@ -1022,6 +1042,7 @@ The old Block UI (stone buttons, bedrock theme) is gone.
 | base_meplus.lua / base_ui_mesys.lua | more of the ME Bridge: CPUs, jobs (cancel), your craft requests followed, drives, patterns, storage buses / the AE2 SYSTEM page |
 | base_env.lua / base_ui_env.lua | the Environment Detector: time, weather, moon, light, mobs around the base / the WORLD page |
 | base_pocket.lua / pocket.lua | the pocket remote: base side (pairing, status, actions, messages) / the program on the pocket computer |
+| voice_addon.lua | OPTIONAL add-on on a data floppy (`voice install`): the base talks through Speakers - greetings, warnings, chat answers, alarm |
 
 ## The owner's setup (found out the hard way)
 Peripherals (from the `report` command): `me_bridge_4`, `inventory_manager_3`,
@@ -1153,4 +1174,4 @@ rider down at the pickup spot.
 ## Useful console commands (on the base computer)
 help, report, tanks, mesetup, me check, me add <id>, curios check, disks
 [data|move], drones, drone <n>, charger, turtles, turtle <id> <cmd>, update,
-rescue, findlost, map [clear], exit [clear], survey, theme, events, supply, mine update, dw, schem build.
+rescue, findlost, map [clear], exit [clear], survey, theme, events, supply, mine update, dw, schem build, voice.

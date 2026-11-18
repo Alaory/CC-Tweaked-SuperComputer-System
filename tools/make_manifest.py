@@ -23,7 +23,8 @@ def files():
     base = [f for f in base if f != "base_config.lua"]
     out = [("base", f) for f in ["inventory.lua", "startup.lua", "node.lua", "store.lua", "upgrade.lua"] + base]
     out += [("pocket", "pocket.lua"), ("pocket", "upgrade.lua")]
-    out += [("miner", "miner.lua")]      # (NOT installed on the base: `mine update` fetches it for the mining turtles)
+    out += [("miner", "miner.lua")]
+    out += [("voice", "voice_addon.lua")]  # (an optional add-on: `voice install` puts it on a data floppy)      # (NOT installed on the base: `mine update` fetches it for the mining turtles)
     return out
 
 def slimmed(f):

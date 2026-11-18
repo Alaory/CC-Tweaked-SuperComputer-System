@@ -762,3 +762,17 @@ function uiLoop()
   end
 end
 
+
+-- optional add-ons with their own loop (voice_addon.lua: VOICE.loop - it waits for the speaker,
+-- so not in the comms worker). Nothing installed: it just waits for one ("addon_loaded").
+function addonWorker()
+  while state.running do
+    if VOICE and VOICE.loop then
+      local ok, err = pcall(VOICE.loop)
+      if not ok then VOICE.err = tostring(err) end
+      sleep(5)
+    else
+      waitFor(30, "addon_loaded")
+    end
+  end
+end
