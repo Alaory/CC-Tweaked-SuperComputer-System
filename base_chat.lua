@@ -150,7 +150,7 @@ function handleChat(m)
           c .. " places | " .. c .. " status | " .. c .. " stop")
     if owner then reply("Places: " .. c .. " mark <name> (stand ON the block) | " .. c .. " unmark <name> | " .. c .. " workchest (stand ON the drones' work chest)") end
     if owner then reply("Owner: " .. c .. " allow/deny <name> | " ..
-                        c .. " allowed | " .. c .. " yes/no <name> | " .. c .. " notify on/all/off | " .. c .. " remote [<code>|off|new]") end
+                        c .. " allowed | " .. c .. " yes/no <name> | " .. c .. " notify on/all/off") end
 
   elseif sub == "notify" then
     -- the base's messages in chat (owner only): on = warnings + errors, all, off
@@ -171,31 +171,6 @@ function handleChat(m)
     local cur = state.notifySubs[k]
     reply("Base messages in chat: " .. (cur and (cur.level == "all" and "ALL (everything)" or "ON (warnings + errors)")
           or "OFF") .. ".  " .. c .. " notify on | all | off")
-
-  elseif sub == "remote" then
-    -- the base's console in your web browser (owner only): the link comes privately
-    if not owner then reply("Only " .. tostring(state.owner) .. " can use remote access.") return end
-    local want = (words[3] or ""):lower()
-    if words[3] and REMOTE.useToken(words[3]) then
-      -- the code from the web page (pasted in chat - links cannot be clicked in every game)
-      local b0 = REMOTE.blocker()
-      if b0 then reply("Remote access cannot run: " .. b0) return end
-      reply("Got it - your browser page connects in a few seconds. Bookmark: " .. REMOTE.link())
-      return
-    elseif want == "off" then
-      REMOTE.setOn(false)
-      reply("Remote access OFF.")
-      return
-    elseif want == "new" then
-      REMOTE.renew()
-      reply("A new link - the old one no longer works.")
-    elseif not REMOTE.cfg("on", false) or not REMOTE.token() then
-      REMOTE.setOn(true)
-    end
-    local b = REMOTE.blocker()
-    if b then reply("Remote access cannot run: " .. b) return end
-    REMOTE.tellLink(name)
-    if REMOTE.why then reply("Remote access: " .. REMOTE.why) end
 
   elseif sub == "mark" or sub == "unmark" then
     -- stand ON the block (a chest, a build corner ...) and mark it: no coordinates to type

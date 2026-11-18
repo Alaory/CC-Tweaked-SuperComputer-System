@@ -287,7 +287,7 @@ local wsrc = (io.open("base_workers.lua") or io.open("../../base_workers.lua")):
 CHECK(wsrc:find("function supplyWorker", 1, true) and not wsrc:find("pcall(SUPPLY.tick)                 --", 1, true),
       "supply runs in its own worker, not the comms worker")
 local isrc = (io.open("inventory.lua") or io.open("../../inventory.lua")):read("a")
-CHECK(isrc:find("supplyWorker[,)]"), "inventory.lua starts supplyWorker")
+CHECK(isrc:find("supplyWorker)", 1, true), "inventory.lua starts supplyWorker")
 
 -- saved and read back
 SUPPLY.save()

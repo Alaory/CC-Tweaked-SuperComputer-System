@@ -28,7 +28,6 @@ HELP = {
 " turtle <id> log [n]  the turtle's last n log lines in full",
 " turtle <id> diag     its disk, files, saved job and gear (answer in its log)",
 " survey               the big survey: progress, what each turtle is waiting for",
-" remote on|off|new|link   this console in your web browser (also while you are not in the game)",
 " survey auto [on|off] auto-map: turtles keep surveying from the base outward",
 " theme [name|random]  the monitor's colours (random = a different one each start)",
 " uptime               how long the base runs, and when it was off (and why)",
@@ -962,29 +961,6 @@ else
 for _, l in ipairs(DW.statusLines()) do say(l) end
 say("dw chest [<n|name> me]  |  dw fuel <id>  |  dw fuel item <item> [count]  |  dw auto on|off  |  schem build ...")
 end
-
-elseif cmd == "remote" then
-
-local a = (words[2] or ""):lower()
-if a == "on" then
-REMOTE.setOn(true)
-say("Remote access ON - starting it (a few seconds).")
-elseif a == "off" then
-REMOTE.setOn(false)
-say("Remote access OFF - the browser page goes blank.")
-elseif a == "new" then
-REMOTE.renew()
-say("A NEW link was made - the old one no longer works.")
-elseif a == "link" then
-local who = knownOwner and knownOwner() or state.owner
-if who and chatBox then REMOTE.tellLink(who) say("The link was sent to " .. who .. " in chat.")
-else say("No Chat Box / owner known - copy the link below.") end
-elseif REMOTE.useToken(words[2]) then
-say("Using the web page's code - starting (a few seconds). The page you opened connects by itself.")
-elseif a ~= "" then
-say("Use: remote on | off | new | link | <the 32-letter code from " .. REMOTE.SITE .. ">")
-end
-for _, l in ipairs(REMOTE.lines()) do say(l) end
 
 elseif cmd == "pocket" then
 if words[2] == "unpair" and tonumber(words[3]) then

@@ -444,3 +444,26 @@ end
 end
 end
 
+
+
+
+
+function removeOldFiles(dir)
+local gone = {}
+local function del(p)
+if fs.exists(p) and not fs.isDir(p) and pcall(fs.delete, p) then gone[#gone + 1] = p end
+end
+dir = dir or ""
+del(fs.combine(dir, "remote.lua"))
+del(fs.combine(dir, "base_remote.lua"))
+del("cloud.lua")
+for _, d in ipairs(mountedDisks()) do del(fs.combine(d.mount, "cloud.lua")) end
+local pp = fs.combine(dir, "pocket.lua")
+if fs.exists(pp) then
+local h = fs.open(pp, "r")
+local text = h and h.readAll() or ""
+if h then h.close() end
+if text:find("POCKET_LOCAL", 1, true) then del(pp) end
+end
+return gone
+end

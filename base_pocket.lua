@@ -312,42 +312,26 @@ function POCKET.receive(id, m)
   if m.n / 100 < os.epoch("utc") - 60000 then return end
   if m.sig ~= sign(p.key, m.t, m.n, m.a, m.args) then return end
   p.lastN, p.seen = m.n, os.epoch("utc")
-  POCKET.serve(m, function(t, body) send(id, t, body) end, "Pocket")
-end
-
--- a status request / an action (from a paired pocket, or the base's own remote tab)
-function POCKET.serve(m, reply, who)
   if m.t == "req" then
     local data = POCKET.status()
     -- DRIVE mode on the pocket: the six directions of that turtle
     if m.a == "drive" and type(m.args) == "table" then data.drive = POCKET.driveView(tonumber(m.args[1])) end
-    reply("status", { data = data, re = m.n })
+    send(id, "status", { data = data, re = m.n })
   elseif m.t == "act" then
     local okA, ok, msg = pcall(POCKET.act, tostring(m.a), m.args, m.pos)
     if not okA then ok, msg = false, "error: " .. tostring(ok) end
-    reply("res", { ok = ok and true or false, msg = tostring(msg), re = m.n })
-    if sysLog then sysLog((who or "Pocket") .. ": " .. tostring(m.a) .. " " .. table.concat(m.args or {}, " ") .. " -> " .. tostring(msg), "INFO") end
+    send(id, "res", { ok = ok and true or false, msg = tostring(msg), re = m.n })
+    if sysLog then sysLog("Pocket: " .. tostring(m.a) .. " " .. table.concat(m.args or {}, " ") .. " -> " .. tostring(msg), "INFO") end
     os.queueEvent("inv_update")
   end
 end
 
--- the base's own REMOTE tab (pocket.lua local, shown in the browser): events, not the radio - same
--- computer, so no pairing / signing
-function POCKET.receiveLocal(m)
-  if type(m) ~= "table" or (m.t ~= "req" and m.t ~= "act") then return end
-  POCKET.serve(m, function(t, body) body.t = t os.queueEvent("pocket_local_reply", body) end, "Remote")
-end
-
 -- the monitor's warnings / errors (pushNote) go to every paired pocket
 function POCKET.note(title, msg, col)
+  if not next(POCKET.pockets) then return end
   local kind = noteKind and noteKind(col) or "INFO"
   if kind ~= "WARNING" and kind ~= "ERROR" and kind ~= "DONE" then return end
   if title == "POCKET PAIRING" then return end
-  -- the remote tab (the browser) gets them too
-  if REMOTE and REMOTE.running and REMOTE.running() then
-    os.queueEvent("pocket_local_reply", { t = "note", kind = kind, title = tostring(title or ""), msg = tostring(msg or ""), at = os.epoch("utc") })
-  end
-  if not next(POCKET.pockets) then return end
   for id in pairs(POCKET.pockets) do
     send(id, "note", { kind = kind, title = tostring(title or ""), msg = tostring(msg or ""), at = os.epoch("utc") })
   end

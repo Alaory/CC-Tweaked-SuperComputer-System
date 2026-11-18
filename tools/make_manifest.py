@@ -21,7 +21,7 @@ def h(data):                       # same as upgradeHash in upgrade.lua
 def files():
     base = sorted(os.path.basename(f) for f in glob.glob(os.path.join(ROOT, "base_*.lua")))
     base = [f for f in base if f != "base_config.lua"]
-    out = [("base", f) for f in ["inventory.lua", "startup.lua", "node.lua", "store.lua", "upgrade.lua", "remote.lua", "pocket.lua"] + base]
+    out = [("base", f) for f in ["inventory.lua", "startup.lua", "node.lua", "store.lua", "upgrade.lua"] + base]
     out += [("pocket", "pocket.lua"), ("pocket", "upgrade.lua")]
     out += [("miner", "miner.lua")]      # (NOT installed on the base: `mine update` fetches it for the mining turtles)
     return out

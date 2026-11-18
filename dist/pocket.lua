@@ -17,15 +17,12 @@
 
 local PROTO = "basepocket"
 local TESTING = _G.POCKET_TEST
-
-
-local LOCAL = (({ ... })[1] == "local") or _G.POCKET_LOCAL
 local FILE = "pocket.dat"
 local W, H = term.getSize()
 
 
 local me = shell and shell.getRunningProgram() or "startup.lua"
-if not TESTING and not LOCAL and me ~= "startup.lua" then
+if not TESTING and me ~= "startup.lua" then
 if fs.exists("startup.lua") then
 if fs.exists("startup.old") then fs.delete("startup.old") end
 fs.move("startup.lua", "startup.old")
@@ -71,7 +68,6 @@ if type(t) == "table" then P.key, P.base, P.baseName = t.key, t.base, t.baseName
 end
 end
 function saveState()
-if LOCAL then return end
 local h = fs.open(FILE, "w")
 if h then h.write(textutils.serialize({ key = P.key, base = P.base, baseName = P.baseName })) h.close() end
 end
@@ -87,12 +83,6 @@ P.base = id
 return id
 end
 function sendBase(t, a, args, extra)
-if LOCAL then
-local m = extra or {}
-m.t, m.n, m.a, m.args = t, nextN(), a, args
-os.queueEvent("pocket_local", m)
-return true
-end
 local id = findBase()
 if not id then P.toast = "base not found - is it on?" return false end
 local m = extra or {}
@@ -134,7 +124,7 @@ P.key, P.toast = nil, "the base does not know this pocket - pair again"
 saveState()
 return
 end
-if not LOCAL and (not P.key or id ~= P.base or m.sig ~= sign(P.key, m.t, m.n)) then return end
+if not P.key or id ~= P.base or m.sig ~= sign(P.key, m.t, m.n) then return end
 if m.t == "status" then
 P.data, P.got = m.data, os.clock()
 elseif m.t == "res" then
@@ -237,7 +227,6 @@ return tostring(math.floor(f))
 end
 
 local TABS = { { "home", "HOME" }, { "ride", "RIDE" }, { "bots", "BOTS" }, { "mine", "MINE" }, { "msg", "MSG" }, { "more", "+" } }
-if LOCAL then TABS[#TABS + 1] = { "cmd", "CMD" } end
 function drawTabs()
 local x = 1
 for _, t in ipairs(TABS) do
@@ -245,9 +234,7 @@ local label = t[2]
 if t[1] == "msg" and P.unread > 0 then label = "MSG" .. math.min(9, P.unread) end
 local on = P.tab == t[1]
 at(x, 1, label, on and C.ink or C.text, on and C.acc or C.head)
-P.hits[#P.hits + 1] = { x = x, y = 1, w = #label, fn = function()
-if t[1] == "cmd" then P.quit = "cmd" return end
-P.tab, P.sel = t[1], nil if t[1] == "msg" then P.unread = 0 end refresh() end }
+P.hits[#P.hits + 1] = { x = x, y = 1, w = #label, fn = function() P.tab, P.sel = t[1], nil if t[1] == "msg" then P.unread = 0 end refresh() end }
 x = x + #label + 1
 end
 end
@@ -567,35 +554,6 @@ rednet.open(peripheral.getName(m))
 return true
 end
 
-
-
-function mainLocal()
-P.key, P.base, P.baseName = "local", "local", os.getComputerLabel() or "this base"
-refresh()
-local tick = os.startTimer(5)
-os.queueEvent("remote_alive")
-draw()
-while true do
-local ev, a, b, c = os.pullEventRaw()
-if ev == "pocket_local_reply" then handle("local", a)
-elseif ev == "remote_quit" or ev == "terminate" then return "quit"
-elseif ev == "mouse_click" then click(b, c)
-elseif ev == "mouse_scroll" then scroll(a)
-elseif ev == "key" and P.drive and driveKey(a) then
-elseif ev == "key" and a == keys.up then scroll(-1)
-elseif ev == "key" and a == keys.down then scroll(1)
-elseif ev == "timer" and a == tick then
-tick = os.startTimer(P.drive and 1 or 5)
-os.queueEvent("remote_alive")
-refresh()
-if P.toast and P.toastAt and os.clock() - P.toastAt > 6 then P.toast = nil end
-end
-if P.quit then local q = P.quit P.quit = nil return q end
-if P.toast ~= P.lastToast then P.lastToast, P.toastAt = P.toast, os.clock() end
-draw()
-end
-end
-
 function main()
 loadState()
 if not openModem() then
@@ -646,11 +604,6 @@ end
 end
 
 if TESTING then return P end
-if LOCAL then
-local okL, res = pcall(mainLocal)
-if not okL then printError("menu: " .. tostring(res)) return "error" end
-return res
-end
 local ok, err = pcall(main)
 if not ok and tostring(err) ~= "Terminated" then
 printError("pocket: " .. tostring(err))
