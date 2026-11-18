@@ -463,6 +463,7 @@ function mapWorker()
       pcall(MAP.autoSave)                -- changed map regions, at most once a minute
     end
     if os.clock() - lastCode > 30 then lastCode = os.clock() pcall(TT.codeLoad) end   -- node.lua changed?
+    pcall(REMOTE.tick)                             -- the console in your browser (base_remote.lua)
     -- map files still on this computer -> floppies / storage helpers (every 10 min;
     -- every minute while the computer's disk is low)
     local okF, pcFree = pcall(fs.getFreeSpace, "/")
@@ -581,7 +582,12 @@ function chatWorker()
         -- private reply. sendMessage(text, { player = ... }) is what this Chat
         -- Box understands (it worked from the start); sendMessageToPlayer only
         -- if that fails. A failure is shown once in EVENTS.
-        local okS, errS = pcall(chatBox.sendMessage, o.text, { player = o.name, prefix = CONFIG.chat.replyPrefix })
+        local okS, errS = false, nil
+        -- (a clickable link: the formatted message, where this Chat Box has it)
+        if o.json and chatBox.sendFormattedMessageToPlayer then
+          okS = pcall(chatBox.sendFormattedMessageToPlayer, o.json, o.name, CONFIG.chat.replyPrefix)
+        end
+        if not okS then okS, errS = pcall(chatBox.sendMessage, o.text, { player = o.name, prefix = CONFIG.chat.replyPrefix }) end
         if not okS and chatBox.sendMessageToPlayer then
           okS = pcall(chatBox.sendMessageToPlayer, o.text, o.name, CONFIG.chat.replyPrefix)
         end

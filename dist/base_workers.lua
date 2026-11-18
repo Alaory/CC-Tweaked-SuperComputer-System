@@ -463,6 +463,7 @@ else
 pcall(MAP.autoSave)
 end
 if os.clock() - lastCode > 30 then lastCode = os.clock() pcall(TT.codeLoad) end
+pcall(REMOTE.tick)
 
 
 local okF, pcFree = pcall(fs.getFreeSpace, "/")
@@ -581,7 +582,12 @@ local o = table.remove(state.chatOut, 1)
 
 
 
-local okS, errS = pcall(chatBox.sendMessage, o.text, { player = o.name, prefix = CONFIG.chat.replyPrefix })
+local okS, errS = false, nil
+
+if o.json and chatBox.sendFormattedMessageToPlayer then
+okS = pcall(chatBox.sendFormattedMessageToPlayer, o.json, o.name, CONFIG.chat.replyPrefix)
+end
+if not okS then okS, errS = pcall(chatBox.sendMessage, o.text, { player = o.name, prefix = CONFIG.chat.replyPrefix }) end
 if not okS and chatBox.sendMessageToPlayer then
 okS = pcall(chatBox.sendMessageToPlayer, o.text, o.name, CONFIG.chat.replyPrefix)
 end

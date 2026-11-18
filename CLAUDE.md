@@ -951,6 +951,23 @@ PneumaticCraft drone rides, turtle mapping/surveys, and an AE2 ME network view.
   inventory.lua (STORE.code, must compile) goes to every helper whose version
   (hello -> ver = checksum of its startup.lua) differs (op "upd": checksum +
   compile check, then startup.lua + reboot) - STORE.updateAll in the mapWorker.
+- REMOTE ACCESS (base_remote.lua REMOTE + remote.lua; console `remote on|off|new|link`, chat `$drone remote
+  [off|new]` (owner, the link comes privately - clickable via sendFormattedMessageToPlayer, chatOut .json),
+  STATUS line "Remote access"; the owner: "check / use the computer when I am not in game"): Cloud Catcher
+  (cloud-catcher.squiddev.cc, free; source github.com/SquidDev-CC/cloud-catcher src/host/init.lua): cloud.lua
+  <token> -- <program> mirrors ITS tab's terminal to https://cloud-catcher.squiddev.cc/?id=<token> and
+  injects the browser's keys. It ENDS when the websocket drops - and the program inside it with it - so the
+  base is never inside it: REMOTE.start = shell.openTab("/cloud.lua", token, "--", "/remote.lua") (multishell
+  = ADVANCED computer; REMOTE.blocker names no http.websocket / no tabs; http.checkURL refusal named).
+  remote.lua: "base> " prompt -> os.queueEvent("remote_cmd", req, line) (events go to every tab) ->
+  remoteWorker (its own worker in inventory.lua) -> REMOTE.run = handleCommand with HAND_CMD, sysLog
+  "Remote command: ..", answer "remote_out" req lines; "drive" refused (keyboard); 'shell' / 'clear';
+  "remote_alive" every 5 s; "remote_quit" ends it (off / new). REMOTE.tick (mapWorker ~5 s): on + quiet
+  30 s -> start again; a start never heard of counts as a failure once (REMOTE.counted) -> waits 60 s,
+  2, 4, 8 .. 10 min. Token: 32 letters/digits made here (REMOTE.newToken), settings.dat remote.token /
+  remote.on (setSetting); it lets anyone with the link type commands - `remote new` replaces it.
+  cloud.lua downloaded once via dataPath (data floppy first; must compile; room checked - the computer
+  had ~60 KB free). test_remote.lua (fake http / multishell / shell.openTab).
 - UPGRADE (upgrade.lua; console `upgrade [check|branch <b>]`, SYSTEM > ACTIONS
   UPGRADE PROGRAM, or `upgrade` in a shell - also on the pocket; the FULL commented files are
   bigger than a 1 MB computer now - `upgrade full` refuses cleanly there, upgrade_sim checks both): the newest files from
@@ -1052,6 +1069,7 @@ The old Block UI (stone buttons, bedrock theme) is gone.
 | base_meplus.lua / base_ui_mesys.lua | more of the ME Bridge: CPUs, jobs (cancel), your craft requests followed, drives, patterns, storage buses / the AE2 SYSTEM page |
 | base_env.lua / base_ui_env.lua | the Environment Detector: time, weather, moon, light, mobs around the base / the WORLD page |
 | base_pocket.lua / pocket.lua | the pocket remote: base side (pairing, status, actions, messages) / the program on the pocket computer |
+| base_remote.lua / remote.lua | remote access: the console in a web browser (Cloud Catcher in its own tab) / the console program in that tab |
 
 ## The owner's setup (found out the hard way)
 Peripherals (from the `report` command): `me_bridge_4`, `inventory_manager_3`,
@@ -1183,4 +1201,4 @@ rider down at the pickup spot.
 ## Useful console commands (on the base computer)
 help, report, tanks, mesetup, me check, me add <id>, curios check, disks
 [data|move], drones, drone <n>, charger, turtles, turtle <id> <cmd>, update,
-rescue, findlost, map [clear], exit [clear], survey, theme, events, supply, mine update, dw, schem build.
+rescue, findlost, map [clear], exit [clear], survey, theme, events, supply, mine update, dw, schem build, remote.

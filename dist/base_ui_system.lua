@@ -65,6 +65,10 @@ kv(ix, r + 12, iw, "Pocket remote", np == 0 and "none paired (pocket.lua on a po
 or (np .. " paired" .. (lastP and ("   last used " .. TT.ago(lastP)) or "")), np > 0 and C.text or C.dim)
 kv(ix, r + 13, iw, "Schematics", (s.schematics or 0) .. " stored" .. ((s.schematics or 0) == 0
 and "   (drag a Create .nbt onto the computer's screen)" or "   (type  schem)"), (s.schematics or 0) > 0 and C.text or C.dim)
+local ron = REMOTE.cfg("on", false)
+kv(ix, r + 14, iw, "Remote access", (not ron) and "off (type  remote on  - the console in your browser)"
+or (REMOTE.running() and "ON - connected" or ("ON - " .. tostring(REMOTE.why or "starting"))),
+(not ron) and C.dim or (REMOTE.running() and C.good or C.warn))
 
 
 local ly = y0 + sh + 1
