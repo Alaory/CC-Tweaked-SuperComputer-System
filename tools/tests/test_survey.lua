@@ -268,6 +268,49 @@ MAP.spotDone = function(x, z) return DONE[x .. "," .. z] end
 CONFIG.map.pack = nil
 MAP.queue = nil
 
+-- 2g. the owner's game: a round goes out while half the fleet is busy (coming home, refuelling).
+--     Those that turn free WHILE the round runs join it at once with a short share - before they
+--     waited for the whole round ("waiting for the rest of the pack" for minutes while the others
+--     flew 2,000 blocks), then the first half waited for THEM: half the fleet worked at a time.
+CONFIG.map.pack = true
+fleet(20)
+for id, t in pairs(state.turtles) do if id > 30 then t.task = "going home" end end
+local DONE8 = {}
+MAP.spotDone = function(x, z) return DONE8[x .. "," .. z] or math.max(math.abs(x - HOME.x), math.abs(z - HOME.z)) < 600 end
+MAP.queue = nil
+MAP.queueSurvey(HOME.x - 3000, HOME.z - 3000, HOME.x + 3000, HOME.z + 3000, 8, nil)
+local q8 = MAP.queue
+local function feed8()
+  CLOCK = CLOCK + 3
+  for _, t in pairs(state.turtles) do t.lastSeen = CLOCK end
+  local m = #state.tOut
+  MAP.feedSurvey()
+  return batchesSent(m)
+end
+local first = feed8()
+for _ = 1, 20 do if #first > 0 then break end first = feed8() end
+CHECK(#first == 10, "round 1: the 10 free turtles (" .. #first .. ")")
+local seen8 = {}
+for _, x in ipairs(first) do for _, p in ipairs(x.spots) do seen8[p[1] .. "," .. p[2]] = true end end
+for id, t in pairs(state.turtles) do if id > 30 then t.task = "idle" end end    -- the others are back
+local late8 = feed8()
+local most8, dup8 = 0, 0
+for _, x in ipairs(late8) do
+  most8 = math.max(most8, #x.spots)
+  for _, p in ipairs(x.spots) do
+    if seen8[p[1] .. "," .. p[2]] then dup8 = dup8 + 1 end
+    seen8[p[1] .. "," .. p[2]] = true
+  end
+end
+CHECK(#late8 == 10, "the 10 that came back join the running round at once (" .. #late8 .. ")")
+CHECK(most8 <= 6 and dup8 == 0, "with a short share, no spot twice (most " .. most8 .. ", twice " .. dup8 .. ")")
+CHECK(q8.wave and #q8.wave.ids == 20, "the round now waits for all 20 (" .. (q8.wave and #q8.wave.ids or 0) .. ")")
+local again = feed8()
+CHECK(#again == 0, "nobody gets more until the round is done (" .. #again .. ")")
+MAP.spotDone = function(x, z) return DONE[x .. "," .. z] end
+CONFIG.map.pack = nil
+MAP.queue = nil
+
 -- 3. a turtle that still holds a batch (idle, no result yet) is not given a new one
 --    (without pack mode - the pack waits for its members anyway)
 CONFIG.map.pack = false

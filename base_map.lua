@@ -1348,7 +1348,7 @@ local function packRound(q, ids, k)
       local P = MAP.ringLen(r)
       for s = math.ceil(b.f * P - 0.000001), P - 1 do
         local x, z = spotAt(r, s)
-        if not skip(x, z) then q.redo[#q.redo + 1] = { x, z } end
+        if not skip(x, z) and not (b.took and b.took[x .. "," .. z]) then q.redo[#q.redo + 1] = { x, z } end
       end
     end
     q.cursor = math.min(total, MAP.ringStart(b.rings[#b.rings] + 1))
@@ -1421,6 +1421,7 @@ local function packRound(q, ids, k)
           else
             checked = checked + 1
             if MAP.spotDone(x, z) then q.skipped = q.skipped + 1 why.done = why.done + 1
+            elseif b.took and b.took[x .. "," .. z] then             -- (a turtle that joined has it)
             elseif nearPlayer(x, z) then q.redo[#q.redo + 1] = { x, z }       -- later
             else list[#list + 1] = { x, z } any, got = true, got + 1 end
           end
@@ -1523,6 +1524,63 @@ local function packRound(q, ids, k)
   return out, solo
 end
 MAP.packRound = packRound
+
+-- A turtle that turned free WHILE a round runs (back from a trip, done refuelling, new from
+-- the factory) JOINS it: the next k spots of its OWN ring (else the nearest ring no other
+-- joiner took), from where the band is - the very spots it would get in the next round. They
+-- are noted in q.band.took, so the next round skips them; nothing else moves (taking a whole
+-- slice of the band and putting the rest back scattered the pack).
+local function packJoin(q, ids, k)
+  local out, b = {}, q.band
+  if not (b and b.rings and #b.rings > 0) then return out end
+  b.took = b.took or {}
+  local used, budget = {}, 0
+  local function spotsOf(j)
+    local r = b.rings[j]
+    local P = MAP.ringLen(r)
+    local list = {}
+    for s = math.ceil((b.f or 0) * P - 0.000001), P - 1 do
+      budget = budget + 1
+      if budget > 20000 then break end
+      local dx, dz = spiral(MAP.ringStart(r) + s)
+      local x, z = q.cx + dx * q.step, q.cz + dz * q.step
+      local key = x .. "," .. z
+      if not ((q.rect and (x < q.x1 or x > q.x2 or z < q.z1 or z > q.z2)) or not MAP.inArea(x, z))
+         and not b.took[key] and not MAP.spotDone(x, z) then
+        list[#list + 1] = { x, z }
+        if #list >= k then break end
+      end
+    end
+    return list
+  end
+  for _, id in ipairs(ids) do
+    local t = state.turtles[id]
+    local mine = {}
+    local j0
+    for j, oid in pairs(b.own or {}) do if oid == id and not used[j] then j0 = j end end
+    if j0 then used[j0] = true mine = spotsOf(j0) end
+    if #mine == 0 and t and t.pos and t.pos.x then
+      -- (no ring of its own, or nothing left on it: the nearest ring with spots)
+      local best, bd, bl
+      for j = 1, #b.rings do
+        if not used[j] then
+          local l = spotsOf(j)
+          if l[1] then
+            local d = math.abs(l[1][1] - t.pos.x) + math.abs(l[1][2] - t.pos.z)
+            if not best or d < bd then best, bd, bl = j, d, l end
+          end
+        end
+      end
+      if best then used[best], mine = true, bl end
+    end
+    if #mine > 0 then
+      for _, p in ipairs(mine) do b.took[p[1] .. "," .. p[2]] = true end
+      out[id] = mine
+    end
+  end
+  return out
+end
+MAP.packJoin = packJoin
 
 -- A turtle stopped working on its batch (finished, failed, low on fuel, gave
 -- up after restarts, result lost ...): every spot of it that is still not in
@@ -1703,28 +1761,28 @@ function MAP.feedSurvey()
       for _, wid in ipairs(q.wave.ids or {}) do if q.out and q.out[wid] then open = true end end
       if open and os.clock() - (q.wave.t or 0) > (tonumber(CONFIG.map.packWait) or 300) then open = false end
     end
-    if open then
-      busy = true                                 -- (waiting for the others is not a problem)
-      for _, id in ipairs(packFree) do state.turtles[id].packWait = true end
-    else
-      table.sort(packFree)
-      local k = tonumber(CONFIG.map.packSpots) or 3
+    local k = tonumber(CONFIG.map.packSpots) or 3
+    -- hand a round to these turtles (join = they join the round that is running)
+    local function deal(ids, join)
+      table.sort(ids)
       local lists, solo = {}, {}
-      if q.spiral then
-        lists, solo = packRound(q, packFree, k)      -- each turtle its own ring (see packRound)
+      if join then
+        lists = packJoin(q, ids, k)
+      elseif q.spiral then
+        lists, solo = packRound(q, ids, k)           -- each turtle its own ring (see packRound)
         solo = solo or {}
       else
         -- (a row-by-row queue: one piece of the line each, never in turn)
-        local n = math.min(#packFree, tonumber(CONFIG.map.packSize) or 32)
+        local n = math.min(#ids, tonumber(CONFIG.map.packSize) or 32)
         local spots = nextBatch(q, n * k)
         for c, p in ipairs(spots) do
-          local id = packFree[math.min(n, math.floor((c - 1) * n / #spots) + 1)]
+          local id = ids[math.min(n, math.floor((c - 1) * n / #spots) + 1)]
           lists[id] = lists[id] or {}
           table.insert(lists[id], p)
         end
       end
-      local ids, sentAny = {}, false
-      for _, id in ipairs(packFree) do
+      local got, sentAny = {}, false
+      for _, id in ipairs(ids) do
         local mine = lists[id]
         local t = state.turtles[id]
         if mine and #mine > 0 then
@@ -1733,12 +1791,35 @@ function MAP.feedSurvey()
           q.out[id] = mine
           t.queueAt, t.packWait = os.clock(), nil
           q.sent = q.sent + #mine
-          if not solo[id] then ids[#ids + 1] = id end   -- (a lone given-back spot: not waited for)
+          if not solo[id] then got[#got + 1] = id end   -- (a lone given-back spot: not waited for)
           sentAny = true
         end
       end
-      if #ids > 0 then q.wave = { t = os.clock(), ids = ids } end
+      if join and q.wave then
+        for _, id in ipairs(got) do table.insert(q.wave.ids, id) end
+      elseif #got > 0 then
+        q.wave = { t = os.clock(), ids = got }
+      end
       if sentAny then busy, q.changed = true, true end
+    end
+    if open then
+      busy = true                                 -- (waiting for the others is not a problem)
+      -- members of the running round wait for the rest of it; a turtle that turned free
+      -- WHILE it runs (back from a trip, done refuelling, new from the factory) JOINS it at
+      -- once with a short share. (Before it waited for the whole round - minutes when the
+      -- round's spots were 2,000 blocks out - then got the next round, and the first ones
+      -- waited for IT: only half the fleet worked at any time, the owner: "sent half of them")
+      local inWave, late = {}, {}
+      for _, wid in ipairs(q.wave.ids or {}) do inWave[wid] = true end
+      for _, id in ipairs(packFree) do
+        if inWave[id] then state.turtles[id].packWait = true else late[#late + 1] = id end
+      end
+      if #late > 0 and q.spiral then deal(late, true) end
+      for _, id in ipairs(late) do
+        if not (q.out and q.out[id]) then state.turtles[id].packWait = true end     -- (nothing to join: waits)
+      end
+    else
+      deal(packFree, false)
     end
   end
   -- no turtle CAN work on it: say why - once, again only when the reason

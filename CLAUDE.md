@@ -135,7 +135,14 @@ PneumaticCraft drone rides, turtle mapping/surveys, and an AE2 ME network view.
   turtles. Now packRound: given-back spots fewer than the free turtles -> the rest go on with the band in
   the same call and those lone ones are not in q.wave (packRound returns out, solo); a band round goes
   on round the rings until it has ~0.6 x k spots per turtle; a free turtle left with nothing takes the
-  far half of the biggest share. test_survey.lua 2f (old code: 1 turtle, then fewest 1 of 30). LOOKING PAST MAPPED LAND (the owner: "0 sent", 7 % for minutes, every turtle "got nothing"): the
+  far half of the biggest share. test_survey.lua 2f (old code: 1 turtle, then fewest 1 of 30). JOINING A
+  RUNNING ROUND (the owner: "sent half of them" - the rest "waiting for the rest of the pack" while the
+  round flew 2,000 blocks out; after packWait the next round went to them only and the first half waited:
+  half the fleet worked at a time): a free turtle NOT in q.wave (busy when the round was dealt) joins it
+  at once - packJoin: the next k spots of its own ring (b.own, else the nearest ring) from b.f, noted in
+  q.band.took (the next round and an ended band's rest skip them), appended to q.wave.ids; no band ->
+  it waits. (Taking a whole band slice + putting the rest in q.redo scattered the pack: sim 591 of 2667.)
+  test_survey.lua 2g (old code: 0 of 10 joined), test_survey_pack unchanged. LOOKING PAST MAPPED LAND (the owner: "0 sent", 7 % for minutes, every turtle "got nothing"): the
   ring search and the windows check by TIME (outOfTime: >= 3000 checks AND CONFIG.map.lookTime 0.3 s, cap
   60000 / 200000 outside) instead of a fixed 3000 a call; MAP.queuePos counts q.pend.r (the % moved only
   when a band ended); MAP.looking {r, rad, found, want} + MAP.feedErr (the comms tick) -> the BIG SURVEY

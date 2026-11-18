@@ -13,7 +13,7 @@ base base_dronework.lua 32619 66455359
 base base_env.lua 10269 b6081e20
 base base_factory.lua 29039 66e4cec4
 base base_input.lua 28353 6e10d15b
-base base_map.lua 77100 47fb1842
+base base_map.lua 80571 cfefa084
 base base_me.lua 92883 803f1c8f
 base base_meplus.lua 15716 76ea0704
 base base_mining.lua 22558 48339e89
@@ -63,7 +63,7 @@ slim:base base_dronework.lua 25428 90783b25 dist/base_dronework.lua
 slim:base base_env.lua 7154 ae1b2584 dist/base_env.lua
 slim:base base_factory.lua 21342 bdd3423f dist/base_factory.lua
 slim:base base_input.lua 20012 8de43107 dist/base_input.lua
-slim:base base_map.lua 48479 62e9fbf3 dist/base_map.lua
+slim:base base_map.lua 50447 5d4cf785 dist/base_map.lua
 slim:base base_me.lua 66603 b0f57613 dist/base_me.lua
 slim:base base_meplus.lua 11775 80204792 dist/base_meplus.lua
 slim:base base_mining.lua 16410 d655310f dist/base_mining.lua
