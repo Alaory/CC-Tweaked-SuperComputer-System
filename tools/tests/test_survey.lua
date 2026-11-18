@@ -216,6 +216,58 @@ MAP.spotDone = function(x, z) return DONE[x .. "," .. z] end
 CONFIG.map.pack = nil
 MAP.queue = nil
 
+-- 2f. the owner's game: SURVEY: ALL after an old one-turtle survey left ONE spot, over land
+--     that is mapped in patches. Before: round 1 = that one spot for one turtle (the pack waited
+--     for it - "when I hit SURVEY: ALL only one turtle goes"), then rounds of 1 spot for 3 .. 13
+--     of 30 turtles. Now every round uses (nearly) all 30, the lone spot is not waited for.
+CONFIG.map.pack = true
+fleet(30)
+local DONE7 = {}
+MAP.spotDone = function(x, z)
+  if DONE7[x .. "," .. z] then return true end
+  local dx, dz = x - HOME.x, z - HOME.z
+  return math.max(math.abs(dx), math.abs(dz)) < 1200 or (dx > 0 and dz > 0) or ((math.floor(x / 500) + math.floor(z / 700)) % 3 == 0)
+end
+MAP.queue = nil
+MAP.queueSurvey(HOME.x - 1000, HOME.z - 1000, HOME.x + 3000, HOME.z + 3000, 8, { 21 })
+MAP.queue.redo = { { HOME.x - 1300, HOME.z + 17 } }
+MAP.queueSurvey(HOME.x - 800, HOME.z - 600, HOME.x + 2656, HOME.z + 3080, 8, nil)
+local q7 = MAP.queue
+local fewest, dup7, seen7 = 99, 0, {}
+for round = 1, 12 do
+  CLOCK = CLOCK + 3
+  for _, t in pairs(state.turtles) do t.lastSeen = CLOCK end
+  local m = #state.tOut
+  MAP.feedSurvey()
+  local got = batchesSent(m)
+  fewest = math.min(fewest, #got)
+  for _, x in ipairs(got) do
+    for _, p in ipairs(x.spots) do
+      local key = p[1] .. "," .. p[2]
+      if seen7[key] then dup7 = dup7 + 1 end
+      seen7[key], DONE7[key] = true, true
+    end
+  end
+  if round == 1 then
+    local lone
+    for _, x in ipairs(got) do
+      for _, p in ipairs(x.spots) do if p[1] == HOME.x - 1300 and p[2] == HOME.z + 17 then lone = x.id end end
+    end
+    local inWave = false
+    for _, id in ipairs(q7.wave and q7.wave.ids or {}) do if id == lone then inWave = true end end
+    CHECK(lone and not inWave, "the old survey's lone spot goes out, and the pack does not wait for it (" ..
+          tostring(lone) .. ", in the wave: " .. tostring(inWave) .. ")")
+  end
+  for id, t in pairs(state.turtles) do
+    if q7.out and q7.out[id] then t.queueAt = CLOCK - 100 MAP.batchResult(id, true) end
+  end
+end
+CHECK(fewest >= 27, "SURVEY: ALL over patchy land: every round uses (nearly) all 30 turtles (fewest " .. fewest .. ")")
+CHECK(dup7 == 0, "no spot handed out twice (" .. dup7 .. ")")
+MAP.spotDone = function(x, z) return DONE[x .. "," .. z] end
+CONFIG.map.pack = nil
+MAP.queue = nil
+
 -- 3. a turtle that still holds a batch (idle, no result yet) is not given a new one
 --    (without pack mode - the pack waits for its members anyway)
 CONFIG.map.pack = false

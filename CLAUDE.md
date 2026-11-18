@@ -129,7 +129,13 @@ PneumaticCraft drone rides, turtle mapping/surveys, and an AE2 ME network view.
   side"); a band narrower than want by >= max(2, want/4) is ENDED - its unfinished spots (f..1 of each
   ring) go to q.redo (handed out evenly, nearest first), cursor past it - and a full band starts; the ring
   search keeps what it found in q.pend across calls. test_survey.lua 2e (old code: 1 ring, 3 turtles a
-  round). LOOKING PAST MAPPED LAND (the owner: "0 sent", 7 % for minutes, every turtle "got nothing"): the
+  round). FULL ROUNDS (the owner: "when I hit SURVEY: ALL only one turtle goes"): an old survey's ONE
+  left-over spot (q.redo, carried over) was a round of its own - one turtle flew off with it and the
+  pack waited for it; and over land mapped in PATCHES a round's stretch held 1 spot for 3 .. 13 of 30
+  turtles. Now packRound: given-back spots fewer than the free turtles -> the rest go on with the band in
+  the same call and those lone ones are not in q.wave (packRound returns out, solo); a band round goes
+  on round the rings until it has ~0.6 x k spots per turtle; a free turtle left with nothing takes the
+  far half of the biggest share. test_survey.lua 2f (old code: 1 turtle, then fewest 1 of 30). LOOKING PAST MAPPED LAND (the owner: "0 sent", 7 % for minutes, every turtle "got nothing"): the
   ring search and the windows check by TIME (outOfTime: >= 3000 checks AND CONFIG.map.lookTime 0.3 s, cap
   60000 / 200000 outside) instead of a fixed 3000 a call; MAP.queuePos counts q.pend.r (the % moved only
   when a band ended); MAP.looking {r, rad, found, want} + MAP.feedErr (the comms tick) -> the BIG SURVEY

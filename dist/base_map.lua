@@ -1308,7 +1308,19 @@ if i <= cap then take[#take + 1] = p else q.redo[#q.redo + 1] = p end
 end
 end
 why.redo = #q.redo
-if #take > 0 then return dealEven(take, ids, q.step) end
+local solo = {}
+if #take > 0 then
+out = dealEven(take, ids, q.step)
+
+
+
+
+local rest = {}
+for _, id in ipairs(ids) do if not out[id] then rest[#rest + 1] = id end end
+if #rest == 0 then return out, solo end
+for id in pairs(out) do solo[id] = true end
+ids = rest
+end
 
 
 
@@ -1343,7 +1355,7 @@ q.cursor = math.min(total, MAP.ringStart(b.rings[#b.rings] + 1))
 q.bandOwn, q.band, q.pend = b.own, nil, nil
 q.changed = true
 why.redo = #q.redo
-return out
+return out, solo
 end
 while q.cursor < total do
 local b = q.band
@@ -1388,13 +1400,19 @@ q.band = b
 end
 local rings = b.rings
 
+
+
+
 local Psum = 0
 for _, r in ipairs(rings) do Psum = Psum + MAP.ringLen(r) end
-local f1 = b.f + math.max(0.000001, k * #rings / Psum)
+local need = math.ceil(math.min(#ids, #rings) * k * 0.6)
+local tracks, any, got, f1 = {}, false, 0, b.f
+for j = 1, #rings do tracks[j] = {} end
+repeat
+f1 = b.f + math.max(0.000001, k * #rings / Psum)
 if f1 > 0.999999 then f1 = 1 end
-local tracks, any = {}, false
 for j, r in ipairs(rings) do
-local list, P = {}, MAP.ringLen(r)
+local list, P = tracks[j], MAP.ringLen(r)
 local s0 = math.ceil(b.f * P - 0.000001)
 local s1 = (f1 >= 1) and P or math.ceil(f1 * P - 0.000001)
 for s = s0, s1 - 1 do
@@ -1404,12 +1422,12 @@ else
 checked = checked + 1
 if MAP.spotDone(x, z) then q.skipped = q.skipped + 1 why.done = why.done + 1
 elseif nearPlayer(x, z) then q.redo[#q.redo + 1] = { x, z }
-else list[#list + 1] = { x, z } any = true end
+else list[#list + 1] = { x, z } any, got = true, got + 1 end
 end
 end
-tracks[j] = list
 end
 b.f = f1
+until got >= need or f1 >= 1 or outOfTime()
 if f1 >= 1 then
 
 q.cursor = math.min(total, MAP.ringStart(rings[#rings] + 1))
@@ -1479,11 +1497,30 @@ at = math.max(at, upto + 1)
 end
 end
 end
-return out
+
+
+for _, id in ipairs(ids) do
+if not out[id] then
+local bo, bn, bd
+for o, l in pairs(out) do
+if #l >= 2 and not solo[o] then
+local d = near(pos[id], l[#l])
+if not bo or #l > bn or (#l == bn and d < bd) then bo, bn, bd = o, #l, d end
+end
+end
+if not bo then break end
+local l, mine = out[bo], {}
+local cut = math.floor(#l / 2) + 1
+for c = cut, #l do mine[#mine + 1] = l[c] end
+for c = #l, cut, -1 do l[c] = nil end
+out[id] = mine
+end
+end
+return out, solo
 end
 if outOfTime() then break end
 end
-return out
+return out, solo
 end
 MAP.packRound = packRound
 
@@ -1672,9 +1709,10 @@ for _, id in ipairs(packFree) do state.turtles[id].packWait = true end
 else
 table.sort(packFree)
 local k = tonumber(CONFIG.map.packSpots) or 3
-local lists = {}
+local lists, solo = {}, {}
 if q.spiral then
-lists = packRound(q, packFree, k)
+lists, solo = packRound(q, packFree, k)
+solo = solo or {}
 else
 
 local n = math.min(#packFree, tonumber(CONFIG.map.packSize) or 32)
@@ -1685,7 +1723,7 @@ lists[id] = lists[id] or {}
 table.insert(lists[id], p)
 end
 end
-local ids = {}
+local ids, sentAny = {}, false
 for _, id in ipairs(packFree) do
 local mine = lists[id]
 local t = state.turtles[id]
@@ -1695,13 +1733,12 @@ q.out = q.out or {}
 q.out[id] = mine
 t.queueAt, t.packWait = os.clock(), nil
 q.sent = q.sent + #mine
-ids[#ids + 1] = id
+if not solo[id] then ids[#ids + 1] = id end
+sentAny = true
 end
 end
-if #ids > 0 then
-q.wave = { t = os.clock(), ids = ids }
-busy, q.changed = true, true
-end
+if #ids > 0 then q.wave = { t = os.clock(), ids = ids } end
+if sentAny then busy, q.changed = true, true end
 end
 end
 
