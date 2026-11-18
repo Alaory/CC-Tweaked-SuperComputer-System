@@ -1018,6 +1018,18 @@ PneumaticCraft drone rides, turtle mapping/surveys, and an AE2 ME network view.
   in "#base".guest), +40 jokes, +40 quiz / riddles, +30 musings, stories, roasts, compliments, lonely lines.
   test_voice part 17: every pack intent reachable by its own words and answering, 90 % of one-letter-swap
   typos understood, each game played through, idle variety (passes with 60 random seeds).
+  LISTENING (the owner: "read the chat and remember if people talk about the owner - while the owner is offline"):
+  VOICE.chat calls VOICE.listen FIRST for every non-$ chat message on the server (its own setting voice.listen,
+  default on; `voice listen on|off`). Only while the owner is KNOWN offline (state.online read, owner not in it).
+  VOICE.mentionsOwner: the owner's NAME as a word anywhere on the server ("<name>s", a typo of a 5+ letter name,
+  also with the trailing s, the name without digits / _, glued "@name_fan", voice.nicknames = `voice nick a,b` 3+
+  letters); OWNER_TALK phrases ("the owner", "whose base", "who lives here", "this place" ...) only from players
+  NEAR the base. Kept in "#base".talk {who, text, at, near, ctx} (newest 60, floppy) + the next 2 messages within
+  60 s as ctx (the answer). Owner back (watchOwner) -> a private chatTell at once ("N players talked about you
+  ... type: base what did people say about me"), the welcome back names them; the owner asks (intent "heard":
+  "what did ppl say about me", "mentions" ...) -> newest 8 in chat (one line each, "-> who: answer"); strangers
+  "That stays between me and <owner>"; "forget what they said" / `voice heard [clear]`. voice.listenTell (default
+  OFF) = say at the base "I will pass it on". test_voice part 18.
 - REMOVED AGAIN: remote access in a web browser (Cloud Catcher; base_remote.lua / remote.lua / pocket.lua
   in local mode on the base) - the owner: "taking space and seems useless". removeOldFiles (base_theme.lua,
   run by inventory.lua at start) deletes its files (remote.lua, base_remote.lua, cloud.lua on the computer

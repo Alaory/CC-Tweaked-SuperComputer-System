@@ -837,6 +837,9 @@ VOICE.INTENTS = {
   { id = "notes", canon = "my notes", keys = { "my notes", "my list", "what did i say", "notes" } },
   { id = "say", keys = { "say" } },
   { id = "clearmsg", canon = "clear messages", keys = { "clear messages", "delete messages", "remove messages" } },
+  { id = "heard", canon = "what did people say about me", keys = { "what did people say about me", "what did they say about me", "talked about me", "talking about me",
+      "say about me", "said about me", "mentioned me", "mentions", "gossip about me", "anyone talk about me" } },
+  { id = "forgetheard", canon = "forget what they said", keys = { "forget what they said", "clear mentions", "forget mentions" } },
   { id = "readmsg", canon = "messages", keys = { "messages", "any messages", "inbox", "mail", "read message" } },
   { id = "message", keys = { "leave a message", "message", "letter", "leave note", "tell him", "tell her", "tell them", "tell the owner" } },
   { id = "quiet", canon = "shh", keys = { "shh", "shush", "be quiet", "quiet", "stop talking", "silence", "shut up", "mute" } },
@@ -1156,7 +1159,9 @@ function VOICE.addressed(who, raw, near)
   return nil
 end
 function VOICE.chat(m)
-  if VOICE.cfg("chat", true) == false or type(m) ~= "table" then return false end
+  if type(m) ~= "table" then return false end
+  pcall(VOICE.listen, tostring(m.name or ""), tostring(m.msg or ""), nearName(tostring(m.name or "")))
+  if VOICE.cfg("chat", true) == false then return false end
   local text = tostring(m.msg or "")
   local who = tostring(m.name or "")
   VOICE.lastRaw = text                         -- (games that read single letters: TALK PACK hangman)
@@ -1252,6 +1257,15 @@ function VOICE.watchOwner()
       local n = 0
       for _, v in pairs(b.visitors) do if (v.last or 0) > since then n = n + 1 end end
       if n > 0 or #b.msgs > 0 then b.report = true end
+      local heard, people = VOICE.heardSince(since)
+      if #heard > 0 then
+        b.report = true
+        b.heardFrom = since
+        if chatTell then
+          chatTell(ownerName(), "While you were offline, " .. plural(people, "player", "players") .. " talked about you in chat (" ..
+                   plural(#heard, "message", "messages") .. "). Type: " .. VOICE.botName():lower() .. " what did people say about me")
+        end
+      end
     end
     if VOICE.ownerWasOn ~= true or not VOICE.ownerSaveAt or os.clock() - VOICE.ownerSaveAt > 600 then
       b.ownerSeen, b.ovN, b.ores = nowE, MAP and tonumber(MAP.ovN) or b.ovN, oresNow()
@@ -1264,6 +1278,107 @@ function VOICE.watchOwner()
   end
   VOICE.ownerWasOn = on
 end
+-- ===== LISTENING (the owner: "read the chat and remember if people talk about the owner while the owner is
+-- offline"): every chat message on the server (not $ commands) is checked while the owner is KNOWN to be
+-- offline (state.online read, owner not in it). Kept: messages with the owner's NAME anywhere on the server
+-- (also "<name>s", a typo of a 5+ letter name, the name without digits / _, voice.nicknames), and "the owner",
+-- "whose base", "who lives here" ... from players NEAR the base. Plus the next 2 messages within 60 s (the
+-- answer). In "#base".talk (newest 60) on the floppy. The owner hears / reads it when back.
+local OWNER_TALK = { "the owner", "owner of", "whose base", "whose house", "who lives here", "who built this", "who made this",
+                     "this base", "this place", "this house", "the guy who", "the person who", "his base", "her base", "their base" }
+function VOICE.ownerWords()
+  local o = ownerName()
+  if not o then return {} end
+  local list, seen = {}, {}
+  local function addW(n)
+    n = tostring(n):lower():gsub("[^%w]", "")
+    if #n >= 3 and not seen[n] then seen[n] = true list[#list + 1] = n end
+  end
+  addW(o)
+  addW(tostring(o):gsub("[%d_]", ""))
+  local nick = VOICE.cfg("nicknames", nil)
+  if type(nick) == "table" then for _, n in ipairs(nick) do addW(n) end
+  elseif type(nick) == "string" then for n in nick:gmatch("[^,%s]+") do addW(n) end end
+  return list
+end
+-- "name" (the owner's name), "owner" (talk about the owner of this place), nil
+function VOICE.mentionsOwner(text, near)
+  local low = " " .. tostring(text or ""):lower():gsub("'", ""):gsub("[%p]", " ") .. " "
+  local names = VOICE.ownerWords()
+  for w in low:gmatch("%w+") do
+    for _, n in ipairs(names) do
+      if w == n or w == n .. "s" or (#n >= 5 and (VOICE.same(w, n) or VOICE.same((w:gsub("s$", "")), n))) then return "name" end
+    end
+  end
+  -- (the name glued to other text: "@alaory", "alaory_2")
+  local glued = tostring(text or ""):lower():gsub("[^%w]", "")
+  for _, n in ipairs(names) do if #n >= 5 and glued:find(n, 1, true) then return "name" end end
+  if near then
+    for _, ph in ipairs(OWNER_TALK) do if low:find(" " .. ph .. " ", 1, true) then return "owner" end end
+  end
+  return nil
+end
+function VOICE.listen(who, text, near)
+  if VOICE.cfg("listen", true) == false or not ownerName() or isOwner(who) then return nil end
+  if type(state.online) ~= "table" or ownerOnline() then return nil end    -- (only while the owner is known to be OFFLINE)
+  text = tostring(text or "")
+  if text:gsub("%s", "") == "" then return nil end
+  local b = VOICE.base()
+  b.talk = b.talk or {}
+  local nowE = os.epoch("utc")
+  local how = VOICE.mentionsOwner(text, near)
+  local f = VOICE.follow
+  if not how then
+    -- the answer to a mention (someone else, or more from the same player, within 60 s)
+    if f and nowE < f.till and f.n < 2 then
+      f.e.ctx = f.e.ctx or {}
+      f.e.ctx[#f.e.ctx + 1] = { who = who, text = text:sub(1, 160) }
+      f.n = f.n + 1
+      VOICE.saveMem()
+      return "ctx"
+    end
+    return nil
+  end
+  local e = { who = who, text = text:sub(1, 200), at = nowE, near = near and true or nil }
+  b.talk[#b.talk + 1] = e
+  while #b.talk > 60 do table.remove(b.talk, 1) end
+  VOICE.follow = { e = e, till = nowE + 60000, n = 0 }
+  VOICE.saveMem()
+  -- (voice.listenTell, default off: say out loud at the base that it will pass it on)
+  if near and VOICE.cfg("listenTell", false) == true then
+    VOICE.toldAt = VOICE.toldAt or {}
+    local k = tostring(who):lower()
+    if not VOICE.toldAt[k] or os.clock() - VOICE.toldAt[k] > 600 then
+      VOICE.toldAt[k] = os.clock()
+      VOICE.say(who .. ", talking about " .. tostring(ownerName()) .. "? I will pass it on.")
+    end
+  end
+  return how
+end
+-- what was said since a time (epoch ms): entries, number of different players
+function VOICE.heardSince(since)
+  local list, who, n = {}, {}, 0
+  for _, e in ipairs(VOICE.base().talk or {}) do
+    if (e.at or 0) >= (since or 0) then             -- (kept only while the owner was offline anyway)
+      list[#list + 1] = e
+      if not who[e.who] then who[e.who] = true n = n + 1 end
+    end
+  end
+  return list, n
+end
+-- the lines for the owner: newest first, at most max
+function VOICE.heardLines(max, since)
+  local list = VOICE.heardSince(since or 0)
+  local out = {}
+  for i = #list, math.max(1, #list - (max or 8) + 1), -1 do
+    local e = list[i]
+    local l = os.date("!%d %b %H:%M", math.floor(e.at / 1000)) .. " " .. e.who .. (e.near and " (at the base)" or "") .. ": " .. e.text
+    for _, c in ipairs(e.ctx or {}) do l = l .. "  -> " .. c.who .. ": " .. c.text end
+    out[#out + 1] = l
+  end
+  return out, #list
+end
+
 -- a visitor (not the owner) at the base while the owner is offline: noted for the owner
 function VOICE.noteVisitor(name)
   if ownerOnline() or isOwner(name) or name == "someone" then return end
@@ -1326,6 +1441,21 @@ function VOICE.lonelyAnswer(q, who)
     b.msgs[#b.msgs + 1] = { from = tostring(who), text = text, at = os.epoch("utc") }
     VOICE.saveMem()
     return "I will give your message to " .. o .. "."
+  end
+  -- what people said about the owner (only the owner gets it)
+  if phrase("say about me", "said about me", "talked about me", "talking about me", "talk about me", "mentioned me", "mentions",
+            "heard about me", "gossip about me") then
+    if not isOwner(who) then return "That stays between me and " .. o .. "." end
+    local lines, n = VOICE.heardLines(8)
+    if n == 0 then return "Nobody talked about you while you were away. Or they were very quiet." end
+    if chatTell then for i = 2, #lines do chatTell(who, lines[i]) end end
+    return plural(n, "message", "messages") .. " mentioned you (newest first): " .. lines[1] ..
+           (n > 8 and "  (older ones: type  voice heard  on the base computer)" or "") .. "  Say forget what they said when you have read them."
+  end
+  if phrase("forget what they said", "clear mentions", "forget mentions", "clear what they said") and isOwner(who) then
+    VOICE.base().talk = {}
+    VOICE.saveMem()
+    return "Forgotten."
   end
   if phrase("clear messages", "delete messages") and isOwner(who) then
     b.msgs = {}
@@ -1392,6 +1522,13 @@ function VOICE.greet(name)
       local line = "Welcome back, " .. name .. "."
       if #list > 0 then line = line .. " While you were away, " .. plural(#list, "visitor", "visitors") .. " came: " .. table.concat(list, ", ") .. "." end
       if #b.msgs > 0 then line = line .. " " .. plural(#b.msgs, "message", "messages") .. " for you. Ask me: " .. VOICE.botName():lower() .. ", messages." end
+      local heard, people = VOICE.heardSince(b.heardFrom or since)
+      if #heard > 0 then
+        local names, seenN = {}, {}
+        for _, e in ipairs(heard) do if not seenN[e.who] then seenN[e.who] = true names[#names + 1] = e.who end end
+        line = line .. " Also, " .. plural(people, "player", "players") .. " talked about you in chat: " .. table.concat(names, ", ", 1, math.min(4, #names)) ..
+               ". Ask me what they said."
+      end
       return VOICE.say(line, "minecraft:block.note_block.chime")
     end
     local line
@@ -1675,6 +1812,24 @@ function VOICE.command(words)
     b.ownerMsg = text ~= "" and text or nil
     VOICE.saveMem()
     say(b.ownerMsg and ("Whoever finds the base will hear: " .. b.ownerMsg) or "Your message for visitors is gone.")
+  elseif a == "heard" then
+    if b == "clear" then
+      VOICE.base().talk = {}
+      VOICE.saveMem()
+      say("Forgotten what people said about you.")
+    else
+      local lines, n = VOICE.heardLines(60)
+      say(n == 0 and "Nobody talked about you while you were offline." or (plural(n, "message", "messages") .. " about you while you were offline (newest first):"))
+      for _, l in ipairs(lines) do say(l) end
+      say("Listening is " .. (VOICE.cfg("listen", true) == false and "OFF" or "ON") .. ".  voice listen on|off   voice nick <names,...>   voice heard clear")
+    end
+  elseif a == "listen" and (b == "on" or b == "off") then
+    setSetting("voice.listen", b == "on")
+    say("Listening to chat about you while you are offline: " .. b:upper())
+  elseif a == "nick" then
+    local text = table.concat(words, " ", 3)
+    if text ~= "" then setSetting("voice.nicknames", text) else resetSetting("voice.nicknames") end
+    say(text ~= "" and ("Also listening for: " .. text) or "No nicknames.")
   elseif a == "visitors" then
     say(VOICE.lonelyAnswer("who visited", ownerName() or "") or "")
     say(VOICE.lonelyAnswer("messages", ownerName() or "") or "")

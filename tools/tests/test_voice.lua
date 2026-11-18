@@ -612,6 +612,81 @@ end
 local nSpoken = 0
 for _ in pairs(spoken) do nSpoken = nSpoken + 1 end
 CHECK(nSpoken >= 35, "60 idle moments -> " .. nSpoken .. " different lines")
+
+-- 18. LISTENING (the owner: "read the chat and remember if people talk about the owner while the owner is offline")
+VOICE.convo, VOICE.pend, VOICE.games, VOICE.follow, VOICE.quietUntil = {}, {}, {}, nil, nil
+B.talk = nil
+local function hear(name, msg) told = {} VOICE.queue = {} handleChat({ name = name, msg = msg }) return told end
+local function nTalk() return #(VOICE.base().talk or {}) end
+place("Steve", 9000)                                    -- (far away: anywhere on the server)
+state.online = { [owner:lower()] = true, kevin = true, steve = true }
+VOICE.watchOwner()
+hear("Steve", "has anyone seen " .. owner .. " lately")
+CHECK(nTalk() == 0, "the owner ONLINE: nothing is kept")
+state.online = { kevin = true, steve = true }
+VOICE.watchOwner()
+CLOCK = CLOCK + 5
+hear("Steve", "has anyone seen " .. owner .. " lately")
+CHECK(nTalk() == 1 and VOICE.base().talk[1].who == "Steve", "the owner offline: a message with their name (from far away) is kept")
+hear("Kevin", "no idea, maybe they quit")
+hear("Steve", "lol")
+hear("Kevin", "anyway")
+local e1 = VOICE.base().talk[1]
+CHECK(e1.ctx and #e1.ctx == 2 and e1.ctx[1].text:find("maybe they quit", 1, true), "the next 2 messages are kept with it (the answer)")
+CHECK(nTalk() == 1, "... other chat is not kept")
+VOICE.follow = nil
+hear("Steve", "nice weather today")
+CHECK(nTalk() == 1 and #e1.ctx == 2, "chat that is not about the owner: not kept")
+local typo = owner:sub(1, 2) .. owner:sub(4, 4) .. owner:sub(3, 3) .. owner:sub(5)
+VOICE.follow = nil
+hear("Steve", "i think " .. typo:lower() .. "s base is cool")
+CHECK(#owner < 5 or nTalk() == 2, "a typo of the name ('" .. typo .. "s') is kept too")
+VOICE.follow = nil
+local n0 = nTalk()
+hear("Steve", "@" .. owner .. "_fan")
+CHECK(nTalk() == n0 + 1, "the name glued to other text (@" .. owner .. "_fan) is kept")
+VOICE.follow = nil
+n0 = nTalk()
+hear("Steve", "who lives here anyway")
+CHECK(nTalk() == n0, "'who lives here' from FAR away is not about this base: not kept")
+hear("Kevin", "whose base is this")
+CHECK(nTalk() == n0 + 1 and VOICE.base().talk[nTalk()].near, "'whose base is this' from someone AT the base: kept (marked at the base)")
+VOICE.follow = nil
+n0 = nTalk()
+hear("Steve", "$drone home " .. owner)
+CHECK(nTalk() == n0, "$ commands are never kept")
+handleCommand("voice listen off")
+hear("Steve", owner .. " is never online")
+CHECK(nTalk() == n0, "voice listen off: nothing kept")
+handleCommand("voice listen on")
+handleCommand("voice nick boss, al")
+VOICE.follow = nil
+hear("Steve", "where is the boss")
+CHECK(nTalk() == n0 + 1, "a nickname (voice nick boss) is listened for")
+VOICE.follow = nil
+hear("Steve", "i like algae")
+CHECK(nTalk() == n0 + 1, "(a too short nickname 'al' is ignored, and 'algae' is not 'al')")
+handleCommand("voice nick")
+-- a stranger asking gets nothing
+CHECK(table.concat(hear("Kevin", "base what did people say about " .. owner), " "):find("between me and", 1, true)
+      or not table.concat(told, " "):find("Steve", 1, true), "a stranger never hears what was said")
+-- the owner comes back: a private chat note at once, the welcome mentions it, then the details
+local nKept = nTalk()
+told = {}
+CLOCK = CLOCK + 5
+state.online = { [owner:lower()] = true }
+VOICE.watchOwner()
+CHECK(table.concat(told, " "):find("talked about you", 1, true), "the owner logs in: a private chat note: " .. table.concat(told, " | "))
+VOICE.queue = {}
+VOICE.greet(owner)
+CHECK(said():find("talked about you in chat", 1, true) and said():find("Steve", 1, true), "the welcome back says who talked about them: " .. said())
+local r = table.concat(hear(owner, "base wat did ppl say about me"), " | ")
+CHECK(r:find("Steve", 1, true) and r:find("lately", 1, true) and r:find("maybe they quit", 1, true),
+      "'base wat did ppl say about me' -> the messages + the answers: " .. r)
+local out = table.concat(handleCommand("voice heard"), "\n")
+CHECK(out:find(nKept .. " messages", 1, true) and out:find("has anyone seen", 1, true), "console voice heard lists them")
+hear(owner, "base forget what they said")
+CHECK(nTalk() == 0, "the owner: forget what they said")
 ENV.scan = okScan
 chatTell = oldTell
 envDet = realEnvDet
