@@ -29,6 +29,10 @@ shell = { openTab = function(...) opened[#opened + 1] = { ... } return 7 end }
 REMOTE.setOn(true)
 local tok = REMOTE.token()
 CHECK(REMOTE.validToken(tok), "a token of 32 letters / digits: " .. tostring(tok))
+local bad = 0
+for _ = 1, 20 do if REMOTE.newToken():find("[0OQo1Iil5Ss2Zz8BuvVUcCkKpPwWxX]") then bad = bad + 1 end end
+CHECK(bad == 0, "codes have no look-alike characters (0/O/Q, 1/I/l ...): " .. bad .. " of 20 had some")
+CHECK(#REMOTE.groups() == 39 and REMOTE.groups():sub(5, 5) == " ", "shown in groups of 4: " .. REMOTE.groups())
 CHECK(REMOTE.link() == "https://cloud-catcher.squiddev.cc/?id=" .. tok, "the link: " .. tostring(REMOTE.link()))
 REMOTE.tick()
 local o = opened[1]

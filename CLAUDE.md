@@ -972,7 +972,9 @@ PneumaticCraft drone rides, turtle mapping/surveys, and an AE2 ME network view.
   cloud-catcher.squiddev.cc in the browser (it makes a code and shows "cloud.lua <code>"; the page does NOT
   put it in the address - bookmark .../?id=<code>), paste the code (or the whole link) with Ctrl+V:
   console `remote <code>` / chat `$drone remote <code>` -> REMOTE.useToken (case kept, the link's id= taken);
-  the open page connects by itself. The chat message also has a COPY (copy_to_clipboard) part.
+  the open page connects by itself. The chat message also has a COPY (copy_to_clipboard) part. Codes the
+  base makes have NO look-alike characters (REMOTE.newToken alphabet "34679ADEFGHJLMNRTYabdefghmnqrty" - the
+  owner misread O/Q/0 off the screen) and `remote` shows them in groups of 4 (REMOTE.groups).
 - UPGRADE (upgrade.lua; console `upgrade [check|branch <b>]`, SYSTEM > ACTIONS
   UPGRADE PROGRAM, or `upgrade` in a shell - also on the pocket; the FULL commented files are
   bigger than a 1 MB computer now - `upgrade full` refuses cleanly there, upgrade_sim checks both): the newest files from

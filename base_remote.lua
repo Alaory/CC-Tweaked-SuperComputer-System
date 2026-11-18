@@ -36,6 +36,13 @@ function REMOTE.token()
   if REMOTE.validToken(t) then return t end
   return nil
 end
+-- the code in groups of 4 (easier to read off the screen and type)
+function REMOTE.groups()
+  local t = REMOTE.token() or ""
+  local g = {}
+  for i = 1, #t, 4 do g[#g + 1] = t:sub(i, i + 3) end
+  return table.concat(g, " ")
+end
 function REMOTE.link()
   local t = REMOTE.token()
   return t and (REMOTE.SITE .. "/?id=" .. t) or nil
@@ -43,12 +50,14 @@ end
 
 -- a new secret token: 32 letters / digits (like the web page makes them)
 function REMOTE.newToken()
-  local cs = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz"
+  -- (no look-alikes: the code is read off the computer's screen and typed - 0 O Q o, 1 I l i j, 5 S s,
+  --  2 Z z, 8 B, u v V U, c C k K p P w W x X are left out: the screen font made the owner misread it)
+  local cs = "34679ADEFGHJLMNRTYabdefghmnqrty"
   local x = (os.epoch("utc") + os.getComputerID() * 7919 + math.floor(os.clock() * 1000)) % 2147483647
   local out = {}
   for i = 1, 32 do
     x = (x * 16807 + math.random(0, 1048575) + i) % 2147483647
-    local k = x % 62 + 1
+    local k = x % #cs + 1
     out[i] = cs:sub(k, k)
   end
   return table.concat(out)
@@ -225,6 +234,7 @@ function REMOTE.lines()
   if on and REMOTE.link() then
     L[#L + 1] = "  Link (keep it SECRET - it lets anyone type commands here):"
     L[#L + 1] = "  " .. REMOTE.link()
+    L[#L + 1] = "  Code in groups (type them without the spaces): " .. REMOTE.groups()
   end
   L[#L + 1] = "  remote on | off | new (a new link, the old one stops) | link (sent to you in chat)"
   L[#L + 1] = "  remote <code>: use the code the web page shows (open " .. REMOTE.SITE .. ")"
