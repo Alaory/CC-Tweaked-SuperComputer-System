@@ -22,7 +22,7 @@
 -- Console: voice [on|off|say <text>|greet|announce|chat|alarm on|off|volume <0-3>|range <n>|name <w>]
 
 VOICE = VOICE or {}
-VOICE.VERSION = 5
+VOICE.VERSION = 6
 VOICE.queue = VOICE.queue or {}
 VOICE.near = VOICE.near or {}           -- [name] = true while near the base
 VOICE.greeted = VOICE.greeted or {}     -- [name] = os.clock() of the last greeting
@@ -318,7 +318,14 @@ end
 -- "shh": no small talk / reactions / idle chatter for a while (answers still come)
 function VOICE.isQuiet() return VOICE.quietUntil ~= nil and os.clock() < VOICE.quietUntil end
 local function pick(list) return list[math.random(1, #list)] end
-local function fill(line, name) return (line:gsub("{name}", tostring(name or "friend"))) end
+local function fill(line, name)
+  line = tostring(line):gsub("{name}", tostring(name or "friend"))
+  if line:find("{", 1, true) then
+    line = line:gsub("{owner}", tostring((knownOwner and knownOwner()) or state.owner or "my owner"))
+    line = line:gsub("{bot}", VOICE.botName and VOICE.botName() or "the base")
+  end
+  return line
+end
 function VOICE.botName()
   local n = tostring(VOICE.cfg("name", "base"))
   return n:sub(1, 1):upper() .. n:sub(2)
@@ -427,6 +434,7 @@ end
 
 -- ===== games and other interactions =====
 VOICE.games = VOICE.games or {}        -- [player lower] = { kind = "guess" | "quiz", ... , till }
+VOICE.gameKinds = VOICE.gameKinds or {} -- [kind] = function(g, who, q, strict, key) -> reply / nil (TALK PACKS add games)
 VOICE.timers = VOICE.timers or {}      -- { who, at, text }
 VOICE.QUIZ = {
   { q = "How many blocks of obsidian does the smallest nether portal need?", a = { "10", "ten" } },
@@ -502,6 +510,8 @@ function VOICE.gameReply(who, q, strict)
     g.tries = (g.tries or 0) + 1
     if g.tries >= 3 then VOICE.games[k] = nil return "Not quite. The answer was " .. g.a[1] .. "." end
     return "Not quite. Try again."
+  elseif VOICE.gameKinds[g.kind] then
+    return VOICE.gameKinds[g.kind](g, who, q, strict, k)
   elseif g.kind == "rps" then
     local yours
     for _, w in ipairs(words(q)) do
@@ -891,6 +901,7 @@ function VOICE.intent(ws)
 end
 -- every word fixed to the nearest known word (so the old answers that read the text understand it)
 local VOCAB
+function VOICE.resetVocab() VOCAB = nil end
 function VOICE.fix(ws)
   if not VOCAB then
     VOCAB = {}
@@ -938,7 +949,7 @@ function VOICE.menuItems(who)
   return { { "who lives here", "who lives here" }, { "give me a tour", "#tour" }, { "tell me a joke", "tell me a joke" },
            { "play a game", "#games" }, { "leave a message for the owner", "#message" }, { "what else can you do", "#more" } }
 end
-local GAMES = { { "guess my number", "guess my number" }, { "rock paper scissors", "rock paper scissors" }, { "a quiz", "quiz" },
+VOICE.GAMES = { { "guess my number", "guess my number" }, { "rock paper scissors", "rock paper scissors" }, { "a quiz", "quiz" },
                 { "flip a coin", "flip a coin" }, { "roll a dice", "roll a dice" }, { "the magic 8 ball", "magic 8 ball will i" } }
 function VOICE.showMenu(who, items, title)
   local lines = {}
@@ -947,6 +958,37 @@ function VOICE.showMenu(who, items, title)
   return (title or "You can ask me anything in chat. Or type a number:") .. "  " .. table.concat(lines, "   "),
          "I put a list in your chat. Just type a number."
 end
+VOICE.MORE = { { "a story", "tell me a story" }, { "a fun fact", "fun fact" }, { "sing a song", "sing" },
+  { "where am i", "where am i" }, { "any monsters around", "mobs" }, { "how are you", "how are you" },
+  { "remind me in 5 minutes to ...", "#remindhelp" }, { "be quiet for a while", "shh" } }
+-- ===== TALK PACKS (voice_talk.lua ... - more add-on files on data floppies; `voice install` gets them) =====
+VOICE.packs = VOICE.packs or {}        -- [file] = { n = intents added, ... }
+VOICE.hash = VOICE.hash or {}          -- ["adv"] = function(who, arg) for menu choices "#adv:<arg>"
+VOICE.patterns = VOICE.patterns or {}  -- function(who, raw, ws) -> chat, spoken (exact shapes, tried first)
+VOICE.idleExtra = VOICE.idleExtra or {} -- function(nearNow, who) -> text said / true (more idle talk)
+-- add intents ({ id, keys, reply = lines | function(who, ws, raw, key) }); the base's own come first on a tie
+function VOICE.addIntents(list)
+  local have = {}
+  for _, it in ipairs(VOICE.INTENTS) do have[it.id] = true end
+  local n = 0
+  for _, it in ipairs(list or {}) do
+    if type(it) == "table" and it.id and it.keys and not have[it.id] then
+      VOICE.INTENTS[#VOICE.INTENTS + 1] = it
+      have[it.id] = true
+      n = n + 1
+    end
+  end
+  VOICE.resetVocab()
+  return n
+end
+-- helpers for the packs (the add-on's own locals)
+VOICE.pick, VOICE.fill, VOICE.plural = pick, fill, plural
+VOICE.isOwner = function(n) return isOwner(n) end
+VOICE.isFriend = function(n) return isFriend(n) end
+VOICE.ownerName = function() return ownerName() end
+VOICE.ownerOnline = function() return ownerOnline() end
+VOICE.partOfDay = function() return partOfDay() end
+VOICE.startGame = function(who, g) return startGame(who, g) end
 function VOICE.tourText()
   local o = tostring(ownerName() or "my owner")
   local okS, d = pcall(POCKET.status)
@@ -1003,8 +1045,22 @@ function VOICE.converse(who, raw, direct)
       return VOICE.converse(who, it[2])
     end
   end
+  -- it asked something itself (TALK PACKS: "do you like caves or mountains?"): any answer gets a reply
+  if P and P.kind == "react" and #ws > 0 then
+    VOICE.pend[k] = nil
+    if type(P.fn) == "function" then return P.fn(who, ws, raw) end
+    return fill(pick(P.lines or { "Interesting." }), who)
+  end
   -- nothing at all ("?", "...", just its name): the menu
   if #ws == 0 then return VOICE.showMenu(who, VOICE.menuItems(who)) end
+  -- a menu choice that a TALK PACK handles ("#adv:cave")
+  local hk, harg = tostring(raw):match("^#(%a+):?(.*)$")
+  if hk and VOICE.hash[hk] then return VOICE.hash[hk](who, harg) end
+  -- exact shapes (TALK PACKS: "what is 7 times 8", "spell creeper backwards")
+  for _, fn in ipairs(VOICE.patterns) do
+    local okP, c, sp = pcall(fn, who, raw, ws)
+    if okP and c then return c, sp end
+  end
   local fixed = VOICE.fix(ws)
   local text = table.concat(fixed, " ")
   local it, score = VOICE.intent(fixed)
@@ -1012,17 +1068,13 @@ function VOICE.converse(who, raw, direct)
   --  "that was a fun day" is chat, not "games")
   if not direct and it and #ws > 3 and score < 2 then it = nil end
   local id = it and it.id
-  if raw == "#games" or id == "games" then return VOICE.showMenu(who, GAMES, "Which game? Type a number:") end
+  if raw == "#games" or id == "games" then return VOICE.showMenu(who, VOICE.GAMES, "Which game? Type a number:") end
   if raw == "#tour" or id == "tour" then
     local t = VOICE.tourText()
     VOICE.pend[k] = { kind = "yesno", yes = "who lives here", till = now + 120 }
     return t .. " Want to know who lives here? Type yes or no."
   end
-  if raw == "#more" then
-    return VOICE.showMenu(who, { { "a story", "tell me a story" }, { "a fun fact", "fun fact" }, { "sing a song", "sing" },
-      { "where am i", "where am i" }, { "any monsters around", "mobs" }, { "how are you", "how are you" },
-      { "remind me in 5 minutes to ...", "#remindhelp" }, { "be quiet for a while", "shh" } }, "More things - type a number:")
-  end
+  if raw == "#more" then return VOICE.showMenu(who, VOICE.MORE, "More things - type a number:") end
   if raw == "#remindhelp" then return "Just type it, like: remind me in 5 minutes to check the furnace." end
   if raw == "#message" or id == "message" then
     -- the text after the word "message" (or "tell him ..."), else ask for it
@@ -1044,6 +1096,15 @@ function VOICE.converse(who, raw, direct)
     return VOICE.lonelyAnswer("leave a message " .. after, who)
   end
   if id == "bye" then VOICE.convo[k] = nil return fill(pick({ "Bye {name}! Come back soon.", "See you, {name}." }), who) end
+  -- an intent with its own answer (TALK PACKS): lines to pick from, or a function
+  if it and it.reply then
+    if type(it.reply) == "function" then
+      local okR, c, sp = pcall(it.reply, who, ws, raw, k)
+      if okR and c then return c, sp end
+    else
+      return fill(pick(it.reply), who)
+    end
+  end
   -- the answer code (the intent's own words, or the cleaned message for the ones that read details)
   if not direct and not it then return VOICE.smallReact(ws, who) end
   local q = (it and it.canon) or text
@@ -1098,6 +1159,7 @@ function VOICE.chat(m)
   if VOICE.cfg("chat", true) == false or type(m) ~= "table" then return false end
   local text = tostring(m.msg or "")
   local who = tostring(m.name or "")
+  VOICE.lastRaw = text                         -- (games that read single letters: TALK PACK hangman)
   local k = who:lower()
   local word = tostring(VOICE.cfg("name", "base")):lower()
   local near = nearName(who)
@@ -1514,6 +1576,13 @@ VOICE.MUSINGS = {
 function VOICE.idle(nearNow)
   if VOICE.lonelyDays() then
     return VOICE.say((pick(VOICE.LONELY_TALK):gsub("{owner}", tostring(ownerName() or "my owner"))))
+  end
+  -- a TALK PACK's idle talk (more than half the time when one is loaded)
+  if #VOICE.idleExtra > 0 and math.random() < 0.65 then
+    local who
+    for n in pairs(nearNow or {}) do if n ~= "someone" then who = n end end
+    local okI, said = pcall(pick(VOICE.idleExtra), nearNow, who)
+    if okI and said then return said end
   end
   local kinds = { "fact", "joke", "tip", "see", "muse", "muse", "quiz", "hum" }
   local kind = pick(kinds)

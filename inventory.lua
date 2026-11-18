@@ -68,7 +68,9 @@ end
 buildWindow()
 if baseStartCheck then pcall(baseStartCheck) end      -- was the base off? (base_workers.lua)
 if removeOldFiles then pcall(removeOldFiles, dir) end   -- (files of a feature taken out again)
-if loadAddon then pcall(loadAddon, "voice_addon.lua") end  -- optional: the base talks (on a data floppy)
+if loadAddon then                                           -- optional: the base talks (on data floppies)
+  for _, f in ipairs(VOICE_FILES or { "voice_addon.lua" }) do pcall(loadAddon, f) end
+end
 
 local okRun, errRun = pcall(parallel.waitForAny, uiLoop, invWorker, pageWorker, actionWorker,
                    droneWorker, terminalWorker, chatWorker, commsWorker, mapWorker, supplyWorker, addonWorker)

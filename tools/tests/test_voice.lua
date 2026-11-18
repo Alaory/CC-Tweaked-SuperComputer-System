@@ -149,7 +149,7 @@ CHECK(VOICE.cfg("greet", true) == false, "voice greet off is kept (a false setti
 local src = io.open(SRC_DIR .. "/base_me.lua"):read("a")
 CHECK(src:find("VOICE.note", 1, true), "pushNote passes warnings to the voice")
 src = io.open(SRC_DIR .. "/inventory.lua"):read("a")
-CHECK(src:find('loadAddon, "voice_addon.lua"', 1, true) and src:find("addonWorker", 1, true), "inventory.lua loads the add-on and runs its worker")
+CHECK(src:find('VOICE_FILES', 1, true) and src:find("loadAddon", 1, true) and src:find("addonWorker", 1, true), "inventory.lua loads the add-on (+ talk packs) and runs its worker")
 local man = io.open(SRC_DIR .. "/manifest.txt"):read("a")
 CHECK(man:find("\nvoice voice_addon.lua ", 1, true) and not man:find("\nbase voice_addon.lua", 1, true),
       "voice_addon.lua is its own download (not installed on the computer)")
@@ -479,6 +479,139 @@ VOICE.convo, VOICE.pend = {}, {}
 CHECK(say2("dude look at this cool build") == "", "two players chatting: nothing in chat, no menu")
 CHECK(say2("hey computer, what time is it") ~= "", "... but 'computer' / a question is answered")
 place("Steve", 9000)
+
+-- 17. TALK PACK (voice_talk.lua, the owner: "more idle talk, 100+ more interactions for visitors"): its own file
+--     on a data floppy, loaded after the add-on; chat only (visitors cannot touch the claimed base)
+local nBefore = #VOICE.INTENTS
+addDrive("drive_8", "disk8")                 -- (a second data floppy: install puts each file where there is most room)
+put("disk8/base_data", "data")
+put("disk8/voice_talk.lua", io.open(SRC_DIR .. "/dist/voice_talk.lua"):read("a"))
+local okT, whereT = loadAddon("voice_talk.lua")
+CHECK(okT and VOICE.packs["voice_talk.lua"], "the talk pack loads from the data floppy: " .. tostring(whereT))
+CHECK(#VOICE.INTENTS - nBefore >= 100, "100+ more things to ask: " .. (#VOICE.INTENTS - nBefore))
+CHECK(man:find("\nvoice voice_talk.lua ", 1, true) and not man:find("\nbase voice_talk.lua", 1, true), "the pack is a voice download, never on the computer")
+CHECK(#io.open(SRC_DIR .. "/dist/voice_talk.lua"):read("a") < 100000, "the slim pack fits on one floppy with room to spare")
+VOICE.convo, VOICE.pend, VOICE.games, VOICE.quietUntil = {}, {}, {}, nil
+ENV.data.ents = { { kind = "player", name = "Kevin", dist = 3, hp = 20, max = 20 } }
+place("Kevin", 3)
+-- every pack intent is reached by at least one of its own keys (no core intent / other pack intent steals all of them)
+local stolen = {}
+for i = nBefore + 1, #VOICE.INTENTS do
+  local it, own = VOICE.INTENTS[i], false
+  for _, key in ipairs(it.keys) do
+    local got = VOICE.intent(VOICE.fix(VOICE.norm(key)))
+    if got == it then own = true end
+  end
+  if not own then stolen[#stolen + 1] = it.id end
+end
+CHECK(#stolen == 0, "every new intent is reachable by its own words: not " .. table.concat(stolen, ", "))
+-- and every one gives an answer (asked directly, as a stranger)
+local silent = {}
+for i = nBefore + 1, #VOICE.INTENTS do
+  local it = VOICE.INTENTS[i]
+  VOICE.games, VOICE.pend = {}, {}
+  local c = VOICE.converse(stranger, it.keys[1], true)
+  if type(c) ~= "string" or c == "" or c:find("did not get that", 1, true) or c:find("not sure what you mean", 1, true) or c:find("did not understand", 1, true) then silent[#silent + 1] = it.id end
+end
+CHECK(#silent == 0, "every new intent answers: not " .. table.concat(silent, ", "))
+VOICE.quietUntil, VOICE.games, VOICE.pend = nil, {}, {}
+-- typos in the new words still land (a letter swapped in the longest word of the first key)
+local okTypo, allTypo, missT = 0, 0, {}
+for i = nBefore + 1, #VOICE.INTENTS do
+  local it = VOICE.INTENTS[i]
+  local key = it.keys[1]
+  local long = ""
+  for w in key:gmatch("%a+") do if #w > #long then long = w end end
+  if #long >= 6 then
+    local typo = long:sub(1, 2) .. long:sub(4, 4) .. long:sub(3, 3) .. long:sub(5)
+    allTypo = allTypo + 1
+    if VOICE.intent(VOICE.fix(VOICE.norm((key:gsub(long, typo, 1))))) == it then okTypo = okTypo + 1 else missT[#missT + 1] = typo end
+  end
+end
+CHECK(okTypo >= allTypo * 0.9, "typos in the new words: " .. okTypo .. " of " .. allTypo .. " understood (missed " .. table.concat(missT, " ") .. ")")
+-- maths: only with a cue or the sum alone
+CHECK(say2("whats 7 times 8"):find("56", 1, true), "'whats 7 times 8' -> 56: " .. told[1])
+CHECK(say2("12+5"):find("17", 1, true), "'12+5' -> 17")
+CHECK(say2("what is 100 / 8"):find("12.5", 1, true), "'what is 100 / 8' -> 12.5")
+CHECK(not say2("how do i build a 3x3 farm"):find("9.", 1, true), "'a 3x3 farm' is not a sum: " .. told[1])
+CHECK(say2("spell creeper backwards"):find("REPEERC", 1, true), "spell creeper backwards")
+CHECK(say2("count to 5"):find("1, 2, 3, 4, 5", 1, true), "count to 5")
+-- riddle (misspelled) -> answered right -> a point
+CHECK(say2("give me a ridle"):find("Riddle", 1, true), "'give me a ridle' -> a riddle: " .. told[1])
+local gk = VOICE.games.kevin
+CHECK(gk and gk.kind == "quiz", "... and it waits for the answer")
+CHECK(say2(gk.a[1]):find("Correct", 1, true) or told[1]:find("Right", 1, true) or told[1]:find("well done", 1, true), "the right answer -> a point: " .. told[1])
+-- unscramble / maths question
+CHECK(say2("unscramble pls"):find("Unscramble this word", 1, true), "unscramble")
+CHECK(say2(VOICE.games.kevin.a[1]):find("point", 1, true), "unscrambled -> a point: " .. told[1])
+CHECK(say2("give me a math question"):find("What is", 1, true), "a maths question")
+CHECK(say2(VOICE.games.kevin.a[1]):find("point", 1, true), "the right number -> a point: " .. told[1])
+-- hangman: letters (also u / r / n, which are chat shorthand elsewhere), then the word
+CHECK(say2("hangman"):find("Hangman", 1, true), "hangman starts")
+local hw = VOICE.games.kevin.w
+CHECK(say2(hw:sub(1, 1)):find("Yes", 1, true), "a right letter: " .. told[1])
+CHECK(say2("q"):find("No", 1, true) or hw:find("q", 1, true), "a wrong letter")
+VOICE.games.kevin.w = "turn"
+CHECK(say2("u"):find("U", 1, true) and told[1]:find("Yes", 1, true), "'u' is a letter in hangman, not 'you': " .. told[1])
+CHECK(say2("turn"):find("The word was TURN", 1, true), "the whole word wins")
+-- would you rather
+CHECK(say2("would u rather"):find("Would you rather", 1, true), "would u rather")
+CHECK(say2("2"):find("You would", 1, true), "2 -> its reaction: " .. told[1])
+-- knock knock: it tells one, then they tell one
+CHECK(say2("tell me a knock knock joke") == "Knock knock!", "a knock knock joke: " .. told[1])
+local kj = VOICE.games.kevin.j
+CHECK(say2("whos there") == kj[1] .. ".", "who's there -> " .. kj[1])
+CHECK(say2(kj[1] .. " who") == kj[2], "... who -> the punchline")
+CHECK(say2("knock knock") == "Who is there?", "they knock -> who is there")
+CHECK(say2("lettuce") == "Lettuce who?", "-> Lettuce who?")
+CHECK(say2("lettuce in its cold out here"):find("Ha", 1, true) or told[1]:find("terrible", 1, true) or told[1]:find("laughing", 1, true), "-> it laughs: " .. told[1])
+-- the adventure: numbers through the story to an ending, yes plays again
+local a1 = say2("lets go on an adventure")
+CHECK(a1:find("dark cave", 1, true) and a1:find("1:", 1, true), "an adventure: the start + numbered choices")
+CHECK(say2("1"):find("underground river", 1, true), "1 -> the river")
+CHECK(say2("2"):find("diamond", 1, true), "2 -> dive")
+CHECK(say2("1"):find("THE END", 1, true) and told[1]:find("Play again", 1, true), "1 -> an ending + play again?")
+CHECK(say2("yeah"):find("dark cave", 1, true), "yeah -> it starts again")
+VOICE.pend = {}
+-- this or that: any answer gets a reaction
+CHECK(say2("this or that"):find(" or ", 1, true), "this or that")
+local isReact = function(t) for _, l in ipairs(VOICE.REACT_OK) do if l == t then return true end end return false end
+CHECK(isReact(say2("hmm the first one i guess")), "their answer (whatever it is) gets a reaction: " .. told[1])
+CHECK(VOICE_FILES[2] == "voice_talk.lua" and io.open(SRC_DIR .. "/base_console.lua"):read("a"):find("installAddon(VOICE_FILES[i]", 1, true),
+      "voice install / update also gets the talk pack")
+-- the guestbook
+B.guest = nil
+CHECK(say2("sign the guestbok"):find("guest number 1", 1, true), "sign the guestbook (misspelled): " .. told[1])
+CHECK(say2("sign the guestbook"):find("already", 1, true), "only once")
+CHECK(say2("who signed the guestbook"):find("Kevin", 1, true), "the guestbook lists Kevin: " .. told[1])
+-- sloppy questions about it
+CHECK(say2("what is ur favrite colour") ~= "", "'what is ur favrite colour' -> " .. told[1])
+CHECK(say2("can u see me"):find("blocks away", 1, true), "can u see me -> the detector distance: " .. told[1])
+CHECK(say2("fortune cookie pls"):find("fortune cookie says", 1, true), "a fortune cookie")
+CHECK(say2("can i grief here"):find("claimed", 1, true) or told[1]:find("sad", 1, true), "griefing -> please do not: " .. told[1])
+CHECK(say2("open the door"):find("cannot", 1, true) or told[1]:find("closed", 1, true), "open the door -> no: " .. told[1])
+-- the menus show the new things
+CHECK(say2("lets play a game"):find("hangman", 1, true), "the game menu lists the new games")
+VOICE.pend = {}
+-- idle talk: every new kind runs, and with someone near most of it is the pack's
+local okIdle = 0
+for i, fn in ipairs(VOICE.idleExtra) do
+  VOICE.said, VOICE.queue = {}, {}
+  local okF, r = pcall(fn, { kevin = true }, "Kevin")
+  CHECK(okF, "idle talk #" .. i .. " runs: " .. tostring(r))
+  if okF and r then okIdle = okIdle + 1 end
+end
+CHECK(okIdle >= #VOICE.idleExtra - 1 and #VOICE.idleExtra >= 10, "new idle talk: " .. okIdle .. " of " .. #VOICE.idleExtra .. " said something")
+local spoken = {}
+B.lastOff, state.online = nil, { [owner:lower()] = true, kevin = true }
+for _ = 1, 60 do
+  VOICE.said, VOICE.queue, VOICE.pend = {}, {}, {}
+  VOICE.idle({ kevin = true })
+  for _, q in ipairs(VOICE.queue) do if q.text then spoken[q.text] = true end end
+end
+local nSpoken = 0
+for _ in pairs(spoken) do nSpoken = nSpoken + 1 end
+CHECK(nSpoken >= 35, "60 idle moments -> " .. nSpoken .. " different lines")
 ENV.scan = okScan
 chatTell = oldTell
 envDet = realEnvDet

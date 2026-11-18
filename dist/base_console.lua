@@ -969,8 +969,16 @@ local a = (words[2] or ""):lower()
 if a == "install" or a == "update" then
 local ok, msg = installAddon("voice_addon.lua", "voice", say)
 say(ok and ("Installed on " .. tostring(msg) .. " - the base talks. Try:  voice say hello") or ("Not installed: " .. tostring(msg)))
+
+for i = 2, #VOICE_FILES do
+if ok then
+local okP, msgP = installAddon(VOICE_FILES[i], "voice", say)
+say(okP and ("Talk pack " .. VOICE_FILES[i] .. " on " .. tostring(msgP)) or ("Talk pack " .. VOICE_FILES[i] .. " not installed: " .. tostring(msgP)))
+end
+end
 elseif a == "remove" then
-local n = removeAddon("voice_addon.lua")
+local n = 0
+for i = #VOICE_FILES, 1, -1 do n = n + removeAddon(VOICE_FILES[i]) end
 VOICE = nil
 say(n > 0 and "Removed - the base is quiet (settings kept)." or "It was not installed.")
 elseif VOICE and VOICE.command then

@@ -1000,6 +1000,24 @@ PneumaticCraft drone rides, turtle mapping/surveys, and an AE2 ME network view.
   text of a message ("can i leave a mesage" -> "what should it say?" -> the next line). No intent -> VOICE.answer
   STRICT (only the parts that read details: lonely / extra answers / where is - the loose one-word checks "how",
   "who", "base" answered anything with the status). test_voice part 16 (passes with 60 random seeds).
+  TALK PACK (voice_talk.lua; the owner: "more idle talk, 100+ interactions for a player who is not the owner -
+  it is an add-on"): a SECOND add-on file (VOICE_FILES in base_theme.lua = add-on + packs; inventory.lua loads
+  them in order, `voice install|update` installs each on the data floppy with the most room, `voice remove`
+  removes all; manifest group voice; slim ~63 KB < one floppy). CHAT ONLY - visitors cannot touch the base (claimed
+  chunks): no keyboard / screen talk. Hooks in the add-on: VOICE.addIntents (pack intents after the core ones -
+  a tie goes to the core; it.reply = lines or function(who, ws, raw, key)), VOICE.patterns (exact shapes first:
+  maths with a cue word or the sum alone - never "a 3x3 farm", spell X backwards, count to N, THEIR knock knock),
+  VOICE.hash["adv"] (menu choices "#adv:<node>"), VOICE.gameKinds (wyr, knock, theyknock, hang), pend kind
+  "react" (it asked them something: any answer gets VOICE.REACT_OK), VOICE.idleExtra (65 % of idle moments:
+  time of day, weather, turtle gossip, Minecraft facts, notes to self, poems, a question / game invite / fortune
+  for the player near it, how-to-talk lines for strangers), VOICE.MORE / VOICE.GAMES menus, fill() knows {owner}
+  {bot}; VOICE.lastRaw (hangman letters: "u" "r" "n" are chat shorthand elsewhere). Pack: 140+ intents (about it,
+  Minecraft mobs / places / things, the base, social, rules / grief / hack / door - always no), games (riddles +
+  unscramble + maths through the quiz kind = points, hangman, would you rather, knock knock both ways, a
+  choose-your-own ADVENTURE through numbered menus, this or that, dares, fortunes, rate me, the GUESTBOOK
+  in "#base".guest), +40 jokes, +40 quiz / riddles, +30 musings, stories, roasts, compliments, lonely lines.
+  test_voice part 17: every pack intent reachable by its own words and answering, 90 % of one-letter-swap
+  typos understood, each game played through, idle variety (passes with 60 random seeds).
 - REMOVED AGAIN: remote access in a web browser (Cloud Catcher; base_remote.lua / remote.lua / pocket.lua
   in local mode on the base) - the owner: "taking space and seems useless". removeOldFiles (base_theme.lua,
   run by inventory.lua at start) deletes its files (remote.lua, base_remote.lua, cloud.lua on the computer
@@ -1106,6 +1124,7 @@ The old Block UI (stone buttons, bedrock theme) is gone.
 | base_env.lua / base_ui_env.lua | the Environment Detector: time, weather, moon, light, mobs around the base / the WORLD page |
 | base_pocket.lua / pocket.lua | the pocket remote: base side (pairing, status, actions, messages) / the program on the pocket computer |
 | voice_addon.lua | OPTIONAL add-on on a data floppy (`voice install`): the base talks through Speakers - greetings, warnings, chat answers, alarm |
+| voice_talk.lua | its TALK PACK (also on a data floppy): 140+ more chat interactions, games, idle talk |
 
 ## The owner's setup (found out the hard way)
 Peripherals (from the `report` command): `me_bridge_4`, `inventory_manager_3`,
