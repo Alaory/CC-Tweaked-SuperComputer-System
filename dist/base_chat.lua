@@ -150,7 +150,7 @@ reply("Use: " .. c .. " home | " .. c .. " to <place" ..
 c .. " places | " .. c .. " status | " .. c .. " stop")
 if owner then reply("Places: " .. c .. " mark <name> (stand ON the block) | " .. c .. " unmark <name> | " .. c .. " workchest (stand ON the drones' work chest)") end
 if owner then reply("Owner: " .. c .. " allow/deny <name> | " ..
-c .. " allowed | " .. c .. " yes/no <name> | " .. c .. " notify on/all/off | " .. c .. " remote [off|new]") end
+c .. " allowed | " .. c .. " yes/no <name> | " .. c .. " notify on/all/off | " .. c .. " remote [<code>|off|new]") end
 
 elseif sub == "notify" then
 
@@ -176,7 +176,13 @@ elseif sub == "remote" then
 
 if not owner then reply("Only " .. tostring(state.owner) .. " can use remote access.") return end
 local want = (words[3] or ""):lower()
-if want == "off" then
+if words[3] and REMOTE.useToken(words[3]) then
+
+local b0 = REMOTE.blocker()
+if b0 then reply("Remote access cannot run: " .. b0) return end
+reply("Got it - your browser page connects in a few seconds. Bookmark: " .. REMOTE.link())
+return
+elseif want == "off" then
 REMOTE.setOn(false)
 reply("Remote access OFF.")
 return

@@ -57,6 +57,21 @@ end
 local notes = {}
 local push0 = pushNote
 pushNote = function(kind, msg) if kind then notes[#notes + 1] = kind .. ": " .. tostring(msg) end end   -- (toasts: no kind)
+-- (the program files fill the 1 MB computer now - more than its 96 KB must stay free: with no data
+--  floppy a schematic is refused with a hint; with one it goes there, like on the owner's base)
+local nfree = fs.getFreeSpace("/")
+if nfree < 96 * 1024 + #data then
+  local n0 = {}
+  local p0 = pushNote
+  pushNote = function(kind, msg) if kind then n0[#n0 + 1] = kind .. ": " .. tostring(msg) end end
+  SCHEM.onTransfer(transfer("Too Big.nbt", data))
+  SCHEM.processPending()
+  pushNote = p0
+  CHECK(n0[#n0] and n0[#n0]:find("floppy", 1, true), "no data floppy + a full computer: refused with a hint: " .. tostring(n0[#n0]))
+end
+addDrive("drive_7", "disk7")
+local hm = fs.open("disk7/base_data", "w") hm.write("data") hm.close()      -- (a DATA floppy: `disks data` marks it)
+if dataPathReset then dataPathReset() end
 SCHEM.onTransfer(transfer("My House.nbt", data))
 SCHEM.onTransfer(transfer("broken.nbt", "\31\139\8\0garbage"))
 SCHEM.onTransfer(transfer("notes.txt", "hello"))

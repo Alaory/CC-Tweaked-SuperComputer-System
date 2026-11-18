@@ -5,8 +5,8 @@ base store.lua 9364 dfbf002c
 base upgrade.lua 10858 725e2cf0
 base remote.lua 3014 af981f1f
 base base_away.lua 18604 82aa7fa7
-base base_chat.lua 17949 a1206b9f
-base base_console.lua 65910 5fdc28a3
+base base_chat.lua 18318 7710ea8e
+base base_console.lua 66109 58fa2439
 base base_curios.lua 6020 3e56460a
 base base_devices.lua 12525 54e3de70
 base base_drones.lua 70721 683349cc
@@ -20,7 +20,7 @@ base base_meplus.lua 15716 76ea0704
 base base_mining.lua 22558 48339e89
 base base_players.lua 19278 b39ae435
 base base_pocket.lua 16842 4119c3ea
-base base_remote.lua 9374 f625cebf
+base base_remote.lua 10269 baac36f0
 base base_schem.lua 18382 f71f07f2
 base base_state.lua 5331 2a808592
 base base_storage.lua 11536 e6593881
@@ -57,8 +57,8 @@ slim:base store.lua 6835 6ac5e947 dist/store.lua
 slim:base upgrade.lua 7424 b8d25fcc dist/upgrade.lua
 slim:base remote.lua 2181 2a4cf1e3 dist/remote.lua
 slim:base base_away.lua 13275 79b723da dist/base_away.lua
-slim:base base_chat.lua 13504 b5d5b154 dist/base_chat.lua
-slim:base base_console.lua 54784 a5da8952 dist/base_console.lua
+slim:base base_chat.lua 13753 aacf5e2d dist/base_chat.lua
+slim:base base_console.lua 54973 03026962 dist/base_console.lua
 slim:base base_curios.lua 3601 10dc6ee3 dist/base_curios.lua
 slim:base base_devices.lua 8669 8b8f116b dist/base_devices.lua
 slim:base base_drones.lua 46551 fb528c67 dist/base_drones.lua
@@ -72,7 +72,7 @@ slim:base base_meplus.lua 11775 80204792 dist/base_meplus.lua
 slim:base base_mining.lua 16410 d655310f dist/base_mining.lua
 slim:base base_players.lua 13287 4d0edb72 dist/base_players.lua
 slim:base base_pocket.lua 13355 636c1a88 dist/base_pocket.lua
-slim:base base_remote.lua 6542 948558bd dist/base_remote.lua
+slim:base base_remote.lua 7149 b7bd7f2c dist/base_remote.lua
 slim:base base_schem.lua 13483 11a1f7a3 dist/base_schem.lua
 slim:base base_state.lua 2184 53b39d2a dist/base_state.lua
 slim:base base_storage.lua 8505 9bb686f2 dist/base_storage.lua

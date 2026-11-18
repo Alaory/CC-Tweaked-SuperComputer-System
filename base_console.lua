@@ -979,8 +979,10 @@ function handleCommand(line)
       local who = knownOwner and knownOwner() or state.owner
       if who and chatBox then REMOTE.tellLink(who) say("The link was sent to " .. who .. " in chat.")
       else say("No Chat Box / owner known - copy the link below.") end
+    elseif REMOTE.useToken(words[2]) then
+      say("Using the web page's code - starting (a few seconds). The page you opened connects by itself.")
     elseif a ~= "" then
-      say("Use: remote on | off | new | link")
+      say("Use: remote on | off | new | link | <the 32-letter code from " .. REMOTE.SITE .. ">")
     end
     for _, l in ipairs(REMOTE.lines()) do say(l) end
 

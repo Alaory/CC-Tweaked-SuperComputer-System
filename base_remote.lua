@@ -169,6 +169,18 @@ function REMOTE.setOn(on)
     REMOTE.alive = -1000
   end
 end
+-- use the code the web page made (the owner cannot click links in game: open
+-- cloud-catcher.squiddev.cc in the browser, copy the code it shows, paste it in chat)
+function REMOTE.useToken(tok)
+  tok = tostring(tok or ""):gsub("^%s+", ""):gsub("%s+$", "")
+  tok = tok:match("id=(%w+)") or tok                -- (the whole link pasted: the code from it)
+  if not REMOTE.validToken(tok) then return false end
+  if tok ~= REMOTE.token() then os.queueEvent("remote_quit") end   -- a tab with the old code quits
+  setSetting("remote.token", tok)
+  setSetting("remote.on", true)
+  REMOTE.alive, REMOTE.startedAt, REMOTE.fails = -1000, -1000, 0
+  return true
+end
 function REMOTE.renew()
   setSetting("remote.token", REMOTE.newToken())
   os.queueEvent("remote_quit")                    -- the old link stops working; started again with the new one
@@ -182,6 +194,8 @@ function REMOTE.tellLink(name)
   state.chatOut[#state.chatOut + 1] = { name = name, text = "Your base in the browser (keep it secret): " .. link,
     json = textutils.serializeJSON({ { text = "Your base in the browser: " }, { text = "OPEN",
       color = "aqua", underlined = true, clickEvent = { action = "open_url", value = link } },
+      { text = "  " }, { text = "COPY", color = "aqua", underlined = true,
+      clickEvent = { action = "copy_to_clipboard", value = link } },
       { text = "  (keep the link secret - it lets you type commands into the base)", color = "gray" } }) }
   os.queueEvent("chat_send")
 end
@@ -213,5 +227,6 @@ function REMOTE.lines()
     L[#L + 1] = "  " .. REMOTE.link()
   end
   L[#L + 1] = "  remote on | off | new (a new link, the old one stops) | link (sent to you in chat)"
+  L[#L + 1] = "  remote <code>: use the code the web page shows (open " .. REMOTE.SITE .. ")"
   return L
 end

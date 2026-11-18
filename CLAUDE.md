@@ -967,7 +967,12 @@ PneumaticCraft drone rides, turtle mapping/surveys, and an AE2 ME network view.
   2, 4, 8 .. 10 min. Token: 32 letters/digits made here (REMOTE.newToken), settings.dat remote.token /
   remote.on (setSetting); it lets anyone with the link type commands - `remote new` replaces it.
   cloud.lua downloaded once via dataPath (data floppy first; must compile; room checked - the computer
-  had ~60 KB free). test_remote.lua (fake http / multishell / shell.openTab).
+  had ~60 KB free). test_remote.lua (fake http / multishell / shell.openTab). THE OWNER CANNOT CLICK
+  LINKS IN GAME (the formatted message came as plain text): the other way round - open
+  cloud-catcher.squiddev.cc in the browser (it makes a code and shows "cloud.lua <code>"; the page does NOT
+  put it in the address - bookmark .../?id=<code>), paste the code (or the whole link) with Ctrl+V:
+  console `remote <code>` / chat `$drone remote <code>` -> REMOTE.useToken (case kept, the link's id= taken);
+  the open page connects by itself. The chat message also has a COPY (copy_to_clipboard) part.
 - UPGRADE (upgrade.lua; console `upgrade [check|branch <b>]`, SYSTEM > ACTIONS
   UPGRADE PROGRAM, or `upgrade` in a shell - also on the pocket; the FULL commented files are
   bigger than a 1 MB computer now - `upgrade full` refuses cleanly there, upgrade_sim checks both): the newest files from

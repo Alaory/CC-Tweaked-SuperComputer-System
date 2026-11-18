@@ -96,4 +96,25 @@ CHECK(table.concat(out, "\n"):find("OFF", 1, true), "console `remote` shows the 
 out = handleCommand("remote on")
 CHECK(CONFIG.remote.on == true and table.concat(out, "\n"):find(REMOTE.link(), 1, true), "console `remote on` shows the link")
 REMOTE.setOn(false)
+
+-- 9. links cannot be clicked in every game: the code the WEB PAGE shows is pasted on the computer or
+--    in chat (the whole link works too); a wrong code is refused
+local CODE = "Ab3dEfGh1jKlMn0pQrStUvWxYz123456"
+CHECK(#CODE == 32, "test code is 32 long")
+CHECK(not REMOTE.useToken("short123"), "a wrong code is refused")
+Q = {}
+out = handleCommand("remote " .. CODE)
+CHECK(REMOTE.token() == CODE and CONFIG.remote.on == true and queued("remote_quit"),
+      "console `remote <code>`: that code is used, kept as typed (upper / lower case), switched on")
+CHECK(REMOTE.useToken("https://cloud-catcher.squiddev.cc/?id=" .. CODE:reverse()) and REMOTE.token() == CODE:reverse(),
+      "the whole link pasted: the code is taken from it")
+local said = {}
+state.owner = state.owner or "Alaory"
+local oldTell = chatTell
+chatTell = function(n, t) said[#said + 1] = t end
+local okHC, errHC = pcall(handleChat, { name = state.owner, msg = "$" .. CONFIG.chat.command .. " remote " .. CODE })
+CHECK(okHC, "chat command runs: " .. tostring(errHC))
+chatTell = oldTell
+CHECK(REMOTE.token() == CODE, "chat `$drone remote <code>` uses the code (case kept): " .. tostring(REMOTE.token()))
+REMOTE.setOn(false)
 shell = realShell
