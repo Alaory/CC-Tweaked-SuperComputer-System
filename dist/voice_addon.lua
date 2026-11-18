@@ -1823,6 +1823,9 @@ say(n == 0 and "Nobody talked about you while you were offline." or (plural(n, "
 for _, l in ipairs(lines) do say(l) end
 say("Listening is " .. (VOICE.cfg("listen", true) == false and "OFF" or "ON") .. ".  voice listen on|off   voice nick <names,...>   voice heard clear")
 end
+elseif a == "listen" and b == "tell" and (words[4] == "on" or words[4] == "off") then
+setSetting("voice.listenTell", words[4] == "on")
+say("At the base it says 'I will pass it on' when someone talks about you: " .. words[4]:upper())
 elseif a == "listen" and (b == "on" or b == "off") then
 setSetting("voice.listen", b == "on")
 say("Listening to chat about you while you are offline: " .. b:upper())
