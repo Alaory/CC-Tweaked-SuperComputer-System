@@ -1601,11 +1601,21 @@ end
 
 
 
-function MAP.batchResult(id, ok)
+function MAP.batchResult(id, ok, msg)
 local q = MAP.queue
 if not (q and q.out and q.out[id]) then return end
 
 local t = state.turtles[id]
+
+
+
+if not ok and t and t.queueAt and os.clock() - t.queueAt < 30 then
+t.surveyFail = { msg = tostring(msg or "no reason given"), at = os.clock() }
+if MAP.press then MAP.press.failed[id] = t.surveyFail.msg end
+TT.log(t, "Refused its survey spots: " .. t.surveyFail.msg)
+elseif ok and t then
+t.surveyFail = nil
+end
 if ok and t and t.queueAt and os.clock() - t.queueAt > 1 then
 local r = #q.out[id] / (os.clock() - t.queueAt)
 t.packRate = t.packRate and (t.packRate * 0.5 + r * 0.5) or r
@@ -1629,7 +1639,13 @@ MAP.queueSurvey(x1, z1, x2, z2, r, nil)
 return #spots, skipped
 end
 q.redo = q.redo or {}
-for i = #spots, 1, -1 do table.insert(q.redo, 1, spots[i]) end
+
+local have = {}
+for _, p in ipairs(q.redo) do have[p[1] .. "," .. p[2]] = true end
+for _, l in pairs(q.out or {}) do for _, p in ipairs(l) do have[p[1] .. "," .. p[2]] = true end end
+for i = #spots, 1, -1 do
+if not have[spots[i][1] .. "," .. spots[i][2]] then table.insert(q.redo, 1, spots[i]) end
+end
 for _, id in ipairs(TT.available()) do
 local t = state.turtles[id]
 if t and t.held then t.held = nil TT.listDirty = true end
@@ -1693,6 +1709,8 @@ local fuel = t and tonumber(t.fuel)
 if t then t.packWait = nil end
 if free and t.queueAt and os.clock() - t.queueAt < 15 then free = false busy = true end
 if free and fuel and fuel < minFuel then free = false end
+local refused = t and t.surveyFail and os.clock() - t.surveyFail.at < 120
+if free and refused then free = false end
 
 
 
@@ -1707,7 +1725,9 @@ elseif t.task and t.task ~= "idle" then w = "busy"
 elseif t.held or (q.excluded and q.excluded[id]) then w = "STOPPED - give it a command first"
 elseif fuel and fuel < minFuel then w = "fuel " .. fuel .. " (needs " .. minFuel .. ")"
 elseif t.anchor then w = "anchor" elseif t.rescuerRole then w = "rescuer"
-elseif TT.factoryRole(t) then w = "factory " .. TT.factoryRole(t) end
+elseif TT.factoryRole(t) then w = "factory " .. TT.factoryRole(t)
+elseif refused then w = "refused its spots: " .. t.surveyFail.msg end
+if MAP.press and w then MAP.press.why[id] = w end
 if w then why[#why + 1] = (t.label or ("#" .. id)) .. ": " .. w end
 end
 if free then anyFree = true end
@@ -1746,6 +1766,7 @@ q.out = q.out or {}
 q.out[id] = mine
 t.queueAt = os.clock()
 q.sent = q.sent + #mine
+if MAP.press then MAP.press.sent[id] = true end
 busy, q.changed = true, true
 end
 end
@@ -1791,6 +1812,7 @@ q.out = q.out or {}
 q.out[id] = mine
 t.queueAt, t.packWait = os.clock(), nil
 q.sent = q.sent + #mine
+if MAP.press then MAP.press.sent[id] = true end
 if not solo[id] then got[#got + 1] = id end
 sentAny = true
 end
@@ -1822,6 +1844,7 @@ else
 deal(packFree, false)
 end
 end
+MAP.pressReport()
 
 
 
@@ -1852,6 +1875,32 @@ q.changed = nil
 MAP.queueSavedAt = os.clock()
 saveQueue()
 end
+end
+
+
+
+function MAP.pressStart()
+MAP.press = { at = os.clock(), free = TT.available(), sent = {}, failed = {}, why = {} }
+end
+function MAP.pressReport()
+local P = MAP.press
+if not P or os.clock() - P.at < 20 then return end
+MAP.press = nil
+local went, not_ = 0, {}
+for _, id in ipairs(P.free) do
+local t = state.turtles[id]
+if P.sent[id] and not P.failed[id] then went = went + 1
+elseif t then
+local w = P.failed[id] and ("refused: " .. P.failed[id]) or P.why[id]
+if not w and t.task and t.task ~= "idle" then w = "busy (" .. tostring(t.task) .. ") - joins when free" end
+if not w and t.packWait then w = "waits for its round" end
+not_[#not_ + 1] = (t.label or ("#" .. id)) .. ": " .. (w or "free, got nothing yet")
+end
+end
+local msg = went .. " of " .. #P.free .. " free turtles went."
+if #not_ > 0 then msg = msg .. " Not: " .. table.concat(not_, "; ") end
+if sysLog then sysLog("SURVEY: ALL - " .. msg, #not_ > 0 and "WARNING" or "INFO") end
+setPopup("SURVEY: ALL", msg, #not_ > 0 and C.warn or C.good)
 end
 
 

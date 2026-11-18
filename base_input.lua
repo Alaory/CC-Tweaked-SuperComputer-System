@@ -238,6 +238,7 @@ function handleTouch(tx, ty)
                 setToast("No free turtle (online, idle, position known)", C.warn, 5)
               else
                 local n = MAP.queueSurvey(x1, z1, x2, z2, r, ids)
+                if a.kind == "surveyall" and n > 0 then MAP.pressStart() end
                 if n == 0 then
                   setToast("Nothing to survey here - this view is outside your work area (SETTINGS > MAP)", C.warn, 6)
                 else
@@ -253,6 +254,7 @@ function handleTouch(tx, ty)
                 setToast("No free turtle (online, idle, position known)", C.warn, 5)
               else
                 local n, skipped = MAP.addSurvey(x1, z1, x2, z2, r)
+                if n > 0 then MAP.pressStart() end
                 if n == 0 then
                   setToast("This area is already mapped (" .. skipped .. " spots)", C.label, 5)
                 else

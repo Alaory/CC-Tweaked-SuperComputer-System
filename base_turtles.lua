@@ -148,6 +148,10 @@ function TT.idleWhy(t)
   if t.dwAnchor then return "keeps a drone build site loaded (schem status)", C.purple end
   local fr = TT.factoryRole(t)
   if fr then return "factory " .. fr .. " - stays at the factory (no surveys)", C.label end
+  if t.surveyFail and os.clock() - t.surveyFail.at < 120 then
+    return "REFUSED its survey spots: " .. tostring(t.surveyFail.msg) .. " (tried again in " ..
+           math.ceil(120 - (os.clock() - t.surveyFail.at)) .. " s)", C.bad
+  end
   if fuel and fuel < minFuel then
     return "fuel " .. fuel .. " is below " .. minFuel .. " - " ..
            ((CONFIG.turtles.fuelChest and CONFIG.turtles.fuelChest.x) and "waiting for the fuel chest"
@@ -597,7 +601,7 @@ function TT.receive(id, m)
       t.driveAnyway = (not m.ok and tostring(m.msg):find("DIG ANYWAY", 1, true)) and t.driveLast or nil
     end
     if m.cmd == "fuelup" and TT.fuelTrip and TT.fuelTrip.id == id then TT.fuelTrip = nil end   -- the next one may go
-    if m.cmd == "surveypts" and MAP.batchResult then pcall(MAP.batchResult, id, m.ok) end
+    if m.cmd == "surveypts" and MAP.batchResult then pcall(MAP.batchResult, id, m.ok, m.msg) end
     if m.cmd == "build" and FACTORY then pcall(FACTORY.result, id, m.ok, m.msg) end
     -- the new turtle could not get off the build spot: keep why (FACTORY.tick tells you)
     if FACTORY and FACTORY.leaving and FACTORY.leaving.id == id and not m.ok

@@ -142,7 +142,15 @@ PneumaticCraft drone rides, turtle mapping/surveys, and an AE2 ME network view.
   at once - packJoin: the next k spots of its own ring (b.own, else the nearest ring) from b.f, noted in
   q.band.took (the next round and an ended band's rest skip them), appended to q.wave.ids; no band ->
   it waits. (Taking a whole band slice + putting the rest in q.redo scattered the pack: sim 591 of 2667.)
-  test_survey.lua 2g (old code: 0 of 10 joined), test_survey_pack unchanged. LOOKING PAST MAPPED LAND (the owner: "0 sent", 7 % for minutes, every turtle "got nothing"): the
+  test_survey.lua 2g (old code: 0 of 10 joined), test_survey_pack unchanged. REFUSED SPOTS (the owner
+  again: "each time I hit SURVEY: ALL only half get sent - half of 16, then half of 8"; the sim sends
+  all 16): a turtle that fails its surveypts within 30 s (facing unknown, anchor ...) got spots again
+  every round and refused again = looked like "not sent". MAP.batchResult(id, ok, msg) -> t.surveyFail
+  {msg, at}: not free for 120 s, idleWhy "REFUSED its survey spots: <why>", feed `why`. SURVEY: ALL
+  REPORT: MAP.pressStart (base_input, big + small area) -> MAP.press {free, sent, failed, why} ->
+  MAP.pressReport (feedSurvey, 20 s later): popup + sysLog "N of M free turtles went. Not: <name>:
+  <why>; ...". addSurvey pressed twice: spots already in q.redo / q.out not added again (was 864 more
+  each press). test_survey.lua 2h. LOOKING PAST MAPPED LAND (the owner: "0 sent", 7 % for minutes, every turtle "got nothing"): the
   ring search and the windows check by TIME (outOfTime: >= 3000 checks AND CONFIG.map.lookTime 0.3 s, cap
   60000 / 200000 outside) instead of a fixed 3000 a call; MAP.queuePos counts q.pend.r (the % moved only
   when a band ended); MAP.looking {r, rad, found, want} + MAP.feedErr (the comms tick) -> the BIG SURVEY

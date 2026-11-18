@@ -311,6 +311,54 @@ MAP.spotDone = function(x, z) return DONE[x .. "," .. z] end
 CONFIG.map.pack = nil
 MAP.queue = nil
 
+-- 2h. a turtle that REFUSES its spots at once (facing unknown ...) looked like "the base sent it
+--     nothing" ("only half get sent"): it is kept out for 2 min with the reason on the TURTLES
+--     list, and the SURVEY: ALL report ~20 s after the press names it. Pressing SURVEY: ALL on a
+--     small area again does not add its spots twice.
+CONFIG.map.pack = true
+fleet(6)
+local DONE9 = {}
+MAP.spotDone = function(x, z) return DONE9[x .. "," .. z] or math.max(math.abs(x - HOME.x), math.abs(z - HOME.z)) < 300 end
+MAP.queue = nil
+local popups = {}
+local oldPopup = setPopup
+setPopup = function(title, msg, col) popups[#popups + 1] = title .. ": " .. tostring(msg) end
+MAP.queueSurvey(HOME.x - 2000, HOME.z - 2000, HOME.x + 2000, HOME.z + 2000, 8, nil)
+if MAP.pressStart then MAP.pressStart() end
+local function feed9()
+  CLOCK = CLOCK + 2
+  for _, t in pairs(state.turtles) do t.lastSeen = CLOCK end
+  local m = #state.tOut
+  MAP.feedSurvey()
+  return batchesSent(m)
+end
+local r1 = feed9()
+CHECK(#r1 == 6, "all 6 get spots (" .. #r1 .. ")")
+-- S3 refuses at once; the rest work on them
+CLOCK = CLOCK + 1
+MAP.batchResult(23, false, "position/facing unknown - use GPS LOCATE")
+local again = 0
+for _ = 1, 15 do for _, x in ipairs(feed9()) do if x.id == 23 then again = again + 1 end end end
+CHECK(again == 0, "a turtle that refused its spots gets none for 2 min (" .. again .. " batches)")
+local why = TT.idleWhy(state.turtles[23]) or ""
+CHECK(why:find("REFUSED", 1, true) and why:find("facing unknown", 1, true), "its card says why: " .. why)
+local rep
+for _, p in ipairs(popups) do if p:find("SURVEY: ALL", 1, true) then rep = p end end
+CHECK(rep and rep:find("5 of 6", 1, true) and rep:find("facing unknown", 1, true), "the press report names it: " .. tostring(rep))
+setPopup = oldPopup
+-- small area pressed twice: no spot twice in the list
+MAP.queue = nil
+fleet(3)
+for _, t in pairs(state.turtles) do t.task = "busy" end
+MAP.queueSurvey(HOME.x - 2000, HOME.z - 2000, HOME.x + 2000, HOME.z + 2000, 8, nil)
+MAP.addSurvey(HOME.x + 400, HOME.z + 400, HOME.x + 600, HOME.z + 600, 8)
+local n1 = #MAP.queue.redo
+MAP.addSurvey(HOME.x + 400, HOME.z + 400, HOME.x + 600, HOME.z + 600, 8)
+CHECK(n1 > 0 and #MAP.queue.redo == n1, "pressed twice: the spots are in the list once (" .. n1 .. " -> " .. #MAP.queue.redo .. ")")
+MAP.spotDone = function(x, z) return DONE[x .. "," .. z] end
+CONFIG.map.pack = nil
+MAP.queue = nil
+
 -- 3. a turtle that still holds a batch (idle, no result yet) is not given a new one
 --    (without pack mode - the pack waits for its members anyway)
 CONFIG.map.pack = false

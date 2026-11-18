@@ -1601,11 +1601,21 @@ end
 
 -- a turtle answered its survey batch (TT.receive): done -> forget the batch;
 -- failed -> its unscanned spots go back into the queue
-function MAP.batchResult(id, ok)
+function MAP.batchResult(id, ok, msg)
   local q = MAP.queue
   if not (q and q.out and q.out[id]) then return end
   -- how fast is this turtle (spots per second)? the pack shares out by it
   local t = state.turtles[id]
+  -- REFUSED its spots at once (position / facing unknown, the anchor, ...): it would get spots
+  -- again every round and refuse them again - looking as if the base sent it nothing ("only
+  -- half get sent"). Kept out for 2 min with the reason shown (TURTLES list, SURVEY: ALL report).
+  if not ok and t and t.queueAt and os.clock() - t.queueAt < 30 then
+    t.surveyFail = { msg = tostring(msg or "no reason given"), at = os.clock() }
+    if MAP.press then MAP.press.failed[id] = t.surveyFail.msg end
+    TT.log(t, "Refused its survey spots: " .. t.surveyFail.msg)
+  elseif ok and t then
+    t.surveyFail = nil
+  end
   if ok and t and t.queueAt and os.clock() - t.queueAt > 1 then
     local r = #q.out[id] / (os.clock() - t.queueAt)
     t.packRate = t.packRate and (t.packRate * 0.5 + r * 0.5) or r
@@ -1629,7 +1639,13 @@ function MAP.addSurvey(x1, z1, x2, z2, r)
     return #spots, skipped
   end
   q.redo = q.redo or {}
-  for i = #spots, 1, -1 do table.insert(q.redo, 1, spots[i]) end    -- before the rest
+  -- (pressed again: spots already waiting or out with a turtle are not added twice)
+  local have = {}
+  for _, p in ipairs(q.redo) do have[p[1] .. "," .. p[2]] = true end
+  for _, l in pairs(q.out or {}) do for _, p in ipairs(l) do have[p[1] .. "," .. p[2]] = true end end
+  for i = #spots, 1, -1 do
+    if not have[spots[i][1] .. "," .. spots[i][2]] then table.insert(q.redo, 1, spots[i]) end   -- before the rest
+  end
   for _, id in ipairs(TT.available()) do
     local t = state.turtles[id]
     if t and t.held then t.held = nil TT.listDirty = true end
@@ -1693,6 +1709,8 @@ function MAP.feedSurvey()
     if t then t.packWait = nil end                -- (set again below while it waits for its pack)
     if free and t.queueAt and os.clock() - t.queueAt < 15 then free = false busy = true end
     if free and fuel and fuel < minFuel then free = false end
+    local refused = t and t.surveyFail and os.clock() - t.surveyFail.at < 120
+    if free and refused then free = false end
     -- still holding a batch (idle without its result yet): not free - after 30 s
     -- idle the batch is taken back below, THEN it gets new spots (never overwrite:
     -- its unscanned spots would be lost)
@@ -1707,7 +1725,9 @@ function MAP.feedSurvey()
       elseif t.held or (q.excluded and q.excluded[id]) then w = "STOPPED - give it a command first"
       elseif fuel and fuel < minFuel then w = "fuel " .. fuel .. " (needs " .. minFuel .. ")"
       elseif t.anchor then w = "anchor" elseif t.rescuerRole then w = "rescuer"
-      elseif TT.factoryRole(t) then w = "factory " .. TT.factoryRole(t) end
+      elseif TT.factoryRole(t) then w = "factory " .. TT.factoryRole(t)
+      elseif refused then w = "refused its spots: " .. t.surveyFail.msg end
+      if MAP.press and w then MAP.press.why[id] = w end
       if w then why[#why + 1] = (t.label or ("#" .. id)) .. ": " .. w end
     end
     if free then anyFree = true end
@@ -1746,6 +1766,7 @@ function MAP.feedSurvey()
         q.out[id] = mine
         t.queueAt = os.clock()
         q.sent = q.sent + #mine
+        if MAP.press then MAP.press.sent[id] = true end
         busy, q.changed = true, true
       end
     end
@@ -1791,6 +1812,7 @@ function MAP.feedSurvey()
           q.out[id] = mine
           t.queueAt, t.packWait = os.clock(), nil
           q.sent = q.sent + #mine
+          if MAP.press then MAP.press.sent[id] = true end
           if not solo[id] then got[#got + 1] = id end   -- (a lone given-back spot: not waited for)
           sentAny = true
         end
@@ -1822,6 +1844,7 @@ function MAP.feedSurvey()
       deal(packFree, false)
     end
   end
+  MAP.pressReport()
   -- no turtle CAN work on it: say why - once, again only when the reason
   -- changes or after 10 minutes (a free turtle that is just skipping
   -- already-mapped spots is not a problem)
@@ -1852,6 +1875,32 @@ function MAP.feedSurvey()
     MAP.queueSavedAt = os.clock()
     saveQueue()
   end
+end
+
+-- SURVEY: ALL pressed: which free turtles really went, and why the others did not - told
+-- ~20 s after the press (the owner: "only half get sent" - the base saw no reason)
+function MAP.pressStart()
+  MAP.press = { at = os.clock(), free = TT.available(), sent = {}, failed = {}, why = {} }
+end
+function MAP.pressReport()
+  local P = MAP.press
+  if not P or os.clock() - P.at < 20 then return end
+  MAP.press = nil
+  local went, not_ = 0, {}
+  for _, id in ipairs(P.free) do
+    local t = state.turtles[id]
+    if P.sent[id] and not P.failed[id] then went = went + 1
+    elseif t then
+      local w = P.failed[id] and ("refused: " .. P.failed[id]) or P.why[id]
+      if not w and t.task and t.task ~= "idle" then w = "busy (" .. tostring(t.task) .. ") - joins when free" end
+      if not w and t.packWait then w = "waits for its round" end
+      not_[#not_ + 1] = (t.label or ("#" .. id)) .. ": " .. (w or "free, got nothing yet")
+    end
+  end
+  local msg = went .. " of " .. #P.free .. " free turtles went."
+  if #not_ > 0 then msg = msg .. " Not: " .. table.concat(not_, "; ") end
+  if sysLog then sysLog("SURVEY: ALL - " .. msg, #not_ > 0 and "WARNING" or "INFO") end
+  setPopup("SURVEY: ALL", msg, #not_ > 0 and C.warn or C.good)
 end
 
 -- progress for the screen: done fraction, spots total
