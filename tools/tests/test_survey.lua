@@ -81,8 +81,8 @@ CHECK(twice == 0, "no spot twice (" .. twice .. ")")
 CHECK(outside == 0, "no spot outside the area (" .. outside .. ")")
 CHECK(not back, "progress never goes back")
 
--- 2b. the same with PACK turned off and on again in the middle (a band of rings
---     open): still every spot exactly once
+-- 2b. the same with PACK (rings) turned off and on again in the middle (rings handed out):
+--     still every spot exactly once
 fleet(4)
 DONE = {}
 MAP.queue = nil
@@ -162,15 +162,16 @@ for _, x in ipairs(batchesSent(m5)) do
   most5 = math.max(most5, #x.spots)
   for _, p in ipairs(x.spots) do if p[1] > HOME.x + 2000 then far5 = far5 + 1 end end
 end
-CHECK(got5 == 10 and most5 <= 6, "pack + 300 given-back spots: all 10 get some, at most 6 each (" .. got5 .. ", " .. most5 .. ")")
+local K5 = tonumber(CONFIG.map.packSpots) or 4
+CHECK(got5 == 10 and most5 <= 2 * K5, "pack + 300 given-back spots: all 10 get some, at most " .. 2 * K5 .. " each (" .. got5 .. ", " .. most5 .. ")")
 CHECK(far5 == 0, "the round takes the spots nearest the pack, not the far ones (" .. far5 .. " far)")
-CHECK(#q5.redo == 300 - 60, "the rest stay in the list for later rounds (" .. #q5.redo .. ")")
+CHECK(#q5.redo == 300 - 10 * 2 * K5, "the rest stay in the list for later (" .. #q5.redo .. ")")
 CONFIG.map.pack = nil
 MAP.queue = nil
 
 -- 2e. the owner's game: a big survey started right after STOP ALL / HOME - 1 turtle free, the
---     map around the base already done (thousands of spots: the band search needs several calls),
---     then 11 more turtles come back. The band must not stay 1 ring wide ("1 sent" for ages).
+--     map around the base already done (thousands of spots: looking past it takes several calls),
+--     then 11 more turtles come back: every one gets its OWN ring ("1 sent" for ages before).
 CONFIG.map.pack = true
 fleet(12)
 for id, t in pairs(state.turtles) do if id ~= 21 then t.task = "going home" end end
@@ -196,21 +197,23 @@ end
 -- (while it looks past the mapped land, the progress moves and the panel can say so)
 local p0 = MAP.queuePos(q6)
 feed6()
-CHECK(q6.band or (q6.pend and MAP.queuePos(q6) > p0 and MAP.looking), "looking for rings: the progress moves (" ..
+CHECK(q6.rr and (MAP.queuePos(q6) > p0 or q6.rr.own[21]), "looking for rings: the progress moves (" ..
       tostring(p0) .. " -> " .. tostring(MAP.queuePos(q6)) .. ")")
-for _ = 1, 40 do feed6() if q6.band then break end end
-CHECK(q6.band and #q6.band.rings == 1, "1 free turtle: a 1-ring band (" .. (q6.band and #q6.band.rings or 0) .. ")")
+for _ = 1, 40 do feed6() if q6.rr.own[21] then break end end
+CHECK(q6.rr.own[21] ~= nil, "the 1 free turtle got a ring")
 for _, t in pairs(state.turtles) do t.task = "idle" end          -- the others are back
 local most, seen = 0, {}
 for _ = 1, 60 do
   local got = feed6()
   for _, x in ipairs(got) do seen[x.id] = true end
   most = math.max(most, #got)
-  if q6.band and #q6.band.rings >= 10 and most >= 10 then break end
+  if most >= 12 then break end
 end
 local nSeen = 0
 for _ in pairs(seen) do nSeen = nSeen + 1 end
-CHECK(q6.band and #q6.band.rings == 12, "the band is rebuilt as wide as the pack: 12 rings (" .. (q6.band and #q6.band.rings or 0) .. ")")
+local rings6, n6 = {}, 0
+for _, rec in pairs(q6.rr.own) do if not rings6[rec.r] then rings6[rec.r] = true n6 = n6 + 1 end end
+CHECK(n6 == 12, "12 turtles on 12 different rings (" .. n6 .. ")")
 CHECK(most >= 10 and nSeen == 12, "rounds use (nearly) every turtle again (" .. most .. " in a round, " .. nSeen .. " in all)")
 MAP.spotDone = function(x, z) return DONE[x .. "," .. z] end
 CONFIG.map.pack = nil
@@ -304,9 +307,8 @@ for _, x in ipairs(late8) do
 end
 CHECK(#late8 == 10, "the 10 that came back join the running round at once (" .. #late8 .. ")")
 CHECK(most8 <= 6 and dup8 == 0, "with a short share, no spot twice (most " .. most8 .. ", twice " .. dup8 .. ")")
-CHECK(q8.wave and #q8.wave.ids == 20, "the round now waits for all 20 (" .. (q8.wave and #q8.wave.ids or 0) .. ")")
 local again = feed8()
-CHECK(#again == 0, "nobody gets more until the round is done (" .. #again .. ")")
+CHECK(#again == 0, "nobody gets more while it still holds spots (" .. #again .. ")")
 MAP.spotDone = function(x, z) return DONE[x .. "," .. z] end
 CONFIG.map.pack = nil
 MAP.queue = nil

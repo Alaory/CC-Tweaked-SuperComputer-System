@@ -197,9 +197,8 @@ if not x1 then return "whole world" end
 return (x2 - x1 + 1) .. " x " .. (z2 - z1 + 1) .. " blocks"
 end,
 next = function() resetSetting("map.areaA") resetSetting("map.areaB") end },
-bool("map.pack", "Turtles survey as a pack", "side by side: one visit wakes them all after a server crash", true),
-num("map.packSpots", "Pack: spots per turtle per round", "more = a bit faster, but further apart", 3, 1, 8, 1, plain),
-num("map.packSize", "Pack: turtles side by side (most)", "one ring each; more turtles than this share rings", 32, 2, 64, 2, plain),
+bool("map.pack", "Turtles survey in rings", "each its own ring round the base - never one behind another", true),
+num("map.packSpots", "Rings: spots per hand-out", "more = fewer messages, a little less even", 4, 1, 12, 1, plain),
 } },
 { name = "DRONES", list = {
 place("drone.home", "Base (drop-off point)", "where riders are dropped off - stand there", "feet"),

@@ -1,5 +1,6 @@
--- PACK mode: 6 turtles at different speeds stay close together, and the
--- survey is not much slower than with free-running turtles.
+-- PACK mode = RINGS: every turtle its own ring round the base, at its own pace. Faster than
+-- free-running turtles, short hops, and NOBODY flies over spots another turtle just scanned (the
+-- owner: "they move in mapped chunks in a line, only the one in front maps").
 local HOME = { x = -5292, y = 68, z = 10839 }
 CONFIG.drone.home = HOME
 MAP.auto = { on = false }
@@ -26,7 +27,7 @@ local function orderNearest(pts, x, z)
   return out
 end
 
-local function sim(packOn)
+local function sim(packOn, patchy)
   CONFIG.map.pack = packOn
   state.turtles = {}
   local W = {}
@@ -41,11 +42,23 @@ local function sim(packOn)
   --  tiny rings next to the base go by in a few rounds - not what is measured)
   local DONE = {}
   MAP.spotDone = function(x, z)
+    if patchy and (math.floor(x / 300) + math.floor(z / 400)) % 2 == 0 then return true end   -- (mapped in patches)
     return DONE[x .. "," .. z] or math.max(math.abs(x - HOME.x), math.abs(z - HOME.z)) < 340
   end
   MAP.queue = nil
   MAP.queueSurvey(-9000, 7000, -1500, 15000, 8, nil)
-  local worst, sum, cnt, done, travel, sky = 0, 0, 0, 0, 0, 0
+  local worst, sum, cnt, done, travel, sky, over = 0, 0, 0, 0, 0, 0, 0
+  local BY = {}
+  -- grid spots on the way from (x, z) to (x2, z2) (x first, then z) scanned by ANOTHER turtle
+  local function overflown(id, x, z, x2, z2)
+    local n, st = 0, 17
+    local function at(px, pz) local b = BY[px .. "," .. pz] if b and b ~= id then n = n + 1 end end
+    local dx = (x2 > x) and st or -st
+    if x ~= x2 then for px = x + dx, x2 - dx, dx do at(px, z) end end
+    local dz = (z2 > z) and st or -st
+    if z ~= z2 then for pz = z + dz, z2 - dz, dz do at(x2, pz) end end
+    return n
+  end
   for tick = 1, 1500 do
     local n0 = #state.tOut
     MAP.feedSurvey()
@@ -71,8 +84,10 @@ local function sim(packOn)
           w.time, w.i = w.time - cost, w.i + 1
           travel = travel + d
           if d > 48 then sky = sky + 1 end
+          if (t.pos.x - p[1]) % 17 == 0 and (t.pos.z - p[2]) % 17 == 0 then over = over + overflown(id, t.pos.x, t.pos.z, p[1], p[2]) end
           t.pos = { x = p[1], y = 70, z = p[2] }
           DONE[p[1] .. "," .. p[2]] = true
+          BY[p[1] .. "," .. p[2]] = id
           done = done + 1
         end
         if w.i >= #w.list then
@@ -96,21 +111,26 @@ local function sim(packOn)
     CLOCK = CLOCK + 5
     for _, t in pairs(state.turtles) do t.lastSeen = CLOCK end
   end
-  return done, sum / cnt, worst, travel / math.max(1, done), sky / math.max(1, done)
+  return done, sum / cnt, worst, travel / math.max(1, done), sky / math.max(1, done), over / math.max(1, done)
 end
 
-local freeDone, freeAvg, _, freeTravel = sim(false)
-local packDone, packAvg, packWorst, packTravel, packSky = sim(true)
-io.stderr:write(string.format("free: %d spots, %.0f blocks/spot, mate %.0f | pack: %d spots, %.1f blocks/spot, %.2f sky trips/spot, mate %.0f (worst %d)",
-  freeDone, freeTravel, freeAvg, packDone, packTravel, packSky, packAvg, packWorst) .. "\n")
-CHECK(packAvg < 40, string.format("pack: nearest team mate %.0f blocks on average (should be < 40)", packAvg))
-CHECK(packWorst < 200, "pack: never more than 200 blocks from the nearest (" .. packWorst .. ")")
-CHECK(freeAvg > packAvg * 2, string.format("free-running turtles spread out more (%.0f vs %.0f)", freeAvg, packAvg))
--- (75 %: free-running turtles got faster when their batches were cut evenly - dealEven; the
---  old in-turn pack dealing managed 13 %)
-CHECK(packDone >= freeDone * 0.75, "pack keeps >= 75% of the speed (" .. packDone .. " vs " .. freeDone .. " spots)")
-CHECK(packTravel < 22, string.format("pack: short hops, %.1f blocks per spot (17 = next spot; spots dealt in turn: ~50)", packTravel))
-CHECK(packSky < 0.05, string.format("pack: almost no sky-highway trips between spots (%.2f per spot)", packSky))
+local freeDone, freeAvg, _, freeTravel, _, freeOver = sim(false)
+local packDone, packAvg, packWorst, packTravel, packSky, packOver = sim(true)
+io.stderr:write(string.format("free: %d spots, %.0f blocks/spot, over %.2f | rings: %d spots, %.1f blocks/spot, %.2f sky trips/spot, over others' spots %.3f/spot, mate %.0f",
+  freeDone, freeTravel, freeOver, packDone, packTravel, packSky, packOver, packAvg) .. "\n")
+-- (the old ROUNDS managed 2125 here, 80 % of free-running; rings ~3700)
+CHECK(packDone >= freeDone * 1.1, "rings are faster than free-running turtles (" .. packDone .. " vs " .. freeDone .. " spots)")
+CHECK(packTravel < 20, string.format("rings: short hops, %.1f blocks per spot (17 = next spot)", packTravel))
+CHECK(packSky < 0.05, string.format("rings: almost no sky-highway trips between spots (%.2f per spot)", packSky))
+CHECK(packOver < 0.05, string.format("rings: nobody flies over spots another turtle scanned (%.3f per spot)", packOver))
+-- the same over land mapped in PATCHES (where the old rounds put two turtles on one ring line)
+local pDone, _, _, pTravel, _, pOver = sim(true, true)
+local fDone = sim(false, true)
+io.stderr:write(string.format("patchy: rings %d spots (free-running %d), %.1f blocks/spot, over %.3f/spot", pDone, fDone, pTravel, pOver) .. "\n")
+-- (the old rounds: 0.405 here - two turtles on one ring line; what is left: crossing other rings
+--  on the way out to a new ring)
+CHECK(pOver < 0.1, string.format("patchy land: hardly anyone flies over spots another turtle scanned (%.3f per spot)", pOver))
+CHECK(pDone >= fDone, "patchy land: rings at least as fast as free-running (" .. pDone .. " vs " .. fDone .. ")")
 
 -- the pack's pieces: every turtle's spots of one round lie together, side by side
 -- with the others' (none of its hops passes over another turtle's spot)
@@ -154,44 +174,57 @@ do
   MAP.queue = nil
 end
 
--- after a BASE RESTART the saved round time (q.wave.t) is ahead of the new clock:
--- the "do not wait for a hung turtle longer than packWait" limit must still work
+-- every turtle on its OWN ring, all of them working; a STOPPED turtle's ring goes to another
+-- (started where that one left off); a helper with no ring left works a ring from its FAR end
 do
   CONFIG.map.pack = true
   state.turtles, state.tOut = {}, {}
-  for i = 1, 2 do
+  for i = 1, 8 do
     local id = 40 + i
     state.turtles[id] = { id = id, label = "R" .. i, log = {}, lastN = 0, fuel = 50000,
       pos = { x = HOME.x + i, y = 70, z = HOME.z }, home = { x = HOME.x + i, y = 70, z = HOME.z },
       task = "idle", lastSeen = os.clock() }
   end
   local DONE = {}
-  MAP.spotDone = function(x, z) return DONE[x .. "," .. z] end
+  MAP.spotDone = function(x, z) return DONE[x .. "," .. z] or math.max(math.abs(x - HOME.x), math.abs(z - HOME.z)) < 300 end
   MAP.queue = nil
-  MAP.queueSurvey(-9000, 7000, -1500, 15000, 8, nil)
-  local got = { [41] = 0, [42] = 0 }
-  local function feed()
-    local n0 = #state.tOut
-    MAP.feedSurvey()
-    for i = n0 + 1, #state.tOut do
-      local o = state.tOut[i]
-      if o.msg.cmd == "surveypts" then
-        got[o.id] = got[o.id] + 1
-        state.turtles[o.id].task = "survey"
-        if o.id == 41 then                                 -- 41 finishes its spots at once
-          local a = o.msg.args
-          for j = 2, #a, 2 do DONE[a[j] .. "," .. a[j + 1]] = true end
-          state.turtles[41].task, state.turtles[41].idleSince = "idle", os.clock()
-          MAP.batchResult(41, true)
-        end
-      end
-    end
-  end
-  for _ = 1, 10 do CLOCK = CLOCK + 2 for _, t in pairs(state.turtles) do t.lastSeen = CLOCK end feed() end
-  CHECK(got[41] >= 1 and got[42] >= 1 and MAP.queue.wave, "a pack round is out (" .. got[41] .. "/" .. got[42] .. ")")
-  local before = got[41]
-  MAP.queue.wave.t = os.clock() + 500000                   -- (saved before the restart)
-  for _ = 1, 200 do CLOCK = CLOCK + 2 for _, t in pairs(state.turtles) do t.lastSeen = CLOCK end feed() end
-  CHECK(got[41] > before, "restart: the free turtle gets work again after packWait (42 hangs) - got " .. (got[41] - before))
+  MAP.queueSurvey(HOME.x - 2000, HOME.z - 2000, HOME.x + 2000, HOME.z + 2000, 8, nil)
+  CLOCK = CLOCK + 2
+  local n0 = #state.tOut
+  MAP.feedSurvey()
+  local q = MAP.queue
+  local rings, got = {}, 0
+  for id, rec in pairs(q.rr.own) do rings[rec.r] = (rings[rec.r] or 0) + 1 end
+  local shared = 0
+  for _, c in pairs(rings) do if c > 1 then shared = shared + 1 end end
+  for i = n0 + 1, #state.tOut do if state.tOut[i].msg.cmd == "surveypts" then got = got + 1 end end
+  CHECK(got == 8 and shared == 0, "all 8 turtles got spots, each on its own ring (" .. got .. ", " .. shared .. " rings shared)")
+  -- turtle 41 is STOPPED: its ring (half done) goes to the next turtle that needs one
+  local r41 = q.rr.own[41]
+  r41.i = math.floor(r41.j / 2)
+  state.turtles[41].held = true
+  q.out[41] = nil
+  for id in pairs(q.out) do q.out[id] = nil end
+  q.rr.own[42].i = q.rr.own[42].j                              -- 42 finished its ring
+  CLOCK = CLOCK + 20                                            -- (spots handed out < 15 s ago: not free yet)
+  for _, t in pairs(state.turtles) do t.lastSeen = CLOCK end
+  MAP.feedSurvey()
+  CHECK(q.rr.own[42] and q.rr.own[42].r == r41.r and q.rr.own[42].i > math.floor(r41.j / 2) - 1,
+        "a STOPPED turtle's ring goes on with another turtle, from where it was")
+  -- no ring left: a helper takes spots from the FAR end of a ring (walking towards its owner)
+  q.rr.next = 99999
+  for id in pairs(q.out) do q.out[id] = nil end
+  q.rr.own[44].i = q.rr.own[44].j
+  local j0 = {}
+  for id, rec in pairs(q.rr.own) do j0[id] = rec.j end
+  CLOCK = CLOCK + 20
+  for _, t in pairs(state.turtles) do t.lastSeen = CLOCK end
+  local m0 = #state.tOut
+  MAP.feedSurvey()
+  local help
+  for i = m0 + 1, #state.tOut do if state.tOut[i].id == 44 and state.tOut[i].msg.cmd == "surveypts" then help = state.tOut[i] end end
+  local shortened = false
+  for id, rec in pairs(q.rr.own) do if id ~= 44 and j0[id] and rec.j < j0[id] then shortened = true end end
+  CHECK(help and shortened, "with no ring left a free turtle helps from the far end of another's ring")
   MAP.queue = nil
 end

@@ -166,9 +166,6 @@ function TT.idleWhy(t)
     if q.excluded and q.excluded[t.id] then return "taken off the survey by STOP - any button gives it back", C.warn end
     if q.auto and MAP.full then return "auto-map paused - the map floppies are full", C.warn end
     if t.queueAt and os.clock() - t.queueAt < 30 then return "just got survey spots - starting", C.good end
-    if t.packWait and q.wave then
-      return "waiting for the rest of the pack (they survey together, so one visit wakes them all)", C.label
-    end
     local idle = t.idleSince and os.clock() - t.idleSince or 0
     -- why the last hand-out found nothing (MAP.feedSurvey / nextBatch)
     local w = q.lastWhy

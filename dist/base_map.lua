@@ -1143,11 +1143,16 @@ q.lastWhy = why
 q.redo = q.redo or {}
 
 
-if q.band then
-q.cursor = math.min(q.cursor, MAP.ringStart(q.band.rings and q.band.rings[1] or 0))
-q.band = nil
+
+
+if q.rr then
+local minR = q.rr.next or 0
+for _, rec in pairs(q.rr.own or {}) do if rec.i < rec.j then minR = math.min(minR, rec.r) end end
+for _, rec in ipairs(q.rr.loose or {}) do if rec.i < rec.j then minR = math.min(minR, rec.r) end end
+q.cursor = math.min(q.cursor, MAP.ringStart(minR))
+q.rr = nil
 end
-q.pend = nil
+q.band, q.pend, q.wave = nil, nil, nil
 
 local n0 = #q.redo
 for _ = 1, n0 do
@@ -1262,7 +1267,25 @@ return out
 end
 MAP.dealEven = dealEven
 
-local function packRound(q, ids, k)
+
+
+
+
+
+
+
+
+
+
+
+
+
+local function ringSpot(q, r, s0, off)
+local dx, dz = spiral(MAP.ringStart(r) + (s0 + off) % MAP.ringLen(r))
+return q.cx + dx * q.step, q.cz + dz * q.step
+end
+
+local function ringDeal(q, ids, k)
 local total = q.cols * q.rows
 local rad = math.floor((q.cols - 1) / 2)
 local threats, range = {}, 0
@@ -1276,16 +1299,30 @@ return who ~= nil
 end
 q.lastWhy = why
 q.redo = q.redo or {}
-local pos, rate = {}, {}
+q.band, q.pend, q.wave = nil, nil, nil
+local rr = q.rr or { next = MAP.ringOf(q.cursor) }
+q.rr = rr
+rr.own, rr.loose = rr.own or {}, rr.loose or {}
+MAP.looking = nil
+local pos = {}
 for _, id in ipairs(ids) do
 local t = state.turtles[id]
 pos[id] = { t.pos.x, t.pos.z }
-rate[id] = tonumber(t.packRate) or 0.01
 end
-local out = {}
 
+local nowE = os.epoch("utc")
+for oid, rec in pairs(rr.own) do
+local t = state.turtles[oid]
+if not t or t.held or (q.excluded and q.excluded[oid])
+or (not TT.online(t) and t.seenEpoch and nowE - t.seenEpoch > (tonumber(CONFIG.map.reclaimOffline) or 600) * 1000) then
+rr.own[oid] = nil
+if rec.i < rec.j then rr.loose[#rr.loose + 1] = rec end
+end
+end
 
-
+local busySpot = {}
+for _, l in pairs(q.out or {}) do for _, p in ipairs(l) do busySpot[p[1] .. "," .. p[2]] = true end end
+local out, solo = {}, {}
 
 
 local n0, cand = #q.redo, {}
@@ -1295,33 +1332,23 @@ for _, id in ipairs(ids) do cx, cz = cx + pos[id][1], cz + pos[id][2] end
 cx, cz = cx / #ids, cz / #ids
 for _ = 1, n0 do
 local p = table.remove(q.redo, 1)
-if MAP.spotDone(p[1], p[2]) or not MAP.inArea(p[1], p[2]) then
+if MAP.spotDone(p[1], p[2]) or not MAP.inArea(p[1], p[2]) or busySpot[p[1] .. "," .. p[2]] then
 
 elseif nearPlayer(p[1], p[2]) then q.redo[#q.redo + 1] = p
 else cand[#cand + 1] = p end
 end
-local take = {}
 if #cand > 0 then
 table.sort(cand, function(a, b) return math.abs(a[1] - cx) + math.abs(a[2] - cz) < math.abs(b[1] - cx) + math.abs(b[2] - cz) end)
+local take = {}
 for i, p in ipairs(cand) do
 if i <= cap then take[#take + 1] = p else q.redo[#q.redo + 1] = p end
 end
-end
-why.redo = #q.redo
-local solo = {}
-if #take > 0 then
 out = dealEven(take, ids, q.step)
-
-
-
-
 local rest = {}
-for _, id in ipairs(ids) do if not out[id] then rest[#rest + 1] = id end end
-if #rest == 0 then return out, solo end
-for id in pairs(out) do solo[id] = true end
+for _, id in ipairs(ids) do if not out[id] then rest[#rest + 1] = id else solo[id] = true end end
 ids = rest
 end
-
+why.redo = #q.redo
 
 
 local checked, outside = 0, 0
@@ -1329,258 +1356,113 @@ local stopAt = os.clock() + (tonumber(CONFIG.map.lookTime) or 0.3)
 local function outOfTime()
 return (checked >= 3000 and os.clock() >= stopAt) or checked >= 60000 or outside >= 200000
 end
-local packSize = tonumber(CONFIG.map.packSize) or 32
-local function spotAt(r, s)
-local dx, dz = spiral(MAP.ringStart(r) + s)
-return q.cx + dx * q.step, q.cz + dz * q.step
-end
 local function skip(x, z)
 return (q.rect and (x < q.x1 or x > q.x2 or z < q.z1 or z > q.z2)) or not MAP.inArea(x, z)
 end
-local want = math.max(1, math.min(#ids, packSize))
+local function usable(x, z)
+if skip(x, z) then outside = outside + 1 return false end
+checked = checked + 1
+if busySpot[x .. "," .. z] then return false end
+if MAP.spotDone(x, z) then q.skipped = q.skipped + 1 why.done = why.done + 1 return false end
+if nearPlayer(x, z) then q.redo[#q.redo + 1] = { x, z } return false end
+return true
+end
 
 
-
-
-if q.band and q.band.rings and #q.band.rings < want and want - #q.band.rings >= math.max(2, math.ceil(want / 4)) then
-local b = q.band
-for _, r in ipairs(b.rings) do
-local P = MAP.ringLen(r)
-for s = math.ceil(b.f * P - 0.000001), P - 1 do
-local x, z = spotAt(r, s)
-if not skip(x, z) and not (b.took and b.took[x .. "," .. z]) then q.redo[#q.redo + 1] = { x, z } end
+local function newRing(id)
+local p = pos[id]
+local bi, bd
+for i, rec in ipairs(rr.loose) do
+if rec.i < rec.j then
+local x, z = ringSpot(q, rec.r, rec.s0, rec.i)
+local d = math.abs(x - p[1]) + math.abs(z - p[2])
+if not bi or d < bd then bi, bd = i, d end
 end
 end
-q.cursor = math.min(total, MAP.ringStart(b.rings[#b.rings] + 1))
-q.bandOwn, q.band, q.pend = b.own, nil, nil
-q.changed = true
+if bi then return table.remove(rr.loose, bi) end
+while rr.next <= rad do
+if outOfTime() then
+MAP.looking = { r = rr.next, rad = rad, found = 0, want = 1 }
+return nil
+end
+local r = rr.next
+rr.next = r + 1
+local P, best, bdist = MAP.ringLen(r), nil, nil
+for s = 0, P - 1 do
+local dx, dz = spiral(MAP.ringStart(r) + s)
+local x, z = q.cx + dx * q.step, q.cz + dz * q.step
+if skip(x, z) then outside = outside + 1
+else
+checked = checked + 1
+if not MAP.spotDone(x, z) then
+local d = math.abs(x - p[1]) + math.abs(z - p[2])
+if not best or d < bdist then best, bdist = s, d end
+end
+end
+end
+if best then return { r = r, s0 = best, i = 0, j = P } end
+end
+return nil
+end
+
+local function walk(rec, n, backward)
+local got = {}
+while rec.i < rec.j and #got < n do
+local off
+if backward then rec.j = rec.j - 1 off = rec.j else off = rec.i rec.i = rec.i + 1 end
+local x, z = ringSpot(q, rec.r, rec.s0, off)
+if usable(x, z) then
+got[#got + 1] = { x, z }
+busySpot[x .. "," .. z] = true
+end
+if outOfTime() then break end
+end
+return got
+end
+
+table.sort(ids)
+local helpers = {}
+for _, id in ipairs(ids) do
+local mine, tries = {}, 0
+while #mine == 0 and tries < 4 and not outOfTime() do
+tries = tries + 1
+local rec = rr.own[id]
+if not rec or rec.i >= rec.j then
+rec = newRing(id)
+rr.own[id] = rec
+if not rec then break end
+end
+mine = walk(rec, k)
+end
+if #mine > 0 then out[id] = mine else helpers[#helpers + 1] = id end
+end
+
+for _, id in ipairs(helpers) do
+local best, left
+for _, rec in pairs(rr.own) do
+if rec.j - rec.i > (left or 2 * k) then best, left = rec, rec.j - rec.i end
+end
+for _, rec in ipairs(rr.loose) do
+if rec.j - rec.i > (left or 2 * k) then best, left = rec, rec.j - rec.i end
+end
+if best and not outOfTime() then
+local m = walk(best, k, true)
+if #m > 0 then out[id] = m end
+end
+end
+
+local minR = rr.next
+for _, rec in pairs(rr.own) do if rec.i < rec.j then minR = math.min(minR, rec.r) end end
+for i = #rr.loose, 1, -1 do
+local rec = rr.loose[i]
+if rec.i < rec.j then minR = math.min(minR, rec.r) else table.remove(rr.loose, i) end
+end
+if minR > rad then q.cursor = total
+else q.cursor = math.max(q.cursor, math.min(total, MAP.ringStart(minR))) end
 why.redo = #q.redo
 return out, solo
 end
-while q.cursor < total do
-local b = q.band
-if not b then
-
-
-
-
-
-local pend = q.pend or { rings = {}, r = MAP.ringOf(q.cursor) }
-local rings, r = pend.rings, pend.r
-while #rings < want and r <= rad do
-local work = false
-for s = 0, MAP.ringLen(r) - 1 do
-local x, z = spotAt(r, s)
-if skip(x, z) then outside = outside + 1
-else
-checked = checked + 1
-if not MAP.spotDone(x, z) then work = true break end
-end
-if outOfTime() then break end
-end
-if not work and outOfTime() then break end
-if work then rings[#rings + 1] = r
-elseif #rings == 0 then q.cursor = math.max(q.cursor, MAP.ringStart(r + 1)) end
-r = r + 1
-end
-if #rings < want and r <= rad and outOfTime() then
-q.pend = { rings = rings, r = r }
-MAP.looking = { r = r, rad = rad, found = #rings, want = want }
-break
-end
-q.pend, MAP.looking = nil, nil
-if #rings == 0 then
-if r > rad then q.cursor = total end
-break
-end
-b = { rings = rings, f = 0, own = {} }
-
-for j, id in pairs(q.bandOwn or {}) do if j <= #rings then b.own[j] = id end end
-q.band = b
-end
-local rings = b.rings
-
-
-
-
-local Psum = 0
-for _, r in ipairs(rings) do Psum = Psum + MAP.ringLen(r) end
-local need = math.ceil(math.min(#ids, #rings) * k * 0.6)
-local tracks, any, got, f1 = {}, false, 0, b.f
-for j = 1, #rings do tracks[j] = {} end
-repeat
-f1 = b.f + math.max(0.000001, k * #rings / Psum)
-if f1 > 0.999999 then f1 = 1 end
-for j, r in ipairs(rings) do
-local list, P = tracks[j], MAP.ringLen(r)
-local s0 = math.ceil(b.f * P - 0.000001)
-local s1 = (f1 >= 1) and P or math.ceil(f1 * P - 0.000001)
-for s = s0, s1 - 1 do
-local x, z = spotAt(r, s)
-if skip(x, z) then outside = outside + 1
-else
-checked = checked + 1
-if MAP.spotDone(x, z) then q.skipped = q.skipped + 1 why.done = why.done + 1
-elseif b.took and b.took[x .. "," .. z] then
-elseif nearPlayer(x, z) then q.redo[#q.redo + 1] = { x, z }
-else list[#list + 1] = { x, z } any, got = true, got + 1 end
-end
-end
-end
-b.f = f1
-until got >= need or f1 >= 1 or outOfTime()
-if f1 >= 1 then
-
-q.cursor = math.min(total, MAP.ringStart(rings[#rings] + 1))
-q.bandOwn, q.band = b.own, nil
-end
-if any then
-local n = #rings
-
-local owner, has, free = {}, {}, {}
-for _, id in ipairs(ids) do free[id] = true end
-for j = 1, n do
-local id = b.own[j]
-if id and free[id] and not has[id] then owner[j], has[id] = { id }, true end
-end
-for _, id in ipairs(ids) do
-if not has[id] then
-local bj, bd
-for j = 1, n do
-if not owner[j] and tracks[j][1] then
-local d = near(pos[id], tracks[j][1])
-if not bj or d < bd then bj, bd = j, d end
-end
-end
-if bj then owner[bj], has[id], b.own[bj] = { id }, true, id end
-end
-end
-
-for j = 1, n do
-if #tracks[j] > 0 and not owner[j] then
-local bj
-for d = 1, n do
-if owner[j - d] then bj = j - d break end
-if owner[j + d] then bj = j + d break end
-end
-if bj then for _, p in ipairs(tracks[j]) do table.insert(tracks[bj], p) end end
-tracks[j] = {}
-end
-end
-
-
-for _, id in ipairs(ids) do
-if not has[id] then
-local bj, bv
-for j = 1, n do
-if owner[j] and #tracks[j] > 1 then
-local v = #tracks[j] / (#owner[j] + 1)
-if not bj or v > bv then bj, bv = j, v end
-end
-end
-if bj then table.insert(owner[bj], id) has[id] = true end
-end
-end
-
-for j = 1, n do
-local o, list = owner[j], tracks[j]
-if o and #list > 0 then
-local rs, acc, at = 0, 0, 1
-for _, id in ipairs(o) do rs = rs + rate[id] end
-for i, id in ipairs(o) do
-acc = acc + rate[id]
-local upto = (i == #o) and #list or math.floor(#list * acc / rs + 0.5)
-for c = at, upto do
-out[id] = out[id] or {}
-table.insert(out[id], list[c])
-end
-at = math.max(at, upto + 1)
-end
-end
-end
-
-
-for _, id in ipairs(ids) do
-if not out[id] then
-local bo, bn, bd
-for o, l in pairs(out) do
-if #l >= 2 and not solo[o] then
-local d = near(pos[id], l[#l])
-if not bo or #l > bn or (#l == bn and d < bd) then bo, bn, bd = o, #l, d end
-end
-end
-if not bo then break end
-local l, mine = out[bo], {}
-local cut = math.floor(#l / 2) + 1
-for c = cut, #l do mine[#mine + 1] = l[c] end
-for c = #l, cut, -1 do l[c] = nil end
-out[id] = mine
-end
-end
-return out, solo
-end
-if outOfTime() then break end
-end
-return out, solo
-end
-MAP.packRound = packRound
-
-
-
-
-
-
-local function packJoin(q, ids, k)
-local out, b = {}, q.band
-if not (b and b.rings and #b.rings > 0) then return out end
-b.took = b.took or {}
-local used, budget = {}, 0
-local function spotsOf(j)
-local r = b.rings[j]
-local P = MAP.ringLen(r)
-local list = {}
-for s = math.ceil((b.f or 0) * P - 0.000001), P - 1 do
-budget = budget + 1
-if budget > 20000 then break end
-local dx, dz = spiral(MAP.ringStart(r) + s)
-local x, z = q.cx + dx * q.step, q.cz + dz * q.step
-local key = x .. "," .. z
-if not ((q.rect and (x < q.x1 or x > q.x2 or z < q.z1 or z > q.z2)) or not MAP.inArea(x, z))
-and not b.took[key] and not MAP.spotDone(x, z) then
-list[#list + 1] = { x, z }
-if #list >= k then break end
-end
-end
-return list
-end
-for _, id in ipairs(ids) do
-local t = state.turtles[id]
-local mine = {}
-local j0
-for j, oid in pairs(b.own or {}) do if oid == id and not used[j] then j0 = j end end
-if j0 then used[j0] = true mine = spotsOf(j0) end
-if #mine == 0 and t and t.pos and t.pos.x then
-
-local best, bd, bl
-for j = 1, #b.rings do
-if not used[j] then
-local l = spotsOf(j)
-if l[1] then
-local d = math.abs(l[1][1] - t.pos.x) + math.abs(l[1][2] - t.pos.z)
-if not best or d < bd then best, bd, bl = j, d, l end
-end
-end
-end
-if best then used[best], mine = true, bl end
-end
-if #mine > 0 then
-for _, p in ipairs(mine) do b.took[p[1] .. "," .. p[2]] = true end
-out[id] = mine
-end
-end
-return out
-end
-MAP.packJoin = packJoin
+MAP.ringDeal = ringDeal
 
 
 
@@ -1706,7 +1588,6 @@ and not (q.excluded and q.excluded[id])
 and not t.rescuerRole and not t.held
 and not TT.factoryRole(t)
 local fuel = t and tonumber(t.fuel)
-if t then t.packWait = nil end
 if free and t.queueAt and os.clock() - t.queueAt < 15 then free = false busy = true end
 if free and fuel and fuel < minFuel then free = false end
 local refused = t and t.surveyFail and os.clock() - t.surveyFail.at < 120
@@ -1772,76 +1653,29 @@ end
 end
 end
 
-
 if pack and #packFree > 0 and (q.cursor < total or (q.redo and #q.redo > 0)) then
-local open = false
-if q.wave then
-
-
-if (q.wave.t or 0) > os.clock() then q.wave.t = os.clock() end
-for _, wid in ipairs(q.wave.ids or {}) do if q.out and q.out[wid] then open = true end end
-if open and os.clock() - (q.wave.t or 0) > (tonumber(CONFIG.map.packWait) or 300) then open = false end
-end
-local k = tonumber(CONFIG.map.packSpots) or 3
-
-local function deal(ids, join)
-table.sort(ids)
+local k = math.max(1, tonumber(CONFIG.map.packSpots) or 4)
+table.sort(packFree)
 local lists, solo = {}, {}
-if join then
-lists = packJoin(q, ids, k)
-elseif q.spiral then
-lists, solo = packRound(q, ids, k)
-solo = solo or {}
+if q.spiral then
+lists, solo = ringDeal(q, packFree, k)
 else
 
-local n = math.min(#ids, tonumber(CONFIG.map.packSize) or 32)
-local spots = nextBatch(q, n * k)
-for c, p in ipairs(spots) do
-local id = ids[math.min(n, math.floor((c - 1) * n / #spots) + 1)]
-lists[id] = lists[id] or {}
-table.insert(lists[id], p)
+local spots = nextBatch(q, #packFree * k)
+lists = dealEven(spots, packFree, q.step)
 end
-end
-local got, sentAny = {}, false
-for _, id in ipairs(ids) do
+for _, id in ipairs(packFree) do
 local mine = lists[id]
 local t = state.turtles[id]
 if mine and #mine > 0 then
 TT.sendSpots(id, mine, q.r)
 q.out = q.out or {}
 q.out[id] = mine
-t.queueAt, t.packWait = os.clock(), nil
+t.queueAt = os.clock()
 q.sent = q.sent + #mine
 if MAP.press then MAP.press.sent[id] = true end
-if not solo[id] then got[#got + 1] = id end
-sentAny = true
+busy, q.changed = true, true
 end
-end
-if join and q.wave then
-for _, id in ipairs(got) do table.insert(q.wave.ids, id) end
-elseif #got > 0 then
-q.wave = { t = os.clock(), ids = got }
-end
-if sentAny then busy, q.changed = true, true end
-end
-if open then
-busy = true
-
-
-
-
-
-local inWave, late = {}, {}
-for _, wid in ipairs(q.wave.ids or {}) do inWave[wid] = true end
-for _, id in ipairs(packFree) do
-if inWave[id] then state.turtles[id].packWait = true else late[#late + 1] = id end
-end
-if #late > 0 and q.spiral then deal(late, true) end
-for _, id in ipairs(late) do
-if not (q.out and q.out[id]) then state.turtles[id].packWait = true end
-end
-else
-deal(packFree, false)
 end
 end
 MAP.pressReport()
@@ -1893,7 +1727,6 @@ if P.sent[id] and not P.failed[id] then went = went + 1
 elseif t then
 local w = P.failed[id] and ("refused: " .. P.failed[id]) or P.why[id]
 if not w and t.task and t.task ~= "idle" then w = "busy (" .. tostring(t.task) .. ") - joins when free" end
-if not w and t.packWait then w = "waits for its round" end
 not_[#not_ + 1] = (t.label or ("#" .. id)) .. ": " .. (w or "free, got nothing yet")
 end
 end
@@ -1906,14 +1739,14 @@ end
 
 
 function MAP.queuePos(q)
-local b = q and q.band
+if not q then return 0 end
+local rr = q.rr
+if not rr then return q.cursor end
 
-if not b and q and q.pend and q.pend.r then return math.max(q.cursor, math.min(q.cols * q.rows, MAP.ringStart(q.pend.r))) end
-if not b then return q and q.cursor or 0 end
-local rs = b.rings or {}
-if #rs == 0 then return q.cursor end
-local a, z = MAP.ringStart(rs[1]), math.min(q.cols * q.rows, MAP.ringStart(rs[#rs] + 1))
-return math.max(q.cursor, a + (z - a) * (b.f or 0))
+local pos = MAP.ringStart(rr.next or 0)
+for _, rec in pairs(rr.own or {}) do pos = pos - math.max(0, rec.j - rec.i) end
+for _, rec in ipairs(rr.loose or {}) do pos = pos - math.max(0, rec.j - rec.i) end
+return math.max(q.cursor, math.min(q.cols * q.rows, pos))
 end
 
 function MAP.surveyProgress()

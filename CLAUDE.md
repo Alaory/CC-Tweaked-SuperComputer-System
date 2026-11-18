@@ -98,68 +98,34 @@ PneumaticCraft drone rides, turtle mapping/surveys, and an AE2 ME network view.
   the area are skipped cheaply. Old saved row-by-row queues are converted once in
   feedSurvey: their old far batches / redo spots are DROPPED and the turtles that
   had one get t.recall (saved in turtles.dat) - TT.receive stops their survey job
-  (also when they resume it after being offline), then sends them home. The queue file is written only when it changed (or once a minute). PACK mode
-  (CONFIG.map.pack, default on; SETTINGS > MAP): the free turtles get spots in
-  ROUNDS (q.wave) from a BAND of rings (MAP.packRound; q.band {rings, f, own}, q.bandOwn):
-  one spiral ring per turtle (only rings that still have work - a mapped area round the
-  base left turtles sharing a ring), turtle j KEEPS ring j; each round every ring gives
-  the same stretch of the way round (~packSpots (3) spots), so the turtles move side by
-  side 17 blocks apart, 17-block hops on the ground. (Before: the round's consecutive
-  spots were dealt IN TURN along one line - 51-block hops over the others' spots = a sky
-  highway trip per spot, the owner saw them follow each other in a line, only the front
-  one scanning; sim with travel: 13% of free-running speed, now ~84%.) A busy member's
-  ring goes to the nearest ring's turtle; extra turtles share the busiest ring (by
-  t.packRate); spots given back (q.redo) go first, each to the nearest turtle. q.cursor
-  stays at the band's first ring (plain mode / an auto-map cursor go on from there:
-  nothing lost); MAP.queuePos = progress inside the band. test_survey_pack.lua (travel
-  model, grouped pieces), test_survey.lua 2b (pack on/off mid-survey). EVERY FREE TURTLE A SHARE
-  (dealEven; the owner: "SURVEY: ALL seems to send half of the turtles"): q.redo (SURVEY: ALL of a small
-  area = MAP.addSurvey, reclaimed spots) was dealt in a CHAIN (nearest turtle with room, 2*packSpots each)
-  - all start at the base, so 36 spots went to 6 of 10 turtles; WITHOUT pack the first free turtle took up
-  to 64 (1 of 10). Now: spots in rows (snake), cut into one piece per free turtle (by t.packRate, BATCH
-  each at most), each piece to the nearest turtle; non-pack mode deals nextBatch(BATCH * free) the same
-  way after the loop. test_survey.lua 2c (old code: 6 / 1 of 10). PACK rounds of given-back spots stay
-  SHORT: at most 2 x packSpots per turtle, the ones NEAREST the pack (centre of the free turtles) first,
-  the rest stay in q.redo - the first dealEven let each take up to 64 scattered spots and the whole pack
-  waited for turtles crossing the map ("now turtles dont survey"). test_survey.lua 2d. BAND WIDTH (the
-  owner: BIG SURVEY "1 sent" for ages, one turtle flying alone): the band's width was fixed when it began -
-  started right after STOP ALL / HOME with 1 free turtle = ONE ring for 31 turtles (~3 spots a round); also
-  the ring search stopped at its 3000-check budget with whatever it had found (a big mapped area round the
-  base). Now: want = min(free, CONFIG.map.packSize = 32 (was 8!), SETTINGS > MAP "Pack: turtles side by
-  side"); a band narrower than want by >= max(2, want/4) is ENDED - its unfinished spots (f..1 of each
-  ring) go to q.redo (handed out evenly, nearest first), cursor past it - and a full band starts; the ring
-  search keeps what it found in q.pend across calls. test_survey.lua 2e (old code: 1 ring, 3 turtles a
-  round). FULL ROUNDS (the owner: "when I hit SURVEY: ALL only one turtle goes"): an old survey's ONE
-  left-over spot (q.redo, carried over) was a round of its own - one turtle flew off with it and the
-  pack waited for it; and over land mapped in PATCHES a round's stretch held 1 spot for 3 .. 13 of 30
-  turtles. Now packRound: given-back spots fewer than the free turtles -> the rest go on with the band in
-  the same call and those lone ones are not in q.wave (packRound returns out, solo); a band round goes
-  on round the rings until it has ~0.6 x k spots per turtle; a free turtle left with nothing takes the
-  far half of the biggest share. test_survey.lua 2f (old code: 1 turtle, then fewest 1 of 30). JOINING A
-  RUNNING ROUND (the owner: "sent half of them" - the rest "waiting for the rest of the pack" while the
-  round flew 2,000 blocks out; after packWait the next round went to them only and the first half waited:
-  half the fleet worked at a time): a free turtle NOT in q.wave (busy when the round was dealt) joins it
-  at once - packJoin: the next k spots of its own ring (b.own, else the nearest ring) from b.f, noted in
-  q.band.took (the next round and an ended band's rest skip them), appended to q.wave.ids; no band ->
-  it waits. (Taking a whole band slice + putting the rest in q.redo scattered the pack: sim 591 of 2667.)
-  test_survey.lua 2g (old code: 0 of 10 joined), test_survey_pack unchanged. REFUSED SPOTS (the owner
-  again: "each time I hit SURVEY: ALL only half get sent - half of 16, then half of 8"; the sim sends
-  all 16): a turtle that fails its surveypts within 30 s (facing unknown, anchor ...) got spots again
-  every round and refused again = looked like "not sent". MAP.batchResult(id, ok, msg) -> t.surveyFail
-  {msg, at}: not free for 120 s, idleWhy "REFUSED its survey spots: <why>", feed `why`. SURVEY: ALL
-  REPORT: MAP.pressStart (base_input, big + small area) -> MAP.press {free, sent, failed, why} ->
-  MAP.pressReport (feedSurvey, 20 s later): popup + sysLog "N of M free turtles went. Not: <name>:
-  <why>; ...". addSurvey pressed twice: spots already in q.redo / q.out not added again (was 864 more
-  each press). test_survey.lua 2h. LOOKING PAST MAPPED LAND (the owner: "0 sent", 7 % for minutes, every turtle "got nothing"): the
-  ring search and the windows check by TIME (outOfTime: >= 3000 checks AND CONFIG.map.lookTime 0.3 s, cap
-  60000 / 200000 outside) instead of a fixed 3000 a call; MAP.queuePos counts q.pend.r (the % moved only
-  when a band ended); MAP.looking {r, rad, found, want} + MAP.feedErr (the comms tick) -> the BIG SURVEY
-  panel says "looking past mapped land for unmapped rings: ring N of M (k of n found)" / "ERROR: ...".
-  The `survey` console prints every turtle's state and runs one hand-out with its error. The next round
-  only when the whole pack is done (or after packWait 300 s; q.wave.t is saved with the queue - a time from before a
-  base restart is ahead of the new clock and is reset, else the limit never ran out). Keeps them ~20 blocks apart
-  so one wake-up (rescuer / player) reaches all.
-  t.packWait -> TT.idleWhy "waiting for the rest of the pack". A turtle still holding
+  (also when they resume it after being offline), then sends them home. The queue file is written only when it changed (or once a minute). PACK mode = RINGS
+  (CONFIG.map.pack, default on; SETTINGS > MAP "Turtles survey in rings"; MAP.ringDeal): every turtle OWNS a
+  ring of the spiral (a square round the base, 17 blocks from the next) and walks it AT ITS OWN PACE from the
+  ring's unmapped spot NEAREST to it, all the way round, packSpots (4) spots per hand-out, mapped stretches
+  skipped; NOBODY WAITS. Ring done -> the next ring nobody had (q.rr.next; found by TIME - outOfTime >= 3000
+  checks AND CONFIG.map.lookTime 0.3 s, MAP.looking for the BIG SURVEY panel); a turtle that went away (gone,
+  offline > reclaimOffline, STOPPED / excluded) leaves its ring LOOSE (q.rr.loose, taken first, nearest). No ring
+  left -> it helps the ring with the most left from its FAR END (j backwards) towards that ring's owner - they
+  meet. q.rr = {next, own = {[id] = {r, s0, i, j}}, loose}; offsets i..j-1 from s0 still to do. Spots out with a
+  turtle (q.out) are never handed out twice. q.cursor = ringStart(first ring not finished); MAP.queuePos =
+  ringStart(next) minus what is left on rings. nextBatch (pack off) goes on from the first unfinished ring.
+  Given-back spots (q.redo, a small SURVEY: ALL = MAP.addSurvey) go first: dealEven (snake rows cut into one
+  piece per turtle by t.packRate, each piece to the nearest), at most 2 x packSpots each, nearest the
+  turtles first. WHY (the owner, many times: "they follow each other in a line", "only the one in front
+  maps", "sent half of them", "only one turtle goes"): the old ROUNDS (q.wave / q.band / packRound /
+  packJoin, removed) made everyone wait for the slowest, then jump over mapped land together; over land
+  mapped in PATCHES a turtle with nothing on its own ring took HALF of another ring = two turtles on one
+  line, one behind the other. test_survey_pack.lua (travel model, 6 turtles at different speeds; also
+  PATCHY land; "over" = flying over spots ANOTHER turtle scanned): old rounds 2111 spots / patchy 699 with
+  0.405 overflights per spot, free-running 2667 / 1632, rings ~3765 / ~1880 with 0.008 / 0.07; every turtle
+  on its own ring, a STOPPED turtle's ring goes on with another from where it was, the far-end helper).
+  test_survey.lua 2b-2h (pack on/off mid-survey, every free turtle a share, 12 turtles = 12 rings, ...).
+  REFUSED SPOTS: a turtle that fails its surveypts within 30 s (facing unknown, anchor ...) got spots
+  again and refused again = looked like "not sent": MAP.batchResult(id, ok, msg) -> t.surveyFail {msg,
+  at}: not free for 120 s, idleWhy "REFUSED its survey spots: <why>". SURVEY: ALL REPORT: MAP.pressStart
+  (base_input) -> MAP.press -> MAP.pressReport (20 s later): popup + sysLog "N of M free turtles went.
+  Not: <name>: <why>; ...". addSurvey pressed twice: spots already in q.redo / q.out not added again.
+  The `survey` console prints every turtle's state. A turtle still holding
   a batch (q.out[id]) is never free (its batch is reclaimed after 30 s idle first -
   overwriting it lost the unscanned spots). SURVEY: ALL for small areas also goes through
   the queue (MAP.addSurvey); SURVEY: THIS ONE is a direct order. A spot is

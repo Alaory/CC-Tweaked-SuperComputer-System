@@ -255,7 +255,7 @@ function drawMapPage(G)
     local L = MAP.looking
     if MAP.feedErr then
       para(bx, by + 4, bw2, "ERROR: " .. MAP.feedErr, C.bad, 2)
-    elseif q.pend and L then
+    elseif L then
       para(bx, by + 4, bw2, "looking past mapped land for unmapped rings: ring " .. L.r .. " of " .. L.rad ..
            " (" .. L.found .. " of " .. L.want .. " found)", C.label, 2)
     else
