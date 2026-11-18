@@ -956,6 +956,22 @@ PneumaticCraft drone rides, turtle mapping/surveys, and an AE2 ME network view.
   once a minute), small talk (fact / joke / tip) every ~chatter min while someone stays and nothing was said
   for 60 s. Everything only while someone is at the base; questions are never actions. test_voice.lua part 11
   (passes with 20 random seeds).
+  v4 (the owner: "more idle stuff, less notifications, lots of interactions"): ANNOUNCE modes voice.announce
+  summary (default) | all | errors | off - summary: warnings COLLECTED (VOICE.pending) and said as ONE line every
+  announceEvery 900 s while someone is there, errors at once but 120 s apart, good news 15 min apart; goodbyes
+  30 %, hurt 10 min, mob-close 5 min apart. IDLE (VOICE.idle, every ~chatter 6 min): fact / joke / tip / what it
+  sees (animals / monsters from ENV.data.ents, a full moon at night) / musings / an idle quiz question / humming
+  (VOICE.sing(3)); AFK = a near player whose Player Detector x z has not changed for 5 min ("are you still
+  there?"), 10 min (a lullaby). INTERACTIONS (VOICE.extraAnswer, before the old answers): flip a coin, roll a
+  dice, pick a number, guess my number (VOICE.games[player] kind guess, higher / lower, 8 tries), rock paper
+  scissors, quiz (VOICE.QUIZ, points in memory, `my score`), magic 8 ball (should / will / is / am / can I ...),
+  roast me, compliment me, a story, are you alive, I love you, where am I (Player Detector + compass), how many
+  mobs / animals, real time (UTC), remind me in N min to X (VOICE.timers, said / chat when due), remember X /
+  my notes / forget my notes (memory file, 10 each), shh (VOICE.quietUntil 30 min: no reactions / small talk /
+  AFK, answers still) / talk to me, welcome <name>, say <text> (owner / friends). GAME REPLIES need no name;
+  a message WITH the name only counts when it is a correct answer / a number / rock-paper-scissors (strict) and
+  a wrong-answer reply only comes for 1-2 word messages (a waiting quiz took "base, status?" as wrong). test_voice
+  parts 12-13 (passes with 60 random seeds).
 - REMOVED AGAIN: remote access in a web browser (Cloud Catcher; base_remote.lua / remote.lua / pocket.lua
   in local mode on the base) - the owner: "taking space and seems useless". removeOldFiles (base_theme.lua,
   run by inventory.lua at start) deletes its files (remote.lua, base_remote.lua, cloud.lua on the computer

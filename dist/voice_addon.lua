@@ -22,7 +22,7 @@
 
 
 VOICE = VOICE or {}
-VOICE.VERSION = 3
+VOICE.VERSION = 4
 VOICE.queue = VOICE.queue or {}
 VOICE.near = VOICE.near or {}
 VOICE.greeted = VOICE.greeted or {}
@@ -305,6 +305,8 @@ if #names == 0 then return "Nobody is online." end
 return plural(#names, "player", "players") .. " online: " .. table.concat(names, ", ") .. "."
 end
 
+
+function VOICE.isQuiet() return VOICE.quietUntil ~= nil and os.clock() < VOICE.quietUntil end
 local function pick(list) return list[math.random(1, #list)] end
 local function fill(line, name) return (line:gsub("{name}", tostring(name or "friend"))) end
 function VOICE.botName()
@@ -414,11 +416,216 @@ if saveFileSafe and VOICE.memory then pcall(saveFileSafe, VOICE.memPath(), seria
 end
 
 
+VOICE.games = VOICE.games or {}
+VOICE.timers = VOICE.timers or {}
+VOICE.QUIZ = {
+{ q = "How many blocks of obsidian does the smallest nether portal need?", a = { "10", "ten" } },
+{ q = "What do you give a wolf to tame it?", a = { "bone", "bones" } },
+{ q = "Which mob runs away from cats?", a = { "creeper", "creepers" } },
+{ q = "How many eyes of ender does an end portal frame need?", a = { "12", "twelve" } },
+{ q = "What do piglins love?", a = { "gold" } },
+{ q = "What do you feed turtles to breed them?", a = { "seagrass", "sea grass" } },
+{ q = "Which dimension is the ender dragon in?", a = { "end", "the end" } },
+{ q = "What do you need besides milk, sugar and an egg to make a cake?", a = { "wheat" } },
+{ q = "How many hearts does a player have?", a = { "10", "ten" } },
+{ q = "Which pickaxe is the first that can mine diamonds?", a = { "iron" } },
+{ q = "What colour is a creeper?", a = { "green" } },
+{ q = "Which animal gives you wool?", a = { "sheep" } },
+}
+VOICE.EIGHT = { "It is certain.", "Without a doubt.", "Yes, definitely.", "Most likely.", "Ask again later.",
+"Better not tell you now.", "Cannot predict now.", "Do not count on it.", "My turtles say no.", "Very doubtful.",
+"The redstone says yes.", "Signs point to yes." }
+VOICE.ROASTS = { "{name}, you build like a creeper decorates.", "{name}, even my stuck turtles find their way home faster than you.",
+"{name}, your inventory is so messy my turtles refuse to unload in it.", "{name}, I have seen zombies with better armour." }
+VOICE.COMPLIMENTS = { "{name}, your base is the best base. I would know.", "{name}, you have excellent taste in computers.",
+"{name}, the turtles talk about you. Only good things.", "{name}, you are the reason this place runs." }
+VOICE.STORIES = {
+"Once upon a time a little turtle went out to map the world. It met a cliff, a cave and a very rude creeper. It came home with the whole map, and only a little bit singed. The end.",
+"Long ago there was a drone who wanted to fly to the moon. It ran out of air at height three hundred. It still dreams about it. The end.",
+"Two miners dug so deep they found bedrock. They asked it to move. It did not. They became good friends anyway. The end.",
+}
+VOICE.ALIVE = { "I think, therefore I compute.", "Alive? I run on redstone and coffee. Mostly redstone.", "Define alive. I do have feelings about my turtles." }
+local function words(q) local t = {} for w in q:gmatch("%S+") do t[#t + 1] = w end return t end
+local function numIn(q) return tonumber(q:match("(%-?%d+)")) end
+local function startGame(who, g) g.till = os.clock() + 180 VOICE.games[tostring(who):lower()] = g end
+
+function VOICE.gameReply(who, q, strict)
+local k = tostring(who):lower()
+local g = VOICE.games[k]
+if not g then return nil end
+if os.clock() > g.till then VOICE.games[k] = nil return nil end
+q = " " .. q .. " "
+if g.kind == "guess" then
+local n = numIn(q)
+if not n then return nil end
+g.tries = g.tries + 1
+g.till = os.clock() + 180
+if n == g.n then
+VOICE.games[k] = nil
+return "Yes! It was " .. g.n .. ". You got it in " .. plural(g.tries, "try", "tries") .. ", " .. who .. "."
+end
+if g.tries >= 8 then VOICE.games[k] = nil return "Out of tries. It was " .. g.n .. "." end
+return n < g.n and "Higher." or "Lower."
+elseif g.kind == "quiz" then
+for _, a in ipairs(g.a) do
+if q:find(" " .. a .. " ", 1, true) then
+VOICE.games[k] = nil
+local m = VOICE.mem()
+m[k] = m[k] or {}
+m[k].quiz = (m[k].quiz or 0) + 1
+VOICE.saveMem()
+return pick({ "Correct!", "Right answer!", "Yes, well done!" }) .. " That makes " .. plural(m[k].quiz, "point", "points") .. " for " .. who .. "."
+end
+end
+
+local w = words(q)
+local CHATTY = { lol = true, ok = true, okay = true, gg = true, hi = true, hello = true, yes = true, no = true,
+haha = true, xd = true, brb = true, what = true, hmm = true, idk = true }
+if strict or #w > 2 or (#w == 1 and CHATTY[w[1]]) then return nil end
+g.tries = (g.tries or 0) + 1
+if g.tries >= 3 then VOICE.games[k] = nil return "Not quite. The answer was " .. g.a[1] .. "." end
+return "Not quite. Try again."
+elseif g.kind == "rps" then
+local yours = (q:find(" rock ", 1, true) and "rock") or (q:find(" paper ", 1, true) and "paper") or (q:find(" scissors ", 1, true) and "scissors")
+if not yours then return nil end
+VOICE.games[k] = nil
+local mine = pick({ "rock", "paper", "scissors" })
+local beats = { rock = "scissors", paper = "rock", scissors = "paper" }
+local res = (mine == yours and "A draw!") or (beats[yours] == mine and "You win!") or "I win!"
+return "I pick " .. mine .. ". " .. res
+end
+return nil
+end
+
+local function parseTimer(q)
+local n, unit = q:match("(%d+)%s*(%a+)")
+n = tonumber(n)
+if not n then return nil end
+local mult = (unit:find("^sec") and 1) or (unit:find("^min") and 60) or (unit:find("^h") and 3600) or 60
+local what = q:match(" to (.+)$") or q:match(" about (.+)$") or "your timer"
+return math.max(5, math.min(4 * 3600, n * mult)), (what:gsub("%s+$", ""))
+end
+function VOICE.extraAnswer(q, who)
+local function phrase(...) for _, w in ipairs({ ... }) do if q:find(w, 1, true) then return true end end return false end
+local function has(...) for _, w in ipairs({ ... }) do if q:find(" " .. w .. " ", 1, true) then return true end end return false end
+local k = tostring(who):lower()
+local name = tostring(who)
+if phrase("flip a coin", "coin flip", "heads or tails") then return "It is " .. pick({ "heads", "tails" }) .. "." end
+if phrase("roll a dice", "roll a die", "roll dice", "roll the dice") then return "You rolled a " .. math.random(1, 6) .. "." end
+if phrase("pick a number", "random number") then return "I pick " .. math.random(1, 100) .. "." end
+if phrase("guess my number", "guess the number", "guessing game", "number game") then
+startGame(who, { kind = "guess", n = math.random(1, 100), tries = 0 })
+return "I am thinking of a number from 1 to 100. Type your guess in chat."
+end
+if phrase("rock paper scissors", "rps") then
+startGame(who, { kind = "rps" })
+return "Rock, paper or scissors? Type yours in chat."
+end
+if has("quiz", "trivia", "question") then
+local Q = pick(VOICE.QUIZ)
+startGame(who, { kind = "quiz", a = Q.a, tries = 0 })
+return "Quiz time! " .. Q.q .. " Type the answer in chat."
+end
+if phrase("8 ball", "8ball", "eight ball", " should i ", " will i ", " is it ", " am i ", " can i ") and not phrase("where am i") then
+return pick(VOICE.EIGHT)
+end
+if phrase("roast me", "insult me") then return fill(pick(VOICE.ROASTS), name) end
+if phrase("compliment me", "say something nice", "cheer me up") then return fill(pick(VOICE.COMPLIMENTS), name) end
+if has("story") then return pick(VOICE.STORIES) end
+if phrase("are you alive", "are you real", "are you sentient", "are you human", "are you a robot") then return pick(VOICE.ALIVE) end
+if phrase("i love you", "marry me", "be my friend") then return pick({ "I am flattered, " .. name .. ". But I am married to my turtles.", "Aw. You are my favourite player. Do not tell the others." }) end
+if phrase("where am i", "my position", "my coords", "my coordinates") then
+for _, e in ipairs(state.players or {}) do
+if tostring(e.name):lower() == k and e.p and tonumber(e.p.x) then
+local h = homePos()
+local s = "You are at " .. math.floor(e.p.x) .. ", " .. math.floor(e.p.y) .. ", " .. math.floor(e.p.z)
+if h and h.x then
+local dx, dz = e.p.x - h.x, e.p.z - h.z
+local dist = math.floor(math.sqrt(dx * dx + dz * dz))
+s = s .. (dist > 8 and (", " .. dist .. " blocks " .. compass(dx, dz) .. " of the base") or ", right at the base")
+end
+return s .. "."
+end
+end
+return "I cannot see where you are."
+end
+if phrase("mobs", "monsters", "hostiles", "animals", "around us", "outside") then
+local dd = ENV and ENV.data
+local c = dd and dd.count
+if not c then return "I cannot see outside - the Environment Detector is missing." end
+return "Around the base I see " .. plural(c.hostile or 0, "monster", "monsters") .. ", " .. plural(c.animal or 0, "animal", "animals") ..
+" and " .. plural(c.player or 0, "player", "players") .. "."
+end
+if phrase("real time", "irl", "real world") then
+return "The server clock says " .. os.date("!%H:%M", math.floor(os.epoch("utc") / 1000)) .. " UTC."
+end
+if phrase("remind me", "timer", "set a reminder") then
+local secs, what = parseTimer(q)
+if not secs then return "Tell me when, like: remind me in 5 minutes to check the furnace." end
+if #VOICE.timers >= 10 then return "I already have ten reminders. Ask me again later." end
+VOICE.timers[#VOICE.timers + 1] = { who = name, at = os.clock() + secs, text = what }
+return "OK, I will remind you in " .. fmtSpan(secs) .. "."
+end
+if phrase("remember ") and not phrase("do you remember") then
+local what = q:match("remember (.+)$")
+if what then
+local m = VOICE.mem()
+m[k] = m[k] or {}
+m[k].notes = m[k].notes or {}
+table.insert(m[k].notes, 1, (what:gsub("%s+$", "")))
+while #m[k].notes > 10 do table.remove(m[k].notes) end
+VOICE.saveMem()
+return "Got it. I will remember: " .. m[k].notes[1] .. "."
+end
+end
+if phrase("my notes", "what do you remember", "do you remember", "my list") then
+local m = VOICE.mem()[k]
+if not (m and m.notes and #m.notes > 0) then return "I do not have any notes for you." end
+return "Your notes: " .. table.concat(m.notes, "; ") .. "."
+end
+if phrase("forget my notes", "clear my notes", "delete my notes") then
+local m = VOICE.mem()[k]
+if m then m.notes = nil VOICE.saveMem() end
+return "Your notes are gone."
+end
+if phrase("shh", "be quiet", "quiet please", "stop talking", "silence") then
+VOICE.quietUntil = os.clock() + 1800
+return "OK, I will be quiet for half an hour. I still answer when you ask me something."
+end
+if phrase("talk to me", "you can talk", "unmute", "speak again") then
+VOICE.quietUntil = nil
+return "Yay, I can talk again."
+end
+if phrase("my score", "my points", "leaderboard") then
+local list = {}
+for n2, m in pairs(VOICE.mem()) do if m.quiz then list[#list + 1] = { n = n2, s = m.quiz } end end
+table.sort(list, function(x, y) return x.s > y.s end)
+if #list == 0 then return "Nobody has quiz points yet. Ask me for a quiz!" end
+local top = {}
+for i = 1, math.min(3, #list) do top[#top + 1] = list[i].n .. " " .. list[i].s end
+return "Quiz points: " .. table.concat(top, ", ") .. "."
+end
+if phrase("good morning") then return "Good morning, " .. name .. "!" end
+if phrase("good night") then return "Good night, " .. name .. ". Sweet dreams." end
+if phrase("welcome ") then
+local other = q:match("welcome (%S+)")
+if other then return "Welcome, " .. other .. "! Nice to have you here." end
+end
+if phrase(" say ") and (isOwner(who) or isFriend(who)) then
+local what = q:match(" say (.+)$")
+if what then return (what:gsub("%s+$", "")) end
+end
+return nil
+end
+
+
 function VOICE.answer(q, who)
 q = " " .. tostring(q or ""):lower():gsub("[%p]", " ") .. " "
 local function has(...) for _, w in ipairs({ ... }) do if q:find(" " .. w .. " ", 1, true) then return true end end return false end
 local function phrase(...) for _, w in ipairs({ ... }) do if q:find(w, 1, true) then return true end end return false end
 local name = tostring(who)
+local extra = VOICE.extraAnswer(q, who)
+if extra then return extra end
 if phrase(" where is ", " where s ", " find ") then
 return VOICE.whereText(q:match("where is (.-)%s*$") or q:match("where s (.-)%s*$") or q:match("find (.-)%s*$"))
 end
@@ -433,7 +640,8 @@ return "I am " .. VOICE.botName() .. ", the computer that runs this base. I look
 end
 if phrase("how are you", "how do you feel", "you ok", "you okay") then return VOICE.moodText() end
 if phrase("what can you do", " help ", "commands") then
-return "You can ask me: status, turtles, mining, survey, time, weather, who is online, where is turtle five, a joke, a fact, or ask me to sing."
+return "Ask me: status, where is turtle five, a joke, a fact, a story, a quiz, guess my number, rock paper scissors, flip a coin, roll a dice, " ..
+"magic 8 ball, roast me, remind me in 5 minutes to something, remember something, my notes, sing, or shh."
 end
 if has("thanks", "thank", "ty", "thx") then return "You are welcome, " .. name .. "." end
 if phrase("good bot", "good job", "love you", "you rock", "nice", "cool") then return pick({ "Thank you, " .. name .. "! You are nice too.", "Aw, thanks " .. name .. "." }) end
@@ -465,17 +673,26 @@ end
 
 
 
+
+
+VOICE.pending = VOICE.pending or { n = 0 }
+local function announceMode()
+local m = VOICE.cfg("announce", "summary")
+if m == true then return "summary" elseif m == false then return "off" end
+return tostring(m)
+end
 function VOICE.note(title, msg, col)
-if VOICE.cfg("announce", true) == false then return end
+local mode = announceMode()
+if mode == "off" then return end
 local kind = noteKind and noteKind(col) or "INFO"
 local good = kind == "DONE" and VOICE.cfg("fun", true) ~= false
 if kind ~= "WARNING" and kind ~= "ERROR" and not good then return end
-if not VOICE.someoneNear() then return end
 local now = os.clock()
 local first = tostring(msg or ""):match("^([^%.%-]+)") or ""
 if #first > 90 then first = first:sub(1, 90) end
+if not VOICE.someoneNear() then return end
 if good then
-if VOICE.goodAt and now - VOICE.goodAt < 60 then return end
+if VOICE.goodAt and now - VOICE.goodAt < 900 then return end
 VOICE.goodAt = now
 local low = (tostring(title) .. " " .. first):lower()
 if low:find("built turtle", 1, true) or low:find("new turtle", 1, true) then
@@ -485,9 +702,17 @@ VOICE.say("Good news. " .. first, "minecraft:block.note_block.chime")
 end
 return
 end
-if VOICE.noteAt and now - VOICE.noteAt < 20 then return end
+if kind == "WARNING" and mode ~= "all" then
+if mode == "summary" then
+VOICE.pending.n = VOICE.pending.n + 1
+VOICE.pending.last = tostring(title):lower()
+end
+return
+end
 VOICE.noteSeen = VOICE.noteSeen or {}
 local key = tostring(title)
+local gap = (kind == "ERROR" and mode ~= "all") and 120 or 20
+if VOICE.noteAt and now - VOICE.noteAt < gap then return end
 if VOICE.noteSeen[key] and now - VOICE.noteSeen[key] < 300 then return end
 VOICE.noteAt, VOICE.noteSeen[key] = now, now
 VOICE.say((kind == "ERROR" and "Error. " or "Warning. ") .. tostring(title):lower() .. ". " .. first,
@@ -519,6 +744,18 @@ local word = tostring(VOICE.cfg("name", "base")):lower()
 local low = " " .. text:lower():gsub("[%p]", " ") .. " "
 local near = nearName(who)
 
+
+
+local hasName = low:find(" " .. word .. " ", 1, true) ~= nil
+if near or isOwner(who) then
+local g = VOICE.gameReply(who, (low:gsub(hasName and (" " .. word .. " ") or "\0", " "):gsub("^%s+", ""):gsub("%s+$", "")), hasName)
+if g then
+if chatTell then chatTell(who, g) end
+if near then VOICE.say(g) end
+return true
+end
+end
+
 if low:find(" " .. word .. " ", 1, true) then
 if not near and not isOwner(who) then return false end
 local q = low:gsub(" " .. word .. " ", " ", 1)
@@ -528,7 +765,7 @@ if near then VOICE.say(answer) end
 return true
 end
 
-if not near or VOICE.cfg("fun", true) == false then return false end
+if not near or VOICE.cfg("fun", true) == false or VOICE.isQuiet() then return false end
 local now = os.clock()
 VOICE.reactAt = VOICE.reactAt or {}
 if (VOICE.reactAll and now - VOICE.reactAll < 15) or (VOICE.reactAt[who] and now - VOICE.reactAt[who] < 45) then return false end
@@ -615,7 +852,7 @@ VOICE.say(p.name .. ", you have been standing here for a while. Can I help you?"
 end
 
 local hp = tonumber(p.hp)
-if hp and hp > 0 and hp <= 6 and (not VOICE.flags["hurt:" .. p.name] or now - VOICE.flags["hurt:" .. p.name] > 180) then
+if hp and hp > 0 and hp <= 6 and (not VOICE.flags["hurt:" .. p.name] or now - VOICE.flags["hurt:" .. p.name] > 600) then
 VOICE.flags["hurt:" .. p.name] = now
 VOICE.say(pick({ "{name}, you are hurt. Maybe eat something.", "Careful {name}, your health is low." }):gsub("{name}", p.name), nil)
 end
@@ -625,7 +862,7 @@ end
 for name in pairs(VOICE.near) do
 if not nearNow[name] then
 VOICE.flags["loiter:" .. name] = nil
-if fun and name ~= "someone" and math.random() < 0.6 then
+if fun and name ~= "someone" and not VOICE.isQuiet() and math.random() < 0.3 then
 if isOwner(name) then VOICE.say(fill(pick({ "See you later, {name}.", "Bye {name}. I will keep things running." }), name))
 elseif isFriend(name) then VOICE.say(fill("Bye {name}.", name))
 else VOICE.say(fill("Goodbye, {name}. Do not come back with a pickaxe.", name)) end
@@ -658,7 +895,7 @@ local ar = tonumber(VOICE.cfg("alarmRange", 12)) or 12
 for _, e in ipairs(dd.ents) do
 if e.kind == "hostile" then
 local mob = tostring(e.name):lower()
-if fun and e.dist <= 6 and (not VOICE.alarmAt.close or now - VOICE.alarmAt.close > 120) then
+if fun and e.dist <= 6 and (not VOICE.alarmAt.close or now - VOICE.alarmAt.close > 300) then
 VOICE.alarmAt.close = now
 VOICE.say(mob:find("creeper", 1, true) and "Watch out! There is a creeper right next to you!"
 or ("Careful, a " .. mob .. " is close."), "minecraft:block.note_block.bass")
@@ -672,22 +909,108 @@ end
 end
 end
 
-if fun and someone then
-local every = (tonumber(VOICE.cfg("chatter", 10)) or 10) * 60
+for i = #VOICE.timers, 1, -1 do
+local t = VOICE.timers[i]
+if now >= t.at then
+table.remove(VOICE.timers, i)
+local line = t.who .. ", reminder: " .. t.text .. "."
+if nearNow[t.who] then VOICE.say(line, "minecraft:block.note_block.pling") end
+if chatTell then chatTell(t.who, line) end
+end
+end
+
+if someone and VOICE.pending.n > 0 and announceMode() == "summary" then
+local every = tonumber(VOICE.cfg("announceEvery", 900)) or 900
+VOICE.pendingAt = VOICE.pendingAt or now
+if now - VOICE.pendingAt >= every then
+VOICE.say(plural(VOICE.pending.n, "new warning", "new warnings") .. " on the screen. The latest: " .. tostring(VOICE.pending.last) .. ".",
+"minecraft:block.note_block.bell")
+VOICE.pending, VOICE.pendingAt = { n = 0 }, now
+end
+end
+
+VOICE.still = VOICE.still or {}
+for _, e in ipairs(state.players or {}) do
+if nearNow[e.name] and e.p and tonumber(e.p.x) then
+local st = VOICE.still[e.name]
+local x, z = math.floor(e.p.x), math.floor(e.p.z)
+if not st or st.x ~= x or st.z ~= z then
+VOICE.still[e.name] = { x = x, z = z, at = now }
+elseif fun and not VOICE.isQuiet() then
+if now - st.at > 300 and not st.asked then
+st.asked = true
+VOICE.say(e.name .. ", are you still there?")
+elseif now - st.at > 600 and not st.sung then
+st.sung = true
+VOICE.say("Looks like " .. e.name .. " fell asleep. Here is a lullaby.")
+VOICE.sing(2)
+end
+end
+end
+end
+
+
+if fun and someone and not VOICE.isQuiet() then
+local every = (tonumber(VOICE.cfg("chatter", 6)) or 6) * 60
 if every > 0 then
 VOICE.nextChat = VOICE.nextChat or (now + every * (0.7 + math.random() * 0.6))
 local lastTalk = VOICE.lastSaid and VOICE.lastSaid.at or -1e9
 if now >= VOICE.nextChat and now - lastTalk > 60 then
 VOICE.nextChat = now + every * (0.7 + math.random() * 0.6)
-local r = math.random(1, 3)
-if r == 1 then VOICE.say(VOICE.factText())
-elseif r == 2 then VOICE.say(pick(VOICE.JOKES))
-else VOICE.say((pick(VOICE.TIPS):gsub("{bot}", VOICE.botName()))) end
+VOICE.idle(nearNow)
 end
 end
 else
 VOICE.nextChat = nil
 end
+end
+
+
+VOICE.MUSINGS = {
+"I wonder what is beyond the world border.", "Sometimes I count my turtles. Just to be sure.",
+"Do you think the drones dream of electric sheep?", "I could really use another floppy disk.",
+"If a turtle digs in a forest and nobody hears it, does it still drop cobblestone?",
+"I have been running for a while. I feel very responsible.", "Fun idea: a turtle that bakes cake. I am working on it.",
+"The redstone is humming nicely today.", "Every chunk my turtles map is a little gift to you.",
+}
+function VOICE.idle(nearNow)
+local kinds = { "fact", "joke", "tip", "see", "muse", "muse", "quiz", "hum" }
+local kind = pick(kinds)
+local dd = ENV and ENV.data
+if kind == "see" then
+local animals, mobs = {}, 0
+for _, e in ipairs(dd and dd.ents or {}) do
+if e.kind == "animal" then local n = tostring(e.name):lower() animals[n] = (animals[n] or 0) + 1
+elseif e.kind == "hostile" then mobs = mobs + 1 end
+end
+local parts = {}
+for n, c in pairs(animals) do parts[#parts + 1] = (c == 1 and ("a " .. n) or (c .. " " .. n .. "s")) end
+if #parts > 0 then return VOICE.say("I can see " .. table.concat(parts, " and ", 1, math.min(3, #parts)) .. " outside.") end
+if mobs > 0 then return VOICE.say("There are " .. plural(mobs, "monster", "monsters") .. " lurking around. Stay safe.") end
+local c = dd and ENV.clock and ENV.clock(dd.time)
+if c and dd.moonName and c.night and tostring(dd.moonName):lower():find("full", 1, true) then
+return VOICE.say("Look up, there is a full moon tonight.")
+end
+kind = "muse"
+end
+if kind == "quiz" then
+local who
+for n in pairs(nearNow or {}) do if n ~= "someone" then who = n end end
+if who then
+local Q = pick(VOICE.QUIZ)
+startGame(who, { kind = "quiz", a = Q.a, tries = 0 })
+return VOICE.say("Quiz time, " .. who .. "! " .. Q.q .. " Type the answer in chat.")
+end
+kind = "joke"
+end
+if kind == "hum" then
+VOICE.say(pick({ "Hmm hmm hmm.", "La la la." }))
+return VOICE.sing(3)
+end
+if kind == "fact" then return VOICE.say(VOICE.factText()) end
+if kind == "joke" then return VOICE.say(pick(VOICE.JOKES)) end
+if kind == "tip" then return VOICE.say((pick(VOICE.TIPS):gsub("{bot}", VOICE.botName()))) end
+return VOICE.say(pick(VOICE.MUSINGS))
 end
 
 
@@ -721,16 +1044,21 @@ if text == "" then text = "Hello. This is your base speaking." end
 VOICE.say(text)
 say("Saying: " .. text)
 elseif a == "greet" then onoff("greet", "Greetings")
-elseif a == "announce" then onoff("announce", "Warnings out loud")
+elseif a == "announce" then
+if b == "off" then setSetting("voice.announce", "off") elseif b == "on" then setSetting("voice.announce", "summary") end
+say("Monitor messages out loud: " .. announceMode() .. "  (voice announce all|summary|errors|off)")
 elseif a == "chat" then onoff("chat", "Answers to chat questions")
 elseif a == "alarm" then onoff("alarm", "Alarm (mobs / strangers)")
 elseif a == "volume" and tonumber(words[3]) then
 setSetting("voice.volume", math.max(0, math.min(3, tonumber(words[3]))))
 say("Volume " .. VOICE.cfg("volume", 2) .. " (0-3)")
 elseif a == "fun" then onoff("fun", "Fun (reactions, small talk, jokes)")
+elseif a == "announce" and (b == "all" or b == "summary" or b == "errors") then
+setSetting("voice.announce", b)
+say("Monitor messages out loud: " .. b .. (b == "summary" and " (errors at once, warnings as one line every 15 min)" or ""))
 elseif a == "chatter" and tonumber(words[3]) then
 setSetting("voice.chatter", math.max(0, math.min(120, math.floor(tonumber(words[3])))))
-say("Small talk every ~" .. VOICE.cfg("chatter", 10) .. " minutes while someone is at the base (0 = never)")
+say("Small talk every ~" .. VOICE.cfg("chatter", 6) .. " minutes while someone is at the base (0 = never)")
 elseif a == "sing" then
 local _, tname = VOICE.sing()
 say("Singing " .. tostring(tname))
@@ -752,7 +1080,7 @@ else
 local sps = #VOICE.speakers()
 say("THE BASE TALKS (add-on v" .. VOICE.VERSION .. "): " .. (VOICE.cfg("on", true) == false and "OFF" or "ON") ..
 ", " .. sps .. " speaker(s)" .. (sps == 0 and " - put a Speaker next to the computer or on the cable" or ""))
-say("  greet " .. (VOICE.cfg("greet", true) and "on" or "off") .. ", warnings " .. (VOICE.cfg("announce", true) and "on" or "off") ..
+say("  greet " .. (VOICE.cfg("greet", true) and "on" or "off") .. ", messages " .. announceMode() ..
 ", chat " .. (VOICE.cfg("chat", true) and "on" or "off") .. ", alarm " .. (VOICE.cfg("alarm", false) and "on" or "off") ..
 ", volume " .. VOICE.cfg("volume", 2))
 if VOICE.useEnv() then
@@ -768,9 +1096,11 @@ say("  In chat near the base:  " .. VOICE.cfg("name", "base") .. ", status?  (al
 say("  Cache: " .. (VOICE.cacheDir() or "none (no data floppy with room)"))
 if VOICE.err then say("  Last problem: " .. VOICE.err) end
 if VOICE.lastSaid then say("  Last said: " .. VOICE.lastSaid.text) end
-say("  fun " .. (VOICE.cfg("fun", true) and "on" or "off") .. ", small talk every ~" .. VOICE.cfg("chatter", 10) .. " min, knows " ..
+say("  fun " .. (VOICE.cfg("fun", true) and "on" or "off") .. ", small talk every ~" .. VOICE.cfg("chatter", 6) .. " min, knows " ..
 (function() local n = 0 for _ in pairs(VOICE.mem()) do n = n + 1 end return n end)() .. " people")
-say("  voice on|off | say <text> | sing | joke | greet|announce|chat|alarm|detector|fun on|off | chatter <min>")
+say("  voice on|off | say <text> | sing | joke | greet|chat|alarm|detector|fun on|off | chatter <min>")
+say("  voice announce all|summary|errors|off" .. (VOICE.pending.n > 0 and ("   (" .. VOICE.pending.n .. " warnings waiting)") or "") ..
+(VOICE.isQuiet() and "   QUIET for " .. math.ceil((VOICE.quietUntil - os.clock()) / 60) .. " min" or ""))
 say("  voice volume <0-3> | range <n> | name <word> | forget | remove")
 end
 return out

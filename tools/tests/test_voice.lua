@@ -71,9 +71,14 @@ VOICE.say("Hello there.")
 speakAll()
 CHECK(#gets == n, "a phrase said before comes from the floppy, not the internet")
 
--- 4. a warning now that someone is near: said, with a bell; the same one again soon: not
+-- 4. a warning now that someone is near: by default (summary) COLLECTED, not said at once (the owner:
+--    "too much notifications"); "all" says it, with a bell; the same one again soon: not
 VOICE.note("TURTLE STUCK", "Turtle 9 is stuck - the rescuer goes", C.warn)
-CHECK(said():find("Warning. turtle stuck. Turtle 9 is stuck", 1, true), "a warning is said when someone is near: " .. said())
+CHECK(#VOICE.queue == 0 and VOICE.pending.n == 1, "summary mode: a warning is collected, not said at once")
+VOICE.pending = { n = 0 }
+setSetting("voice.announce", "all")
+VOICE.note("TURTLE STUCK", "Turtle 9 is stuck - the rescuer goes", C.warn)
+CHECK(said():find("Warning. turtle stuck. Turtle 9 is stuck", 1, true), "announce all: a warning is said when someone is near: " .. said())
 VOICE.queue = {}
 CLOCK = CLOCK + 25
 VOICE.note("TURTLE STUCK", "Turtle 9 is stuck - the rescuer goes", C.warn)
@@ -284,9 +289,10 @@ VOICE.nextChat = CLOCK - 1
 VOICE.lastSaid = nil
 CLOCK = CLOCK + 6
 VOICE.tick()
-CHECK(#VOICE.queue == 1, "small talk while someone stays: " .. said())
+CHECK(#VOICE.queue >= 1, "small talk while someone stays: " .. said())
 VOICE.queue = {}
 -- fun off: no reactions, no small talk; questions still answered
+VOICE.games, VOICE.pending = {}, { n = 0 }
 setSetting("voice.fun", false)
 CLOCK = CLOCK + 100
 CHECK(not VOICE.chat({ name = owner, msg = "lol" }), "fun off: no reactions")
@@ -296,6 +302,64 @@ CHECK(#VOICE.queue == 0, "fun off: no small talk")
 told = {}
 CHECK(VOICE.chat({ name = owner, msg = "base, status" }) and told[1], "fun off: questions are still answered")
 setSetting("voice.fun", true)
+
+-- 12. FEWER NOTIFICATIONS: summary mode collects warnings into ONE line every 15 min; errors 2 min apart
+setSetting("voice.announce", "summary")
+VOICE.queue, VOICE.pending, VOICE.pendingAt = {}, { n = 0 }, nil
+for i = 1, 5 do VOICE.note("PROBLEM " .. i, "something " .. i, C.warn) end
+CHECK(#VOICE.queue == 0 and VOICE.pending.n == 5, "5 warnings: none said at once (" .. VOICE.pending.n .. " collected)")
+VOICE.tick()
+CHECK(not said():find("new warning", 1, true), "not summed up before 15 minutes: " .. said())
+VOICE.queue = {}
+CLOCK = CLOCK + 901
+VOICE.tick()
+CHECK(said():find("5 new warnings on the screen", 1, true) and VOICE.pending.n == 0, "after 15 min: one line for all of them: " .. said())
+VOICE.queue, VOICE.noteAt, VOICE.noteSeen = {}, nil, {}
+VOICE.note("BROKEN", "something broke", C.bad)
+VOICE.note("BROKEN TOO", "something else broke", C.bad)
+CHECK(#VOICE.queue == 1, "errors are said, but 2 minutes apart (" .. #VOICE.queue .. ")")
+VOICE.queue = {}
+
+-- 13. MORE INTERACTIONS: games, notes, reminders, quiet, 8 ball, roast, story, where am I
+told = {}
+chatTell = function(name, text) told[#told + 1] = text end
+local function ask(msg) told = {} VOICE.chat({ name = owner, msg = msg }) return told[#told] or "" end
+local fc = ask("base flip a coin")
+CHECK(fc:find("heads", 1, true) or fc:find("tails", 1, true), "flip a coin: " .. fc)
+CHECK(ask("base roll a dice"):find("rolled", 1, true), "roll a dice")
+CHECK(ask("base guess my number"):find("1 to 100", 1, true), "guess my number starts a game")
+local g = VOICE.games[owner:lower()]
+local guess = ask(tostring(g.n > 50 and 10 or 90))
+CHECK(guess == "Higher." or guess == "Lower.", "a guess without the name gets higher / lower: " .. guess)
+CHECK(ask(tostring(g.n)):find("You got it", 1, true), "the right number wins")
+CHECK(ask("base rock paper scissors"):find("Rock, paper or scissors", 1, true), "rock paper scissors starts")
+CHECK(ask("rock"):find("I pick", 1, true), "rock -> it picks one and says who won")
+local qz = ask("base quiz")
+CHECK(qz:find("Quiz time", 1, true), "quiz asks a question: " .. qz)
+local Q = VOICE.games[owner:lower()]
+CHECK(ask("lol") == "", "normal chat during a quiz is not an answer")
+CHECK(ask("base, status?"):find("working", 1, true), "a question to the base during a quiz is answered, not marked wrong")
+CHECK(ask("that was a fun day") == "", "a longer sentence during a quiz is not a wrong answer")
+CHECK(ask(Q.a[1]):find("point", 1, true), "the right answer scores a point")
+CHECK(ask("base my score"):find(owner:lower(), 1, true), "the quiz points list")
+CHECK(ask("base magic 8 ball will i find diamonds") ~= "", "the magic 8 ball answers")
+CHECK(ask("base roast me"):find(owner, 1, true), "roast me")
+CHECK(ask("base compliment me"):find(owner, 1, true), "compliment me")
+CHECK(ask("base tell me a story"):find("The end", 1, true), "a story")
+CHECK(ask("base remember buy diamonds"):find("buy diamonds", 1, true), "remember something")
+CHECK(ask("base my notes"):find("buy diamonds", 1, true) and VOICE.mem()[owner:lower()].notes, "my notes (kept on the floppy)")
+CHECK(ask("base remind me in 2 minutes to check the furnace"):find("2 m", 1, true) or #VOICE.timers == 1, "a reminder is set")
+CLOCK = CLOCK + 121
+told = {}
+VOICE.tick()
+CHECK(told[1] and told[1]:find("check the furnace", 1, true), "the reminder comes after 2 minutes: " .. tostring(told[1]))
+CHECK(ask("base shh"):find("quiet", 1, true) and VOICE.isQuiet(), "shh -> quiet for a while")
+VOICE.queue = {}
+CLOCK = CLOCK + 60
+CHECK(not VOICE.chat({ name = owner, msg = "hello all" }), "quiet: no reactions")
+CHECK(ask("base talk to me") ~= "" and not VOICE.isQuiet(), "talk to me -> talking again")
+CHECK(ask("base where am i"):find("You are at", 1, true), "where am I")
+CHECK(ask("base say hello world") == "hello world", "say <text> (owner)")
 ENV.scan = okScan
 chatTell = oldTell
 envDet = realEnvDet
