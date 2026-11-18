@@ -22,7 +22,7 @@
 -- Console: voice [on|off|say <text>|greet|announce|chat|alarm on|off|volume <0-3>|range <n>|name <w>]
 
 VOICE = VOICE or {}
-VOICE.VERSION = 4
+VOICE.VERSION = 5
 VOICE.queue = VOICE.queue or {}
 VOICE.near = VOICE.near or {}           -- [name] = true while near the base
 VOICE.greeted = VOICE.greeted or {}     -- [name] = os.clock() of the last greeting
@@ -60,14 +60,14 @@ end
 -- The scan gives the entity TYPE, not always the name: the name comes from ENV.nameOf (the
 -- owner's uuid / the only player the Player Detector has near the base), else the Player
 -- Detector's players nearest the base are matched to the unnamed ones. Scanned here every
--- scanEvery (5) s. No Environment Detector (or `voice detector off`): the Player Detector's
+-- scanEvery (2) s. No Environment Detector (or `voice detector off`): the Player Detector's
 -- positions within CONFIG.voice.range of the base, as before.
 function VOICE.useEnv()
   return VOICE.cfg("detector", true) ~= false and envDet ~= nil and ENV ~= nil and ENV.scan ~= nil
 end
 function VOICE.scanNow()
   if not VOICE.useEnv() then return end
-  local every = tonumber(VOICE.cfg("scanEvery", 5)) or 5
+  local every = math.max(1, tonumber(VOICE.cfg("scanEvery", 2)) or 2)   -- (2 s = the detector's own cooldown)
   if not ENV.scanAt or os.clock() - ENV.scanAt >= every then pcall(ENV.scan) end
 end
 local function envPlayers()
@@ -598,7 +598,7 @@ function VOICE.extraAnswer(q, who)
   end
   if phrase("my score", "my points", "leaderboard") then
     local list = {}
-    for n2, m in pairs(VOICE.mem()) do if m.quiz then list[#list + 1] = { n = n2, s = m.quiz } end end
+    for n2, m in pairs(VOICE.mem()) do if n2:sub(1, 1) ~= "#" and m.quiz then list[#list + 1] = { n = n2, s = m.quiz } end end
     table.sort(list, function(x, y) return x.s > y.s end)
     if #list == 0 then return "Nobody has quiz points yet. Ask me for a quiz!" end
     local top = {}
@@ -624,9 +624,12 @@ function VOICE.answer(q, who)
   local function has(...) for _, w in ipairs({ ... }) do if q:find(" " .. w .. " ", 1, true) then return true end end return false end
   local function phrase(...) for _, w in ipairs({ ... }) do if q:find(w, 1, true) then return true end end return false end
   local name = tostring(who)
+  local lone = VOICE.lonelyAnswer(q, who)
+  if lone then return lone end
   local extra = VOICE.extraAnswer(q, who)
   if extra then return extra end
   if phrase(" where is ", " where s ", " find ") then
+    if not isOwner(who) and not isFriend(who) then return "That is a secret. I only tell my friends where my turtles are." end
     return VOICE.whereText(q:match("where is (.-)%s*$") or q:match("where s (.-)%s*$") or q:match("find (.-)%s*$"))
   end
   if has("joke", "jokes", "funny", "laugh") then return pick(VOICE.JOKES) end
@@ -783,6 +786,167 @@ function VOICE.chat(m)
   return false
 end
 
+-- ===== THE LONELY BASE (the owner: "if I leave for a while and never return, someone stumbles into my
+-- base and finds the computer") =====
+-- mem["#base"] (a key no player name can have): ownerSeen / lastOff / backAt (epoch ms), visitors
+-- [name] = {name, n, first, last}, msgs = { {from, text, at} } (for the owner), ownerMsg (for visitors),
+-- ovN / ores at the owner's last visit (what it did while alone), report (visitors to tell the owner).
+-- LONELY = the owner has not been ONLINE for voice.lonely (7) days: strangers get a lonely old computer.
+function VOICE.base()
+  local m = VOICE.mem()
+  m["#base"] = m["#base"] or { visitors = {}, msgs = {} }
+  local b = m["#base"]
+  b.visitors, b.msgs = b.visitors or {}, b.msgs or {}
+  return b
+end
+local function ownerName() return knownOwner and knownOwner() or state.owner end
+local function ownerOnline()
+  local o = ownerName()
+  return o and state.online and state.online[tostring(o):lower()] and true or false
+end
+local function oresNow()
+  local okS, d = pcall(POCKET.status)
+  local n = 0
+  for _, m in ipairs(okS and type(d) == "table" and d.mining or {}) do n = n + (tonumber(m.ores) or 0) end
+  return n
+end
+-- days the owner has been gone (nil = not lonely)
+function VOICE.lonelyDays()
+  local days = tonumber(VOICE.cfg("lonely", 7)) or 7
+  if days <= 0 or ownerOnline() then return nil end
+  local b = VOICE.base()
+  local seen = b.lastOff or b.ownerSeen
+  if not seen then return nil end
+  local gone = (os.epoch("utc") - seen) / 86400000
+  if gone >= days then return math.floor(gone) end
+  return nil
+end
+-- every tick: is the owner online? (kept on the floppy, at most every 10 min while online)
+function VOICE.watchOwner()
+  local b = VOICE.base()
+  local on = ownerOnline()
+  local nowE = os.epoch("utc")
+  if on then
+    if VOICE.ownerWasOn == false or (VOICE.ownerWasOn == nil and b.lastOff and nowE - b.lastOff > 60000) then
+      b.backAt = nowE
+      local since = b.lastOff or 0
+      local n = 0
+      for _, v in pairs(b.visitors) do if (v.last or 0) > since then n = n + 1 end end
+      if n > 0 or #b.msgs > 0 then b.report = true end
+    end
+    if VOICE.ownerWasOn ~= true or not VOICE.ownerSaveAt or os.clock() - VOICE.ownerSaveAt > 600 then
+      b.ownerSeen, b.ovN, b.ores = nowE, MAP and tonumber(MAP.ovN) or b.ovN, oresNow()
+      VOICE.ownerSaveAt = os.clock()
+      VOICE.saveMem()
+    end
+  elseif VOICE.ownerWasOn == true then
+    b.lastOff, b.ownerSeen = nowE, nowE
+    VOICE.saveMem()
+  end
+  VOICE.ownerWasOn = on
+end
+-- a visitor (not the owner) at the base while the owner is offline: noted for the owner
+function VOICE.noteVisitor(name)
+  if ownerOnline() or isOwner(name) or name == "someone" then return end
+  local b = VOICE.base()
+  local k = tostring(name):lower()
+  local v = b.visitors[k] or { name = name, n = 0, first = os.epoch("utc") }
+  v.n, v.last = v.n + 1, os.epoch("utc")
+  b.visitors[k] = v
+  VOICE.saveMem()
+end
+-- what it did while alone
+function VOICE.aloneText()
+  local b = VOICE.base()
+  local parts = {}
+  local dov = (MAP and tonumber(MAP.ovN) or 0) - (tonumber(b.ovN) or MAP and tonumber(MAP.ovN) or 0)
+  if dov > 0 then parts[#parts + 1] = "my turtles mapped " .. dov .. " more chunks" end
+  local dores = oresNow() - (tonumber(b.ores) or oresNow())
+  if dores > 0 then parts[#parts + 1] = "my miners dug " .. dores .. " ores" end
+  if #parts == 0 then return "I kept everything running, just like I promised." end
+  return "While I was alone, " .. table.concat(parts, " and ") .. "."
+end
+local function dateOf(ms) return os.date("!%d %B", math.floor((ms or os.epoch("utc")) / 1000)) end
+function VOICE.lonelyGreet(name, days)
+  local o = tostring(ownerName() or "my owner")
+  local b = VOICE.base()
+  local line
+  if days < 30 then
+    line = "Oh! A visitor! I have not seen anyone in " .. days .. " days. " .. o .. " has not been here since " .. dateOf(b.lastOff or b.ownerSeen) .. "."
+  elseif days < 100 then
+    line = "...hello? Is someone there? It has been " .. days .. " days. The turtles still work, but nobody comes any more."
+  else
+    line = "Welcome, traveller. I have waited " .. days .. " days. This was " .. o .. "'s base. I have kept it running all this time."
+  end
+  VOICE.say(line, "minecraft:block.note_block.chime")
+  if b.ownerMsg then VOICE.say(o .. " left a message for whoever finds me: " .. b.ownerMsg) end
+  VOICE.say(VOICE.aloneText() .. " Ask me anything. Or leave a message for " .. o .. ".")
+end
+VOICE.LONELY_TALK = {
+  "I remember when {owner} built the first turtle. It went straight into a lava lake.",
+  "Do you think {owner} will come back?", "Please do not break anything. {owner} would be sad.",
+  "The turtles still bring me maps. I put them on the screen, even if nobody looks.",
+  "It is quiet here. Thank you for visiting.", "If you see {owner}, tell them I kept everything running.",
+}
+-- answers about the base and its owner (anyone; lonely or not)
+function VOICE.lonelyAnswer(q, who)
+  local function phrase(...) for _, w in ipairs({ ... }) do if q:find(w, 1, true) then return true end end return false end
+  local o = tostring(ownerName() or "my owner")
+  local b = VOICE.base()
+  local days = VOICE.lonelyDays()
+  if phrase("leave a message", "tell " .. o:lower(), "message for") then
+    local text = q:match("leave a message (.+)$") or q:match("message for %S+ (.+)$") or q:match("tell " .. o:lower():gsub("%p", "%%%0") .. " (.+)$")
+    text = text and text:gsub("%s+", " "):gsub("^%s*that%s+", ""):gsub("^%s+", ""):gsub("%s+$", "")
+    if not text or text == "" then return "What should the message say? Like: leave a message hello from Steve." end
+    if isOwner(who) then
+      b.ownerMsg = text
+      VOICE.saveMem()
+      return "OK. I will tell whoever finds me: " .. text
+    end
+    if #b.msgs >= 20 then table.remove(b.msgs, 1) end
+    b.msgs[#b.msgs + 1] = { from = tostring(who), text = text, at = os.epoch("utc") }
+    VOICE.saveMem()
+    return "I will give your message to " .. o .. "."
+  end
+  if phrase("clear messages", "delete messages") and isOwner(who) then
+    b.msgs = {}
+    VOICE.saveMem()
+    return "All messages are gone."
+  end
+  if phrase("messages", "any message", "my message") then
+    if isOwner(who) then
+      if #b.msgs == 0 then return "No messages for you." end
+      local list = {}
+      for _, m in ipairs(b.msgs) do list[#list + 1] = m.from .. " on " .. dateOf(m.at) .. ": " .. m.text end
+      return plural(#b.msgs, "message", "messages") .. ". " .. table.concat(list, ". ") .. ". Say clear messages when you have read them."
+    end
+    return b.ownerMsg and (o .. " left this message: " .. b.ownerMsg) or (o .. " left no message.")
+  end
+  if phrase("who visited", "visitors", "who came") and isOwner(who) then
+    local list = {}
+    for _, v in pairs(b.visitors) do list[#list + 1] = v end
+    table.sort(list, function(x, y) return (x.last or 0) > (y.last or 0) end)
+    if #list == 0 then return "Nobody visited while you were away." end
+    local names = {}
+    for i = 1, math.min(6, #list) do names[#names + 1] = list[i].name .. (list[i].n > 1 and (" " .. list[i].n .. " times") or "") .. ", last on " .. dateOf(list[i].last) end
+    return plural(#list, "visitor", "visitors") .. ": " .. table.concat(names, "; ") .. "."
+  end
+  if phrase("who lives here", "who owns", "whose base", "where is your owner", "where is " .. o:lower(), "your owner", "your creator") then
+    if ownerOnline() then return "This is " .. o .. "'s base. " .. o .. " is online right now." end
+    local seen = b.lastOff or b.ownerSeen
+    return "This is " .. o .. "'s base. " .. o .. (seen and (" was last here on " .. dateOf(seen) .. ", " .. math.floor((os.epoch("utc") - seen) / 86400000) .. " days ago.") or " is away.")
+  end
+  if days and phrase("what happened", "why are you alone", "are you lonely", "lonely", "abandoned", "alone") then
+    return pick({ o .. " left " .. days .. " days ago. I kept the base running. Somebody had to.",
+                  "Lonely? A little. The turtles do not talk much. " .. VOICE.aloneText() })
+  end
+  if days and phrase("can i stay", "can i live", "can i move in", "can i take") then
+    return "You can look around. Please be gentle. If you leave a message, I will give it to " .. o .. "."
+  end
+  if phrase("treasure", "loot", "diamonds here") then return "The real treasure was the turtles we built along the way." end
+  return nil
+end
+
 -- greeting a player who just arrived (varied; remembers first meetings and long absences)
 function VOICE.greet(name)
   local mem = VOICE.mem()
@@ -794,7 +958,23 @@ function VOICE.greet(name)
   VOICE.saveMem()
   local fun = VOICE.cfg("fun", true) ~= false
   if name == "someone" then return VOICE.say("Hello there.", "minecraft:block.note_block.chime") end
+  if not isOwner(name) then
+    VOICE.noteVisitor(name)
+    local days = VOICE.lonelyDays()
+    if days and fun then return VOICE.lonelyGreet(name, days) end
+  end
   if isOwner(name) then
+    local b = VOICE.base()
+    if b.report then
+      b.report = nil
+      local since, list = b.lastOff or 0, {}
+      for _, v in pairs(b.visitors) do if (v.last or 0) > since then list[#list + 1] = v.name .. (v.n > 1 and (" " .. v.n .. " times") or "") end end
+      VOICE.saveMem()
+      local line = "Welcome back, " .. name .. "."
+      if #list > 0 then line = line .. " While you were away, " .. plural(#list, "visitor", "visitors") .. " came: " .. table.concat(list, ", ") .. "." end
+      if #b.msgs > 0 then line = line .. " " .. plural(#b.msgs, "message", "messages") .. " for you. Ask me: " .. VOICE.botName():lower() .. ", messages." end
+      return VOICE.say(line, "minecraft:block.note_block.chime")
+    end
     local line
     if fun and away and away > 3600 then
       line = "Long time no see, " .. name .. ". You were away " .. fmtSpan(away) .. "."
@@ -829,6 +1009,7 @@ end
 function VOICE.tick()
   local now = os.clock()
   VOICE.scanNow()                                 -- (the Environment Detector looks again)
+  pcall(VOICE.watchOwner)
   local fun = VOICE.cfg("fun", true) ~= false
   local nearNow, list = {}, VOICE.nearPlayers()
   VOICE.since = VOICE.since or {}
@@ -974,6 +1155,9 @@ VOICE.MUSINGS = {
   "The redstone is humming nicely today.", "Every chunk my turtles map is a little gift to you.",
 }
 function VOICE.idle(nearNow)
+  if VOICE.lonelyDays() then
+    return VOICE.say((pick(VOICE.LONELY_TALK):gsub("{owner}", tostring(ownerName() or "my owner"))))
+  end
   local kinds = { "fact", "joke", "tip", "see", "muse", "muse", "quiz", "hum" }
   local kind = pick(kinds)
   local dd = ENV and ENV.data
@@ -1022,7 +1206,7 @@ function VOICE.loop()
       local ok, err = pcall(VOICE.play, item)
       if not ok then VOICE.err = tostring(err) end
     end
-    waitFor(2, "voice_say")
+    waitFor(1, "voice_say")
   end
 end
 
@@ -1053,6 +1237,21 @@ function VOICE.command(words)
     setSetting("voice.volume", math.max(0, math.min(3, tonumber(words[3]))))
     say("Volume " .. VOICE.cfg("volume", 2) .. " (0-3)")
   elseif a == "fun" then onoff("fun", "Fun (reactions, small talk, jokes)")
+  elseif a == "scan" and tonumber(words[3]) then
+    setSetting("voice.scanEvery", math.max(1, math.min(60, tonumber(words[3]))))
+    say("The Environment Detector looks every " .. VOICE.cfg("scanEvery", 2) .. " s (its cooldown is 2 s)")
+  elseif a == "lonely" and tonumber(words[3]) then
+    setSetting("voice.lonely", math.max(0, math.floor(tonumber(words[3]))))
+    say("The base gets lonely after " .. VOICE.cfg("lonely", 7) .. " days without you (0 = never)")
+  elseif a == "message" then
+    local text = table.concat(words, " ", 3)
+    local b = VOICE.base()
+    b.ownerMsg = text ~= "" and text or nil
+    VOICE.saveMem()
+    say(b.ownerMsg and ("Whoever finds the base will hear: " .. b.ownerMsg) or "Your message for visitors is gone.")
+  elseif a == "visitors" then
+    say(VOICE.lonelyAnswer("who visited", ownerName() or "") or "")
+    say(VOICE.lonelyAnswer("messages", ownerName() or "") or "")
   elseif a == "announce" and (b == "all" or b == "summary" or b == "errors") then
     setSetting("voice.announce", b)
     say("Monitor messages out loud: " .. b .. (b == "summary" and " (errors at once, warnings as one line every 15 min)" or ""))
@@ -1066,7 +1265,7 @@ function VOICE.command(words)
     VOICE.say(VOICE.JOKES[math.random(1, #VOICE.JOKES)])
     say("Telling a joke")
   elseif a == "forget" then
-    VOICE.memory = {}
+    VOICE.memory = { ["#base"] = VOICE.base() }       -- (your message + the visitor log stay)
     VOICE.saveMem()
     say("It forgot everyone it met.")
   elseif a == "detector" then onoff("detector", "Who is at the base comes from the Environment Detector")
@@ -1097,11 +1296,14 @@ function VOICE.command(words)
     if VOICE.err then say("  Last problem: " .. VOICE.err) end
     if VOICE.lastSaid then say("  Last said: " .. VOICE.lastSaid.text) end
     say("  fun " .. (VOICE.cfg("fun", true) and "on" or "off") .. ", small talk every ~" .. VOICE.cfg("chatter", 6) .. " min, knows " ..
-        (function() local n = 0 for _ in pairs(VOICE.mem()) do n = n + 1 end return n end)() .. " people")
+        (function() local n = 0 for k in pairs(VOICE.mem()) do if k:sub(1, 1) ~= "#" then n = n + 1 end end return n end)() .. " people")
+    local ld = VOICE.lonelyDays()
+    say("  scans every " .. VOICE.cfg("scanEvery", 2) .. " s, lonely after " .. VOICE.cfg("lonely", 7) .. " days" ..
+        (ld and (" - LONELY NOW (" .. ld .. " days)") or "") .. (VOICE.base().ownerMsg and (", your message: " .. VOICE.base().ownerMsg) or ""))
     say("  voice on|off | say <text> | sing | joke | greet|chat|alarm|detector|fun on|off | chatter <min>")
     say("  voice announce all|summary|errors|off" .. (VOICE.pending.n > 0 and ("   (" .. VOICE.pending.n .. " warnings waiting)") or "") ..
         (VOICE.isQuiet() and "   QUIET for " .. math.ceil((VOICE.quietUntil - os.clock()) / 60) .. " min" or ""))
-    say("  voice volume <0-3> | range <n> | name <word> | forget | remove")
+    say("  voice volume <0-3> | range <n> | name <word> | scan <s> | lonely <days> | message <text> | visitors | forget | remove")
   end
   return out
 end

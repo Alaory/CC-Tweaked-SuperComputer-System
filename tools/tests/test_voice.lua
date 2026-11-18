@@ -360,6 +360,66 @@ CHECK(not VOICE.chat({ name = owner, msg = "hello all" }), "quiet: no reactions"
 CHECK(ask("base talk to me") ~= "" and not VOICE.isQuiet(), "talk to me -> talking again")
 CHECK(ask("base where am i"):find("You are at", 1, true), "where am I")
 CHECK(ask("base say hello world") == "hello world", "say <text> (owner)")
+
+-- 14. FASTER SCANS: the Environment Detector looks every 2 s (its cooldown), the add-on checks every 1 s
+local scans = 0
+ENV.scan = function() scans = scans + 1 ENV.scanAt = os.clock() end
+ENV.scanAt = -100
+for _ = 1, 10 do CLOCK = CLOCK + 1 VOICE.tick() end
+CHECK(scans >= 5 and scans <= 6, "10 s: the detector looked about every 2 s (" .. scans .. " scans)")
+local vsrc = io.open(SRC_DIR .. "/voice_addon.lua"):read("a")
+CHECK(vsrc:find('waitFor(1, "voice_say")', 1, true), "the add-on checks every second")
+ENV.scan = function() end
+
+-- 15. THE LONELY BASE: the owner gone 7+ days -> a stranger finds a lonely old computer; the owner's
+--     message for visitors; visitors leave messages; the owner hears who came when back
+VOICE.queue, VOICE.near, VOICE.greeted, told = {}, {}, {}, {}
+chatTell = function(name, text) told[#told + 1] = text end
+local B = VOICE.base()
+state.online = { [owner:lower()] = true }
+VOICE.ownerWasOn = nil
+VOICE.tick()
+CHECK(B.ownerSeen and not VOICE.lonelyDays(), "the owner online: seen, not lonely")
+told = {}
+VOICE.chat({ name = owner, msg = "base, leave a message gone fishing, back soon" })
+CHECK(B.ownerMsg == "gone fishing back soon", "the owner leaves a message for visitors: " .. tostring(B.ownerMsg))
+-- the owner logs off ... 23 days pass
+state.online = {}
+ENV.data.ents = {}
+VOICE.tick()
+CHECK(B.lastOff ~= nil, "the owner went offline: noted")
+B.lastOff = os.epoch("utc") - 23 * 86400000
+B.ownerSeen = B.lastOff
+B.ovN = (MAP.ovN or 0) - 500
+CHECK(VOICE.lonelyDays() == 23, "23 days later: LONELY (" .. tostring(VOICE.lonelyDays()) .. ")")
+-- a stranger stumbles in
+state.online = { ["alex"] = true }
+place("Alex", 5)
+ENV.data.ents = { { kind = "player", name = "Alex", dist = 4, hp = 20, max = 20 } }
+VOICE.queue = {}
+CLOCK = CLOCK + 2
+VOICE.tick()
+CHECK(said():find("A visitor! I have not seen anyone in 23 days", 1, true), "the stranger meets a lonely computer: " .. said())
+CHECK(said():find("gone fishing back soon", 1, true), "... and hears the owner's message")
+CHECK(said():find("500 more chunks", 1, true), "... and what it did while alone")
+CHECK(B.visitors.alex and B.visitors.alex.n == 1, "the visitor is noted for the owner")
+local function askAs(who, msg) told = {} VOICE.chat({ name = who, msg = msg }) return told[#told] or "" end
+CHECK(askAs("Alex", "base who lives here"):find(owner .. "'s base", 1, true), "who lives here -> the owner, last seen: " .. told[1])
+CHECK(askAs("Alex", "base are you lonely"):find("23 days", 1, true) or told[1]:find("Lonely", 1, true), "are you lonely: " .. tostring(told[1]))
+CHECK(askAs("Alex", "base leave a message nice base, I left you some bread"):find("give your message", 1, true) and #B.msgs == 1, "a visitor leaves a message")
+CHECK(askAs("Alex", "base where is turtle 63"):find("secret", 1, true), "strangers never learn where the turtles are")
+-- the owner comes back: who came + messages
+VOICE.queue = {}
+state.online = { [owner:lower()] = true }
+ENV.data.ents = { { kind = "player", name = owner, dist = 2, hp = 20, max = 20 } }
+VOICE.greeted = {}
+CLOCK = CLOCK + 2
+VOICE.tick()
+CHECK(said():find("While you were away, 1 visitor came: Alex", 1, true) and said():find("1 message for you", 1, true),
+      "the owner is told who came and that there are messages: " .. said())
+CHECK(askAs(owner, "base messages"):find("Alex", 1, true) and told[1]:find("bread", 1, true), "base, messages -> the visitor's message")
+CHECK(askAs(owner, "base clear messages"):find("gone", 1, true) and #B.msgs == 0, "clear messages")
+CHECK(not VOICE.lonelyDays(), "the owner is back: not lonely any more")
 ENV.scan = okScan
 chatTell = oldTell
 envDet = realEnvDet

@@ -972,6 +972,19 @@ PneumaticCraft drone rides, turtle mapping/surveys, and an AE2 ME network view.
   a message WITH the name only counts when it is a correct answer / a number / rock-paper-scissors (strict) and
   a wrong-answer reply only comes for 1-2 word messages (a waiting quiz took "base, status?" as wrong). test_voice
   parts 12-13 (passes with 60 random seeds).
+  v5: SCANS FASTER - voice.scanEvery 2 s (the detector's cooldown; `voice scan <s>`), VOICE.loop waits 1 s.
+  THE LONELY BASE (the owner: "if I leave for a while and never return, someone stumbles into my base and finds
+  the computer"): mem["#base"] (VOICE.base; '#' cannot be in a player name) = ownerSeen / lastOff / backAt,
+  visitors {name, n, first, last}, msgs (visitors -> owner, max 20), ownerMsg (owner -> visitors), ovN / ores at
+  the owner's last time online. VOICE.watchOwner (every tick; state.online) saves at most every 10 min online,
+  at once on log-off; coming back with visitors / messages since lastOff -> b.report. LONELY = the owner not
+  ONLINE for voice.lonely (7) days (`voice lonely <days>`, 0 = never): a stranger gets VOICE.lonelyGreet (lines by
+  days: < 30 "A visitor! ...", < 100 "...hello? ...", more "Welcome, traveller ..."), the owner's message,
+  VOICE.aloneText (chunks mapped / ores dug since) ; idle talk = VOICE.LONELY_TALK. VOICE.lonelyAnswer (first in
+  answer, anyone): leave a message <text> (owner -> for visitors, else -> for the owner), messages, clear messages
+  (owner), who visited (owner), who lives here / where is your owner (last seen date), what happened / lonely, can
+  I stay, treasure. Owner back -> "While you were away, N visitors came: ... M messages for you". Strangers never
+  get turtle positions ("That is a secret"). Console `voice message <text>`, `voice visitors`. test_voice 14-15.
 - REMOVED AGAIN: remote access in a web browser (Cloud Catcher; base_remote.lua / remote.lua / pocket.lua
   in local mode on the base) - the owner: "taking space and seems useless". removeOldFiles (base_theme.lua,
   run by inventory.lua at start) deletes its files (remote.lua, base_remote.lua, cloud.lua on the computer
