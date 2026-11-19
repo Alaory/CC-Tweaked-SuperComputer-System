@@ -91,8 +91,13 @@ local fn, err = loadfile(path, "t", _ENV)
 if not fn then log("upgrade.lua is broken: " .. tostring(err)) return false end
 local okR, done, n = pcall(fn, { args = args or {}, dir = BASE_DIR or "", log = log })
 if not okR then log("Upgrade stopped by an error: " .. tostring(done)) return false end
-
 local a1 = tostring((args or {})[1] or "")
+
+if a1 ~= "check" and a1 ~= "branch" and TT and TT.fetchCode then
+local okN, msgN = pcall(TT.fetchCode, function() end)
+log(okN and msgN and ("Turtles: " .. tostring(msgN)) or ("Turtle program not updated: " .. tostring(msgN)))
+end
+
 if a1 ~= "check" and a1 ~= "branch" and voiceUpdate and addonPath and VOICE_FILES and addonPath(VOICE_FILES[1]) then
 pcall(voiceUpdate, log)
 end
@@ -569,7 +574,7 @@ for i = 2, #words do a[#a + 1] = words[i] end
 baseUpgrade(a, say)
 
 elseif cmd == "update" then
-local okL, errL = pcall(TT.codeLoad, true)
+local okL, errL = pcall(TT.codeLoad, true, true)
 if not okL then say("Reading node.lua failed: " .. tostring(errL)) end
 if TT.codeError then say("The new node.lua does NOT compile (not sent): " .. TT.codeError) end
 if CODE then
@@ -577,7 +582,8 @@ say("Program file: " .. tostring(CODE.path or TT.codePath()) .. " (" .. #CODE.te
 TT.verName(CODE.ver))
 end
 if not CODE then
-say("No " .. TT.codePath() .. " on this computer - copy node.lua next to inventory.lua.")
+say("No turtle program stored yet. Type  upgrade  (it fetches node.lua onto a storage helper / data floppy)")
+say("or drag node.lua onto this computer - the base moves it off the computer by itself.")
 else
 
 local n = 0

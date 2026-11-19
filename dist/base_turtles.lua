@@ -820,21 +820,137 @@ local ok, a = pcall(function() return fs.attributes and fs.attributes(p) end)
 return (ok and type(a) == "table" and tonumber(a.modified)) or 0
 end
 
-function TT.codePath()
+
+
+function TT.localCode()
 local name = CONFIG.turtles.codeFile or "node.lua"
 local here = fs.combine(BASE_DIR or "", name)
-
-
 local top = name
-if top ~= here and fs.exists(top) and (not fs.exists(here) or modTime(top) > modTime(here)) then
-return top
-end
+if top ~= here and fs.exists(top) and (not fs.exists(here) or modTime(top) > modTime(here)) then return top end
 if fs.exists(here) then return here end
+end
+
+
+
+
+TT.WHERE_FILE = "node_where.dat"
+function TT.codeWhere()
+local w = readSafe(TT.WHERE_FILE)
+return type(w) == "table" and type(w.path) == "string" and w or nil
+end
+function TT.codePath()
+local l = TT.localCode()
+if l then return l end
+local w = TT.codeWhere()
+if w then return w.path end
+local name = CONFIG.turtles.codeFile or "node.lua"
 for _, d in ipairs(mountedDisks()) do
 local p = fs.combine(d.mount, name)
 if fs.exists(p) then return p end
 end
-return here
+return fs.combine(BASE_DIR or "", name)
+end
+
+
+function TT.codeStore(text, from)
+local okS, small = pcall(TT.shrinkCode, text)
+if okS and type(small) == "string" and load(small, "node", "t", {}) then text = small end
+if not load(text, "node", "t", {}) then return false, "it does not compile" end
+local name = CONFIG.turtles.codeFile or "node.lua"
+local hash = codeHash(text)
+local old = TT.codeWhere()
+local where
+
+if STORE then
+local ids = {}
+for id, h in pairs(STORE.helpers) do
+if STORE.usable(h) and (h.free or 0) >= #text + 32 * 1024 then ids[#ids + 1] = id end
+end
+local oldId = old and STORE.parse(old.path)
+table.sort(ids, function(a, b)
+if (a == oldId) ~= (b == oldId) then return a == oldId end
+return (STORE.helpers[a].free or 0) > (STORE.helpers[b].free or 0)
+end)
+for _, id in ipairs(ids) do
+local p = "store:" .. id .. "/" .. name
+local okW = STORE.write(p, text)
+if okW and STORE.read(p) == text then where = p break end
+end
+end
+
+if not where then
+for _, d in ipairs(mountedDisks()) do
+if d.data and not d.installer then
+local p = fs.combine(d.mount, name)
+local room = (d.free or 0) + (fs.exists(p) and fs.getSize(p) or 0)
+if room >= #text + 4096 and saveFileSafe(p, text) then where = p break end
+end
+end
+end
+if not where then return false, "no storage helper / data floppy with " .. math.ceil(#text / 1024) .. " KB free" end
+writeSafe(TT.WHERE_FILE, serialSmall({ path = where, hash = hash, size = #text, from = from }))
+
+if old and old.path ~= where then
+if STORE and STORE.isRemote(old.path) then pcall(STORE.delete, old.path)
+elseif fs.exists(old.path) then pcall(fs.delete, old.path) end
+end
+return true, where
+end
+
+function TT.codeRead(w)
+w = w or TT.codeWhere()
+if not w then return nil end
+local text
+if STORE and STORE.isRemote(w.path) then
+local ok, t = pcall(STORE.read, w.path)
+text = ok and t or nil
+elseif fs.exists(w.path) then
+local h = fs.open(w.path, "r")
+text = h and h.readAll()
+if h then h.close() end
+end
+if text and w.hash and codeHash(text) ~= w.hash then return nil end
+return text
+end
+
+function TT.codeOffload()
+local l = TT.localCode()
+if not l then return false end
+local h = fs.open(l, "r")
+local text = h and h.readAll()
+if h then h.close() end
+if not text or not load(text, "node", "t", {}) then return false end
+
+local from = TT.codeWhere() and "dropped" or "old"
+local ok, where = TT.codeStore(text, from)
+if not ok then return false, where end
+local name = CONFIG.turtles.codeFile or "node.lua"
+for _, p in ipairs({ fs.combine(BASE_DIR or "", name), name }) do
+if fs.exists(p) then pcall(fs.delete, p) end
+end
+if sysLog then sysLog("node.lua moved off this computer (" .. math.ceil(#text / 1024) .. " KB) - kept on " .. where, "INFO") end
+return true, where
+end
+
+function TT.fetchCode(log)
+log = log or function() end
+if not http then return false, "no internet (http is off)" end
+local up = fs.combine(BASE_DIR or "", "upgrade.lua")
+local fn = fs.exists(up) and loadfile(up, "t", _ENV)
+if not fn then return false, "upgrade.lua is missing next to inventory.lua" end
+local okR, done, body, v = pcall(fn, { fetch = CONFIG.turtles.codeFile or "node.lua", group = "node", dir = BASE_DIR or "", log = log })
+if not (okR and done and type(body) == "string") then return false, "the download did not work" end
+local w = TT.codeWhere()
+local okS, small = pcall(TT.shrinkCode, body)
+local cmp = (okS and type(small) == "string" and load(small, "node", "t", {})) and small or body
+if w and w.hash == codeHash(cmp) then
+if w.from ~= "github" then w.from = "github" writeSafe(TT.WHERE_FILE, serialSmall(w)) end
+return true, "turtle program up to date (" .. tostring(v) .. ")"
+end
+local ok, where = TT.codeStore(body, "github")
+if not ok then return false, where end
+pcall(TT.codeLoad, true, true)
+return true, "turtle program " .. tostring(v) .. " stored on " .. where
 end
 
 
@@ -915,16 +1031,39 @@ return table.concat(out, "\n") .. "\n"
 end
 
 
-function TT.codeLoad(force)
-local path = TT.codePath()
-if not fs.exists(path) then CODE = nil return end
 
-local mod = path .. ":" .. modTime(path) .. ":" .. fs.getSize(path)
+
+function TT.codeLoad(force, canWait)
+local path, mod, text
+local l = TT.localCode()
+if l then
+path = l
+
+mod = path .. ":" .. modTime(path) .. ":" .. fs.getSize(path)
 if CODE and CODE.mod == mod and not force then return end
 local h = fs.open(path, "r")
 if not h then return end
-local text = h.readAll() or ""
+text = h.readAll() or ""
 h.close()
+else
+local w = TT.codeWhere()
+if w then
+path, mod = w.path, w.path .. "#" .. tostring(w.hash)
+if CODE and CODE.mod == mod and not force then return end
+if STORE and STORE.isRemote(w.path) and not canWait then return end
+text = TT.codeRead(w)
+if not text then return end
+else
+path = TT.codePath()
+if not fs.exists(path) then CODE = nil return end
+mod = path .. ":" .. modTime(path) .. ":" .. fs.getSize(path)
+if CODE and CODE.mod == mod and not force then return end
+local h = fs.open(path, "r")
+if not h then return end
+text = h.readAll() or ""
+h.close()
+end
+end
 text = setStr(text, "protocol", CONFIG.turtles.protocol)
 text = setStr(text, "baseName", CONFIG.turtles.hostname)
 text = setStr(text, "key", CONFIG.turtles.key)

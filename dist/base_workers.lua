@@ -447,7 +447,13 @@ local okK, nK = pcall(STORE.kickSilent)
 if okK and (nK or 0) > 0 then sleep(5) end
 end
 pcall(MAP.loadNow)
-pcall(TT.codeLoad)
+pcall(TT.codeLoad, false, true)
+
+
+pcall(TT.codeOffload)
+local cw = TT.codeWhere()
+if http and (not cw or cw.from == "old") then pcall(TT.fetchCode) end
+pcall(TT.codeLoad, false, true)
 local lastFind = os.clock() - 280
 local lastCode = os.clock()
 while state.running do
@@ -462,7 +468,11 @@ okS and not next(MAP.dirty) and C.good or C.warn, 4)
 else
 pcall(MAP.autoSave)
 end
-if os.clock() - lastCode > 30 then lastCode = os.clock() pcall(TT.codeLoad) end
+if os.clock() - lastCode > 30 then
+lastCode = os.clock()
+pcall(TT.codeLoad, false, true)
+if TT.localCode() then pcall(TT.codeOffload) end
+end
 
 
 local okF, pcFree = pcall(fs.getFreeSpace, "/")

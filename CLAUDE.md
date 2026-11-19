@@ -158,6 +158,16 @@ PneumaticCraft drone rides, turtle mapping/surveys, and an AE2 ME network view.
   program for writing empties it: on a full disk the old code left a cut-off program = a dead
   turtle); no room -> startup.old dropped, once more; still none -> error, old program untouched,
   "upd" result ok=false. node_update_safe.lua.
+- NODE.LUA OFF THE COMPUTER (the owner: "move node.lua to external storage - it is just an update"; 117 KB of
+  a 1 MB computer): manifest group "node" (+ slim:node) - `upgrade` never puts it on the computer. CODE (memory)
+  + ONE stored copy, SHRUNK: TT.codeStore -> a usable storage helper (store:<id>/node.lua, read back to verify),
+  else a data floppy (not the installer) -> node_where.dat {path, hash, from old|dropped|github} (TT.codeWhere).
+  TT.codeLoad(force, canWait): a node.lua ON the computer (TT.localCode: dropped / left by an old upgrade) first;
+  else the stored copy - a helper copy only with canWait (map worker / console `update` / upgrade; never the
+  comms worker: it would miss turtle messages), loaded once (mod = path#hash). TT.codeOffload (map worker, start
+  + every 30 s): a local node.lua -> stored, deleted here. At start: none stored or from == "old" -> TT.fetchCode
+  (upgrade.lua fetch mode, group "node"); baseUpgrade fetches it too ("Turtles: ..."). The preview no longer
+  counts node.lua as the computer's used space. test_node_store.lua.
 - Install drive: the Disk Drive under the computer ("bottom", not wired;
   CONFIG.turtles.installDrive). A floppy put in gets the installer + current
   node.lua at once (TT.prepareInstallFloppy on the "disk" event, comms
@@ -968,7 +978,17 @@ PneumaticCraft drone rides, turtle mapping/surveys, and an AE2 ME network view.
   notes only while someone is near, one per 20 s, the same title not within 5 min. CHAT: "<name>, question"
   (CONFIG.voice.name "base"; "baseball" is not) from someone near -> chatTell + spoken; the owner far away ->
   chat only; QUESTIONS ONLY (status, turtles, mining, survey, time, weather, who - POCKET.status / ENV data),
-  never actions. ALARM (voice.alarm, default OFF): a stranger arriving / a hostile within alarmRange 12 of the
+  never actions. FAR AWAY (the owner: "the base keeps responding to me even when I am far away" - "base" is a common
+  word, games / conversations followed you): away from the base ONLY a message that STARTS with its name (in chat;
+  the owner) + pack 3's taxi requests ("take me to the base", "pick me up" ...; "taxi" / "ride" only name-first -
+  " to base " anywhere made "going back to base now" a taxi call); games, conversations, pack 3's gift-thanks only at
+  the base. VISITS (the owner: "I move 10 blocks away and come back - it greets me again"): LEFT = not seen for
+  voice.leaveAfter 90 s (VOICE.seenNear), GREETED again only after being AWAY greetEvery 600 s (it was: greeted
+  600 s ago - any step out after a long stay was a new visit). HEARD = READ = GONE (VOICE.heardRead: the shown ones
+  are deleted, "N older ones - ask again"; console `voice heard` too). QUIZ POINTS PER DAY (the owner: "players can
+  spam math puzzles and keep getting points" - wins give friendship, badges, drone gifts): voice.quizDaily 15 a
+  player per UTC day (m.qday / m.qn); past that "come back tomorrow", no VOICE.event win. test_voice part 22.
+  ALARM (voice.alarm, default OFF): a stranger arriving / a hostile within alarmRange 12 of the
   Environment Detector (ENV.data.ents) -> bell + spoken, once per 5 min, only when someone is near. Settings
   via `voice on|off|greet|announce|chat|alarm on|off|volume <0-3>|range <n>|name <word>` (setSetting voice.*;
   VOICE.cfg uses an if - false stays false). test_voice.lua (fake speaker / http / dfpwm, players walking up).

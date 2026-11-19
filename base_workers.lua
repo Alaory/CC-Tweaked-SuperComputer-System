@@ -447,7 +447,13 @@ function mapWorker()
     if okK and (nK or 0) > 0 then sleep(5) end
   end
   pcall(MAP.loadNow)                        -- read the map now, in the background (the screen is up)
-  pcall(TT.codeLoad)                        -- node.lua for the turtles (compiled + checked: a moment)
+  pcall(TT.codeLoad, false, true)           -- node.lua for the turtles (compiled + checked: a moment)
+  -- node.lua OFF the computer: one on it (dropped in / left by an older upgrade) goes to a storage helper /
+  -- data floppy; none stored yet, or only that old leftover: the newest from GitHub (once per start)
+  pcall(TT.codeOffload)
+  local cw = TT.codeWhere()
+  if http and (not cw or cw.from == "old") then pcall(TT.fetchCode) end
+  pcall(TT.codeLoad, false, true)
   local lastFind = os.clock() - 280         -- first look for new helpers ~20 s after the start
   local lastCode = os.clock()
   while state.running do
@@ -462,7 +468,11 @@ function mapWorker()
     else
       pcall(MAP.autoSave)                -- changed map regions, at most once a minute
     end
-    if os.clock() - lastCode > 30 then lastCode = os.clock() pcall(TT.codeLoad) end   -- node.lua changed?
+    if os.clock() - lastCode > 30 then                 -- node.lua changed / dropped onto the computer?
+      lastCode = os.clock()
+      pcall(TT.codeLoad, false, true)
+      if TT.localCode() then pcall(TT.codeOffload) end
+    end
     -- map files still on this computer -> floppies / storage helpers (every 10 min;
     -- every minute while the computer's disk is low)
     local okF, pcFree = pcall(fs.getFreeSpace, "/")

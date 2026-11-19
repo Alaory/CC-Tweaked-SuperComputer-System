@@ -22,7 +22,7 @@
 -- Console: voice [on|off|say <text>|greet|announce|chat|alarm on|off|volume <0-3>|range <n>|name <w>]
 
 VOICE = VOICE or {}
-VOICE.VERSION = 8
+VOICE.VERSION = 9
 VOICE.queue = VOICE.queue or {}
 VOICE.near = VOICE.near or {}           -- [name] = true while near the base
 VOICE.greeted = VOICE.greeted or {}     -- [name] = os.clock() of the last greeting
@@ -519,7 +519,7 @@ VOICE.STORIES = {
 VOICE.ALIVE = { "I think, therefore I compute.", "Alive? I run on redstone and coffee. Mostly redstone.", "Define alive. I do have feelings about my turtles." }
 local function words(q) local t = {} for w in q:gmatch("%S+") do t[#t + 1] = w end return t end
 local function numIn(q) return tonumber(q:match("(%-?%d+)")) end
-local function startGame(who, g) g.till = os.clock() + 180 VOICE.games[tostring(who):lower()] = g end
+local function startGame(who, g) g.till, g.at = os.clock() + 180, os.clock() VOICE.games[tostring(who):lower()] = g end
 -- a reply inside a running game (no name needed); nil = not a game reply
 function VOICE.gameReply(who, q, strict)
   local k = tostring(who):lower()
@@ -552,10 +552,21 @@ function VOICE.gameReply(who, q, strict)
         VOICE.games[k] = nil
         local m = VOICE.mem()
         m[k] = m[k] or {}
+        -- POINTS PER DAY (the owner: "players can spam math puzzles and keep getting points fast" - and wins
+        -- give friendship, badges and so drone GIFTS): voice.quizDaily (15) points a day each; past that a
+        -- right answer is still right, but counts for nothing (no friendship, no badges)
+        local day = os.date("!%Y-%m-%d")
+        if m[k].qday ~= day then m[k].qday, m[k].qn = day, 0 end
+        local cap = tonumber(VOICE.cfg("quizDaily", 15)) or 15
+        if (m[k].qn or 0) >= cap then
+          return pick({ "Correct!", "Right!" }) .. " But that was your " .. cap .. " points for today - come back tomorrow for more."
+        end
+        m[k].qn = (m[k].qn or 0) + 1
         m[k].quiz = (m[k].quiz or 0) + 1
         VOICE.saveMem()
         VOICE.event(who, "win", "quiz")
-        return pick({ "Correct!", "Right answer!", "Yes, well done!" }) .. " That makes " .. plural(m[k].quiz, "point", "points") .. " for " .. who .. "."
+        return pick({ "Correct!", "Right answer!", "Yes, well done!" }) .. " That makes " .. plural(m[k].quiz, "point", "points") .. " for " .. who ..
+               (m[k].qn >= cap and " (that was the last point for today)" or "") .. "."
       end
     end
     -- (normal chat while a quiz runs is not an answer: only short messages count as a try)
@@ -1273,16 +1284,19 @@ function VOICE.chatCore(m)
   -- a running game (guess my number / quiz / rock paper scissors): the reply needs no name
   -- (with its name in it, it is a question - only a CORRECT quiz answer / a number / rock paper
   --  scissors counts for a game then; "base, status?" during a quiz is not a wrong answer)
-  if near or isOwner(who) then
+  if near then
     local q = {}
     for _, w in ipairs(ws) do if w ~= word then q[#q + 1] = w end end
     local g = VOICE.gameReply(who, table.concat(q, " "), hasName)
     if g then reply(g) return true end
   end
-  -- meant for the base: understood loosely and answered (spoken at the base + privately in chat)
-  local how = VOICE.addressed(who, text, near)
-  if how then
-    if not near and not isOwner(who) then
+  -- FAR FROM THE BASE (the owner too - the owner: "the base keeps responding to me even when I am far
+  -- away"; "base" is a common word: "going back to base" was answered anywhere, and games / open
+  -- conversations followed you): only a message that STARTS with its name ("base, status?" - in chat),
+  -- and the taxi phrases (TALK PACK 3) from anyone with its name in them
+  if not near then
+    local first = ws[1] ~= nil and (ws[1] == word or (#word >= 4 and VOICE.same(ws[1], word)))
+    if hasName or first then
       for _, fn in ipairs(VOICE.farHooks) do
         local okF, c = pcall(fn, who, text)
         if okF and type(c) == "string" then
@@ -1290,8 +1304,15 @@ function VOICE.chatCore(m)
           return true
         end
       end
-      return false
     end
+    if not first or not isOwner(who) then return false end
+    local c = VOICE.converse(who, text, true)
+    if c then reply(c) return true end
+    return false
+  end
+  -- meant for the base: understood loosely and answered (spoken at the base + privately in chat)
+  local how = VOICE.addressed(who, text, near)
+  if how then
     local c, sp = VOICE.converse(who, text, how == "direct")
     if c then reply(c, sp) return true end
     if sp and near and not VOICE.isQuiet() then VOICE.say(sp) return true end    -- (a small reaction, spoken only)
@@ -1467,6 +1488,15 @@ function VOICE.heardSince(since)
   end
   return list, n
 end
+-- the newest n entries were read by the owner: they go (and the "talked about you" notes with them)
+function VOICE.heardRead(n)
+  local b = VOICE.base()
+  local t = b.talk or {}
+  for _ = 1, math.min(n or #t, #t) do table.remove(t) end
+  b.talk = t
+  if #t == 0 then b.heardFrom = nil end
+  VOICE.saveMem()
+end
 -- the lines for the owner: newest first, at most max
 function VOICE.heardLines(max, since)
   local list = VOICE.heardSince(since or 0)
@@ -1550,8 +1580,11 @@ function VOICE.lonelyAnswer(q, who)
     local lines, n = VOICE.heardLines(8)
     if n == 0 then return "Nobody talked about you while you were away. Or they were very quiet." end
     if chatTell then for i = 2, #lines do chatTell(who, lines[i]) end end
+    -- READ = GONE (the owner: "even after checking what people said about me the base still remembers it")
+    VOICE.heardRead(#lines)
+    local left = n - #lines
     return plural(n, "message", "messages") .. " mentioned you (newest first): " .. lines[1] ..
-           (n > 8 and "  (older ones: type  voice heard  on the base computer)" or "") .. "  Say forget what they said when you have read them."
+           (left > 0 and ("  (" .. plural(left, "older one", "older ones") .. " - ask again)") or "")
   end
   if phrase("forget what they said", "clear mentions", "forget mentions", "clear what they said") and isOwner(who) then
     VOICE.base().talk = {}
@@ -1671,12 +1704,22 @@ function VOICE.tick()
   local nearNow, list = {}, VOICE.nearPlayers()
   VOICE.since = VOICE.since or {}
   VOICE.flags = VOICE.flags or {}
+  -- (the owner: "the Environment Detector sees 16 blocks - I move 10 blocks away, come back and it greets me
+  --  again". It was "greeted more than greetEvery ago" - after a long stay ANY step out was a new visit.)
+  -- LEFT = not seen for voice.leaveAfter (90 s); GREETED again only after being AWAY greetEvery (600 s).
+  VOICE.seenNear = VOICE.seenNear or {}
+  local leave = tonumber(VOICE.cfg("leaveAfter", 90)) or 90
+  local every = tonumber(VOICE.cfg("greetEvery", 600)) or 600
   for _, p in ipairs(list) do
+    local prev = VOICE.seenNear[p.name]
+    VOICE.seenNear[p.name] = now
     nearNow[p.name] = true
-    if not VOICE.near[p.name] then
+    -- (kept as near while out of sight for < leave s; seen again after LONGER = a new arrival)
+    if not (VOICE.near[p.name] and prev and now - prev <= leave) then
       VOICE.since[p.name] = now
       local last = VOICE.greeted[p.name]
-      if VOICE.cfg("greet", true) ~= false and (not last or now - last > (tonumber(VOICE.cfg("greetEvery", 600)) or 600)) then
+      local away = not prev or now - prev > every
+      if VOICE.cfg("greet", true) ~= false and away and (not last or now - last > every) then
         VOICE.greeted[p.name] = now
         VOICE.greet(p.name)
         for _, fn in ipairs(VOICE.greetExtra) do pcall(fn, p.name) end
@@ -1697,9 +1740,11 @@ function VOICE.tick()
       end
     end
   end
-  -- who left (now and then a goodbye)
+  -- who left (now and then a goodbye) - only after `leave` s out of sight (a few steps out is not leaving)
   for name in pairs(VOICE.near) do
-    if not nearNow[name] then
+    if not nearNow[name] and VOICE.seenNear[name] and now - VOICE.seenNear[name] <= leave then
+      nearNow[name] = true                         -- (still here as far as the base is concerned)
+    elseif not nearNow[name] then
       VOICE.flags["loiter:" .. name] = nil
       if fun and name ~= "someone" and not VOICE.isQuiet() and math.random() < 0.3 then
         if isOwner(name) then VOICE.say(fill(pick({ "See you later, {name}.", "Bye {name}. I will keep things running." }), name))
@@ -1921,6 +1966,7 @@ function VOICE.command(words)
       local lines, n = VOICE.heardLines(60)
       say(n == 0 and "Nobody talked about you while you were offline." or (plural(n, "message", "messages") .. " about you while you were offline (newest first):"))
       for _, l in ipairs(lines) do say(l) end
+      if n > 0 then VOICE.heardRead(#lines) say("(read - they are forgotten now)") end
       say("Listening is " .. (VOICE.cfg("listen", true) == false and "OFF" or "ON") .. ".  voice listen on|off   voice nick <names,...>   voice heard clear")
     end
   elseif a == "listen" and b == "tell" and (words[4] == "on" or words[4] == "off") then

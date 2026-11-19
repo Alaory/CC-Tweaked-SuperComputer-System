@@ -467,7 +467,7 @@ V.giftThanks[tostring(last.who):lower()] = os.clock()
 end
 end
 local t = V.giftThanks[who:lower()]
-if t and os.clock() - t < 300 then
+if t and near and os.clock() - t < 300 then
 local low = " " .. table.concat(V.norm(text), " ") .. " "
 if low:find(" thanks ", 1, true) or low:find(" thank ", 1, true) or low:find(" love ", 1, true) then
 V.giftThanks[who:lower()] = nil
@@ -578,11 +578,18 @@ L("taxi", { "taxi", "free ride", "drone ride", "drone taxi", "can i get a ride",
 add(V.farHooks, {
 function(who, text)
 
-local t = " " .. table.concat(V.fix(V.norm(text)), " ") .. " "
-for _, ph in ipairs({ " to the base ", " to base ", " take me back ", " bring me back ", " fly me back ", " pick me up ",
-" come get me ", " taxi ", " ride ", " take me home ", " fly me home " }) do
+
+
+local ws = V.fix(V.norm(text))
+local t = " " .. table.concat(ws, " ") .. " "
+local name = tostring(V.cfg("name", "base")):lower()
+local first = ws[1] == name
+for _, ph in ipairs({ " take me to the base ", " take me to base ", " fly me to the base ", " fly me to base ",
+" take me back ", " bring me back ", " fly me back ", " pick me up ", " come get me ",
+" take me home ", " fly me home " }) do
 if t:find(ph, 1, true) then return V.taxi(who, "base") or "OK." end
 end
+if first and (t:find(" taxi ", 1, true) or t:find(" ride ", 1, true)) then return V.taxi(who, "base") or "OK." end
 return nil
 end,
 })

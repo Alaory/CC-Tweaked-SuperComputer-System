@@ -467,7 +467,7 @@ add(V.chatHooks, {
       end
     end
     local t = V.giftThanks[who:lower()]
-    if t and os.clock() - t < 300 then
+    if t and near and os.clock() - t < 300 then              -- (only at the base - never answers far away)
       local low = " " .. table.concat(V.norm(text), " ") .. " "
       if low:find(" thanks ", 1, true) or low:find(" thank ", 1, true) or low:find(" love ", 1, true) then
         V.giftThanks[who:lower()] = nil
@@ -578,11 +578,18 @@ V.addIntents({
 add(V.farHooks, {
   function(who, text)
     -- (the whole message: the base's own name is "base" by default, and "take me to the base" needs that word)
-    local t = " " .. table.concat(V.fix(V.norm(text)), " ") .. " "
-    for _, ph in ipairs({ " to the base ", " to base ", " take me back ", " bring me back ", " fly me back ", " pick me up ",
-                          " come get me ", " taxi ", " ride ", " take me home ", " fly me home " }) do
+    -- Only a clear REQUEST ("going back to base now" in normal chat was taken as one - the owner: "it keeps
+    -- responding to me even when I am far away"); "taxi" / "ride" alone only when the message STARTS with its name.
+    local ws = V.fix(V.norm(text))
+    local t = " " .. table.concat(ws, " ") .. " "
+    local name = tostring(V.cfg("name", "base")):lower()
+    local first = ws[1] == name
+    for _, ph in ipairs({ " take me to the base ", " take me to base ", " fly me to the base ", " fly me to base ",
+                          " take me back ", " bring me back ", " fly me back ", " pick me up ", " come get me ",
+                          " take me home ", " fly me home " }) do
       if t:find(ph, 1, true) then return V.taxi(who, "base") or "OK." end
     end
+    if first and (t:find(" taxi ", 1, true) or t:find(" ride ", 1, true)) then return V.taxi(who, "base") or "OK." end
     return nil
   end,
 })

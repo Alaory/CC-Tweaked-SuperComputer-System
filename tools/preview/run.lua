@@ -18,7 +18,7 @@ local function codeSize(f)
   h:close()
   return n
 end
-for _, f in ipairs({ "inventory.lua", "node.lua", "store.lua", "startup.lua", "upgrade.lua" }) do CODE_SIZE = CODE_SIZE + codeSize(f) end
+for _, f in ipairs({ "inventory.lua", "store.lua", "startup.lua", "upgrade.lua" }) do CODE_SIZE = CODE_SIZE + codeSize(f) end   -- (node.lua: off the computer now)
 local ls = popen('ls "' .. SRC_DIR .. '"/base_*.lua')
 for f in ls:lines() do
   local name = f:match("([^/]+)$")

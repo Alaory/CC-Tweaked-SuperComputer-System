@@ -99,9 +99,11 @@ wget https://raw.githubusercontent.com/Alaory/CC-Tweaked-SuperComputer-System/ma
 upgrade
 ```
 
-`upgrade` downloads every program file, checks each one and restarts the computer.
+`upgrade` downloads every program file, checks each one and restarts the computer. The turtle
+program (`node.lua`) is NOT kept on the computer: it goes onto a storage helper or a data floppy.
 (No internet on the server? Copy `inventory.lua`, every `base_*.lua`, `node.lua`, `store.lua`
-and `startup.lua` by hand instead - drag the files onto the computer's screen.)
+and `startup.lua` by hand instead - drag the files onto the computer's screen. The base moves
+`node.lua` off the computer by itself.)
 
 1. Open `base_config.lua` and set at least:
    - `turtles.key`: a secret word of your own (not `"change-me"`). Turtles

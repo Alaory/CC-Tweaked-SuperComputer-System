@@ -272,8 +272,7 @@ CLOCK = CLOCK + 6
 VOICE.tick()
 CHECK(said():find("Mallory", 1, true), "a new stranger is noticed: " .. said())
 VOICE.queue = {}
-CLOCK = CLOCK + 130
-VOICE.tick()
+for _ = 1, 13 do CLOCK = CLOCK + 10 VOICE.tick() end      -- (130 s; the base looks every 2 s in game)
 CHECK(said():find("standing here for a while", 1, true), "a stranger standing around for 2 minutes is asked: " .. said())
 VOICE.queue = {}
 -- remembered: the owner's record on the data floppy
@@ -433,7 +432,7 @@ CHECK(askAs("Alex", "base where is turtle 63"):find("secret", 1, true), "strange
 VOICE.queue = {}
 state.online = { [owner:lower()] = true }
 ENV.data.ents = { { kind = "player", name = owner, dist = 2, hp = 20, max = 20 } }
-VOICE.greeted = {}
+VOICE.greeted, VOICE.seenNear = {}, {}               -- (away for days: not seen near the base since)
 CLOCK = CLOCK + 2
 VOICE.tick()
 CHECK(said():find("While you were away, 1 visitor came: Alex", 1, true) and said():find("1 message for you", 1, true),
@@ -691,8 +690,11 @@ CHECK(said():find("talked about you in chat", 1, true) and said():find("Steve", 
 local r = table.concat(hear(owner, "base wat did ppl say about me"), " | ")
 CHECK(r:find("Steve", 1, true) and r:find("lately", 1, true) and r:find("maybe they quit", 1, true),
       "'base wat did ppl say about me' -> the messages + the answers: " .. r)
-local out = table.concat(handleCommand("voice heard"), "\n")
-CHECK(out:find(nKept .. " messages", 1, true) and out:find("has anyone seen", 1, true), "console voice heard lists them")
+-- READ = GONE (the owner: "even after checking what people said about me the base still remembers it")
+CHECK(nTalk() == math.max(0, nKept - 8), "what the owner read is forgotten (" .. nTalk() .. " of " .. nKept .. " left)")
+local again = table.concat(hear(owner, "base what did people say about me"), " | ")
+CHECK(nKept <= 8 and again:find("Nobody talked about you", 1, true) or nKept > 8, "asked again: nothing left (" .. again .. ")")
+CHECK(VOICE.heardSince(0)[1] == nil, "... and the welcome back will not mention them again")
 hear(owner, "base forget what they said")
 CHECK(nTalk() == 0, "the owner: forget what they said")
 
@@ -1344,3 +1346,68 @@ chatTell = oldTell
 fs.exists = realExists
 envDet = realEnvDet
 http = nil
+
+-- 22. THE OWNER'S NOTES AFTER A REAL VISIT: "it keeps responding to me even when I am far away", "I move 10
+--     blocks away, come back and it greets me again", "players can spam math puzzles and keep getting points"
+local saveEnv = envDet
+envDet = nil                                             -- (who is near: the Player Detector, simple to steer)
+local told2 = {}
+local tell2 = chatTell
+chatTell = function(n, t) told2[#told2 + 1] = t end
+local function say2(who, msg) told2 = {} VOICE.chat({ name = who, msg = msg }) return table.concat(told2, " | ") end
+state.online = { [owner:lower()] = true, kevin = true }
+VOICE.convo, VOICE.pend, VOICE.games = {}, {}, {}
+place(owner, 5000)
+CHECK(say2(owner, "going back to base now") == "", "far away: 'base' inside a sentence is not for it")
+CHECK(say2(owner, "anyone want to come to my base?") == "", "far away: a question with 'base' in it is not for it either")
+CHECK(say2(owner, "base, status?") ~= "", "far away: a message STARTING with its name is answered in chat")
+VOICE.queue = {}
+place(owner, 5)
+CHECK(say2(owner, "base quiz"):find("Quiz", 1, true), "at the base: a quiz starts")
+local Qg = VOICE.games[owner:lower()]
+place(owner, 5000)
+CHECK(say2(owner, Qg.a[1]) == "", "far away: a running game does not take your chat")
+CHECK(say2(owner, "lol nice") == "", "far away: an open conversation does not follow you")
+place("Kevin", 6000)
+CHECK(say2("Kevin", "base how are you") == "", "far away: other players get nothing (only taxi phrases)")
+-- greeting: a few steps out of the detector and back = still the same visit
+place(owner, 5000) VOICE.tick() CLOCK = CLOCK + 700 VOICE.tick()      -- (away a long time first)
+VOICE.near, VOICE.seenNear, VOICE.greeted = {}, {}, {}
+place(owner, 5)
+VOICE.tick()
+local g1 = VOICE.greeted[owner]
+CHECK(g1 ~= nil, "arriving: greeted")
+for _ = 1, 6 do CLOCK = CLOCK + 120 VOICE.tick() end                  -- (12 minutes at the base)
+place(owner, 5000) VOICE.tick() CLOCK = CLOCK + 40 VOICE.tick()        -- (40 s out of range)
+place(owner, 5) CLOCK = CLOCK + 2 VOICE.tick()
+CHECK(VOICE.greeted[owner] == g1, "a few steps out and back after a long stay: NOT greeted again")
+place(owner, 5000) VOICE.tick() CLOCK = CLOCK + 100 VOICE.tick()
+CHECK(not VOICE.near[owner], "gone for longer than leaveAfter (90 s): left")
+CLOCK = CLOCK + 120
+place(owner, 5) VOICE.tick()
+CHECK(VOICE.greeted[owner] == g1, "back after 4 minutes: still not greeted (away less than 10 min)")
+place(owner, 5000) VOICE.tick() CLOCK = CLOCK + 700 VOICE.tick()
+place(owner, 5) VOICE.tick()
+CHECK(VOICE.greeted[owner] ~= g1, "away 10+ minutes: greeted again")
+-- quiz / maths points: at most voice.quizDaily (15) a day
+place("Kevin", 6)
+local km = VOICE.mem()
+km.kevin = km.kevin or {}
+km.kevin.qday, km.kevin.qn = nil, nil
+local before = km.kevin.quiz or 0
+local wins, last = 0, ""
+local evOld = VOICE.event
+VOICE.event = function(w, kind, what) if kind == "win" and what == "quiz" then wins = wins + 1 end return evOld(w, kind, what) end
+for _ = 1, 25 do
+  VOICE.games.kevin = { kind = "quiz", a = { "42" }, till = CLOCK + 100, at = CLOCK }
+  last = say2("Kevin", "42")
+end
+VOICE.event = evOld
+CHECK((km.kevin.quiz or 0) - before == 15, "25 right answers in a row: only 15 points today (" .. ((km.kevin.quiz or 0) - before) .. ")")
+CHECK(wins == 15, "... and only 15 'wins' for friendship / badges / gifts (" .. wins .. ")")
+CHECK(last:find("come back tomorrow", 1, true), "it says so: " .. last)
+km.kevin.qday = "2000-01-01"                              -- (a new day)
+VOICE.games.kevin = { kind = "quiz", a = { "42" }, till = CLOCK + 100, at = CLOCK }
+CHECK(say2("Kevin", "42"):find("point", 1, true) and km.kevin.qn == 1, "a new day: points again")
+chatTell = tell2
+envDet = saveEnv
