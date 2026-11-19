@@ -678,7 +678,7 @@ function handleCommand(line)
       say("run  store  on it once (it then starts by itself), then type  store find  here.")
     else
       local free = STORE.space()
-      say("Together: " .. math.floor(free / 1024) .. " KB free for the map (used after the data floppies).")
+      say("Together: " .. math.floor(free / 1024) .. " KB free for the map (used before the data floppies).")
     end
 
   elseif cmd == "factory" then
