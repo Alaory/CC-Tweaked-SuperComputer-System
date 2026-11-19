@@ -482,7 +482,8 @@ function addonPath(file)
   if fs.exists(here) then return here end
   return nil
 end
-function loadAddon(file)
+-- load ONE file (no chain)
+local function loadOne(file)
   local p = addonPath(file)
   if not p then return false, "not installed" end
   local h = fs.open(p, "r")
@@ -496,26 +497,110 @@ function loadAddon(file)
   os.queueEvent("addon_loaded")
   return true, p
 end
+-- the talking base = a CHAIN (VOICE_FILES): the add-on empties every hook list when it loads, then each talk
+-- pack adds its own. A pack loaded ALONE added its hooks a second time (every chat counted twice) - so any
+-- voice file loads the whole chain, in order, once. Returns the result for `file` (nil = for the add-on).
+function loadVoiceChain(file)
+  local res = {}
+  for i, f in ipairs(VOICE_FILES or {}) do
+    if addonPath(f) then
+      if i == 1 or (VOICE and VOICE.addIntents) then res[f] = { loadOne(f) } end
+    elseif i == 1 then
+      res[f] = { false, "not installed" }
+      break
+    end
+  end
+  local r = res[file or VOICE_FILES[1]] or { false, "not installed" }
+  return r[1], r[2]
+end
+function loadAddon(file)
+  for _, f in ipairs(VOICE_FILES or {}) do
+    if f == file then return loadVoiceChain(file) end
+  end
+  return loadOne(file)
+end
 -- download an add-on (upgrade.lua fetch mode: checked + compiles) onto a data floppy
-function installAddon(file, group, log)
+function installAddon(file, group, log, noLoad)
   log = log or function() end
   local up = fs.combine(BASE_DIR or "", "upgrade.lua")
   local fn = fs.exists(up) and loadfile(up, "t", _ENV)
   if not fn then return false, "upgrade.lua is missing next to inventory.lua" end
   local okR, done, body = pcall(fn, { fetch = file, group = group, dir = BASE_DIR or "", log = log })
   if not (okR and done and type(body) == "string") then return false, "the download did not work (see above)" end
-  local best
+  local old = addonPath(file)
+  -- the same as the copy already there: nothing to write
+  if old then
+    local h = fs.open(old, "rb")
+    local cur = h and h.readAll()
+    if h then h.close() end
+    if cur == body then
+      if noLoad then return true, old, "same" end
+      local okL, where = loadAddon(file)
+      return okL, where, "same"
+    end
+  end
+  -- (the owner: "on each update I have to run disks" - the map fills the data floppies, and the new copy
+  --  needed a floppy with room for ALL of it while the old copy and the voice cache sat there. Now the room
+  --  of the old copy and of the speech cache (voice/*.dfpwm, made again when needed) counts too)
+  local need = #body + 5 * 1024                    -- (saveFileSafe keeps 4 KB free)
+  local function cacheBytes(m)
+    local dir, n = fs.combine(m, "voice"), 0
+    if fs.isDir(dir) then for _, f in ipairs(fs.list(dir)) do n = n + (fs.getSize(fs.combine(dir, f)) or 0) end end
+    return n
+  end
+  local best, bestRoom
   for _, d in ipairs(mountedDisks()) do
-    if d.data and (d.free or 0) > #body + 16 * 1024 and (not best or d.free > best.free) then best = d end
+    if d.data then
+      local here = fs.combine(d.mount, file)
+      local room = (d.free or 0) + (fs.exists(here) and fs.getSize(here) or 0) + cacheBytes(d.mount)
+      -- (the floppy that holds the old copy first, else the one with the most room)
+      if room >= need and (not best or (old == here) or (old ~= fs.combine(best.mount, file) and room > bestRoom)) then
+        best, bestRoom = d, room
+      end
+    end
   end
   if not best then
-    return false, "no DATA floppy with room (" .. math.ceil(#body / 1024 + 16) .. " KB) - add-ons are kept off the computer. Put a floppy in a drive and type  disks data"
+    return false, "no DATA floppy with room (" .. math.ceil(need / 1024) .. " KB, counting old speech that can go) - add-ons are kept off the computer. Put an empty floppy in a drive and type  disks data"
   end
-  local old = addonPath(file)
   local p = fs.combine(best.mount, file)
+  -- make room: the old copy here (the new one is in memory), then the oldest cached speech
+  local function free() return fs.getFreeSpace(best.mount) end
+  if free() < need and fs.exists(p) then pcall(fs.delete, p) end
+  local vdir = fs.combine(best.mount, "voice")
+  if free() < need and fs.isDir(vdir) then
+    local list, age = fs.list(vdir), {}
+    for _, f in ipairs(list) do
+      local okA, at = pcall(fs.attributes, fs.combine(vdir, f))
+      age[f] = okA and type(at) == "table" and (at.modified or at.created) or 0
+    end
+    table.sort(list, function(a, b) return age[a] < age[b] end)
+    for _, f in ipairs(list) do
+      if free() >= need then break end
+      pcall(fs.delete, fs.combine(vdir, f))
+    end
+  end
   if not saveFileSafe(p, body) then return false, "could not save it on " .. best.mount end
   if old and old ~= p then pcall(fs.delete, old) end
+  if noLoad then return true, p end
   return loadAddon(file)
+end
+-- every voice file (the add-on + its talk packs): download, save, load. say(line) tells what happened.
+function voiceUpdate(say)
+  say = say or function() end
+  local ok, msg, same = installAddon(VOICE_FILES[1], "voice", say, true)
+  say(ok and ((same and "Voice add-on: up to date (" or "Voice add-on: updated on ") .. tostring(msg) .. (same and ")" or ""))
+         or ("Voice add-on not installed: " .. tostring(msg)))
+  for i = 2, #VOICE_FILES do
+    if ok then
+      local okP, msgP, sameP = installAddon(VOICE_FILES[i], "voice", say, true)
+      say(okP and ("Talk pack " .. VOICE_FILES[i] .. (sameP and ": up to date" or (" on " .. tostring(msgP))))
+              or ("Talk pack " .. VOICE_FILES[i] .. " not installed: " .. tostring(msgP) .. " (the old copy stays)"))
+    end
+  end
+  -- everything written: the whole chain loads once (a pack that could not be updated: its old copy)
+  local okL, errL = loadVoiceChain()
+  if ok and not okL then say("Voice add-on did not start: " .. tostring(errL)) end
+  return ok and okL, msg
 end
 function removeAddon(file)
   local n = 0

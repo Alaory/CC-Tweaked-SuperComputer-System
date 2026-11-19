@@ -1101,6 +1101,20 @@ PneumaticCraft drone rides, turtle mapping/surveys, and an AE2 ME network view.
   chatCore answered nobody away from the base; VOICE.farHooks (core) get a player far away who used its name -
   pack 3 answers only taxi phrases (checked on the WHOLE message: the base's name "base" is stripped from
   intents, so "take me to the base" lost its key word). test_voice part 21 TAXI.
+  SLOWER SPEECH (the owner: "the voice seems too fast, I can't hear the words"): CCSpeaks (the service's source:
+  espeak-ng, only text= and voice=, DFPWM at 48 kHz) has NO speed setting - VOICE.play decodes the whole phrase,
+  VOICE.stretch (WSOLA: 20 ms Hann pieces every 10 ms, taken every 10 ms x speed, each shifted up to 5 ms to the
+  best fit - SAME pitch; breath() yields every 50 pieces) then plays it in 16 K pieces. voice.speed 0.5 .. 1
+  (default 0.8; `voice speed <50-100>`), voice.accent = an espeak voice sent as &voice= (`voice accent en-gb|off`),
+  part of the cache name. The cache keeps the service's sound. test_voice: 500 Hz for 1 s -> 25 % longer, the
+  same zero crossings (a plain slow-down would fail), as loud, -128..127.
+  UPDATES (the owner: "on each update I have to run disks"): the map fills the data floppies and installAddon
+  wanted a floppy with room for the WHOLE new file + 16 KB beside the old copy -> "type disks data". Now: the
+  same text = nothing written ("up to date"); room = free + the old copy + cached speech (voice/*.dfpwm, oldest
+  out first, never map files); the old copy's floppy first. voiceUpdate (base_theme) installs every voice file
+  with noLoad, then loadVoiceChain once; `upgrade` (baseUpgrade) runs it too when the add-on is installed. CHAIN:
+  a pack loaded ALONE added its hooks again -> loadAddon(any voice file) = loadVoiceChain (the add-on first: it
+  empties the hook lists, then every pack in order); inventory.lua calls loadVoiceChain once.
 - REMOVED AGAIN: remote access in a web browser (Cloud Catcher; base_remote.lua / remote.lua / pocket.lua
   in local mode on the base) - the owner: "taking space and seems useless". removeOldFiles (base_theme.lua,
   run by inventory.lua at start) deletes its files (remote.lua, base_remote.lua, cloud.lua on the computer

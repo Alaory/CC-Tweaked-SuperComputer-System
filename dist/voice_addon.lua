@@ -182,7 +182,9 @@ end
 
 
 function VOICE.audio(text)
-local key = hash(text:lower())
+local accent = VOICE.cfg("accent", nil)
+accent = (type(accent) == "string" and accent:match("^[%w%-%+]+$")) and accent or nil
+local key = hash(text:lower() .. (accent and ("|" .. accent) or ""))
 
 for _, d in ipairs(mountedDisks and mountedDisks() or {}) do
 local cp = fs.combine(fs.combine(d.mount, "voice"), key .. ".dfpwm")
@@ -194,7 +196,7 @@ end
 local dir = VOICE.cacheDir()
 local path = dir and fs.combine(dir, key .. ".dfpwm")
 if not (http and http.get) then return nil, "no internet on this computer (http is off)" end
-local url = VOICE.TTS .. textutils.urlEncode(text)
+local url = VOICE.TTS .. textutils.urlEncode(text) .. (accent and ("&voice=" .. accent) or "")
 local ok, h, err = pcall(http.get, url, nil, true)
 if not ok or not h then return nil, "text-to-speech not reachable: " .. tostring(err or h) end
 local data = h.readAll()
@@ -228,6 +230,56 @@ return data
 end
 
 
+
+
+
+
+function VOICE.speed()
+local v = tonumber(VOICE.cfg("speed", 0.8)) or 0.8
+return math.max(0.5, math.min(1, v))
+end
+local HANN = {}
+function VOICE.stretch(pcm, speed, yield)
+speed = tonumber(speed) or 1
+local N = 960
+local Hs = N / 2
+local Ha = math.floor(Hs * speed + 0.5)
+local T = 240
+local len = #pcm
+local frames = math.floor((len - N - T) / Ha)
+if speed >= 0.999 or frames < 2 then return pcm end
+if not HANN.ready then for n = 0, N - 1 do HANN[n] = 0.5 - 0.5 * math.cos(2 * math.pi * n / N) end HANN.ready = true end
+local out, outLen = {}, (frames - 1) * Hs + N
+for i = 1, outLen do out[i] = 0 end
+local prev = 0
+for f = 0, frames - 1 do
+local a = f * Ha
+local best = a
+if f > 0 then
+
+local nat, bc = prev + Hs, nil
+for d = math.max(0, a - T), math.min(len - N, a + T), 8 do
+local c = 0
+for k = 0, Hs - 1, 16 do c = c + pcm[d + k + 1] * (pcm[nat + k + 1] or 0) end
+if not bc or c > bc then bc, best = c, d end
+end
+end
+local o = f * Hs
+for k = 0, N - 1 do out[o + k + 1] = out[o + k + 1] + pcm[best + k + 1] * HANN[k] end
+prev = best
+if yield and f % 50 == 49 then yield() end
+end
+for i = 1, outLen do
+local v = math.floor(out[i] + 0.5)
+out[i] = (v > 127 and 127) or (v < -128 and -128) or v
+end
+return out
+end
+local function breath()
+pcall(function() os.queueEvent("voice_breath") os.pullEvent("voice_breath") end)
+end
+
+
 function VOICE.play(item)
 local sps = VOICE.speakers()
 if #sps == 0 then VOICE.err = "no Speaker found (put one next to the computer or on the cable)" return false end
@@ -241,8 +293,16 @@ if not data then VOICE.err = err return false end
 local okD, dfpwm = pcall(require, "cc.audio.dfpwm")
 if not okD then VOICE.err = "this CC:Tweaked has no cc.audio.dfpwm" return false end
 local decoder = dfpwm.make_decoder()
+local pcm = {}
 for i = 1, #data, 16 * 1024 do
-local buffer = decoder(data:sub(i, i + 16 * 1024 - 1))
+local b = decoder(data:sub(i, i + 16 * 1024 - 1))
+for j = 1, #b do pcm[#pcm + 1] = b[j] end
+end
+pcm = VOICE.stretch(pcm, VOICE.speed(), breath)
+VOICE.lastSamples = #pcm
+for i = 1, #pcm, 16 * 1024 do
+local buffer = {}
+for j = i, math.min(#pcm, i + 16 * 1024 - 1) do buffer[#buffer + 1] = pcm[j] end
 for _, sp in ipairs(sps) do
 local tries = 0
 while not sp.playAudio(buffer, vol) do
@@ -1875,6 +1935,16 @@ say(VOICE.lonelyAnswer("messages", ownerName() or "") or "")
 elseif a == "chatter" and tonumber(words[3]) then
 setSetting("voice.chatter", math.max(0, math.min(120, math.floor(tonumber(words[3])))))
 say("Small talk every ~" .. VOICE.cfg("chatter", 6) .. " minutes while someone is at the base (0 = never)")
+elseif a == "speed" and tonumber(words[3]) then
+local v = tonumber(words[3])
+if v > 1.5 then v = v / 100 end
+setSetting("voice.speed", math.max(0.5, math.min(1, v)))
+VOICE.say("This is how fast I talk now.")
+say("Speech speed " .. math.floor(VOICE.speed() * 100 + 0.5) .. " percent (50 = very slow, 100 = the service's own speed)")
+elseif a == "accent" and words[3] then
+if words[3] == "off" or words[3] == "default" then resetSetting("voice.accent") else setSetting("voice.accent", words[3]) end
+VOICE.say("Hello. This is my new voice.")
+say("Voice: " .. tostring(VOICE.cfg("accent", "the default")) .. "  (espeak voices: en-us, en-gb, en-gb-scotland, en-gb-x-rp, en-029 ...)")
 elseif a == "joke" then
 VOICE.say(VOICE.JOKES[math.random(1, #VOICE.JOKES)])
 say("Telling a joke")
@@ -1919,6 +1989,8 @@ say("  scans every " .. VOICE.cfg("scanEvery", 2) .. " s, lonely after " .. VOIC
 say("  voice on|off | say <text> | joke | greet|chat|alarm|detector|fun on|off | chatter <min>")
 say("  voice announce all|summary|errors|off" .. (VOICE.pending.n > 0 and ("   (" .. VOICE.pending.n .. " warnings waiting)") or "") ..
 (VOICE.isQuiet() and "   QUIET for " .. math.ceil((VOICE.quietUntil - os.clock()) / 60) .. " min" or ""))
+say("  speech speed " .. math.floor(VOICE.speed() * 100 + 0.5) .. " %, voice " .. tostring(VOICE.cfg("accent", "default")) ..
+"   voice speed <50-100> | voice accent <en-us|en-gb|...|off>")
 say("  voice volume <0-3> | range <n> | name <word> | scan <s> | lonely <days> | message <text> | visitors | forget | remove")
 end
 return out

@@ -90,6 +90,11 @@ local fn, err = loadfile(path, "t", _ENV)
 if not fn then log("upgrade.lua is broken: " .. tostring(err)) return false end
 local okR, done, n = pcall(fn, { args = args or {}, dir = BASE_DIR or "", log = log })
 if not okR then log("Upgrade stopped by an error: " .. tostring(done)) return false end
+
+local a1 = tostring((args or {})[1] or "")
+if a1 ~= "check" and a1 ~= "branch" and voiceUpdate and addonPath and VOICE_FILES and addonPath(VOICE_FILES[1]) then
+pcall(voiceUpdate, log)
+end
 if done then
 if sysLog then sysLog("Program upgraded from GitHub (" .. tostring(n) .. " files) - restarting", "INFO") end
 log("Saving the map and restarting in 3 s ...")
@@ -967,17 +972,8 @@ elseif cmd == "voice" then
 
 local a = (words[2] or ""):lower()
 if a == "install" or a == "update" then
-local ok, msg = installAddon("voice_addon.lua", "voice", say)
-say(ok and ("Installed on " .. tostring(msg) .. " - the base talks. Try:  voice say hello") or ("Not installed: " .. tostring(msg)))
-
-for i = 2, #VOICE_FILES do
-if ok then
-local okP, msgP = installAddon(VOICE_FILES[i], "voice", say)
-say(okP and ("Talk pack " .. VOICE_FILES[i] .. " on " .. tostring(msgP)) or ("Talk pack " .. VOICE_FILES[i] .. " not installed: " .. tostring(msgP)))
-
-if not okP and addonPath(VOICE_FILES[i]) then pcall(loadAddon, VOICE_FILES[i]) end
-end
-end
+local ok = voiceUpdate(say)
+if ok then say("The base talks. Try:  voice say hello") end
 elseif a == "remove" then
 local n = 0
 for i = #VOICE_FILES, 1, -1 do n = n + removeAddon(VOICE_FILES[i]) end

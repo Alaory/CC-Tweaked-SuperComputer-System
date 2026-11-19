@@ -5,6 +5,10 @@ local HOME = CONFIG.drone.home or { x = 0, y = 64, z = 0 }
 local realEnvDet = envDet
 envDet = nil                 -- (parts 1-9: no Environment Detector - the Player Detector within range)
 CONFIG.drone.home = HOME
+-- (the repo's own copies "next to inventory.lua" are not on this computer: the voice files come from floppies)
+local realExists = fs.exists
+local HIDDEN = { ["voice_addon.lua"] = true, ["voice_talk.lua"] = true, ["voice_talk2.lua"] = true, ["voice_talk3.lua"] = true }
+fs.exists = function(p) if HIDDEN[tostring(p):gsub("^/", "")] then return false end return realExists(p) end
 -- a data floppy with the add-on on it
 addDrive("drive_7", "disk7")
 local function put(p, t) local h = fs.open(p, "w") h.write(t) h.close() end
@@ -149,7 +153,7 @@ CHECK(VOICE.cfg("greet", true) == false, "voice greet off is kept (a false setti
 local src = io.open(SRC_DIR .. "/base_me.lua"):read("a")
 CHECK(src:find("VOICE.note", 1, true), "pushNote passes warnings to the voice")
 src = io.open(SRC_DIR .. "/inventory.lua"):read("a")
-CHECK(src:find('VOICE_FILES', 1, true) and src:find("loadAddon", 1, true) and src:find("addonWorker", 1, true), "inventory.lua loads the add-on (+ talk packs) and runs its worker")
+CHECK(src:find('loadVoiceChain', 1, true) and src:find("loadAddon", 1, true) and src:find("addonWorker", 1, true), "inventory.lua loads the add-on (+ talk packs) and runs its worker")
 local man = io.open(SRC_DIR .. "/manifest.txt"):read("a")
 CHECK(man:find("\nvoice voice_addon.lua ", 1, true) and not man:find("\nbase voice_addon.lua", 1, true),
       "voice_addon.lua is its own download (not installed on the computer)")
@@ -577,7 +581,7 @@ VOICE.pend = {}
 CHECK(say2("this or that"):find(" or ", 1, true), "this or that")
 local isReact = function(t) for _, l in ipairs(VOICE.REACT_OK) do if l == t then return true end end return false end
 CHECK(isReact(say2("hmm the first one i guess")), "their answer (whatever it is) gets a reaction: " .. told[1])
-CHECK(VOICE_FILES[2] == "voice_talk.lua" and io.open(SRC_DIR .. "/base_console.lua"):read("a"):find("installAddon(VOICE_FILES[i]", 1, true),
+CHECK(VOICE_FILES[2] == "voice_talk.lua" and io.open(SRC_DIR .. "/base_theme.lua"):read("a"):find("installAddon(VOICE_FILES[i]", 1, true),
       "voice install / update also gets the talk pack")
 -- the guestbook
 B.guest = nil
@@ -1138,6 +1142,77 @@ CHECK(rides[#rides].name == owner and rides[#rides].dest.x == HOME.x - 7000, "th
 det, startRide = realDet, realStart
 place(owner, 5000)
 ENV.data.ents = { { kind = "player", name = "Kevin", dist = 3 } }
+-- SLOWER SPEECH (the owner: "the voice seems too fast, I can't hear the words") - the service has no speed
+-- setting, so the sound is stretched here, the PITCH KEPT (a plain slow-down would make it deeper)
+local sine = {}
+for i = 1, 48000 do sine[i] = math.floor(100 * math.sin(2 * math.pi * i / 96) + 0.5) end   -- (500 Hz for 1 s)
+local function crossings(t) local n = 0 for i = 2, #t do if (t[i - 1] < 0) ~= (t[i] < 0) then n = n + 1 end end return n / #t end
+local st = VOICE.stretch(sine, 0.8)
+CHECK(#st > 48000 / 0.8 * 0.95 and #st < 48000 / 0.8 * 1.05, "speed 0.8: 25 % longer (" .. #sine .. " -> " .. #st .. " samples)")
+local cin, cout = crossings(sine), crossings(st)
+CHECK(math.abs(cout - cin) / cin < 0.05, "... the same pitch (zero crossings " .. string.format("%.4f -> %.4f", cin, cout) .. ")")
+local loud = 0
+for i = 2000, #st - 2000 do if math.abs(st[i]) > loud then loud = math.abs(st[i]) end end
+CHECK(loud >= 90 and loud <= 127, "... as loud as before, no clipping (" .. loud .. ")")
+local okRange = true
+for i = 1, #st do if st[i] ~= math.floor(st[i]) or st[i] < -128 or st[i] > 127 then okRange = false end end
+CHECK(okRange, "... whole numbers -128..127 (what a speaker plays)")
+CHECK(VOICE.stretch(sine, 1) == sine, "speed 1 = the sound as it came")
+handleCommand("voice speed 70")
+CHECK(math.abs(VOICE.speed() - 0.7) < 0.001, "voice speed 70 = 0.7")
+handleCommand("voice speed 20")
+CHECK(VOICE.speed() == 0.5, "never slower than half")
+resetSetting("voice.speed")
+CHECK(VOICE.speed() == 0.8, "default 0.8 (25 % slower than the service)")
+-- the accent (espeak voice) goes to the service and is part of the cache name
+local urls = {}
+local realHttp = http
+http = { get = function(u) urls[#urls + 1] = u return { readAll = function() return string.rep("x", 400) end, close = function() end } end }
+handleCommand("voice accent en-gb-scotland")
+VOICE.audio("a totally new phrase for the accent test")
+CHECK(urls[#urls] and urls[#urls]:find("&voice=en-gb-scotland", 1, true), "voice accent: sent to the service: " .. tostring(urls[#urls]))
+handleCommand("voice accent off")
+VOICE.audio("a totally new phrase for the accent test")
+CHECK(not urls[#urls]:find("voice=", 1, true) and #urls == 2, "accent off: the default voice, a different cache entry")
+http = realHttp
+-- UPDATES ON FULL FLOPPIES (the owner: "on each update I have to run disks" - the map fills the data floppies and
+-- the new copy needed a floppy with room for ALL of it): the old copy's room and the speech cache count now
+local realLoadfile = loadfile
+local newBody
+loadfile = function(path, ...)
+  if tostring(path):find("upgrade.lua", 1, true) then return function() return true, newBody end end
+  return realLoadfile(path, ...)
+end
+local pack3 = io.open(SRC_DIR .. "/dist/voice_talk3.lua"):read("a")
+newBody = pack3 .. "\n-- a newer version\n"
+-- every data floppy nearly full (map files), disk10 holds the old pack 3 + 30 KB of cached speech
+fs.makeDir("disk10/voice")
+for i = 1, 6 do put("disk10/voice/c" .. i .. ".dfpwm", string.rep("v", 5000)) end
+for _, m in ipairs({ "disk7", "disk8", "disk9", "disk10" }) do
+  put(m .. "/map_filler.dat", "")
+  local free = fs.getFreeSpace(m)
+  put(m .. "/map_filler.dat", string.rep("m", math.max(0, free - 3000)))
+end
+local fillerSize = fs.getSize("disk10/map_filler.dat")
+local okU, whereU = installAddon("voice_talk3.lua", "voice", function() end)
+CHECK(okU and whereU == "disk10/voice_talk3.lua", "an update on a nearly full floppy: in place of the old copy: " .. tostring(whereU))
+local nowText = io.open and fs.open("disk10/voice_talk3.lua", "r").readAll()
+CHECK(nowText and nowText:find("a newer version", 1, true), "... the new version is there")
+CHECK(fs.getSize("disk10/map_filler.dat") == fillerSize, "... the map data was not touched")
+local left = 0
+for _, f in ipairs(fs.list("disk10/voice")) do left = left + fs.getSize("disk10/voice/" .. f) end
+CHECK(left < 30000, "... cached speech made room (" .. left .. " bytes left of 30000)")
+local okS, _, same = installAddon("voice_talk3.lua", "voice", function() end)
+CHECK(okS and same == "same", "the same version again: nothing written (up to date)")
+newBody = pack3 .. "\n-- " .. string.rep("x", 200000) .. "\n"
+local okBig, whyBig = installAddon("voice_talk3.lua", "voice", function() end)
+CHECK(not okBig and tostring(whyBig):find("disks data", 1, true) and fs.exists("disk10/voice_talk3.lua"),
+      "really no room: it says so, and the old copy stays: " .. tostring(whyBig))
+for _, m in ipairs({ "disk7", "disk8", "disk9", "disk10" }) do fs.delete(m .. "/map_filler.dat") end
+newBody = pack3
+installAddon("voice_talk3.lua", "voice", function() end)
+loadfile = realLoadfile
+CHECK(io.open(SRC_DIR .. "/base_console.lua"):read("a"):find("pcall(voiceUpdate, log)", 1, true), "upgrade also updates the voice files")
 -- RELOAD (voice update loads the add-on and the packs again): every hook once, not twice
 local nHooks = { #VOICE.chatHooks, #VOICE.idleExtra, #VOICE.greetExtra, #VOICE.eventHooks, #VOICE.patterns, #VOICE.tickHooks }
 local nIntents = #VOICE.INTENTS
@@ -1145,6 +1220,9 @@ for _, f in ipairs(VOICE_FILES) do loadAddon(f) end
 local same = nHooks[1] == #VOICE.chatHooks and nHooks[2] == #VOICE.idleExtra and nHooks[3] == #VOICE.greetExtra and
              nHooks[4] == #VOICE.eventHooks and nHooks[5] == #VOICE.patterns and nHooks[6] == #VOICE.tickHooks
 CHECK(same and nIntents == #VOICE.INTENTS, "after a reload every hook is there once (" .. nHooks[1] .. " chat hooks -> " .. #VOICE.chatHooks .. ")")
+loadAddon("voice_talk3.lua")
+CHECK(#VOICE.chatHooks == nHooks[1] and #VOICE.tickHooks == nHooks[6] and #VOICE.INTENTS == nIntents and #VOICE.dupIntents == 0,
+      "ONE pack loaded again (an update of just that file): the whole chain loads, still every hook once")
 
 -- 20. FUZZ (the owner: "keep checking the code for bugs"): thousands of messy chat messages, odd world states,
 --     every idle line and tick - any error raised inside the voice files counts, also the ones a pcall in the
@@ -1244,5 +1322,6 @@ pcall = realPcall
 CHECK(#fuzzErr == 0, "no error inside the voice files hidden by a pcall (" .. #fuzzErr .. "): " .. tostring(fuzzErr[1]) .. " | " .. tostring(fuzzErr[2]) .. " | " .. tostring(fuzzErr[3]))
 ENV.scan = okScan
 chatTell = oldTell
+fs.exists = realExists
 envDet = realEnvDet
 http = nil

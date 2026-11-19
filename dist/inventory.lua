@@ -68,9 +68,8 @@ end
 buildWindow()
 if baseStartCheck then pcall(baseStartCheck) end
 if removeOldFiles then pcall(removeOldFiles, dir) end
-if loadAddon then
-for _, f in ipairs(VOICE_FILES or { "voice_addon.lua" }) do pcall(loadAddon, f) end
-end
+if loadVoiceChain then pcall(loadVoiceChain)
+elseif loadAddon then pcall(loadAddon, "voice_addon.lua") end
 
 local okRun, errRun = pcall(parallel.waitForAny, uiLoop, invWorker, pageWorker, actionWorker,
 droneWorker, terminalWorker, chatWorker, commsWorker, mapWorker, supplyWorker, addonWorker)
