@@ -130,6 +130,21 @@ return moved
 end
 
 
+
+
+
+
+function DW.allSides(d)
+if d.setSides then
+local ok = pcall(d.setSides, true, true, true, true, true, true)
+if ok then return true end
+end
+if d.setSide then
+for _, s in ipairs({ "down", "up", "north", "south", "west", "east" }) do pcall(d.setSide, s, true) end
+return true
+end
+return false
+end
 local function act(dr, action, pts, limit)
 local d = dr.periph
 return droneDo(dr, action, function()
@@ -137,6 +152,7 @@ d.clearArea()
 for _, p in ipairs(pts) do d.addArea(math.floor(p.x), math.floor(p.y), math.floor(p.z)) end
 if d.clearWhitelistItemFilter then pcall(d.clearWhitelistItemFilter) end
 if d.setUseCount then pcall(d.setUseCount, false) end
+DW.allSides(d)
 end, 1, limit)
 end
 

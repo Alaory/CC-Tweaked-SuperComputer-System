@@ -294,7 +294,7 @@ local function places()
   out[#out + 1] = { dir = DIR, free = math.max(0, math.min(free - keep, cap)), floppy = false }
   -- storage helpers (after the floppies, before this computer)
   for id, h in pairs(STORE and STORE.helpers or {}) do
-    if not h.refused then out[#out + 1] = { dir = "store:" .. id .. "/" .. DIR, free = h.free or 0, remote = id } end
+    if STORE.usable(h) then out[#out + 1] = { dir = "store:" .. id .. "/" .. DIR, free = h.free or 0, remote = id } end
   end
   return out
 end
@@ -530,6 +530,18 @@ function MAP.save(toDisks, noTrim)
     end
     if not failed then break end
     if noTrim then return false end
+    -- NOT a lack of room (a storage helper did not answer in time, ...): the files stay changed and
+    -- are written at the next save - nothing is dropped. (Before: one slow helper = "the floppies
+    -- are full" AND the oldest quarter of the map detail thrown away.)
+    local need, room = 0, 0
+    for k in pairs(MAP.dirty) do need = need + #(texts[k] or "") + 4096 end
+    for _, pl in ipairs(places()) do room = room + (pl.free or 0) end
+    if STORE then room = room + STORE.space(true) - STORE.space() end   -- (quiet helpers: room still there)
+    if room >= need * 2 + 64 * 1024 then
+      MAP.saveWhy = (STORE and STORE.quietList() ~= "") and ("storage helper(s) " .. STORE.quietList() .. " did not answer")
+                    or "could not write every file"
+      break
+    end
     -- full: first use any new empty floppy (then simply try again), only then
     -- drop the oldest detail (the overview keeps those chunks)
     if MAP.claimEmptyFloppies() > 0 then
@@ -661,9 +673,9 @@ function MAP.floppySpace()
   for _, d in ipairs(mountedDisks()) do
     if d.data then free, count = free + (d.free or 0), count + 1 end
   end
-  -- storage helpers count as room for the map too
+  -- storage helpers count as room for the map too (also one that is quiet right now: not "full")
   if STORE then
-    local hf, hn = STORE.space()
+    local hf, hn = STORE.space(true)
     free, count = free + hf, count + hn
   end
   return free, count
@@ -681,6 +693,25 @@ function MAP.checkSpace()
     end
   end
   local failed = next(MAP.dirty) ~= nil
+  -- not saved, but there IS room (a storage helper did not answer in time): say THAT, and only when
+  -- it lasts 10 min - not "the floppies are full, add a floppy" (the owner: "I have a lot of storage,
+  -- why do I keep getting that error")
+  if failed and free >= LOW_KB * 1024 * 4 then
+    MAP.full = false
+    MAP.failSince = MAP.failSince or os.clock()
+    local msg = "Map: some changes wait to be saved - " .. tostring(MAP.saveWhy or "a write did not work") ..
+                " (tries again every minute)"
+    if os.clock() - MAP.failSince >= 600 then
+      state.diskLow = msg
+      if os.clock() - lastWarn >= 1800 then
+        lastWarn = os.clock()
+        if sysLog then sysLog(msg, "WARNING") end
+      end
+    end
+    return
+  end
+  if not failed then MAP.failSince, MAP.saveWhy = nil, nil end
+  if state.diskLow and state.diskLow:find("wait to be saved", 1, true) and not failed then state.diskLow = nil end
   local dropping = (MAP.lastDrop or 0) > 0             -- room was made by dropping detail
   -- no room for more map: auto-map pauses (MAP.autoTick) until there is
   MAP.full = failed or (dropping and free < LOW_KB * 1024)

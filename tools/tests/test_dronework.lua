@@ -13,7 +13,8 @@ local function key(x, y, z) return x .. "," .. y .. "," .. z end
 local function world()
   W = { pos = { x = 0, y = 71, z = 0 }, inv = {}, area = {}, act = nil, blocks = {}, order = {},
         chest = {}, stock = { ["minecraft:stone"] = 100, ["minecraft:oak_planks"] = 100, ["minecraft:coal"] = 500 },
-        own = { ["minecraft:stone"] = 1 }, tinv = {}, refused = {}, teleports = 0 }
+        own = { ["minecraft:stone"] = 1 }, tinv = {}, refused = {}, teleports = 0, sides = {} }
+  function W.anySide() for _, v in pairs(W.sides or {}) do if v == true then return true end end return false end
   local function invAdd(t, name, n) t[name] = (t[name] or 0) + n end
   local function invCount(t) local c = 0 for _, n in pairs(t) do c = c + n end return c end
   os.pullEventRaw = function()
@@ -25,7 +26,8 @@ local function world()
       if a == "pneumaticcraft:teleport" or a == "pneumaticcraft:goto" then
         if not W.refused[math.floor(p.x / 16) .. "," .. math.floor(p.z / 16)] then W.pos = { x = p.x, y = p.y, z = p.z } end
       elseif a == "pneumaticcraft:inventory_import" then
-        if key(p.x, p.y, p.z) == key(CH.x, CH.y, CH.z) then
+        -- (like PneumaticCraft: a computer-controlled drone uses only the SELECTED sides, none at first)
+        if key(p.x, p.y, p.z) == key(CH.x, CH.y, CH.z) and W.anySide() then
           local room = (CONFIG.drone.slots or 1) * 64 - invCount(W.inv)
           for name, n in pairs(W.chest) do
             local take = math.min(n, room)
@@ -35,7 +37,7 @@ local function world()
         end
       elseif a == "pneumaticcraft:inventory_export" then
         local target = (key(p.x, p.y, p.z) == key(CH.x, CH.y, CH.z)) and W.chest or W.tinv[key(p.x, p.y, p.z)]
-        if target then
+        if target and W.anySide() then
           for name, n in pairs(W.inv) do invAdd(target, name, n) end
           W.inv = {}
         end
@@ -79,6 +81,8 @@ local function world()
     isActionDone = function() return W.act == nil end, getDronePressure = function() return 9 end,
     clearWhitelistText = function() end, clearBlacklistText = function() end, addWhitelistText = function() end,
     clearWhitelistItemFilter = function() end, setUseCount = function() end, exitPiece = function() end,
+    setSides = function(...) W.sides = { ... } end,
+    setSide = function(s, v) W.sides = W.sides or {} W.sides[#W.sides + 1] = v end,
     getAction = function() return W.act end, setOperator = function() end, setCount = function() end,
     evaluateCondition = function() return false end,
   }

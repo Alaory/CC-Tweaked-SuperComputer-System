@@ -294,7 +294,7 @@ local keep = (tonumber(CONFIG.map.keepFreeKB) or 96) * 1024
 out[#out + 1] = { dir = DIR, free = math.max(0, math.min(free - keep, cap)), floppy = false }
 
 for id, h in pairs(STORE and STORE.helpers or {}) do
-if not h.refused then out[#out + 1] = { dir = "store:" .. id .. "/" .. DIR, free = h.free or 0, remote = id } end
+if STORE.usable(h) then out[#out + 1] = { dir = "store:" .. id .. "/" .. DIR, free = h.free or 0, remote = id } end
 end
 return out
 end
@@ -532,6 +532,18 @@ if not failed then break end
 if noTrim then return false end
 
 
+
+local need, room = 0, 0
+for k in pairs(MAP.dirty) do need = need + #(texts[k] or "") + 4096 end
+for _, pl in ipairs(places()) do room = room + (pl.free or 0) end
+if STORE then room = room + STORE.space(true) - STORE.space() end
+if room >= need * 2 + 64 * 1024 then
+MAP.saveWhy = (STORE and STORE.quietList() ~= "") and ("storage helper(s) " .. STORE.quietList() .. " did not answer")
+or "could not write every file"
+break
+end
+
+
 if MAP.claimEmptyFloppies() > 0 then
 setToast("A new floppy disk is now used for the map", C.good)
 elseif ovFailed or tries == 4 or #MAP.order <= 20 then
@@ -663,7 +675,7 @@ if d.data then free, count = free + (d.free or 0), count + 1 end
 end
 
 if STORE then
-local hf, hn = STORE.space()
+local hf, hn = STORE.space(true)
 free, count = free + hf, count + hn
 end
 return free, count
@@ -681,6 +693,25 @@ free, count = MAP.floppySpace()
 end
 end
 local failed = next(MAP.dirty) ~= nil
+
+
+
+if failed and free >= LOW_KB * 1024 * 4 then
+MAP.full = false
+MAP.failSince = MAP.failSince or os.clock()
+local msg = "Map: some changes wait to be saved - " .. tostring(MAP.saveWhy or "a write did not work") ..
+" (tries again every minute)"
+if os.clock() - MAP.failSince >= 600 then
+state.diskLow = msg
+if os.clock() - lastWarn >= 1800 then
+lastWarn = os.clock()
+if sysLog then sysLog(msg, "WARNING") end
+end
+end
+return
+end
+if not failed then MAP.failSince, MAP.saveWhy = nil, nil end
+if state.diskLow and state.diskLow:find("wait to be saved", 1, true) and not failed then state.diskLow = nil end
 local dropping = (MAP.lastDrop or 0) > 0
 
 MAP.full = failed or (dropping and free < LOW_KB * 1024)

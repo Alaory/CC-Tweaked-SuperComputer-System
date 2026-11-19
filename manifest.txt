@@ -9,11 +9,11 @@ base base_console.lua 70976 c425aca6
 base base_curios.lua 6020 3e56460a
 base base_devices.lua 12525 54e3de70
 base base_drones.lua 71068 0f804d7c
-base base_dronework.lua 40039 31885be4
+base base_dronework.lua 40766 3c0d344a
 base base_env.lua 10269 b6081e20
 base base_factory.lua 29039 66e4cec4
 base base_input.lua 28481 8fa4989e
-base base_map.lua 80084 9cab5739
+base base_map.lua 81855 a4ec01e2
 base base_me.lua 92985 21cdf771
 base base_meplus.lua 15716 76ea0704
 base base_mining.lua 22558 48339e89
@@ -22,7 +22,7 @@ base base_pocket.lua 16842 4119c3ea
 base base_schem.lua 18382 f71f07f2
 base base_state.lua 5331 2a808592
 base base_storage.lua 11536 e6593881
-base base_store.lua 10089 1a008091
+base base_store.lua 11330 c87f1333
 base base_supply.lua 19688 1390bb7a
 base base_theme.lua 29863 6c7776b0
 base base_turtles.lua 106848 8bd2db1e
@@ -63,11 +63,11 @@ slim:base base_console.lua 58755 7af90999 dist/base_console.lua
 slim:base base_curios.lua 3601 10dc6ee3 dist/base_curios.lua
 slim:base base_devices.lua 8669 8b8f116b dist/base_devices.lua
 slim:base base_drones.lua 46572 a94a93bd dist/base_drones.lua
-slim:base base_dronework.lua 31041 f3e7fbd7 dist/base_dronework.lua
+slim:base base_dronework.lua 31354 f4c75491 dist/base_dronework.lua
 slim:base base_env.lua 7154 ae1b2584 dist/base_env.lua
 slim:base base_factory.lua 21342 bdd3423f dist/base_factory.lua
 slim:base base_input.lua 20108 1ecbe11c dist/base_input.lua
-slim:base base_map.lua 51243 6e742910 dist/base_map.lua
+slim:base base_map.lua 52280 9c85a04d dist/base_map.lua
 slim:base base_me.lua 66671 b1d84889 dist/base_me.lua
 slim:base base_meplus.lua 11775 80204792 dist/base_meplus.lua
 slim:base base_mining.lua 16410 d655310f dist/base_mining.lua
@@ -76,7 +76,7 @@ slim:base base_pocket.lua 13355 636c1a88 dist/base_pocket.lua
 slim:base base_schem.lua 13483 11a1f7a3 dist/base_schem.lua
 slim:base base_state.lua 2184 53b39d2a dist/base_state.lua
 slim:base base_storage.lua 8505 9bb686f2 dist/base_storage.lua
-slim:base base_store.lua 6871 07c7d3ad dist/base_store.lua
+slim:base base_store.lua 7538 a43dc327 dist/base_store.lua
 slim:base base_supply.lua 14825 3e655c85 dist/base_supply.lua
 slim:base base_theme.lua 18652 a9aceaf0 dist/base_theme.lua
 slim:base base_turtles.lua 73679 715beffd dist/base_turtles.lua

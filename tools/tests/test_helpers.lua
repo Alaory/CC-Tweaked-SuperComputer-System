@@ -233,3 +233,54 @@ CHECK(voiceCacheBytes("disk9") == 0 or fs.getFreeSpace("disk9") >= floppyReserve
       "a floppy under its reserve loses its cached speech")
 FILES["disk9/junk.bin"] = nil
 CONFIG.voice.cacheKB = was
+
+-- 11) A SLOW HELPER IS NOT "FULL" (the owner: "Map not fully saved - the data floppies are full" with 3.5 MB
+-- free on the helpers - "I have a lot of storage, why do I keep getting that error"). A helper that did not
+-- answer in time: no "floppies full", NOTHING of the map dropped, the changes wait for the next save.
+lookHelpers()
+for _, m in ipairs({ "disk9", "disk10", "disk11" }) do
+  FILES[m .. "/junk.bin"] = string.rep("x", math.max(0, fs.getFreeSpace(m) - 2000))
+end
+FILES["pc_junk.bin"] = string.rep("x", math.max(0, fs.getFreeSpace("/") - 60000))   -- (the computer: 54 KB free in game)
+for id in pairs(REMOTE) do DOWN[id] = true end
+for a = 0, 3 do scanAt(a * 17, 900) end
+local chunksBefore = #MAP.order
+state.diskLow = nil
+MAP.lastDrop = 0
+MAP.save()
+CHECK(next(MAP.dirty) ~= nil, "helpers not answering, floppies full: the changes are not saved yet")
+CHECK(#MAP.order == chunksBefore and (MAP.lastDrop or 0) == 0, "... but NOTHING of the map is dropped (" ..
+      #MAP.order .. " of " .. chunksBefore .. " chunks)")
+MAP.checkSpace()
+CHECK(not MAP.full, "... the map is not 'full' (auto-map goes on)")
+CHECK(not (state.diskLow or ""):find("floppies are full", 1, true), "... and no 'floppies are full' message: " .. tostring(state.diskLow))
+CLOCK = CLOCK + 601
+MAP.save()
+MAP.checkSpace()
+CHECK((state.diskLow or ""):find("wait to be saved", 1, true) and (state.diskLow or ""):find("did not answer", 1, true),
+      "still not saved after 10 min: it says WHY (the helpers did not answer): " .. tostring(state.diskLow))
+-- they answer again: saved, the message goes
+for id in pairs(REMOTE) do DOWN[id] = nil end
+CLOCK = CLOCK + 61                                      -- (quiet ones are tried again after 60 s)
+MAP.save()
+MAP.checkSpace()
+CHECK(not next(MAP.dirty), "the helpers answer again: everything saved")
+CHECK(not (state.diskLow or ""):find("wait to be saved", 1, true), "... and the message is gone")
+for _, m in ipairs({ "disk9", "disk10", "disk11" }) do FILES[m .. "/junk.bin"] = nil end
+FILES["pc_junk.bin"] = nil
+
+-- 12) one missed hello does not forget a helper (the 5-min look used to drop it until the next look)
+PERIPHS["back"] = { types = { "modem" }, obj = { isWireless = function() return false end } }
+rednet.isOpen = rednet.isOpen or function() return true end
+STORE.known = { [119] = true, [120] = true, [121] = true, [122] = true }
+STORE.find(true)
+CHECK(STORE.helpers[120] and STORE.usable(STORE.helpers[120]), "all helpers found")
+DOWN[120] = true
+STORE.find(true)
+CHECK(STORE.helpers[120] and not STORE.usable(STORE.helpers[120]), "one missed hello: kept, but not written to for now")
+CHECK(STORE.space(true) > STORE.space(), "... its room still counts as KNOWN room")
+STORE.find(true) STORE.find(true)
+CHECK(STORE.helpers[120] == nil, "three looks in a row without an answer: gone")
+DOWN[120] = nil
+STORE.find(true)
+CHECK(STORE.helpers[120] and STORE.usable(STORE.helpers[120]), "it answers again: back")

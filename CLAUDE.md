@@ -671,7 +671,11 @@ PneumaticCraft drone rides, turtle mapping/surveys, and an AE2 ME network view.
   chest" and flew home: playerBlock was floor(y) - 1 = the block UNDER a chest (0.875 high - the feet are inside
   the chest's space); now floor(y - 0.01) (chest / slab = that block, full block the same; feet = floor(y)). The
   failure says the saved spot, where the drone was, F3 "Targeted Block" + `$drone workchest x y z` (posArg).
-  test_dronework.lua.
+  test_dronework.lua. THE REAL CAUSE (PneumaticCraft source, thirdparty/computer_common/ProgWidgetCC: sides =
+  new boolean[6] - ALL OFF; DroneEntityAIInventoryImport/Export only use isSideSelected sides): a computer-driven
+  drone's inventory import / export did NOTHING until setSides is called. act() -> DW.allSides(d) = setSides(true x6)
+  (order down up north south west east; else setSide per side) before every action. The test's fake drone uses
+  no side until set (the old code fails 20 checks).
 - PLACES BY STANDING ON THEM (base_drones.lua playerBlock / posArg): chat `$drone mark <name>` (the
   block under you; `feet` = where you stand) / `$drone unmark`, console `save <name> me|feet|x y z`;
   posArg(words, i) = "x y z" | a saved place | me | feet | @player - used by `dw chest`, `schem build`.
@@ -925,7 +929,13 @@ PneumaticCraft drone rides, turtle mapping/surveys, and an AE2 ME network view.
   that could not be deleted on a quiet helper = MAP.stale (map_stale.dat): never read, deleted when it
   answers; a write to that path clears it. FULLEST FLOPPY FIRST (the owner next: "disk2/mining.dat not saved (5 KB free)" - the files went in name order from every floppy): offload sorts by the floppy's free space; every 10 s while a data floppy is under floppyKeep; a data save that fits nowhere resets state.offloadAt + queues map_save (moved NOW). moveDataFile (saveFileSafe): a data file at the top of a
   data floppy that no longer fits moves to the data floppy with the most room (not .lua / .log /
-  folders). Drone logs + back_spots.dat are written with serialSmall. test_helpers.lua (fake helpers). Helper gone -> files go to the
+  folders). Drone logs + back_spots.dat are written with serialSmall. A SLOW HELPER IS NOT "FULL" (the owner:
+  "Map not fully saved - the data floppies are full" with 3.5 MB free on helpers; one late answer did that, AND
+  MAP.save then dropped the oldest map detail): a helper with no answer = h.down (STORE.usable false for 60 s,
+  room still counted by STORE.space(true)); STORE.find keeps a helper that answered before for 2 missed hellos;
+  MAP.save with room left (quiet helpers counted) drops nothing - MAP.saveWhy, changes wait for the next save;
+  checkSpace says "some changes wait to be saved - storage helper(s) #.. did not answer" only after 10 min,
+  never "floppies full" / MAP.full then. kickSilent reboots a known helper missing 2+ hellos. test_helpers.lua. Helper gone -> files go to the
   computer. `store [find|update]` on the base computer. Helpers left OFF by a server
   restart: STORE.wakeAll turns them on over the cable (computer peripheral isOn /
   turnOn; only known ids or label "Store <id>") - at mapWorker start (then 4 s
