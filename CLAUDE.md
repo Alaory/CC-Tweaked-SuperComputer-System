@@ -1366,4 +1366,6 @@ rider down at the pickup spot.
 ## Useful console commands (on the base computer)
 help, report, tanks, mesetup, me check, me add <id>, curios check, disks
 [data|move], drones, drone <n>, charger, turtles, turtle <id> <cmd>, update,
-rescue, findlost, map [clear], exit [clear], survey, theme, events, supply, mine update, dw, schem build, voice.
+rescue, findlost, map [clear], exit [clear], survey, theme, events, supply, mine update, dw, schem build, voice,
+chests (every chest / barrel / tank on the cable: how full + its job - AE2 buffers, curios barrel, factory chest,
+DRONE WORK CHEST, kept-filled storages; chestList in base_console.lua; test_chests.lua), store (storage helpers).

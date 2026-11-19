@@ -58,6 +58,7 @@ HELP = {
   " mine [drop|forget] <id>   mining turtles: drop = a lost miner out of its team",
   " fluidstop             end a big fluid ALL that is still moving",
   " fluidbuffer [<n>|auto]   which fluid storage AE2 fluids pass through (filling your tanks)",
+  " chests               every chest / barrel / tank on the cable: how full, and what the base uses it for",
   " supply [<storage> <item> <count>|<storage> fluid <fluid> <buckets>|stop <n>|now]   keep a storage on the cable stocked from AE2",
   " dw [chest <n> me|fuel <id>|fuel item <item> [n]|auto on|off]   drone jobs: work chest, fuel runs to turtles",
   " schem build <name> <me|place|x y z> [rot 90] [clear] | status | pause | resume | stop   a drone builds it",
@@ -1037,6 +1038,30 @@ function handleCommand(line)
       say("(It must be YOUR storage that AE2 fluids pass through - e.g. the storage controller.)")
     end
 
+  elseif cmd == "chests" or cmd == "storages" then
+    -- every storage block the computer can reach (wired cable + its own sides) and its job
+    local list = chestList()
+    if #list == 0 then
+      say("No chests, barrels or tanks reach this computer. They need a WIRED modem on them (right-click it: red = on).")
+    end
+    local nInv, nTank = 0, 0
+    for _, c in ipairs(list) do
+      if c.slots then nInv = nInv + 1 else nTank = nTank + 1 end
+    end
+    say(nInv .. " item storage(s), " .. nTank .. " fluid storage(s):")
+    for _, c in ipairs(list) do
+      local fill
+      if c.slots then
+        fill = c.used == 0 and "EMPTY" or (c.used .. "/" .. c.slots .. " slots, " .. c.items .. " items")
+      else
+        fill = c.mb == 0 and "EMPTY" or (math.floor(c.mb / 1000) .. " B " .. (c.fluid or ""))
+      end
+      say(" " .. c.name .. "  " .. fill)
+      say("    " .. (c.job or "not used by the base"))
+    end
+    say("Drone work chest: " .. ((CONFIG.drone and CONFIG.drone.workChest) or "none - DRONES > DRONE WORK, or chat  $drone workchest") ..
+        ".  Factory chest: " .. tostring(FACTORY and FACTORY.chest or "none") .. ".")
+
   elseif cmd == "supply" then
     -- keep a storage on the cable stocked from AE2 (base_supply.lua)
     for _, l in ipairs(SUPPLY.command(words)) do say(l) end
@@ -1312,3 +1337,56 @@ function handleCommand(line)
   return out
 end
 
+
+-- every chest / barrel / tank this computer reaches (wired cable + its sides), sorted by
+-- name: { name, slots, used, items | mb, fluid, job } (console `chests`; peripheral calls -
+-- never from drawing code)
+function chestList()
+  local out = {}
+  for _, name in ipairs(peripheral.getNames()) do
+    local isInv = peripheral.hasType(name, "inventory")
+    local isTank = peripheral.hasType(name, "fluid_storage")
+    if (isInv or isTank) and not peripheral.hasType(name, "turtle") and not peripheral.hasType(name, "computer") then
+      local c = { name = name }
+      if isInv then
+        local okS, size = pcall(peripheral.call, name, "size")
+        local okL, items = pcall(peripheral.call, name, "list")
+        c.slots, c.used, c.items = okS and tonumber(size) or 0, 0, 0
+        for _, it in pairs(okL and type(items) == "table" and items or {}) do
+          c.used, c.items = c.used + 1, c.items + (it.count or 0)
+        end
+      else
+        local okT, tanks = pcall(peripheral.call, name, "tanks")
+        c.mb = 0
+        for _, t in pairs(okT and type(tanks) == "table" and tanks or {}) do
+          c.mb = c.mb + (t.amount or 0)
+          c.fluid = c.fluid or (t.name and t.name:gsub("^[^:]+:", ""))
+        end
+      end
+      local jobs = {}
+      local me = CONFIG.me or {}
+      local JOB = { buffer = "AE2 item buffer (items in / out of AE2 go through it)",
+                    giveChest = "AE2 give chest", takeChest = "AE2 take chest",
+                    curiosChest = "curios barrel (putting curios on / off)",
+                    fluidBuffer = "AE2 fluid buffer" }
+      for _, k in ipairs({ "buffer", "giveChest", "takeChest", "curiosChest", "fluidBuffer" }) do
+        if me[k] == name then jobs[#jobs + 1] = JOB[k] end
+      end
+      if fluidBufferMem and fluidBufferMem() == name and me.fluidBuffer ~= name then jobs[#jobs + 1] = "AE2 fluid buffer" end
+      if FACTORY and FACTORY.chest == name then jobs[#jobs + 1] = "turtle factory chest" end
+      if CONFIG.drone and CONFIG.drone.workChest == name then jobs[#jobs + 1] = "DRONE WORK CHEST (drones load / unload here)" end
+      if SUPPLY and SUPPLY.isTarget and SUPPLY.isTarget(name) then
+        for _, r in ipairs(SUPPLY.rules or {}) do
+          if r.target == name then jobs[#jobs + 1] = "kept filled from AE2: " .. tostring(r.name) end
+        end
+      end
+      c.job = #jobs > 0 and table.concat(jobs, "; ") or nil
+      out[#out + 1] = c
+    end
+  end
+  table.sort(out, function(a, b)
+    if (a.job ~= nil) ~= (b.job ~= nil) then return a.job ~= nil end   -- (the ones the base uses first)
+    return a.name < b.name
+  end)
+  return out
+end
