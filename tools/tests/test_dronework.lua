@@ -337,6 +337,46 @@ local chatText = table.concat(toldT, "\n")
 CHECK(chatText:find("OK: AE2 put 1 Stone", 1, true) and chatText:find("brings 1 Stone to Alaory", 1, true),
       "chat  $drone test : the steps come back in chat\n" .. chatText)
 CHECK(chatText:find("DRONE TEST: it works", 1, true), "... and the drone's result too (in chat, not only on the monitor)")
+-- the owner's test: "it did not bring me a cobblestone" - the saved spot was the block UNDER the chest
+-- (standing on a chest = 0.875 high: floor(y) - 1 was one too low)
+dr = world()
+SETTINGS["drone.workChestAt"] = nil
+CONFIG.drone.workChestAt = { x = CH.x, y = CH.y - 1, z = CH.z }
+toldT = {}
+chatTell = function(n, t) toldT[#toldT + 1] = t end
+handleChat({ name = "Alaory", uuid = state.ownerUuid, msg = "$" .. CONFIG.chat.command .. " test" })
+run(dr)
+chatText = table.concat(toldT, "\n")
+CHECK(chatText:find("took nothing", 1, true) and chatText:find("Saved spot: " .. CH.x .. " " .. (CH.y - 1), 1, true)
+      and chatText:find("Targeted Block", 1, true) and chatText:find("workchest x y z", 1, true),
+      "a wrong spot: the message says where it looked, where the drone was and how to fix it\n" .. chatText)
+CHECK(not (W.dropped and W.dropped["minecraft:stone"]), "... nothing was dropped")
+CHECK(W.stock["minecraft:stone"] == 100, "... and the stone is back in AE2 (" .. tostring(W.stock["minecraft:stone"]) .. ")")
+-- fixed by typing the chest's spot in chat (F3 Targeted Block)
+toldT = {}
+handleChat({ name = "Alaory", uuid = state.ownerUuid, msg = "$" .. CONFIG.chat.command .. " workchest " .. CH.x .. " " .. CH.y .. " " .. CH.z })
+local fx, fy, fz = DW.chestAt()
+CHECK(fx == CH.x and fy == CH.y and fz == CH.z, "$drone workchest x y z sets the exact spot: " .. tostring(toldT[1]))
+dr = world()
+toldT = {}
+handleChat({ name = "Alaory", uuid = state.ownerUuid, msg = "$" .. CONFIG.chat.command .. " test" })
+run(dr)
+CHECK(table.concat(toldT, "\n"):find("DRONE TEST: it works", 1, true), "... and then the test works")
+chatTell = tellT
+-- standing ON a chest (0.875 high): the chest itself, not the block under it
+local realPos = playerPos
+playerPos = function() return 10.5, 70.875, -3.5 end
+local bx, by, bz = playerBlock("Alaory")
+CHECK(bx == 10 and by == 70 and bz == -4, "standing on a chest = the chest (" .. tostring(by) .. ")")
+playerPos = function() return 10.5, 71, -3.5 end
+bx, by = playerBlock("Alaory")
+CHECK(by == 70, "standing on a full block = that block")
+playerPos = function() return 10.5, 70.5, -3.5 end
+bx, by = playerBlock("Alaory")
+CHECK(by == 70, "standing on a slab = the slab")
+bx, by = playerBlock("Alaory", true)
+CHECK(by == 70, "feet = the block the feet are in")
+playerPos = realPos
 -- a stranger cannot
 toldT = {}
 chatTell = function(n, t) toldT[#toldT + 1] = t end

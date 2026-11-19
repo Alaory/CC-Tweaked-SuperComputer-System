@@ -267,9 +267,11 @@ end
 function playerBlock(name, feet)
   local x, y, z = playerPos(canonPlayer(name or state.owner or ""))
   if not x then return nil, y end
-  x, y, z = math.floor(x), math.floor(y + 0.001), math.floor(z)
-  if not feet then y = y - 1 end
-  return x, y, z
+  -- the block UNDER the feet = floor(y - 0.01): standing on a CHEST (0.875 high) or a slab the feet are
+  -- INSIDE that block's space - "floor(y) - 1" gave the block under the chest (the drone test: "the drone
+  -- took nothing from the work chest"). On a full block both are the same.
+  if feet then return math.floor(x), math.floor(y + 0.001), math.floor(z) end
+  return math.floor(x), math.floor(y - 0.01), math.floor(z)
 end
 -- a spot from command words, starting at words[i]: "x y z" | a saved place | "me" (the block
 -- under you) | "feet" (where you stand) | "@player" (the block under them).

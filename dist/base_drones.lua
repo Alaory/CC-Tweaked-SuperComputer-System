@@ -267,9 +267,11 @@ end
 function playerBlock(name, feet)
 local x, y, z = playerPos(canonPlayer(name or state.owner or ""))
 if not x then return nil, y end
-x, y, z = math.floor(x), math.floor(y + 0.001), math.floor(z)
-if not feet then y = y - 1 end
-return x, y, z
+
+
+
+if feet then return math.floor(x), math.floor(y + 0.001), math.floor(z) end
+return math.floor(x), math.floor(y - 0.01), math.floor(z)
 end
 
 

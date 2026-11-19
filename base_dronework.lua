@@ -188,7 +188,12 @@ local function stepLoad(dr, J, item, want)
     if left > 0 then DW.chestToAE2() end           -- (more than it could carry: the rest goes back)
     J.carried = moved - left
     if not ok then return false, err end
-    if J.carried <= 0 then return false, "the drone took nothing from the work chest (can it reach it? is its inventory full?)" end
+    if J.carried <= 0 then
+      local px, py, pz = droneXYZ(dr)
+      return false, "the drone took nothing from the work chest. Saved spot: " .. x .. " " .. y .. " " .. z ..
+             (px and (", the drone was at " .. math.floor(px) .. " " .. math.floor(py) .. " " .. math.floor(pz)) or "") ..
+             ". Is that the chest's real spot (F3: Targeted Block) and is the block ON TOP of it air?"
+    end
     return true
   end }
 end
@@ -405,7 +410,7 @@ function DW.test(say, item, tell, again)
       pushNote("DONE", m, C.good)
     else
       m = "DRONE TEST: the drone trip did not work: " .. tostring(w or "?") ..
-          " - is the work chest's position right? Stand ON the chest and type  $drone workchest"
+          " - wrong spot? Look at the chest, F3 shows Targeted Block: x y z, then type  $drone workchest x y z"
       pushNote("WARNING", m, C.warn)
     end
     if tell then pcall(tell, m) end

@@ -150,7 +150,7 @@ function handleChat(m)
     reply("Use: " .. c .. " home | " .. c .. " to <place" ..
           ((owner or CONFIG.chat.othersToPlayers) and "|player" or "") .. "> | " .. c .. " back | " ..
           c .. " places | " .. c .. " status | " .. c .. " stop")
-    if owner then reply("Places: " .. c .. " mark <name> (stand ON the block) | " .. c .. " unmark <name> | " .. c .. " workchest (stand ON the drones' work chest) | " .. c .. " test (test it, standing near it)") end
+    if owner then reply("Places: " .. c .. " mark <name> (stand ON the block) | " .. c .. " unmark <name> | " .. c .. " workchest [x y z] (stand ON the drones' work chest, or its spot) | " .. c .. " test (test it, standing near it)") end
     if owner then reply("Owner: " .. c .. " allow/deny <name> | " ..
                         c .. " allowed | " .. c .. " yes/no <name> | " .. c .. " notify on/all/off") end
 
@@ -192,7 +192,9 @@ function handleChat(m)
   elseif sub == "workchest" then
     -- the drones' WORK CHEST: stand ON it and type this (the monitor may be far away)
     if not owner then reply("Only " .. tostring(state.owner) .. " can set the work chest.") return end
-    local x, y, z = playerBlock(name)
+    -- (or its exact spot: $drone workchest x y z - F3 "Targeted Block" while looking at it)
+    local x, y, z
+    if words[3] then x, y, z = posArg(words, 3, name) else x, y, z = playerBlock(name) end
     if not x then reply("Cannot: " .. cleanErr(y)) return end
     if not DW.chestName() then
       pcall(DW.refreshView)                      -- (one empty chest on the cable: that is it)
