@@ -966,13 +966,15 @@ local _, msg = DW.fuelRun(t.id, "you")
 say(msg)
 end
 else say("Usage: dw fuel <turtle id>  |  dw fuel item <item> [count]") end
+elseif sub == "test" then
+DW.test(say, words[3] and SUPPLY.fullName(words[3]) or nil)
 elseif sub == "auto" and (words[3] == "on" or words[3] == "off") then
 setSetting("drone.fuelRuns", words[3] == "on")
 DW.auto = nil
 say("Automatic drone fuel runs " .. words[3]:upper())
 else
 for _, l in ipairs(DW.statusLines()) do say(l) end
-say("dw chest [<n|name> me]  |  dw fuel <id>  |  dw fuel item <item> [count]  |  dw auto on|off  |  schem build ...")
+say("dw chest [<n|name> me]  |  dw test [item]  |  dw fuel <id>  |  dw fuel item <item> [count]  |  dw auto on|off  |  schem build ...")
 end
 
 elseif cmd == "voice" then
@@ -1040,7 +1042,7 @@ end
 
 elseif cmd == "chests" or cmd == "storages" then
 
-local list = chestList()
+local list = cableStorages()
 if #list == 0 then
 say("No chests, barrels or tanks reach this computer. They need a WIRED modem on them (right-click it: red = on).")
 end
@@ -1341,7 +1343,7 @@ end
 
 
 
-function chestList()
+function cableStorages()
 local out = {}
 for _, name in ipairs(peripheral.getNames()) do
 local isInv = peripheral.hasType(name, "inventory")

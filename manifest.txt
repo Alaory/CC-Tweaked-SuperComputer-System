@@ -5,11 +5,11 @@ base store.lua 9364 dfbf002c
 base upgrade.lua 10858 725e2cf0
 base base_away.lua 18604 82aa7fa7
 base base_chat.lua 17349 b30c2e19
-base base_console.lua 70853 096ae9cd
+base base_console.lua 70976 c425aca6
 base base_curios.lua 6020 3e56460a
 base base_devices.lua 12525 54e3de70
 base base_drones.lua 70756 5a3cee22
-base base_dronework.lua 35791 c6b379c5
+base base_dronework.lua 39433 23c054d7
 base base_env.lua 10269 b6081e20
 base base_factory.lua 29039 66e4cec4
 base base_input.lua 28481 8fa4989e
@@ -59,11 +59,11 @@ slim:base store.lua 6835 6ac5e947 dist/store.lua
 slim:base upgrade.lua 7424 b8d25fcc dist/upgrade.lua
 slim:base base_away.lua 13275 79b723da dist/base_away.lua
 slim:base base_chat.lua 12977 d285d6f6 dist/base_chat.lua
-slim:base base_console.lua 58642 352b964a dist/base_console.lua
+slim:base base_console.lua 58755 7af90999 dist/base_console.lua
 slim:base base_curios.lua 3601 10dc6ee3 dist/base_curios.lua
 slim:base base_devices.lua 8669 8b8f116b dist/base_devices.lua
 slim:base base_drones.lua 46543 666bfe84 dist/base_drones.lua
-slim:base base_dronework.lua 27740 a89b1635 dist/base_dronework.lua
+slim:base base_dronework.lua 30673 255a8637 dist/base_dronework.lua
 slim:base base_env.lua 7154 ae1b2584 dist/base_env.lua
 slim:base base_factory.lua 21342 bdd3423f dist/base_factory.lua
 slim:base base_input.lua 20108 1ecbe11c dist/base_input.lua

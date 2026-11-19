@@ -287,6 +287,45 @@ local okD, whyD = DW.giftRun("Kevin", "minecraft:emerald", 5, nil)
 CHECK(not okD and tostring(whyD):find("another dimension", 1, true), "a player in another dimension gets no drone (" .. tostring(whyD) .. ")")
 CONFIG.drone.slots = 1
 
+------------------------------------------------------------------ dw test (the owner: "how do I test the drone chest")
+dr = world()
+state.owner = "Alaory"
+state.players = { { name = "Alaory", isOwner = true, p = { x = CH.x + 3.5, y = CH.y + 1, z = CH.z + 0.5 }, dim = DRONE_DIM } }
+local notes = {}
+local realNote = pushNote
+pushNote = function(kind, msg, col) notes[#notes + 1] = tostring(kind) .. ": " .. tostring(msg) end
+local tl = {}
+local okT = DW.test(function(l) tl[#tl + 1] = l end)
+local tt = table.concat(tl, "\n")
+CHECK(okT and tt:find("OK: AE2 put 1 Stone into the work chest", 1, true) and tt:find("OK: it went back into AE2", 1, true),
+      "dw test: AE2 -> work chest -> AE2 with a plain item it has (stone)\n" .. tt)
+CHECK(W.stock["minecraft:stone"] == 100 and next(W.chest) == nil, "... and it is all back in AE2")
+CHECK(tt:find("brings 1 Stone to Alaory", 1, true), "you stand near the chest: a drone brings one to you")
+run(dr)
+CHECK(W.dropped and W.dropped["minecraft:stone"] == 1, "the drone took it out of the work chest and dropped it next to you")
+CHECK(notes[#notes] and notes[#notes]:find("DONE: DRONE TEST: it works", 1, true), "a DONE note says it worked: " .. tostring(notes[#notes]))
+-- far from the chest: only the base side, and it says how to do the drone part
+dr = world()
+state.players[1].p = { x = CH.x + 500, y = CH.y, z = CH.z }
+tl = {}
+CHECK(DW.test(function(l) tl[#tl + 1] = l end), "far away: the base side still tested")
+tt = table.concat(tl, "\n")
+CHECK(tt:find("stand within 48 blocks", 1, true) and #dr.queue == 0, "far away: no drone, it says to come closer\n" .. tt)
+-- a test item named by you; one AE2 does not have
+tl = {}
+CHECK(not DW.test(function(l) tl[#tl + 1] = l end, "minecraft:nether_star") and table.concat(tl, " "):find("no plain", 1, true),
+      "an item AE2 does not have: it says so")
+-- no work chest yet
+local wc = CONFIG.drone.workChest
+CONFIG.drone.workChest = nil
+tl = {}
+CHECK(not DW.test(function(l) tl[#tl + 1] = l end) and tl[1]:find("NOT READY", 1, true), "no work chest: NOT READY + how to set it")
+CONFIG.drone.workChest = wc
+-- the console command
+local out = handleCommand("dw test") or {}
+CHECK(table.concat(out, " "):find("Work chest:", 1, true), "console: dw test")
+pushNote = realNote
+
 ------------------------------------------------------------------ places
 state.players = { { name = "Alaory", isOwner = true, p = { x = 10.5, y = 71, z = -3.2 }, dim = DRONE_DIM } }
 det = { getPlayer = function() return { x = 10.5, y = 71, z = -3.2, dimension = "minecraft:overworld" } end }

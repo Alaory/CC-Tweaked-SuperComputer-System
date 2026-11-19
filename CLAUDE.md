@@ -662,6 +662,10 @@ PneumaticCraft drone rides, turtle mapping/surveys, and an AE2 ME network view.
   reads only DW.view (DW.refreshView in DW.tick every 10 s while the page is open: cable chests +
   SCHEM.list + SCHEM.cache) / DW.job / DW.sel / state. Tab badge = a dot while a job runs.
   test_dronework.lua taps every button.
+  DW.test / console `dw test [item]` (the owner: "how do I test the drone chest"): DW.notReady, the chest's spot + distance
+  from the drones' home, 1 PLAIN item (DW.TEST_ITEMS: the first AE2 has, or the one named) AE2 -> work chest -> AE2;
+  then, with the owner within 48 of the chest, DW.giftRun(owner, item, 1) = a drone takes it out of the chest and drops
+  it at their feet -> DONE / WARNING note "DRONE TEST: ..."; farther away it says to come closer. test_dronework.lua.
 - PLACES BY STANDING ON THEM (base_drones.lua playerBlock / posArg): chat `$drone mark <name>` (the
   block under you; `feet` = where you stand) / `$drone unmark`, console `save <name> me|feet|x y z`;
   posArg(words, i) = "x y z" | a saved place | me | feet | @player - used by `dw chest`, `schem build`.
@@ -1368,4 +1372,4 @@ help, report, tanks, mesetup, me check, me add <id>, curios check, disks
 [data|move], drones, drone <n>, charger, turtles, turtle <id> <cmd>, update,
 rescue, findlost, map [clear], exit [clear], survey, theme, events, supply, mine update, dw, schem build, voice,
 chests (every chest / barrel / tank on the cable: how full + its job - AE2 buffers, curios barrel, factory chest,
-DRONE WORK CHEST, kept-filled storages; chestList in base_console.lua; test_chests.lua), store (storage helpers).
+DRONE WORK CHEST, kept-filled storages; cableStorages in base_console.lua; test_chests.lua), store (storage helpers).

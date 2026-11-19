@@ -350,6 +350,68 @@ end
 
 
 
+
+
+DW.TEST_ITEMS = { "minecraft:cobblestone", "minecraft:dirt", "minecraft:stone", "minecraft:cobbled_deepslate",
+"minecraft:oak_planks", "minecraft:coal", "minecraft:torch" }
+function DW.test(say, item)
+say = say or function() end
+local bad = DW.notReady()
+if bad then say("NOT READY: " .. bad) return false end
+local c = DW.chestName()
+local x, y, z = DW.chestAt()
+say("Work chest: " .. c .. " at " .. x .. " " .. y .. " " .. z)
+local inside = chestCount()
+if inside > 0 then say("  note: it holds " .. inside .. " item(s) already - keep it EMPTY (they go to AE2 on the next trip)") end
+local home = CONFIG.drone and CONFIG.drone.home
+if type(home) == "table" and tonumber(home.x) then
+local d = math.floor(math.sqrt((x - home.x) ^ 2 + (y - home.y) ^ 2 + (z - home.z) ^ 2))
+say("  " .. d .. " blocks from the drones' home" .. (d > 64 and " - far: the drones must fly / teleport there each trip" or ""))
+end
+
+if not item then
+for _, it in ipairs(DW.TEST_ITEMS) do
+local okV, plain = pcall(FACTORY.variants, it)
+if okV and (plain or 0) > 0 then item = it break end
+end
+end
+if not item then say("No test item in AE2 (cobblestone, dirt, stone ...) - name one:  dw test <item>") return false end
+local n, why = DW.giveToChest(item, 1)
+if n <= 0 then say("FAILED: AE2 -> work chest: " .. tostring(why)) return false end
+local got = chestCount(item)
+say("  OK: AE2 put 1 " .. prettify(item) .. " into the work chest" .. (got >= 1 and "" or " (but the chest does not show it!)"))
+local back = DW.chestToAE2()
+local nb = 0
+for _, v in pairs(back) do nb = nb + v end
+if nb <= 0 then say("FAILED: work chest -> AE2: nothing went back (is the ME Bridge allowed to take from it?)") return false end
+say("  OK: it went back into AE2")
+
+local owner = knownOwner and knownOwner() or state.owner
+local p = owner and DW.playerAt(owner)
+local function near(pp) return pp and math.abs(pp.x - x) <= 48 and math.abs(pp.z - z) <= 48 and math.abs(pp.y - y) <= 32 end
+if not near(p) then
+say("The base side works. For the DRONE part stand within 48 blocks of the work chest and type  dw test  again")
+say("(a drone then takes 1 " .. prettify(item) .. " out of the chest and drops it at your feet).")
+return true
+end
+local ok, msg = DW.giftRun(owner, item, 1, function(done, delivered, w)
+if done then
+pushNote("DONE", "DRONE TEST: it works - the drone took " .. delivered .. " " .. prettify(item) ..
+" out of the work chest and dropped it next to you", C.good)
+else
+pushNote("WARNING", "DRONE TEST: the drone trip did not work: " .. tostring(w or "?") ..
+" - is the work chest's position right (dw chest " .. c .. " me, standing ON it)?", C.warn)
+end
+end, function() return near(DW.playerAt(owner)) end)
+if not ok then say("FAILED: no drone trip: " .. tostring(msg)) return false end
+say("  " .. msg .. " - watch it: it flies to the chest, takes it, comes to you and drops it.")
+say("  A message box says how it went (DRONE TEST ...).")
+return true
+end
+
+
+
+
 function DW.plan(s, ox, oy, oz, rot)
 local sx, sz = s.size.x, s.size.z
 rot = (math.floor((tonumber(rot) or 0) / 90)) % 4
