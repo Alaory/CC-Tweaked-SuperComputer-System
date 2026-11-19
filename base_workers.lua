@@ -469,8 +469,16 @@ function mapWorker()
     local low = okF and type(pcFree) == "number" and pcFree < 160 * 1024
     -- with storage helpers: map files on the data floppies move onto them (60 a
     -- minute while some are left) - the floppies are for the other data files
-    if not low and MAP.helpersFirst and MAP.helpersFirst() then low = state.offloadLeft ~= 0 end
-    if os.clock() - (state.offloadAt or -1000) > (low and 60 or 600) then
+    local every = 600
+    if low then every = 60 end
+    if MAP.helpersFirst and MAP.helpersFirst() and state.offloadLeft ~= 0 then
+      every = 60
+      -- a data floppy below its kept room: every 10 s until the map files are off it
+      for _, d in ipairs(mountedDisks()) do
+        if d.data and (d.free or 0) < MAP.floppyKeep() then every = 10 end
+      end
+    end
+    if os.clock() - (state.offloadAt or -1000) > every then
       state.offloadAt = os.clock()
       local okO, _, left = pcall(MAP.offload)
       state.offloadLeft = okO and left or nil

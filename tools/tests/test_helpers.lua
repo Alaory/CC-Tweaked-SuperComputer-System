@@ -161,3 +161,45 @@ local okM = saveFileSafe("disk9/map/zz.dat", logs)
 CHECK(not okM and not FILES["disk10/zz.dat"], "a map file is not moved by saveFileSafe")
 FILES["disk9/junk.bin"] = nil
 
+
+-- 9) the FULLEST floppy is emptied first (the owner: "disk2/mining.dat not saved (5 KB
+-- free)" while map files moved in name order from every floppy at once)
+CONFIG.map.helpersFirst = false
+local keep = STORE.helpers
+STORE.helpers = {}
+addDrive("drive_11", "disk11")
+fs.open("disk11/base_data", "w").close()
+for a = 0, 5 do for b = 20, 23 do scanAt(a * 17, b * 17) end end
+MAP.save()
+local per = {}
+for k, p in pairs(MAP.where) do
+  local m = p:match("^(disk%d+)/")
+  if m then per[m] = (per[m] or 0) + 1 end
+end
+-- make the floppy with the most map files the fullest one
+local fullest, most = nil, 0
+for m, n in pairs(per) do if n > most then fullest, most = m, n end end
+CHECK(fullest and most >= 3, "map files on the floppies to move (" .. tostring(most) .. " on " .. tostring(fullest) .. ")")
+FILES[fullest .. "/junk.bin"] = string.rep("x", fs.getFreeSpace(fullest) - 3000)
+CONFIG.map.helpersFirst = nil
+STORE.helpers = keep
+lookHelpers()
+local was = {}
+for k, p in pairs(MAP.where) do was[k] = p end
+local n3 = MAP.offload(3)
+local fromFullest, fromOther = 0, 0
+for k, p in pairs(MAP.where) do
+  if was[k] ~= p and onHelper(p) then
+    if was[k]:find("^" .. fullest .. "/") then fromFullest = fromFullest + 1 else fromOther = fromOther + 1 end
+  end
+end
+CHECK(n3 == 3 and fromFullest == 3 and fromOther == 0, "the 3 moved came from the fullest floppy " .. fullest ..
+      " (" .. fromFullest .. " from it, " .. fromOther .. " from others)")
+-- a data file that fits nowhere: the map worker is told to move map files NOW
+state.offloadAt, state.offloadLeft = 123, 0
+for _, m in ipairs({ "disk9", "disk10", "disk11" }) do
+  if m ~= fullest then FILES[m .. "/junk.bin"] = string.rep("x", fs.getFreeSpace(m) - 3000) end
+end
+local okN = saveFileSafe(fullest .. "/mining.dat", string.rep("m", 20000))
+CHECK(not okN and state.offloadAt == nil and state.offloadLeft == nil, "a failed data save starts the map move at once")
+for _, m in ipairs({ "disk9", "disk10", "disk11" }) do FILES[m .. "/junk.bin"] = nil end

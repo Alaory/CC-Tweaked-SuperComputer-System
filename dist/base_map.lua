@@ -570,7 +570,16 @@ if before == 0 and #onFloppy == 0 then return 0, 0 end
 local room = 0
 for _, pl in ipairs(places()) do if pl.floppy or pl.remote then room = room + (pl.free or 0) end end
 if room < 8192 then return 0, 0 end
-table.sort(onFloppy)
+
+
+local freeOf = {}
+for _, d in ipairs(mountedDisks()) do freeOf[d.mount] = d.free or 0 end
+local function fr(k) return freeOf[tostring(MAP.where[k]):match("^([^/]+)/") or ""] or 0 end
+table.sort(onFloppy, function(a, b)
+local fa, fb = fr(a), fr(b)
+if fa ~= fb then return fa < fb end
+return a < b
+end)
 local limit = max or 60
 local picked = {}
 local wasDirty = {}

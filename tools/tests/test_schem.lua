@@ -1,5 +1,8 @@
 -- Schematics: gzip (stored / fixed / dynamic blocks) + NBT + Create's structure
 -- format, the materials list, storing a dropped file, the schem console command.
+-- (where it is stored is not this test: a fixed program size, not the real one - that
+-- grows with every feature and left the stand-in computer under its 96 KB margin)
+CODE_SIZE = 800000
 local function readFile(path)
   local h = fs.open(path, "rb")
   local d = h.readAll()

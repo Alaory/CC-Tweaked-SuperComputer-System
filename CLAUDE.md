@@ -913,7 +913,7 @@ PneumaticCraft drone rides, turtle mapping/surveys, and an AE2 ME network view.
   are left - state.offloadLeft; `disks move` all). A failed put = that helper has no room for the rest
   of the save (p.free 0) and until the next STORE.find (h.free 0) - no 6-s wait per file. An old copy
   that could not be deleted on a quiet helper = MAP.stale (map_stale.dat): never read, deleted when it
-  answers; a write to that path clears it. moveDataFile (saveFileSafe): a data file at the top of a
+  answers; a write to that path clears it. FULLEST FLOPPY FIRST (the owner next: "disk2/mining.dat not saved (5 KB free)" - the files went in name order from every floppy): offload sorts by the floppy's free space; every 10 s while a data floppy is under floppyKeep; a data save that fits nowhere resets state.offloadAt + queues map_save (moved NOW). moveDataFile (saveFileSafe): a data file at the top of a
   data floppy that no longer fits moves to the data floppy with the most room (not .lua / .log /
   folders). Drone logs + back_spots.dat are written with serialSmall. test_helpers.lua (fake helpers). Helper gone -> files go to the
   computer. `store [find|update]` on the base computer. Helpers left OFF by a server

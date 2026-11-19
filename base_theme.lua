@@ -168,6 +168,10 @@ function saveFileSafe(path, text)
       if state.diskLow and state.diskLow:find(path, 1, true) then state.diskLow = nil end
       return true, np
     end
+    -- no floppy has room: the map worker moves map files off the floppies NOW
+    -- (fullest first) instead of at its next turn - the next save then fits
+    state.offloadAt, state.offloadLeft = nil, nil
+    if os.queueEvent then pcall(os.queueEvent, "map_save") end
     state.diskLow = string.format("DISK ALMOST FULL: %s not saved (%d KB free, needs %d KB) - type disks",
                                   path, math.floor(free / 1024), math.ceil(#text / 1024))
     return false, state.diskLow
