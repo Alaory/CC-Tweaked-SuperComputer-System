@@ -284,3 +284,30 @@ CHECK(STORE.helpers[120] == nil, "three looks in a row without an answer: gone")
 DOWN[120] = nil
 STORE.find(true)
 CHECK(STORE.helpers[120] and STORE.usable(STORE.helpers[120]), "it answers again: back")
+
+-- 13) NO PING-PONG (the owner's SYSTEM log: "terrain.dat did not fit on disk11 any more - moved to disk18",
+-- then disk18 -> disk11, every minute): two floppies that each have room for ONE copy only
+STORE.helpers = {}
+for _, m in ipairs({ "disk9", "disk10", "disk11" }) do
+  for p in pairs(FILES) do if p:find("^" .. m .. "/") and p ~= m .. "/base_data" then FILES[p] = nil end end
+end
+local tdat = string.rep("t", 30000)
+FILES["disk9/terrain.dat"] = tdat
+FILES["disk9/junk.bin"] = string.rep("x", fs.getFreeSpace("disk9") - 12000)    -- disk9: holds it, 12 KB free
+FILES["disk10/junk.bin"] = string.rep("x", fs.getFreeSpace("disk10") - 45000)  -- disk10: 45 KB free (one copy)
+FILES["disk11/junk.bin"] = string.rep("x", fs.getFreeSpace("disk11") - 3000)   -- disk11: full
+local moves, path = 0, "disk9/terrain.dat"
+for _ = 1, 4 do
+  local okP, np = saveFileSafe(path, tdat)
+  if okP and np and np ~= path then moves, path = moves + 1, np end
+end
+CHECK(moves == 0, "no floppy has room for two copies: it is NOT moved back and forth (" .. moves .. " moves)")
+-- a floppy with room for two copies: moved once, and the next saves fit there
+FILES["disk11/junk.bin"] = string.rep("x", fs.getFreeSpace("disk11") + 3000 - 90000)
+moves = 0
+for _ = 1, 4 do
+  local okP, np = saveFileSafe(path, tdat)
+  if okP and np and np ~= path then moves, path = moves + 1, np end
+end
+CHECK(moves == 1 and path == "disk11/terrain.dat", "room for two copies: moved ONCE and it stays there (" .. moves .. " moves, " .. path .. ")")
+for _, m in ipairs({ "disk9", "disk10", "disk11" }) do FILES[m .. "/junk.bin"] = nil end

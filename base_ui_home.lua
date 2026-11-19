@@ -180,15 +180,18 @@ function drawHomePage(G)
     led(ix, iy, C.good)
     text(ix + 2, iy, "Nothing needs you - every turtle, drone and team is fine.", C.good, C.panel)
   else
+    -- (each problem = 2 rows + a gap row; the last needs no gap. All fit -> all shown; else one row is kept
+    --  for "+N more". In game: "1 open" with NO row and "+2 more" - the panel is sized for exactly the N
+    --  problems, but the rows were counted as if the "+more" line always took one)
     local per = 3
-    local rows = math.floor((ih - 1) / per)
-    for i, n in ipairs(N) do
-      if i > rows then
-        text(ix, iy + ih - 1, "+" .. (#N - rows + 1) .. " more - open their pages", C.dim, C.panel)
-        break
-      end
+    local rows = #N
+    if #N * per - 1 > ih then rows = math.max(0, math.floor((ih - 1) / per)) end
+    if rows < #N then
+      text(ix, iy + ih - 1, "+" .. (#N - rows) .. " more - open their pages", C.dim, C.panel)
+    end
+    for i = 1, rows do
+      local n = N[i]
       local ry = iy + (i - 1) * per
-      if i == rows and #N > rows then break end
       cell(ix, ry, 1 + 4 + 16, n[1], C.panel)
       cell(ix, ry + 1, 1 + 4 + 16, n[1], C.panel)
       text(ix + 2, ry, trunc(n[2], iw - 14), C.text, C.panel)

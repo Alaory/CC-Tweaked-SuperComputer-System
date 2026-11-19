@@ -939,7 +939,9 @@ PneumaticCraft drone rides, turtle mapping/surveys, and an AE2 ME network view.
   that could not be deleted on a quiet helper = MAP.stale (map_stale.dat): never read, deleted when it
   answers; a write to that path clears it. FULLEST FLOPPY FIRST (the owner next: "disk2/mining.dat not saved (5 KB free)" - the files went in name order from every floppy): offload sorts by the floppy's free space; every 10 s while a data floppy is under floppyKeep; a data save that fits nowhere resets state.offloadAt + queues map_save (moved NOW). moveDataFile (saveFileSafe): a data file at the top of a
   data floppy that no longer fits moves to the data floppy with the most room (not .lua / .log /
-  folders). Drone logs + back_spots.dat are written with serialSmall. A SLOW HELPER IS NOT "FULL" (the owner:
+  folders) - to a floppy with room for TWO copies (2 x size + 8 KB: a save writes the new copy before the
+  old goes; with room for one the next save moved it back - the owner's log: terrain.dat disk11 <-> disk18
+  every minute), logged once an hour per file (MOVED_AT). Drone logs + back_spots.dat are written with serialSmall. A SLOW HELPER IS NOT "FULL" (the owner:
   "Map not fully saved - the data floppies are full" with 3.5 MB free on helpers; one late answer did that, AND
   MAP.save then dropped the oldest map detail): a helper with no answer = h.down (STORE.usable false for 60 s,
   room still counted by STORE.space(true)); STORE.find keeps a helper that answered before for 2 missed hellos;
@@ -1244,7 +1246,8 @@ The old Block UI (stone buttons, bedrock theme) is gone.
    PLAYERS (players, world, chat & rides) | DRONES (drones, drone work) | TURTLES (turtles, drive, map,
    mining) | SYSTEM (status, messages, settings). New page -> PAGE_INFO entry + a group +
    pageTabs + draw() dispatch + PAGES in run_tests/test_ticks/test_ux.
-7. HOME (base_ui_home.lua): a row of live numbers (turtles, drones, AE2, mining, map, players -
+7. HOME (base_ui_home.lua; NEEDS YOU: the panel is sized for its problems - all fit = all shown, else rows for
+   "+N more"; it showed "1 open" with no row + "+2 more" - test_home_needs.lua): a row of live numbers (turtles, drones, AE2, mining, map, players -
    what is connected; tap = its page), NEEDS YOU (each problem + a button to its page), SYSTEM,
    LATELY (messages), QUICK ACTIONS (two taps) and GO TO (every page).
 8. Every tap area at least 2 ROWS (test_ux; 1-row list rows only: item, meitem, dscroll, tsel,

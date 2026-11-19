@@ -204,6 +204,7 @@ end
 return n, total
 end
 
+local MOVED_AT = {}
 function moveDataFile(path, text)
 local dir, name = fs.getDir(path), fs.getName(path)
 local disks = mountedDisks()
@@ -216,20 +217,27 @@ if writeSafe(path, text) then return path end
 end
 if name:find("%.lua$") or name:find("%.log$") then return nil end
 
+
+
+
+local need = 2 * #text + 8192
 local best, bestRoom
 for _, d in ipairs(disks) do
 if d.data and d ~= here then
 local room = (d.free or 0) + voiceCacheBytes(d.mount)
-if room >= #text + 8192 and (not best or room > bestRoom) then best, bestRoom = d, room end
+if room >= need and (not best or room > bestRoom) then best, bestRoom = d, room end
 end
 end
 if not best then return nil end
-if not freeFloppyRoom(best.mount, #text + 8192) then return nil end
+if not freeFloppyRoom(best.mount, need) then return nil end
 local np = fs.combine(best.mount, name)
 if not writeSafe(np, text) then pcall(fs.delete, np) return nil end
 pcall(fs.delete, path)
 if dataPathReset then dataPathReset() end
-if sysLog then sysLog(name .. " did not fit on " .. dir .. " any more - moved to " .. best.mount, "INFO") end
+if sysLog and os.clock() - (MOVED_AT[name] or -9999) > 3600 then
+MOVED_AT[name] = os.clock()
+sysLog(name .. " did not fit on " .. dir .. " any more - moved to " .. best.mount, "INFO")
+end
 return np
 end
 
