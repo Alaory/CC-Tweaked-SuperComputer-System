@@ -142,13 +142,16 @@ end
 
 -- ===== saying things =====
 -- queue a sentence (sound = a Minecraft sound played first, e.g. a chime)
-function VOICE.say(text, sound)
+-- answer = a reply to something a player said: ALWAYS spoken (the owner: "when the base wants to say a
+-- sentence it has already said it makes no sound" - flip a coin 10 times: "It is heads." was spoken once,
+-- the rest went to chat only). The 30-s "same words" rule is for things it says by itself (warnings ...).
+function VOICE.say(text, sound, answer)
   if VOICE.cfg("on", true) == false then return false end
   text = tostring(text or ""):gsub("%s+", " ")
   if text == "" then return false end
   if #text > 200 then text = text:sub(1, 197) .. "..." end
   local last = VOICE.said[text]
-  if last and os.clock() - last < 30 then return false end      -- (the same words just now)
+  if not answer and last and os.clock() - last < 30 then return false end      -- (the same words just now)
   VOICE.said[text] = os.clock()
   if #VOICE.queue >= 6 then table.remove(VOICE.queue, 1) end    -- (never a long backlog)
   VOICE.queue[#VOICE.queue + 1] = { text = text, sound = sound }
@@ -1278,7 +1281,7 @@ function VOICE.chatCore(m)
       if sp then local okS, s2 = pcall(VOICE.restyle, who, sp) if okS and type(s2) == "string" then sp = s2 end end
     end
     if chatTell then chatTell(who, c) end
-    if near then VOICE.say(sp or c) end
+    if near then VOICE.say(sp or c, nil, true) end
     VOICE.openConvo(who)
   end
   -- a running game (guess my number / quiz / rock paper scissors): the reply needs no name
@@ -1315,7 +1318,7 @@ function VOICE.chatCore(m)
   if how then
     local c, sp = VOICE.converse(who, text, how == "direct")
     if c then reply(c, sp) return true end
-    if sp and near and not VOICE.isQuiet() then VOICE.say(sp) return true end    -- (a small reaction, spoken only)
+    if sp and near and not VOICE.isQuiet() then VOICE.say(sp, nil, true) return true end    -- (a small reaction, spoken only)
     if how == "direct" then return true end
   end
   -- just talking near the base: a reaction now and then (spoken only, nothing in chat)

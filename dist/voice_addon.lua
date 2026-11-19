@@ -142,13 +142,16 @@ end
 
 
 
-function VOICE.say(text, sound)
+
+
+
+function VOICE.say(text, sound, answer)
 if VOICE.cfg("on", true) == false then return false end
 text = tostring(text or ""):gsub("%s+", " ")
 if text == "" then return false end
 if #text > 200 then text = text:sub(1, 197) .. "..." end
 local last = VOICE.said[text]
-if last and os.clock() - last < 30 then return false end
+if not answer and last and os.clock() - last < 30 then return false end
 VOICE.said[text] = os.clock()
 if #VOICE.queue >= 6 then table.remove(VOICE.queue, 1) end
 VOICE.queue[#VOICE.queue + 1] = { text = text, sound = sound }
@@ -1278,7 +1281,7 @@ if okR and type(c2) == "string" then c = c2 end
 if sp then local okS, s2 = pcall(VOICE.restyle, who, sp) if okS and type(s2) == "string" then sp = s2 end end
 end
 if chatTell then chatTell(who, c) end
-if near then VOICE.say(sp or c) end
+if near then VOICE.say(sp or c, nil, true) end
 VOICE.openConvo(who)
 end
 
@@ -1315,7 +1318,7 @@ local how = VOICE.addressed(who, text, near)
 if how then
 local c, sp = VOICE.converse(who, text, how == "direct")
 if c then reply(c, sp) return true end
-if sp and near and not VOICE.isQuiet() then VOICE.say(sp) return true end
+if sp and near and not VOICE.isQuiet() then VOICE.say(sp, nil, true) return true end
 if how == "direct" then return true end
 end
 

@@ -105,7 +105,7 @@ function V.addRep(who, n, kind)
     local line = fill(pick({ "{name}, you are now my " .. after .. "!", "Level up! {name} is now my " .. after .. ".",
                              "Guess what, {name}: you are officially my " .. after .. "." }), who)
     tell(who, line)
-    if isNear(who) then V.say(line) end
+    if isNear(who) then V.say(line, nil, true) end          -- (an answer: always spoken)
     local g = gm(who)
     g.t = type(g.t) == "table" and g.t or {}
     if not g.t[after] and V.giftEarn then

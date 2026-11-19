@@ -1411,3 +1411,28 @@ VOICE.games.kevin = { kind = "quiz", a = { "42" }, till = CLOCK + 100, at = CLOC
 CHECK(say2("Kevin", "42"):find("point", 1, true) and km.kevin.qn == 1, "a new day: points again")
 chatTell = tell2
 envDet = saveEnv
+
+-- 23. THE SAME ANSWER AGAIN IS SPOKEN AGAIN (the owner: "flip a coin" 10 times - "It is heads." was spoken
+--     once, the rest only in chat: the 30-s "same words" rule is for things it says by itself)
+envDet = nil
+local tell3 = chatTell
+chatTell = function() end
+place(owner, 5)
+state.online = { [owner:lower()] = true }
+VOICE.convo, VOICE.pend, VOICE.games, VOICE.quietUntil = {}, {}, {}, nil
+VOICE.said = {}
+local spoken = 0
+for _ = 1, 10 do
+  VOICE.queue = {}
+  VOICE.chat({ name = owner, msg = "base flip a coin" })
+  for _, q in ipairs(VOICE.queue) do if q.text:find("It is", 1, true) then spoken = spoken + 1 end end
+  CLOCK = CLOCK + 3
+end
+CHECK(spoken == 10, "10 coin flips in a row: every answer spoken (" .. spoken .. " of 10)")
+-- things it says by itself are still not repeated within 30 s
+VOICE.queue, VOICE.said = {}, {}
+VOICE.say("The rain has stopped.")
+VOICE.say("The rain has stopped.")
+CHECK(#VOICE.queue == 1, "its own lines (weather, warnings) are still not said twice within 30 s")
+chatTell = tell3
+envDet = saveEnv

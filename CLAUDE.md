@@ -988,6 +988,9 @@ PneumaticCraft drone rides, turtle mapping/surveys, and an AE2 ME network view.
   are deleted, "N older ones - ask again"; console `voice heard` too). QUIZ POINTS PER DAY (the owner: "players can
   spam math puzzles and keep getting points" - wins give friendship, badges, drone gifts): voice.quizDaily 15 a
   player per UTC day (m.qday / m.qn); past that "come back tomorrow", no VOICE.event win. test_voice part 22.
+  ANSWERS ARE ALWAYS SPOKEN (the owner: "flip a coin" 10x - "It is heads." spoken once, the rest chat only):
+  VOICE.say(text, sound, answer) - answer = true skips the 30-s same-words rule (core reply(), the spoken-only
+  reaction, pack 2 level-up, pack 3 gift-thanks); its own lines (weather, warnings, idle) keep it. Part 23.
   ALARM (voice.alarm, default OFF): a stranger arriving / a hostile within alarmRange 12 of the
   Environment Detector (ENV.data.ents) -> bell + spoken, once per 5 min, only when someone is near. Settings
   via `voice on|off|greet|announce|chat|alarm on|off|volume <0-3>|range <n>|name <word>` (setSetting voice.*;

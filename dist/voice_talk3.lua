@@ -473,7 +473,7 @@ if low:find(" thanks ", 1, true) or low:find(" thank ", 1, true) or low:find(" l
 V.giftThanks[who:lower()] = nil
 local line = fill(pick({ "You are very welcome, {name}! Enjoy your gift.", "Aww, {name}. You earned it!", "My pleasure, {name}. Friends deserve nice things." }), who)
 tell(who, line)
-if near then V.say(line) end
+if near then V.say(line, nil, true) end
 V.addRep(who, 1, "kind")
 end
 end
