@@ -956,12 +956,111 @@ CHECK(say3("yes"):find("forgot everything", 1, true) and VOICE.mem().kevin == ni
 local gq = queued("Kevin")
 VOICE.addRep("Kevin", 60)
 CHECK(queued("Kevin") == gq, "after forget me, the same titles give no gifts again")
+-- 21. TALK PACK 3 (voice_talk3.lua; the owner: "continue working on ideas"): streaks, mail between players, a
+--     glossary, recipes, jokes on a topic, spirit mob, ship, "last time", milestones, thanks after a gift
+local nBefore3 = #VOICE.INTENTS
+addDrive("drive_10", "disk10")
+put("disk10/base_data", "data")
+put("disk10/voice_talk3.lua", io.open(SRC_DIR .. "/dist/voice_talk3.lua"):read("a"))
+local okT3, whereT3 = loadAddon("voice_talk3.lua")
+CHECK(okT3 and VOICE.packs["voice_talk3.lua"], "talk pack 3 loads: " .. tostring(whereT3))
+CHECK(VOICE_FILES[4] == "voice_talk3.lua" and man:find("\nvoice voice_talk3.lua ", 1, true), "pack 3 is installed by voice install")
+CHECK(#VOICE.dupIntents == 0, "pack 3: no duplicate intent names: " .. table.concat(VOICE.dupIntents, ", "))
+local stolen3, silent3 = {}, {}
+for i = nBefore3 + 1, #VOICE.INTENTS do
+  local it, own = VOICE.INTENTS[i], false
+  for _, key in ipairs(it.keys) do if VOICE.intent(VOICE.fix(VOICE.norm(key))) == it then own = true end end
+  if not own then stolen3[#stolen3 + 1] = it.id end
+  VOICE.games, VOICE.pend = {}, {}
+  local c = VOICE.converse("Kevin", it.keys[1], true)
+  if type(c) ~= "string" or c == "" or c:find("did not get that", 1, true) or c:find("not sure what you mean", 1, true) then silent3[#silent3 + 1] = it.id end
+end
+CHECK(#stolen3 == 0 and #silent3 == 0, "every pack 3 intent reachable + answers: " .. table.concat(stolen3, ",") .. " / " .. table.concat(silent3, ","))
+VOICE.games, VOICE.pend, VOICE.convo = {}, {}, {}
+place("Kevin", 3)
+place("Steve", 9000)
+ENV.data.ents = { { kind = "player", name = "Kevin", dist = 3 } }
+state.online = { [owner:lower()] = true, kevin = true, steve = true }
+VOICE.mem().kevin = VOICE.mem().kevin or {}
+VOICE.mem().steve = VOICE.mem().steve or { visits = 1 }
+local function k3(msg) told = {} VOICE.queue = {} VOICE.chat({ name = "Kevin", msg = msg }) return table.concat(told, " | ") end
+-- streaks
+local rk3 = VOICE.mem().kevin
+local yday = os.date("!%Y-%m-%d", math.floor(os.epoch("utc") / 1000) - 86400)
+rk3.vday, rk3.streak = yday, 2
+CHECK(VOICE.visitDay("Kevin") == 3 and rk3.badges and rk3.badges.streak3, "yesterday + today = a streak of 3 and a badge")
+CHECK(VOICE.visitDay("Kevin") == 3, "the same day again does not count twice")
+rk3.vday, rk3.streak = os.date("!%Y-%m-%d", math.floor(os.epoch("utc") / 1000) - 3 * 86400), 9
+CHECK(VOICE.visitDay("Kevin") == 1, "a missed day starts again at 1")
+local B3 = VOICE.base()
+local function q3(item) local n = 0 for _, g in ipairs(B3.giftQ or {}) do if g.who == "Kevin" and g.item == item and g.why == "streak7" then n = n + 1 end end return n end
+rk3.vday, rk3.streak = yday, 6
+VOICE.visitDay("Kevin")
+CHECK(q3("minecraft:diamond") == 1, "7 days in a row: the streak gift")
+rk3.vday, rk3.streak = yday, 6
+VOICE.visitDay("Kevin")
+CHECK(q3("minecraft:diamond") == 1, "... only once")
+-- mail between players
+CHECK(k3("base tell steve that the farm is ready"):find("I will tell", 1, true), "tell steve that ...: " .. table.concat(told, " | "))
+CHECK(B3.mail and B3.mail.steve and #B3.mail.steve == 1 and B3.mail.steve[1].text:find("farm is ready", 1, true), "... kept for Steve")
+CHECK(k3("base tell bob that hi"):find("do not know anyone called bob", 1, true), "a player it never met: it says so")
+CHECK(not k3("base tell " .. owner:lower() .. " that hi"):find("I will tell " .. owner, 1, true), "a message for the owner is the old leave-a-message")
+told = {}
+place("Steve", 2)
+ENV.data.ents = { { kind = "player", name = "Steve", dist = 2 } }
+for _, fn in ipairs(VOICE.greetExtra) do fn("Steve") end
+CHECK(table.concat(told, " "):find("Mail from Kevin", 1, true) and table.concat(told, " "):find("farm is ready", 1, true) and not B3.mail.steve,
+      "Steve comes to the base: the mail is told and gone: " .. table.concat(told, " | "))
+place("Steve", 9000)
+ENV.data.ents = { { kind = "player", name = "Kevin", dist = 3 } }
+for i = 1, 3 do k3("base tell steve that note " .. i) end
+CHECK(k3("base tell steve that one more"):find("3 messages waiting", 1, true), "max 3 waiting messages per sender")
+B3.mail = {}
+-- glossary, recipes, jokes about
+CHECK(k3("base what is a shulker box"):find("shulker shells", 1, true), "what is a shulker box")
+CHECK(k3("base what is a shulkr box"):find("shulker shells", 1, true), "... also misspelled")
+CHECK(k3("base explain redstone"):find("electricity", 1, true), "explain redstone")
+CHECK(k3("base how do i make a hopper"):find("Hopper: five iron", 1, true), "how do i make a hopper: " .. table.concat(told, " | "))
+CHECK(k3("base recipe for an enchantment table"):find("diamonds on the sides", 1, true), "recipe for an enchantment table (another name)")
+CHECK(not k3("base how do i make friends"):find("Friends:", 1, true), "how do i make friends is not a recipe")
+CHECK(k3("base how do i get diamonds"):find("Y -59", 1, true), "the guides still answer (how do i get diamonds)")
+local jc = k3("base tell me a joke about creepers"):lower()
+CHECK(jc:find("creeper", 1, true), "a joke about creepers: " .. jc)
+-- spirit mob, ship
+local sp1 = k3("base what is my spirit mob")
+CHECK(sp1:find("spirit mob is the", 1, true) and k3("base what is my spirit mob") == sp1, "spirit mob: always the same for a name")
+local sh = k3("base ship me and steve")
+CHECK(sh:find("percent", 1, true) and k3("base ship steve and me") == sh:gsub("Kevin and Steve", "Steve and Kevin"), "ship: a stable percentage: " .. sh)
+-- last time: a rematch
+local mr = math.random
+math.random = function(a, b) if a then return mr(a, b) end return 0.1 end
+rk3.lastGame = { what = "hang", won = true, at = math.floor(os.epoch("utc") / 1000) }
+rk3.vday = os.date("!%Y-%m-%d", math.floor(os.epoch("utc") / 1000))
+VOICE.queue = {}
+for _, fn in ipairs(VOICE.greetExtra) do fn("Kevin") end
+math.random = mr
+CHECK(said():find("last time you won at hangman", 1, true), "coming back: last time you won at hangman - rematch?: " .. said())
+CHECK(k3("yes"):find("Hangman", 1, true), "yes -> hangman again")
+VOICE.games = {}
+-- milestones
+MAP.ovN = 2600
+VOICE.queue, VOICE.mileNext = {}, 0
+B3.ms = nil
+for _, fn in ipairs(VOICE.tickHooks) do fn(CLOCK, { Kevin = true }) end
+CHECK(said():find("mapped 2500 chunks", 1, true), "milestone: the biggest new one is said: " .. said())
+VOICE.queue, VOICE.mileNext = {}, 0
+for _, fn in ipairs(VOICE.tickHooks) do fn(CLOCK, { Kevin = true }) end
+CHECK(not said():find("Milestone", 1, true), "... once")
+-- thanks after a gift
+B3.giftLog = B3.giftLog or {}
+B3.giftLog[#B3.giftLog + 1] = { who = "Kevin", item = "minecraft:diamond", n = 5, at = os.epoch("utc") + 1 }
+k3("lol nice")
+local th = k3("thanks so much!!")
+CHECK(th:find("welcome", 1, true) or th:find("earned", 1, true) or th:find("pleasure", 1, true), "thanks right after a gift: a special answer: " .. th)
 -- RELOAD (voice update loads the add-on and the packs again): every hook once, not twice
 local nHooks = { #VOICE.chatHooks, #VOICE.idleExtra, #VOICE.greetExtra, #VOICE.eventHooks, #VOICE.patterns, #VOICE.tickHooks }
 local nIntents = #VOICE.INTENTS
-loadAddon("voice_addon.lua")
-loadAddon("voice_talk.lua")
-loadAddon("voice_talk2.lua")
+for _, f in ipairs(VOICE_FILES) do loadAddon(f) end
 local same = nHooks[1] == #VOICE.chatHooks and nHooks[2] == #VOICE.idleExtra and nHooks[3] == #VOICE.greetExtra and
              nHooks[4] == #VOICE.eventHooks and nHooks[5] == #VOICE.patterns and nHooks[6] == #VOICE.tickHooks
 CHECK(same and nIntents == #VOICE.INTENTS, "after a reload every hook is there once (" .. nHooks[1] .. " chat hooks -> " .. #VOICE.chatHooks .. ")")

@@ -1073,6 +1073,23 @@ PneumaticCraft drone rides, turtle mapping/surveys, and an AE2 ME network view.
   returned a 2nd value (spoken as a number); "my birthday is ..." / "forget me" without an open conversation
   were ignored (TELLS / ASKWORDS forget, remember); greet replaced the player's record (quiz points / notes
   lost); `voice update` with a pack that could not be installed lost that pack until a restart.
+  FUZZ (test_voice part 20): every key of every intent (a visitor + the owner), 6000 random messy messages
+  (pattern characters, 300-char words, symbols, game answers mid-game, time jumps), idle / tick / greet in odd
+  world states, every console command half-typed; the global pcall is wrapped so an error INSIDE a voice file
+  that a pcall would hide in game counts too. It found pack 2's "hack the mainframe" never existed (an intent
+  id taken by pack 1 - addIntents skips it): VOICE.dupIntents, the tests fail on any. tools/preview os.date
+  ignored its time argument (every "yesterday" / date test was blind) - fixed.
+  TALK PACK 3 (voice_talk3.lua, VOICE_FILES[4], slim ~28 KB; needs pack 2: V.addBadge, V.giftOnce, V.GIFT_ORDER /
+  GIFT_WHY): VISIT STREAKS (V.visitDay in greetExtra: r.vday / streak / best; badges at 3 / 7 / 30, gifts streak7 /
+  streak30 once ever), MAIL between players ("tell Steve that ..." / "message for Steve ..." / "send Steve a message
+  ..." -> base.mail[to], 5 per player, 3 waiting per sender, only players it knows, the owner = the old
+  leave-a-message; delivered by greetExtra when they come to the base, or "my mail"), GLOSSARY (60 Minecraft
+  words: "what is / explain / define / tell me about"), RECIPES (70: "how do I make / craft", "recipe for";
+  lookup = exact, a / the dropped, singular, aliases, one typo - nil lets the guides answer), "joke about X"
+  (a joke containing the word), spirit mob + "ship A and B" (stable, from a hash of the names), "last time you won
+  at hangman - rematch?" (eventHooks keep r.lastGame; 40 % on a greeting, yes = the game again), MILESTONES (chunks
+  mapped / turtles / players met / gifts given - the biggest new one said once, only with someone there), a
+  special answer to "thanks" within 5 min of a gift, who visits the most, uptime. test_voice part 21.
 - REMOVED AGAIN: remote access in a web browser (Cloud Catcher; base_remote.lua / remote.lua / pocket.lua
   in local mode on the base) - the owner: "taking space and seems useless". removeOldFiles (base_theme.lua,
   run by inventory.lua at start) deletes its files (remote.lua, base_remote.lua, cloud.lua on the computer
@@ -1180,6 +1197,7 @@ The old Block UI (stone buttons, bedrock theme) is gone.
 | base_pocket.lua / pocket.lua | the pocket remote: base side (pairing, status, actions, messages) / the program on the pocket computer |
 | voice_addon.lua | OPTIONAL add-on on a data floppy (`voice install`): the base talks through Speakers - greetings, warnings, chat answers, alarm |
 | voice_talk.lua | its TALK PACK (also on a data floppy): 140+ more chat interactions, games, idle talk |
+| voice_talk3.lua | TALK PACK 3: visit streaks, mail between players, Minecraft glossary + recipes, jokes on a topic, spirit mob, ship, rematches, milestones |
 | voice_talk2.lua | TALK PACK 2: friendship + titles, badges, player memory, daily secret word, more games, ideas, guides, styles, holidays, diary, FRIENDSHIP GIFTS by drone |
 
 ## The owner's setup (found out the hard way)

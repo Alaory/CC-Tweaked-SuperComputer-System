@@ -988,7 +988,7 @@ function handleCommand(line)
     else
       say("The base can TALK (an optional add-on, kept on a data floppy): greets people near the base,")
       say("says warnings out loud, answers  base, status?  in chat. Needs a Speaker next to the computer")
-      say("or on the cable, data floppies with ~260 KB free in all (3 files, each ~65-80 KB) and the internet. Type:  voice install")
+      say("or on the cable, data floppies with ~320 KB free in all (4 files, each ~50-80 KB) and the internet. Type:  voice install")
     end
 
   elseif cmd == "pocket" then

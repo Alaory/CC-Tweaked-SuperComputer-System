@@ -134,6 +134,14 @@ local BADGES = {
 V.BADGES = BADGES
 local BADGE = {}
 for _, b in ipairs(BADGES) do BADGE[b[1]] = b end
+
+function V.addBadge(id, name, what)
+if BADGE[id] then return false end
+local b = { id, name, what }
+BADGES[#BADGES + 1] = b
+BADGE[id] = b
+return true
+end
 local function badgeCount(r) local n = 0 for _ in pairs(type(r.badges) == "table" and r.badges or {}) do n = n + 1 end return n end
 function V.badge(who, id)
 local b = BADGE[id]
@@ -936,7 +944,8 @@ birthday = { { "minecraft:cake", 1 }, { "minecraft:diamond", 16 }, { "minecraft:
 badges = { { "minecraft:emerald", 32 }, { "minecraft:experience_bottle", 32 } },
 secret = { { "minecraft:gold_ingot", 16 } },
 }
-local GIFT_WHY = { regular = "for becoming my regular", friend = "for becoming my friend", ["good friend"] = "for becoming my good friend",
+V.GIFT_ORDER = { "regular", "friend", "good friend", "best friend", "birthday", "badges", "secret" }
+V.GIFT_WHY = { regular = "for becoming my regular", friend = "for becoming my friend", ["good friend"] = "for becoming my good friend",
 ["best friend"] = "for becoming my BEST friend", birthday = "for your birthday", badges = "for collecting 5 more badges",
 secret = "for saying the secret word", manual = "from the owner of the base" }
 function V.giftsOn() return V.cfg("giftsOn", true) ~= false end
@@ -963,6 +972,15 @@ for _, g in ipairs(list) do t[#t + 1] = g[2] .. " " .. itemName(g[1]) end
 return table.concat(t, ", ")
 end
 
+function V.giftOnce(who, key, why)
+local g = gm(who)
+g.o = type(g.o) == "table" and g.o or {}
+if g.o[key] then return false end
+g.o[key] = true
+V.saveMem()
+return V.giftEarn(who, why or key)
+end
+
 function V.giftEarn(who, why, list)
 if not V.giftsOn() or V.isOwner(who) or blocked(who) or who == "someone" then return false end
 list = list or V.giftList(why)
@@ -975,7 +993,7 @@ q[#q + 1] = { who = tostring(who), item = g[1], n = math.floor(tonumber(g[2])), 
 end
 end
 V.saveMem()
-local line = "You earned a gift " .. (GIFT_WHY[why] or why) .. ": " .. giftText(list) .. "! A drone brings it while you are at the base."
+local line = "You earned a gift " .. (V.GIFT_WHY[why] or why) .. ": " .. giftText(list) .. "! A drone brings it while you are at the base."
 tell(who, line)
 if isNear(who) then V.say(who .. ", you earned a gift! A drone will bring it.", "minecraft:entity.player.levelup") end
 return true
@@ -1030,7 +1048,7 @@ V.saveMem()
 V.diaryAdd("gift", 1)
 tell(who, "Gift delivered: " .. delivered .. " " .. itemName(item) .. "! It is on the ground right next to you.")
 V.say("Gift delivered for " .. who .. "! Enjoy.")
-if pushNote then pcall(pushNote, "Gift", "The base gave " .. who .. " " .. delivered .. " " .. itemName(item) .. " (" .. tostring(GIFT_WHY[g.why] or g.why) .. ")", C and C.info) end
+if pushNote then pcall(pushNote, "Gift", "The base gave " .. who .. " " .. delivered .. " " .. itemName(item) .. " (" .. tostring(V.GIFT_WHY[g.why] or g.why) .. ")", C and C.info) end
 else
 local e = tostring(err or "?")
 g.tries = (g.tries or 0) + 1
@@ -1119,7 +1137,7 @@ local mine, all = givenToday(nil)
 say("FRIENDSHIP GIFTS: " .. (V.giftsOn() and "ON" or "OFF") .. ", " .. all .. " given today (max " .. (V.cfg("giftDailyAll", 80) or 80) ..
 ", " .. (V.cfg("giftDaily", 10) or 10) .. " per player)" .. (V.giftWhy and ("  - " .. V.giftWhy) or ""))
 if V.giftBusy then say("  Flying now: " .. V.giftBusy.n .. " " .. itemName(V.giftBusy.item) .. " to " .. V.giftBusy.who) end
-for _, why in ipairs({ "regular", "friend", "good friend", "best friend", "birthday", "badges", "secret" }) do
+for _, why in ipairs(V.GIFT_ORDER) do
 local l = V.giftList(why)
 say("  " .. why .. ": " .. (#l > 0 and giftText(l) or "nothing"))
 end
