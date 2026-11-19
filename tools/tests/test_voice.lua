@@ -719,6 +719,7 @@ for i = nBefore2 + 1, #VOICE.INTENTS do
   local c = VOICE.converse(stranger, it.keys[1], true)
   if type(c) ~= "string" or c == "" or c:find("did not get that", 1, true) or c:find("not sure what you mean", 1, true) then silent2[#silent2 + 1] = it.id end
 end
+CHECK(#VOICE.dupIntents == 0, "no pack intent has the name of another (it was skipped): " .. table.concat(VOICE.dupIntents, ", "))
 CHECK(#stolen2 == 0, "every pack 2 intent is reachable by its own words: not " .. table.concat(stolen2, ", "))
 CHECK(#silent2 == 0, "every pack 2 intent answers: not " .. table.concat(silent2, ", "))
 VOICE.games, VOICE.pend, VOICE.styles, VOICE.quietUntil = {}, {}, {}, nil
@@ -964,6 +965,103 @@ loadAddon("voice_talk2.lua")
 local same = nHooks[1] == #VOICE.chatHooks and nHooks[2] == #VOICE.idleExtra and nHooks[3] == #VOICE.greetExtra and
              nHooks[4] == #VOICE.eventHooks and nHooks[5] == #VOICE.patterns and nHooks[6] == #VOICE.tickHooks
 CHECK(same and nIntents == #VOICE.INTENTS, "after a reload every hook is there once (" .. nHooks[1] .. " chat hooks -> " .. #VOICE.chatHooks .. ")")
+
+-- 20. FUZZ (the owner: "keep checking the code for bugs"): thousands of messy chat messages, odd world states,
+--     every idle line and tick - any error raised inside the voice files counts, also the ones a pcall in the
+--     add-on would hide in game (a feature that silently stops working)
+local realPcall = pcall
+local fuzzErr = {}
+pcall = function(f, ...)
+  local r = table.pack(realPcall(f, ...))
+  if not r[1] and tostring(r[2]):find("voice_", 1, true) then fuzzErr[#fuzzErr + 1] = tostring(r[2]) end
+  return table.unpack(r, 1, r.n)
+end
+local corpus = { "base", "Base,", "the", "a", "i", "me", "you", "my", "is", "what", "how", "who", "?", "!", "...", ":)", "<3", "%", "%s", "%d",
+  "(", ")", "[", "]", ".*", "^", "$", "-", "+", "*", "/", "=", "1", "2", "7", "0", "-5", "99999999999999999999", "3.5", "x", "yes", "no",
+  "hangman", "riddle", "joke", "play", "game", "call", "favourite", "birthday", "is", "forget", "me", "secret", "word", "gift", "hack",
+  "pirate", "talk", "like", "normal", "true", "false", "higher", "lower", "chain", "count", "with", "mad", "libs", "guess", "mob", "number",
+  "between", "and", "or", "should", "pick", "choose", "spell", "backwards", "remind", "in", "minutes", "to", "remember", "notes", "say",
+  "leave", "message", "for", "owner", "who", "lives", "here", "status", "turtle", "where", "turtles", "weather", "time", "sing", "song",
+  "creeper", "diamond", "how", "do", "get", "diamonds", "many", "we", "have", "iron", "ingots", "knock", "adventure", "1", "2", "3",
+  "rock", "paper", "scissors", "quiz", "flip", "coin", "roll", "dice", "8", "ball", "will", "story", "fact", "roast", "compliment",
+  "shh", "unmute", "visitors", "messages", "clear", "mentions", "about", "today", "yesterday", "diary", "badges", "friendship", "level",
+  "top", "players", "name", "pet", "build", "idea", "wish", "#adv:zzz", "#games", "#more", "#tour", "#nope:x", "ÿþ", "\0", "\n", "\t",
+  string.rep("a", 300), string.rep("ha", 80), "base base base", "", " " }
+math.randomseed(4242)
+local nicks = { "Kevin", owner, "Zed", "Steve" }
+place("Steve", 4)
+place("Kevin", 3)
+state.online = { [owner:lower()] = true, kevin = true, steve = true, zed = true }
+ENV.data.ents = { { kind = "player", name = "Kevin", dist = 3 }, { kind = "player", name = "Steve", dist = 4 } }
+-- (every word of every intent's keys too, and a third of the messages start with a whole key: every reply runs)
+local keysAll = {}
+for _, it in ipairs(VOICE.INTENTS) do
+  for _, k in ipairs(it.keys) do
+    keysAll[#keysAll + 1] = k
+    for w in k:gmatch("%S+") do corpus[#corpus + 1] = w end
+  end
+end
+local crashed = {}
+-- every key of every intent, from a visitor at the base and from the owner far away (each reply function runs)
+for _, k in ipairs(keysAll) do
+  for _, who in ipairs({ "Kevin", owner }) do
+    VOICE.games, VOICE.pend = {}, {}
+    local ok, err = realPcall(VOICE.chat, { name = who, msg = "base " .. k })
+    if not ok then crashed[#crashed + 1] = who .. ": [base " .. k .. "] -> " .. tostring(err) end
+  end
+end
+for i = 1, 6000 do
+  local n = math.random(0, 9)
+  local t = {}
+  if math.random() < 0.35 then t[1] = (math.random() < 0.5 and "base " or "") .. keysAll[math.random(1, #keysAll)] end
+  for j = #t + 1, n do t[j] = corpus[math.random(1, #corpus)] end
+  local msg = table.concat(t, math.random() < 0.8 and " " or "")
+  local who = nicks[math.random(1, #nicks)]
+  told = {}
+  VOICE.queue = {}
+  local ok, err = realPcall(VOICE.chat, { name = who, msg = msg })
+  if not ok then crashed[#crashed + 1] = who .. ": [" .. msg:sub(1, 60) .. "] -> " .. tostring(err) end
+  if i % 400 == 0 then CLOCK = CLOCK + 200 end            -- (games / questions time out now and then)
+end
+CHECK(#crashed == 0, "6000 messy chat messages: no crash (" .. #crashed .. "): " .. tostring(crashed[1]) .. " | " .. tostring(crashed[2]))
+-- odd world states: every idle line, the tick, greetings
+local states = { function() ENV.data = nil end, function() ENV.data = {} end,
+  function() ENV.data = { time = 15000, rain = true, ents = { { kind = "hostile", name = "zombie", dist = 3 } }, moonName = "Full moon" } end,
+  function() ENV.data = { time = 1000, thunder = true, biome = "minecraft:plains", slime = true, ents = {} } end,
+  function() state.turtles = {} end,
+  function() state.turtles = { [1] = { id = 1, label = "T1", task = "survey 3", pos = { x = 1, y = 2, z = 3 }, lastSeen = CLOCK } ,
+                               [2] = { id = 2, label = "T2" } } end }
+for round = 1, 30 do
+  states[math.random(1, #states)]()
+  for _, fn in ipairs(VOICE.idleExtra) do
+    local ok, err = realPcall(fn, { Kevin = true }, round % 2 == 0 and "Kevin" or nil)
+    if not ok then crashed[#crashed + 1] = "idle: " .. tostring(err) end
+  end
+  local okI, errI = realPcall(VOICE.idle, { Kevin = true })
+  if not okI then crashed[#crashed + 1] = "VOICE.idle: " .. tostring(errI) end
+  local okT, errT = realPcall(VOICE.tick)
+  if not okT then crashed[#crashed + 1] = "tick: " .. tostring(errT) end
+  for _, n in ipairs(nicks) do
+    local okG, errG = realPcall(VOICE.greet, n)
+    if not okG then crashed[#crashed + 1] = "greet " .. n .. ": " .. tostring(errG) end
+    for _, fn in ipairs(VOICE.greetExtra) do
+      local okE, errE = realPcall(fn, n)
+      if not okE then crashed[#crashed + 1] = "greetExtra " .. n .. ": " .. tostring(errE) end
+    end
+  end
+  CLOCK = CLOCK + 37
+end
+ENV.data = { ents = {} }
+CHECK(#crashed == 0, "idle talk / tick / greetings in odd world states: no crash: " .. tostring(crashed[1]))
+-- every console command
+for _, c in ipairs({ "voice", "voice heard", "voice gifts", "voice visitors", "voice announce", "voice listen", "voice nick", "voice gifts give",
+                     "voice gifts give x", "voice scan x", "voice volume", "voice name", "voice lonely abc", "voice gifts block", "voice zzz" }) do
+  local ok, err = realPcall(handleCommand, c)
+  if not ok then crashed[#crashed + 1] = c .. ": " .. tostring(err) end
+end
+CHECK(#crashed == 0, "every voice console command (also half-typed): no crash: " .. tostring(crashed[1]))
+pcall = realPcall
+CHECK(#fuzzErr == 0, "no error inside the voice files hidden by a pcall (" .. #fuzzErr .. "): " .. tostring(fuzzErr[1]) .. " | " .. tostring(fuzzErr[2]) .. " | " .. tostring(fuzzErr[3]))
 ENV.scan = okScan
 chatTell = oldTell
 envDet = realEnvDet

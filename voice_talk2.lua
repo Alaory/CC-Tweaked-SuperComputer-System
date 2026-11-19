@@ -1217,7 +1217,7 @@ local T = {
   L("hl", { "higher or lower", "higher lower", "card game", "cards" }, function(w) return hlStart(w) end),
   L("madlibs", { "mad libs", "madlibs", "silly story", "make a story", "story game words" }, function(w) return madStart(w) end),
   L("countgame", { "count with me", "lets count", "count together", "counting game" }, function(w) return countStart(w) end),
-  L("hack", { "hack the mainframe", "hack the base", "hack you", "hack into", "mainframe" }, function(w) return hack(w) end),
+  L("hackgame", { "hack the mainframe", "hack the base", "hack you", "hack into", "mainframe" }, function(w) return hack(w) end),
   L("wish2", { "make a wish", "wishing well", "can i make a wish" }, function(w)
       V.badge(w, "wish")
       return "Close your eyes and say it: start with i wish ... (I collect wishes.)"

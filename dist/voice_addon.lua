@@ -966,15 +966,20 @@ VOICE.patterns = {}
 VOICE.idleExtra = {}
 VOICE.commands = {}
 
+VOICE.dupIntents = {}
 function VOICE.addIntents(list)
 local have = {}
 for _, it in ipairs(VOICE.INTENTS) do have[it.id] = true end
 local n = 0
 for _, it in ipairs(list or {}) do
-if type(it) == "table" and it.id and it.keys and not have[it.id] then
+if type(it) == "table" and it.id and it.keys then
+if have[it.id] then
+VOICE.dupIntents[#VOICE.dupIntents + 1] = it.id
+else
 VOICE.INTENTS[#VOICE.INTENTS + 1] = it
 have[it.id] = true
 n = n + 1
+end
 end
 end
 VOICE.resetVocab()
