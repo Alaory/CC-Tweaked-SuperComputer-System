@@ -150,7 +150,7 @@ if changed then
 saveKnown()
 local n = 0
 for _ in pairs(found) do n = n + 1 end
-if setToast then setToast("Storage helper(s) found: " .. n .. " - the map uses them when the floppies are full", C.good) end
+if setToast then setToast("Storage helper(s) found: " .. n .. " - the map is kept on them (the floppies stay free for the rest)", C.good) end
 if sysLog then sysLog("Storage helpers: " .. n .. " found", "DONE") end
 end
 return found
@@ -211,7 +211,11 @@ function STORE.isRemote(path) return STORE.parse(path) ~= nil end
 function STORE.write(path, text)
 local id, name = STORE.parse(path)
 local r, err = STORE.call(id, { op = "put", name = name, data = text }, 6)
-if r and STORE.helpers[id] then STORE.helpers[id].free = tonumber(r.free) or STORE.helpers[id].free end
+local h = STORE.helpers[id]
+if r and h then h.free = tonumber(r.free) or h.free end
+
+
+if not r and h and err == "no answer" then h.free = 0 end
 return r ~= nil, err
 end
 function STORE.read(path)

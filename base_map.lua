@@ -244,15 +244,43 @@ end
 -- ("store:<id>/map/<key>.dat", base_store.lua)
 local function dirOf(p) return tostring(p):match("^(.*)/[^/]*$") or "" end
 local function mExists(p) if STORE and STORE.isRemote(p) then return true end return fs.exists(p) end
+-- copies on a helper that could not be deleted (it did not answer): an OLD copy -
+-- never read again, deleted once the helper answers (map_stale.dat)
+local STALE_FILE = "map_stale.dat"
+MAP.stale = readSafe(STALE_FILE)
+if type(MAP.stale) ~= "table" then MAP.stale = {} end
+local function saveStale() writeSafe(STALE_FILE, serialSmall(MAP.stale)) end
 local function mDelete(p)
-  if STORE and STORE.isRemote(p) then pcall(STORE.delete, p) else pcall(fs.delete, p) end
+  if STORE and STORE.isRemote(p) then
+    local okD, done = pcall(STORE.delete, p)
+    if not (okD and done) then MAP.stale[p] = true saveStale() end
+  else pcall(fs.delete, p) end
 end
 MAP.rsize = {}        -- sizes of the files on storage helpers (key -> bytes)
 
+-- storage helpers FIRST (CONFIG.map.helpersFirst, default on): 1 MB each, and the
+-- data floppies stay free for the other data files (drone logs, turtles, mining,
+-- voice ...). Before, the map filled the floppies to the last KB and the helpers
+-- got nothing until then - "DISK ALMOST FULL: disk/drone_logs.dat not saved" with
+-- 4 empty helpers.
+function MAP.helpersFirst()
+  local m = CONFIG.map or {}
+  if m.helpersFirst == false then return false end
+  local hf = STORE and STORE.space() or 0
+  return hf >= 64 * 1024
+end
+-- room the map leaves on every data floppy for the other data files
+function MAP.floppyKeep()
+  local m = CONFIG.map or {}
+  local kb = tonumber(m.floppyKeepKB)
+  if not kb then kb = MAP.helpersFirst() and 48 or 16 end
+  return kb * 1024
+end
 local function places()
   local out = {}
+  local fkeep = MAP.floppyKeep()
   for _, d in ipairs(mountedDisks()) do
-    if d.data then out[#out + 1] = { dir = fs.combine(d.mount, DIR), free = d.free, floppy = true } end
+    if d.data then out[#out + 1] = { dir = fs.combine(d.mount, DIR), free = math.max(0, (d.free or 0) - fkeep), floppy = true } end
   end
   local okF, free = pcall(fs.getFreeSpace, "/")
   free = okF and free or 0
@@ -422,7 +450,11 @@ local function writeFile(key, text, plc)
   local need = #text + 4096                       -- the same check as saveFileSafe
   local order = {}
   for _, p in ipairs(plc) do order[#order + 1] = p end
-  local function rank(p) return p.floppy and 3 or (p.remote and 2 or 1) end
+  local hFirst = MAP.helpersFirst()
+  local function rank(p)
+    if p.remote then return hFirst and 4 or 2 end
+    return p.floppy and 3 or 1
+  end
   table.sort(order, function(a, b)
     if rank(a) ~= rank(b) then return rank(a) > rank(b) end
     local aOld, bOld = old and dirOf(old) == a.dir, old and dirOf(old) == b.dir
@@ -435,13 +467,20 @@ local function writeFile(key, text, plc)
       local ok
       if p.remote then
         ok = STORE.write(path, text)
-        if ok then MAP.rsize[key] = #text end
+        if not ok then p.free = 0 end                 -- (no answer / full: not again in this save)
+        if ok then
+          MAP.rsize[key] = #text
+          if MAP.stale[path] then MAP.stale[path] = nil saveStale() end   -- (current again)
+        end
       else
         pcall(fs.makeDir, p.dir)
         ok = saveFileSafe(path, text)
       end
       if ok then
-        if old and old ~= path and mExists(old) then mDelete(old) end
+        if old and old ~= path and mExists(old) then
+          mDelete(old)
+          if not (STORE and STORE.isRemote(old)) and fs.exists(old) then pcall(fs.delete, old) end   -- (two copies: the old one read first)
+        end
         if not p.remote then MAP.rsize[key] = nil end
         MAP.where[key] = path
         p.free = p.free - #text
@@ -516,23 +555,58 @@ end
 -- computer before (no floppy / helper yet, or they were full) stayed there and
 -- filled its 1 MB. mapWorker: every 10 min, every minute when the disk is low.
 -- Returns how many moved.
-function MAP.offload()
-  if not MAP.loaded then return 0 end
-  local before = 0
-  for _, p in pairs(MAP.where) do if dirOf(p) == DIR then before = before + 1 end end
-  if before == 0 then return 0 end
+-- With storage helpers (MAP.helpersFirst) the map files on the DATA FLOPPIES move
+-- onto them too, at most `max` (60) per call: the floppies are then free for the
+-- other data files.
+function MAP.offload(max)
+  if not MAP.loaded then return 0, nil end
+  local before, onFloppy = 0, {}
+  local hFirst = MAP.helpersFirst()
+  for k, p in pairs(MAP.where) do
+    if dirOf(p) == DIR then before = before + 1
+    elseif hFirst and not (STORE and STORE.isRemote(p)) then onFloppy[#onFloppy + 1] = k end
+  end
+  if before == 0 and #onFloppy == 0 then return 0, 0 end
   local room = 0
   for _, pl in ipairs(places()) do if pl.floppy or pl.remote then room = room + (pl.free or 0) end end
-  if room < 8192 then return 0 end
+  if room < 8192 then return 0, 0 end
+  table.sort(onFloppy)                             -- (the same order every time)
+  local limit = max or 60
+  local picked = {}
+  local wasDirty = {}
+  local hRoom = (STORE and STORE.space() or 0) - 32 * 1024   -- (only what fits on the helpers)
+  local nPick = 0
+  for i = 1, math.min(limit, #onFloppy) do
+    local k = onFloppy[i]
+    local size = fs.getSize(MAP.where[k]) + 4096
+    if size > hRoom then break end
+    hRoom = hRoom - size
+    nPick = nPick + 1
+    picked[k] = MAP.where[k]
+    wasDirty[k] = MAP.dirty[k]
+    MAP.dirty[k] = true
+  end
   pcall(MAP.save, true, true)                      -- (never drops anything)
-  local after = 0
-  for _, p in pairs(MAP.where) do if dirOf(p) == DIR then after = after + 1 end end
+  for k, was in pairs(picked) do                   -- no room for it: it simply stays where it is
+    if MAP.dirty[k] and not wasDirty[k] and MAP.where[k] == was and fs.exists(was) then MAP.dirty[k] = nil end
+  end
+  local after, toHelpers = 0, 0
+  for k, p in pairs(MAP.where) do if dirOf(p) == DIR then after = after + 1 end end
+  for k, was in pairs(picked) do
+    if MAP.where[k] ~= was and STORE and STORE.isRemote(MAP.where[k] or "") then toHelpers = toHelpers + 1 end
+  end
   local moved = before - after
   if moved > 0 and sysLog then
-    sysLog("Map: moved " .. moved .. " map file(s) off this computer onto the floppies / storage helpers" ..
+    sysLog("Map: moved " .. moved .. " map file(s) off this computer onto the " ..
+           (hFirst and "storage helpers / floppies" or "floppies / storage helpers") ..
            (after > 0 and (" (" .. after .. " still here - no room left)") or ""), "INFO")
   end
-  return moved
+  if toHelpers > 0 and sysLog then
+    sysLog("Map: moved " .. toHelpers .. " map file(s) from the data floppies onto the storage helpers" ..
+           (#onFloppy > toHelpers and (" (" .. (#onFloppy - toHelpers) .. " to go)") or ""), "INFO")
+  end
+  if nPick == 0 then return moved, 0 end             -- the helpers are full: nothing more moves
+  return moved + toHelpers, #onFloppy - toHelpers
 end
 
 -- save if something changed and the last save is a minute ago (comms worker)
@@ -621,17 +695,18 @@ end
 
 -- how much room the map files take: total bytes, on the computer, files
 function MAP.diskUse()
-  local total, onPc, files = 0, 0, 0
+  local total, onPc, files, remote, rfiles = 0, 0, 0, 0, 0
   for k, p in pairs(MAP.where) do
     if STORE and STORE.isRemote(p) then
       total, files = total + (MAP.rsize[k] or 0), files + 1
+      remote, rfiles = remote + (MAP.rsize[k] or 0), rfiles + 1
     elseif fs.exists(p) then
       local s = fs.getSize(p)
       total, files = total + s, files + 1
       if dirOf(p) == DIR then onPc = onPc + s end
     end
   end
-  return total, onPc, files
+  return total, onPc, files, remote, rfiles      -- (remote = on the storage helpers)
 end
 
 -- forget everything (e.g. scans made with wrong coordinates)
@@ -692,14 +767,20 @@ function MAP.load()
       -- a storage helper: list its map files, read them in a few big requests
       local okL, list = pcall(STORE.list, p.remote, DIR)
       local want = {}
+      local staleGone = false
       for f, size in pairs(okL and list or {}) do
         local k = f:match("^(o?%-?%d+_%-?%d+)%.dat$")
-        if k and not MAP.where[k] then
+        local path = p.dir .. "/" .. f
+        if k and MAP.stale[path] then                -- an old copy (the newer one is elsewhere): never read
+          local okD, done = pcall(STORE.delete, path)
+          if okD and done then MAP.stale[path] = nil staleGone = true end
+        elseif k and not MAP.where[k] then
           want[#want + 1] = f
-          MAP.where[k] = p.dir .. "/" .. f
+          MAP.where[k] = path
           MAP.rsize[k] = size
         end
       end
+      if staleGone then saveStale() end
       local i = 1
       while i <= #want do
         local batch = {}

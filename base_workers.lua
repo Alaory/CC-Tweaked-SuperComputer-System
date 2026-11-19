@@ -467,9 +467,13 @@ function mapWorker()
     -- every minute while the computer's disk is low)
     local okF, pcFree = pcall(fs.getFreeSpace, "/")
     local low = okF and type(pcFree) == "number" and pcFree < 160 * 1024
+    -- with storage helpers: map files on the data floppies move onto them (60 a
+    -- minute while some are left) - the floppies are for the other data files
+    if not low and MAP.helpersFirst and MAP.helpersFirst() then low = state.offloadLeft ~= 0 end
     if os.clock() - (state.offloadAt or -1000) > (low and 60 or 600) then
       state.offloadAt = os.clock()
-      pcall(MAP.offload)
+      local okO, _, left = pcall(MAP.offload)
+      state.offloadLeft = okO and left or nil
     end
     if os.clock() - lastFind > 300 then  -- storage helpers added / gone, and their updates
       lastFind = os.clock()

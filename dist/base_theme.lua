@@ -134,10 +134,40 @@ if ok and type(s) == "string" then return s end
 return textutils.serialize(t)
 end
 
+
+
+
+
+
+function moveDataFile(path, text)
+local dir, name = fs.getDir(path), fs.getName(path)
+if name:find("%.lua$") or name:find("%.log$") then return nil end
+local disks = mountedDisks()
+local here
+for _, d in ipairs(disks) do if d.data and d.mount == dir then here = d end end
+if not here then return nil end
+local best
+for _, d in ipairs(disks) do
+if d.data and d ~= here and d.free >= #text + 8192 and (not best or d.free > best.free) then best = d end
+end
+if not best then return nil end
+local np = fs.combine(best.mount, name)
+if not writeSafe(np, text) then pcall(fs.delete, np) return nil end
+pcall(fs.delete, path)
+if dataPathReset then dataPathReset() end
+if sysLog then sysLog(name .. " did not fit on " .. dir .. " any more - moved to " .. best.mount, "INFO") end
+return np
+end
+
 function saveFileSafe(path, text)
 local dir = fs.getDir(path)
 local okF, free = pcall(fs.getFreeSpace, dir == "" and "/" or dir)
 if okF and type(free) == "number" and free < #text + 4096 then
+local okM, np = pcall(moveDataFile, path, text)
+if okM and np then
+if state.diskLow and state.diskLow:find(path, 1, true) then state.diskLow = nil end
+return true, np
+end
 state.diskLow = string.format("DISK ALMOST FULL: %s not saved (%d KB free, needs %d KB) - type disks",
 path, math.floor(free / 1024), math.ceil(#text / 1024))
 return false, state.diskLow

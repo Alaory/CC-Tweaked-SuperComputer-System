@@ -49,7 +49,7 @@ for k, dr in pairs(drones) do
 all[k] = dr.log
 savedLogs[k] = dr.log
 end
-local okS, text = pcall(textutils.serialize, all)
+local okS, text = pcall(serialSmall, all)
 if okS then
 local path = dataFile(CONFIG.drone.logFile, true)
 if saveFileSafe(path, text) then dropOldCopy(CONFIG.drone.logFile, path, next(all) == nil) end

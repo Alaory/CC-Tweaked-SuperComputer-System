@@ -468,7 +468,7 @@ local OVERWORLD = "minecraft:overworld"
 
 
 local function backSave()
-writeSafe(CONFIG.back.file, textutils.serialize(backSpots))
+writeSafe(CONFIG.back.file, serialSmall(backSpots))
 end
 do
 local t = readSafe(CONFIG.back.file)

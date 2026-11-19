@@ -468,7 +468,7 @@ local OVERWORLD = "minecraft:overworld"
 
 -- write the '$drone back' spots to their file
 local function backSave()
-  writeSafe(CONFIG.back.file, textutils.serialize(backSpots))
+  writeSafe(CONFIG.back.file, serialSmall(backSpots))      -- (compact: a third of the size)
 end
 do
   local t = readSafe(CONFIG.back.file)

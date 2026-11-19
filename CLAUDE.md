@@ -904,7 +904,18 @@ PneumaticCraft drone rides, turtle mapping/surveys, and an AE2 ME network view.
   floppy > helper > computer; path "store:<id>/map/<key>.dat"; MAP.rsize = sizes).
   Calls wait for answers, so map saving runs in its own mapWorker (also finds new
   helpers ~20 s after start, then every 5 min); at start only helpers seen before
-  are asked (store_helpers.dat, no 2-s lookup). Helper gone -> files go to the
+  are asked (store_helpers.dat, no 2-s lookup). HELPERS FIRST (the owner's `disks`: 4 helpers
+  953 KB free / 0 files, the floppies full - "disk/drone_logs.dat not saved"; the map filled the
+  floppies to the last KB before it spilled): MAP.helpersFirst() (CONFIG.map.helpersFirst, default
+  on, SETTINGS > MAP; helpers with >= 64 KB) ranks helpers above floppies; MAP.floppyKeep leaves 48 KB
+  (16 without helpers; CONFIG.map.floppyKeepKB) on every data floppy for the data files; MAP.offload
+  also moves floppy map files onto the helpers (60 per call, only what fits; every minute while some
+  are left - state.offloadLeft; `disks move` all). A failed put = that helper has no room for the rest
+  of the save (p.free 0) and until the next STORE.find (h.free 0) - no 6-s wait per file. An old copy
+  that could not be deleted on a quiet helper = MAP.stale (map_stale.dat): never read, deleted when it
+  answers; a write to that path clears it. moveDataFile (saveFileSafe): a data file at the top of a
+  data floppy that no longer fits moves to the data floppy with the most room (not .lua / .log /
+  folders). Drone logs + back_spots.dat are written with serialSmall. test_helpers.lua (fake helpers). Helper gone -> files go to the
   computer. `store [find|update]` on the base computer. Helpers left OFF by a server
   restart: STORE.wakeAll turns them on over the cable (computer peripheral isOn /
   turnOn; only known ids or label "Store <id>") - at mapWorker start (then 4 s

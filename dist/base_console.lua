@@ -483,7 +483,7 @@ say("Logs:             " .. fs.getDir(cur1) .. "/  (events, system" ..
 (fs.getDir(cur2) ~= fs.getDir(cur1) and (" -> " .. fs.getDir(cur2)) or "") .. ", mining, turtles, AE2 names)")
 end
 local movedMap = 0
-local okO, nO = pcall(MAP.offload)
+local okO, nO = pcall(MAP.offload, 100000)
 if okO then movedMap = nO or 0 end
 if hasData then pcall(MAP.save, true) end
 pcall(KNOW.save)
@@ -492,9 +492,10 @@ local function where(p)
 local d = dataFile(p)
 return (fs.exists(d) and (d .. " (" .. math.ceil(fs.getSize(d) / 1024) .. " KB)")) or "not saved"
 end
-local total, onPc, files = MAP.diskUse()
-if movedMap > 0 then say("Map:              moved " .. movedMap .. " file(s) off this computer") end
-say("Map:              " .. files .. " files, " .. math.ceil((total - onPc) / 1024) ..
+local total, onPc, files, remote, rfiles = MAP.diskUse()
+if movedMap > 0 then say("Map:              moved " .. movedMap .. " file(s)") end
+say("Map:              " .. files .. " files, " .. math.ceil(remote / 1024) .. " KB on storage helpers (" ..
+rfiles .. " files), " .. math.ceil((total - onPc - remote) / 1024) ..
 " KB on floppies, " .. math.ceil(onPc / 1024) .. " KB on the computer" ..
 (#MAP.order < chunks0 and ("  - trimmed to the newest " .. #MAP.order .. " chunks") or ""))
 say("Turtle knowledge: " .. where(CONFIG.turtles.knowFile) ..
@@ -530,6 +531,7 @@ local role = d.data and "DATA" or (d.installer and "INSTALLER" or (d.empty and "
 say(string.format(" %-7s %-10s %4d KB free  %s", d.mount, role, math.floor(d.free / 1024), tostring(d.label or "")))
 end
 say("This computer: " .. math.floor(fs.getFreeSpace("/") / 1024) .. " KB free.   'disks data' = use empty floppies for data")
+
 
 local nh = 0
 for id, h in pairs(STORE and STORE.helpers or {}) do
@@ -1176,9 +1178,10 @@ if MAP.clear() then say("Map cleared (all scans deleted).")
 else say("The map is still loading - try again in a moment.") end
 else
 pcall(MAP.save)
-local total, onPc, files = MAP.diskUse()
+local total, onPc, files, remote = MAP.diskUse()
 say("Map: overview " .. MAP.ovN .. " chunks, detail " .. #MAP.order .. " chunks, in " .. files .. " files, " ..
-math.ceil(total / 1024) .. " KB (" .. math.ceil((total - onPc) / 1024) .. " KB on data floppies, " ..
+math.ceil(total / 1024) .. " KB (" .. math.ceil(remote / 1024) .. " KB on storage helpers, " ..
+math.ceil((total - onPc - remote) / 1024) .. " KB on data floppies, " ..
 math.ceil(onPc / 1024) .. " KB on this computer).")
 say("'map clear' deletes all scans. 'disks data' makes empty floppies data disks for the map.")
 end

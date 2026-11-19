@@ -187,6 +187,7 @@ SETTING_GROUPS = {
         300, 50, 2000, 50, function(v) return v .. " chunks" end),
     num("map.computerKB", "Map on the computer, at most", "when no floppy has room (the computer has 1 MB)",
         200, 50, 600, 25, function(v) return v .. " KB" end),
+    bool("map.helpersFirst", "Map on storage helpers first", "the floppies stay free for logs and other data", true),
     num("map.border", "World border", "nothing is surveyed beyond +-this", 20000, 1000, 60000, 1000, plain),
     place("map.areaA", "Work area: corner 1", "turtles survey only inside the box corner 1 - corner 2 (stand there, tap twice)", "feet"),
     place("map.areaB", "Work area: corner 2", "the opposite corner (height does not matter)", "feet"),
