@@ -291,6 +291,62 @@ function DW.fuelTick()
   end
 end
 
+------------------------------------------------------------------ gifts
+-- (the talking base, voice_talk2.lua: friendship rewards) a drone brings `count` PLAIN `item`s from AE2
+-- (never your own: FACTORY.variants via the work chest) to a player AT THE BASE and drops them right
+-- next to them (Drop Item, straight down). still(name) = is the player still at the base (else the trip
+-- stops - it never chases anyone across the world). cb(ok, delivered, why) when the trip is over.
+local function playerAt(name)
+  for _, e in ipairs(state.players or {}) do
+    if tostring(e.name):lower() == tostring(name):lower() and e.p and tonumber(e.p.x) then
+      if e.dim and DRONE_DIM and e.dim ~= DRONE_DIM then return nil, tostring(name) .. " is in another dimension" end
+      return e.p
+    end
+  end
+  return nil, "cannot see where " .. tostring(name) .. " is"
+end
+DW.playerAt = playerAt
+function DW.giftRun(name, item, count, cb, still)
+  local bad = DW.notReady()
+  if bad then return false, bad end
+  if DW.trip then return false, "a drone job is running (" .. tostring(DW.trip.title) .. ")" end
+  local dr = DW.freeDrone()
+  if not dr then return false, "no free drone" end
+  local p0, why = playerAt(name)
+  if not p0 then return false, why end
+  count = math.max(1, math.min(math.floor(tonumber(count) or 1), DW.slots(dr) * 64))
+  local J = { kind = "gift" }
+  local function here()
+    if still and not still(name) then return nil, tostring(name) .. " left the base" end
+    return playerAt(name)
+  end
+  local steps = {
+    stepUnload(dr, J, "Empty the drone first"),
+    stepLoad(dr, J, item, count),
+    stepGo(dr, "Fly to " .. name, function()
+      local p, w = here()
+      if not p then return nil, w end
+      return math.floor(p.x), math.floor(p.y) + 3, math.floor(p.z)
+    end, true),
+    { text = "Drop the gift next to " .. name, fn = function()
+        local p, w = here()
+        if not p then return false, w end
+        local d = dr.periph
+        return droneDo(dr, "pneumaticcraft:drop_item", function()
+          d.clearArea()
+          d.addArea(math.floor(p.x), math.floor(p.y) + 1, math.floor(p.z))
+          if d.clearWhitelistItemFilter then pcall(d.clearWhitelistItemFilter) end
+          if d.setUseCount then pcall(d.setUseCount, false) end
+          if d.setDropStraight then pcall(d.setDropStraight, true) end
+        end, 1, 30)
+      end },
+    stepUnload(dr, J, "Bring back what is left"),
+  }
+  local ok, err = submit(dr, "Gift for " .. name, steps, { kind = "gift", who = name, item = item, J = J, cb = cb })
+  if not ok then return false, err end
+  return true, dr.label .. " brings " .. count .. " " .. prettify(item) .. " to " .. name
+end
+
 ------------------------------------------------------------------ schematic build
 -- the plan: every block to place { x y z item } bottom up (one item at a time per layer),
 -- and (clear) every spot the schematic says is air, top down
@@ -481,6 +537,14 @@ local function tripDone(trip, dr)
   local m = dr and dr.mission
   local ok = m and m.state == "done"
   local J, T = DW.job, trip.J
+  if trip.kind == "gift" then
+    -- delivered = what it carried minus what came back (a failed trip: nothing counted - the next
+    -- trip's first step empties the drone into AE2 anyway)
+    local back = T and T.back and T.back[trip.item] or 0
+    local delivered = ok and math.max(0, ((T and T.carried) or 0) - back) or 0
+    if trip.cb then pcall(trip.cb, ok and delivered > 0, delivered, ok and (delivered == 0 and "nothing was dropped" or nil) or (m and m.err)) end
+    return
+  end
   if trip.kind == "fuel" then
     local r = DW.runs[trip.id]
     if r then

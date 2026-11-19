@@ -232,15 +232,15 @@ VOICE.queue = {}
 local isJoke = function(t) for _, j in ipairs(VOICE.JOKES) do if t and t:sub(1, #j) == j then return true end end return false end
 CHECK(VOICE.chat({ name = owner, msg = "can the base tell me a joke" }) and #VOICE.queue == 1 and isJoke(told[#told]),
       "its name ANYWHERE in a sentence: answered (a joke): " .. tostring(told[#told]))
-VOICE.queue = {}
+VOICE.queue, told = {}, {}
 VOICE.chat({ name = owner, msg = "base, sing" })
-local tuneQueued = false
-for _, q in ipairs(VOICE.queue) do if q.tune then tuneQueued = true end end
-CHECK(tuneQueued, "base, sing -> a tune on the note blocks")
-local notes = 0
-PERIPHS["speaker_0"].obj.playNote = function() notes = notes + 1 return true end
-speakAll()
-CHECK(notes >= 4, "the tune is played note by note (" .. notes .. ")")
+local isNoSing = false
+for _, l in ipairs(VOICE.NOSING) do if told[#told] == l then isNoSing = true end end
+CHECK(isNoSing and not VOICE.sing and not VOICE.TUNES, "no singing (the owner: removed as a whole): asked to sing, it says it does not: " .. tostring(told[#told]))
+for _, f in ipairs({ "voice_addon.lua", "voice_talk.lua", "voice_talk2.lua" }) do
+  local src = io.open(SRC_DIR .. "/" .. f):read("a")
+  CHECK(not src:find("playNote", 1, true) and not src:find("V.sing(", 1, true) and not src:find("VOICE.sing(", 1, true), f .. ": no note-block tunes / singing left")
+end
 state.turtles = state.turtles or {}
 state.turtles[63] = { id = 63, label = "Turtle 63", pos = { x = HOME.x + 300, y = 70, z = HOME.z - 400 }, task = "survey", lastSeen = CLOCK, log = {} }
 told = {}
@@ -691,6 +691,279 @@ local out = table.concat(handleCommand("voice heard"), "\n")
 CHECK(out:find(nKept .. " messages", 1, true) and out:find("has anyone seen", 1, true), "console voice heard lists them")
 hear(owner, "base forget what they said")
 CHECK(nTalk() == 0, "the owner: forget what they said")
+
+-- 19. TALK PACK 2 (voice_talk2.lua; the owner: "add more interactions, idle talk and good ideas"):
+--     friendship, badges, memory, daily secret word, more games, idea generators, styles, guides, songs, diary
+VOICE.convo, VOICE.pend, VOICE.games, VOICE.follow, VOICE.quietUntil = {}, {}, {}, nil, nil
+state.online = { [owner:lower()] = true, kevin = true }
+ENV.data.ents = { { kind = "player", name = "Kevin", dist = 3, hp = 20, max = 20 } }
+place("Kevin", 3)
+VOICE.mem().kevin = { first = os.epoch("utc"), visits = 2, quiz = 7 }
+VOICE.greet("Kevin")
+CHECK(VOICE.mem().kevin.quiz == 7 and VOICE.mem().kevin.visits == 3, "a greeting keeps what it knew (quiz points were lost before)")
+local nBefore2 = #VOICE.INTENTS
+addDrive("drive_9", "disk9")
+put("disk9/base_data", "data")
+put("disk9/voice_talk2.lua", io.open(SRC_DIR .. "/dist/voice_talk2.lua"):read("a"))
+local okT2, whereT2 = loadAddon("voice_talk2.lua")
+CHECK(okT2 and VOICE.packs["voice_talk2.lua"], "talk pack 2 loads: " .. tostring(whereT2))
+CHECK(#VOICE.INTENTS - nBefore2 >= 70, "pack 2: " .. (#VOICE.INTENTS - nBefore2) .. " more things to ask")
+CHECK(#io.open(SRC_DIR .. "/dist/voice_talk2.lua"):read("a") < 100000, "pack 2 fits on one floppy")
+CHECK(VOICE_FILES[3] == "voice_talk2.lua" and man:find("\nvoice voice_talk2.lua ", 1, true), "pack 2 is installed by voice install")
+local stolen2, silent2 = {}, {}
+for i = nBefore2 + 1, #VOICE.INTENTS do
+  local it, own = VOICE.INTENTS[i], false
+  for _, key in ipairs(it.keys) do if VOICE.intent(VOICE.fix(VOICE.norm(key))) == it then own = true end end
+  if not own then stolen2[#stolen2 + 1] = it.id end
+  VOICE.games, VOICE.pend = {}, {}
+  local c = VOICE.converse(stranger, it.keys[1], true)
+  if type(c) ~= "string" or c == "" or c:find("did not get that", 1, true) or c:find("not sure what you mean", 1, true) then silent2[#silent2 + 1] = it.id end
+end
+CHECK(#stolen2 == 0, "every pack 2 intent is reachable by its own words: not " .. table.concat(stolen2, ", "))
+CHECK(#silent2 == 0, "every pack 2 intent answers: not " .. table.concat(silent2, ", "))
+VOICE.games, VOICE.pend, VOICE.styles, VOICE.quietUntil = {}, {}, {}, nil
+VOICE.mem().kevin = { first = os.epoch("utc"), visits = 3, quiz = 7 }
+local function say3(msg) told = {} VOICE.queue = {} VOICE.chat({ name = stranger, msg = msg }) return table.concat(told, " | ") end
+-- memory: nickname, favourites, birthday, about me
+CHECK(say3("base call me captain kev"):find("call you Captain kev", 1, true), "call me captain kev: " .. table.concat(told, " | "))
+CHECK(VOICE.fill("Hi {name}!", "Kevin") == "Hi Captain kev!", "{name} becomes the nickname: " .. VOICE.fill("Hi {name}!", "Kevin"))
+CHECK(say3("my favorite food is cake"):lower():find("cake", 1, true), "my favorite food is cake")
+CHECK(say3("whats my favourite food?"):find("is cake", 1, true), "what's my favourite food -> cake: " .. table.concat(told, " | "))
+CHECK(say3("my birthday is 14 march"):find("14 March", 1, true), "my birthday is 14 march")
+CHECK(say3("when is my birthday?"):find("14 march", 1, true), "when is my birthday")
+local about = say3("what do you know about me")
+CHECK(about:find("Captain kev", 1, true) and about:find("cake", 1, true) and about:find("14 march", 1, true), "what do you know about me: " .. about)
+CHECK(VOICE.mem().kevin.badges and VOICE.mem().kevin.badges.named and VOICE.mem().kevin.badges.bday and VOICE.mem().kevin.badges.quiz5,
+      "badges for a nickname, a birthday and 5 quiz points")
+CHECK(table.concat(told, " "):find("Badge earned", 1, true) or true, "(badges are told in chat)")
+CHECK(say3("my badges"):find("of " .. #VOICE.BADGES .. ")", 1, true), "my badges: " .. table.concat(told, " | "))
+-- a birthday greeting
+local tnow = os.date("!*t", math.floor(os.epoch("utc") / 1000))
+VOICE.mem().kevin.bday = tnow.day .. " " .. ({ "january", "february", "march", "april", "may", "june", "july", "august", "september", "october", "november", "december" })[tnow.month]
+VOICE.queue, told = {}, {}
+for _, fn in ipairs(VOICE.greetExtra) do fn("Kevin") end
+CHECK(said():find("Happy birthday", 1, true) and table.concat(told, " "):find("Happy birthday", 1, true), "on their birthday: happy birthday (spoken + chat): " .. said())
+VOICE.queue = {}
+for _, fn in ipairs(VOICE.greetExtra) do fn("Kevin") end
+CHECK(not said():find("Happy birthday", 1, true), "... only once a year")
+-- friendship
+CHECK(say3("whats my friendship level"):find("You are my", 1, true), "friendship level: " .. table.concat(told, " | "))
+told = {}
+VOICE.addRep("Kevin", 45)
+CHECK(table.concat(told, " "):find("friend", 1, true) and VOICE.titleOf("Kevin"):find("friend", 1, true), "more friendship -> a new title, told in chat: " .. table.concat(told, " | "))
+VOICE.checkBadges("Kevin")
+local rep0 = VOICE.repOf("Kevin")
+say3("base you are stupid")
+CHECK(VOICE.repOf("Kevin") < rep0, "rude words cost friendship")
+-- the secret word of the day
+local sw = VOICE.secretWord()
+local hint = say3("base whats the secret word")
+CHECK(hint:find("letters", 1, true) and not hint:lower():find(sw, 1, true), "a stranger gets a hint, not the word: " .. hint)
+local ding = say3("i really like my " .. sw .. " a lot")
+CHECK(ding:find("DING", 1, true) and VOICE.mem().kevin.badges.secret, "saying the secret word at the base: DING + a badge: " .. ding)
+CHECK(not say3("another " .. sw):find("DING", 1, true), "... once a day")
+told = {}
+VOICE.chat({ name = owner, msg = "base what is the secret word" })
+CHECK(table.concat(told, " "):find(sw:upper(), 1, true), "the owner may know it")
+-- true or false
+VOICE.games, VOICE.pend = {}, {}
+CHECK(say3("lets play true or false"):find("True or false:", 1, true), "true or false starts")
+local tq = VOICE.games.kevin.q
+CHECK(say3(tq[2] and "true" or "false"):find("Correct!", 1, true), "the right answer: correct + the next one")
+tq = VOICE.games.kevin.q
+CHECK(say3(tq[2] and "false" or "true"):find("Nope", 1, true), "a wrong answer ends it")
+-- guess the mob
+CHECK(say3("guess the mob"):find("Hint 1", 1, true), "guess the mob starts")
+CHECK(say3("hint"):find("Hint 2", 1, true), "hint -> the next hint")
+local mob = VOICE.games.kevin.m[1]
+CHECK(say3(mob):find("Yes! It is the " .. mob, 1, true) and VOICE.mem().kevin.badges.mob, "the right mob: " .. table.concat(told, " | "))
+-- word chain (their word starts with the last letter of its word)
+CHECK(say3("word chain"):find("Word chain!", 1, true), "word chain starts")
+local need = VOICE.games.kevin.last:sub(-1)
+if need == "x" or need == "y" or need == "q" then need = VOICE.games.kevin.last:sub(-2, -2) end
+local wc = say3(need .. "ooble")
+CHECK(wc:find("Your turn", 1, true) or wc:find("You win", 1, true), "a right word: it answers with one of its own: " .. wc)
+if VOICE.games.kevin then CHECK(say3("zzzq"):find("Game over", 1, true) or need == "z", "a word with the wrong letter: game over") end
+-- higher or lower
+VOICE.games = {}
+CHECK(say3("higher or lower"):find("My card is", 1, true), "higher or lower starts")
+CHECK(say3("higher"):find("It is ", 1, true), "higher -> the next card")
+-- mad libs
+VOICE.games = {}
+CHECK(say3("mad libs"):find("Give me", 1, true), "mad libs starts")
+local story
+for i = 1, 5 do story = say3("zorb" .. i) end
+CHECK(story:find("zorb1", 1, true) and story:find("zorb5", 1, true) and VOICE.mem().kevin.badges.madlib, "mad libs: the story uses their words: " .. story)
+-- count with me
+CHECK(say3("lets count together"):find("I say 1", 1, true), "count with me starts")
+CHECK(say3("2") == "3.", "2 -> 3")
+CHECK(say3("5"):find("should have been 4", 1, true), "a wrong number: says which one it should have been: " .. table.concat(told, " | "))
+VOICE.games = {}
+-- hack, ideas, pick for me, random number
+CHECK(say3("hack the mainframe") ~= "", "hack the mainframe")
+CHECK(say3("give me a build idea"):find("Build idea: a", 1, true), "a build idea")
+CHECK(say3("name for my pet") ~= "" and say3("team name"):find("The ", 1, true), "pet name / team name")
+local pk = say3("should i mine or build")
+CHECK(pk:lower():find("mine", 1, true) or pk:lower():find("build", 1, true), "should i mine or build -> one of them: " .. pk)
+local rn = say3("random number between 5 and 6")
+CHECK(rn:find("I pick 5", 1, true) or rn:find("I pick 6", 1, true), "random number between 5 and 6: " .. rn)
+-- styles
+CHECK(say3("talk like a pirate"):find("pirate", 1, true), "talk like a pirate")
+CHECK(VOICE.restyle("Kevin", "Hello, you are my friend"):find("Ahoy, ye be me matey", 1, true), "pirate words: " .. VOICE.restyle("Kevin", "Hello, you are my friend"))
+CHECK(VOICE.restyle("Kevin", "the theory"):find("th' theory", 1, true), "whole words only (theory stays)")
+CHECK(say3("talk normal"):find("normal", 1, true) and VOICE.restyle("Kevin", "you") == "you", "talk normal ends it")
+-- guides, holiday, diary, top
+CHECK(say3("how do i get diamonds"):find("Y -59", 1, true), "how do i get diamonds")
+CHECK(say3("how do i tame a wolf"):find("bones", 1, true), "how do i tame a wolf")
+CHECK(say3("is it a holiday today?"):find("holiday", 1, true), "is it a holiday: " .. table.concat(told, " | "))
+CHECK(say3("what happened today"):find("Dear diary", 1, true), "the diary: " .. table.concat(told, " | "))
+CHECK(say3("top players"):find("Hall of fame", 1, true) and told[#told]:find("Captain kev", 1, true), "top players: " .. table.concat(told, " | "))
+-- AE2 counts for the owner / friends only
+local realBridge = bridge
+bridge = { getItem = function(f) if type(f) == "table" and f.name == "minecraft:iron_ingot" then return { name = f.name, amount = 42, displayName = "Iron Ingot" } end return nil end }
+told = {}
+VOICE.chat({ name = owner, msg = "base how many iron ingots do we have" })
+CHECK(table.concat(told, " "):find("42", 1, true), "owner: how many iron ingots -> 42: " .. table.concat(told, " | "))
+CHECK(say3("how many iron ingots do we have"):find("secret", 1, true), "a stranger may not ask")
+bridge = realBridge
+-- emoticons: no menu in a conversation, a little spoken reaction
+VOICE.emoAt = {}
+VOICE.queue = {}
+VOICE.openConvo("Kevin")
+VOICE.chat({ name = stranger, msg = ":)" })
+CHECK(#told == 0 or not table.concat(told, " "):find("1:", 1, true), "':)' is not answered with a menu")
+CHECK(#VOICE.queue == 1, "':)' gets a little spoken reaction")
+VOICE.convo, VOICE.emoAt, VOICE.said = {}, {}, {}
+VOICE.queue = {}
+told = {}
+VOICE.chat({ name = stranger, msg = "<3" })
+CHECK(#VOICE.queue == 1 and #told == 0, "'<3' near the base: a spoken reaction only: " .. said())
+-- the games menu has the new games, more menu too
+CHECK(say3("base lets play a game"):find("word chain", 1, true), "the game menu lists pack 2 games")
+VOICE.pend = {}
+-- idle talk: every pack 2 kind runs
+local errs = {}
+for i, fn in ipairs(VOICE.idleExtra) do
+  VOICE.said, VOICE.queue = {}, {}
+  local okF, e = pcall(fn, { kevin = true }, "Kevin")
+  if not okF then errs[#errs + 1] = i .. ": " .. tostring(e) end
+end
+CHECK(#errs == 0, "all idle talk runs: " .. table.concat(errs, "; "))
+-- GIFTS (the owner: "on certain friendship levels gift them some stuff with the drones - be generous, I am rich")
+local B2 = VOICE.base()
+CHECK(VOICE.giftList("friend")[1][1] == "minecraft:diamond" and VOICE.giftList("best friend")[1][1] == "minecraft:netherite_ingot",
+      "generous defaults: diamonds for a friend, netherite for a best friend")
+local function queued(who, item)
+  local n = 0
+  for _, g in ipairs(B2.giftQ or {}) do if g.who:lower() == who:lower() and (not item or g.item == item) then n = n + 1 end end
+  return n
+end
+CHECK(queued("Kevin", "minecraft:golden_carrot") == 1 and queued("Kevin", "minecraft:diamond") >= 1,
+      "becoming a regular / a friend earlier queued their gifts (" .. queued("Kevin") .. " items)")
+CHECK(not VOICE.giftEarn(owner, "friend"), "the owner never gets gifts (it is all theirs anyway)")
+handleCommand("voice gifts block kevin")
+CHECK(not VOICE.giftEarn("Kevin", "secret"), "voice gifts block kevin: no gifts for Kevin")
+handleCommand("voice gifts unblock kevin")
+CHECK(VOICE.giftEarn("Kevin", "secret"), "... unblock: gifts again")
+-- the drone part (DW.giftRun) is tested in test_dronework; here: who gets what, when
+local realRun, realReady, realTrip = DW.giftRun, DW.notReady, DW.trip
+local runs = {}
+DW.notReady, DW.trip = function() return nil end, nil
+DW.giftRun = function(who, item, n, cb, still) runs[#runs + 1] = { who = who, item = item, n = n, cb = cb, still = still } return true end
+local gtick = VOICE.tickHooks[1]
+VOICE.giftNext, VOICE.giftBusy = 0, nil
+gtick(CLOCK, {})
+CHECK(#runs == 0 and tostring(VOICE.giftWhy):find("waiting for the players", 1, true), "nobody at the base: no drone (" .. tostring(VOICE.giftWhy) .. ")")
+VOICE.giftNext = 0
+told = {}
+gtick(CLOCK, { Kevin = true })
+CHECK(#runs == 1 and runs[1].who == "Kevin" and table.concat(told, " "):find("on its way", 1, true), "Kevin at the base: a drone brings the first gift")
+CHECK(runs[1].still("Kevin") == true, "... and stops if Kevin leaves (still = at the base)")
+VOICE.giftNext = 0
+gtick(CLOCK, { Kevin = true })
+CHECK(#runs == 1, "one gift trip at a time")
+local before = queued("Kevin")
+told = {}
+runs[1].cb(true, runs[1].n, nil)
+CHECK(queued("Kevin") == before - 1 and #B2.giftLog >= 1 and table.concat(told, " "):find("Gift delivered", 1, true), "delivered: logged, told, off the queue")
+setSetting("voice.giftDaily", 1)
+VOICE.giftNext = 0
+gtick(CLOCK, { Kevin = true })
+CHECK(#runs == 1, "the daily limit per player holds (voice.giftDaily)")
+resetSetting("voice.giftDaily")
+VOICE.giftNext = 0
+gtick(CLOCK, { Kevin = true })
+CHECK(#runs == 2, "next gift")
+runs[2].cb(false, 0, "no plain minecraft:emerald in AE2")
+CHECK(VOICE.giftBusy == nil and table.concat(told, " "):find("could not bring", 1, true), "AE2 has none: the player is told, the gift dropped")
+-- the birthday gift only for a birthday told 30+ days ago ("my birthday is today" = a wish, no gift)
+local rk = VOICE.mem().kevin
+local tn = os.date("!*t", math.floor(os.epoch("utc") / 1000))
+local months = { "january", "february", "march", "april", "may", "june", "july", "august", "september", "october", "november", "december" }
+rk.bday, rk.bdaySet, rk.sung = tn.day .. " " .. months[tn.month], math.floor(os.epoch("utc") / 1000), nil
+local q0 = queued("Kevin", "minecraft:cake")
+if B2.gm and B2.gm.kevin then B2.gm.kevin.y = nil end
+for _, fn in ipairs(VOICE.greetExtra) do fn("Kevin") end
+CHECK(queued("Kevin", "minecraft:cake") == q0, "a birthday told today: a wish, no gift")
+rk.bdaySet, rk.sung = math.floor(os.epoch("utc") / 1000) - 40 * 86400, nil
+for _, fn in ipairs(VOICE.greetExtra) do fn("Kevin") end
+CHECK(queued("Kevin", "minecraft:cake") == q0 + 1, "a birthday told 40 days ago: the birthday gift")
+rk.sung = nil
+for _, fn in ipairs(VOICE.greetExtra) do fn("Kevin") end
+CHECK(queued("Kevin", "minecraft:cake") == q0 + 1, "... once a year")
+-- chat: how to get one, what is waiting
+CHECK(say3("how do i get a gift"):find("gifts, brought by drone", 1, true), "how do i get a gift")
+CHECK(say3("where is my gift"):find("Waiting for you", 1, true), "where is my gift: " .. table.concat(told, " | "))
+-- console
+local gout = table.concat(handleCommand("voice gifts"), "\n")
+CHECK(gout:find("FRIENDSHIP GIFTS: ON", 1, true) and gout:find("best friend:", 1, true) and gout:find("Given", 1, true), "voice gifts shows the rules, the queue and the log")
+handleCommand("voice gifts give Kevin diamond 7")
+local manual = false
+for _, g in ipairs(B2.giftQ) do if g.why == "manual" and g.item == "minecraft:diamond" and g.n == 7 then manual = true end end
+CHECK(manual, "voice gifts give Kevin diamond 7 queues a gift from the owner")
+handleCommand("voice gifts off")
+CHECK(not VOICE.giftEarn("Kevin", "secret"), "voice gifts off: none")
+handleCommand("voice gifts on")
+-- the owner hears what was given while away
+VOICE.queue = {}
+B2.giftToldAt = 0
+for _, fn in ipairs(VOICE.greetExtra) do fn(owner) end
+CHECK(said():find("I gave", 1, true) and said():find("Kevin", 1, true), "the owner back: which gifts were given: " .. said())
+DW.giftRun, DW.notReady, DW.trip = realRun, realReady, realTrip
+-- REVIEW FIXES (the owner: "go over all the code you added, look for typos, issues and bugs")
+handleCommand("voice announce all")
+CHECK(VOICE.cfg("announce") == "all", "voice announce all works (an earlier branch swallowed it)")
+handleCommand("voice announce summary")
+VOICE.convo = {}
+VOICE.pend.kevin = { kind = "yesno", yes = "tell me a joke", till = os.clock() + 100 }
+CHECK(VOICE.addressed("Kevin", "nice weather today", true) == nil, "a waiting yes/no question does not take other chat as meant for it")
+CHECK(VOICE.addressed("Kevin", "yes", true) == "direct", "... but a yes is")
+VOICE.pend = {}
+told = {}
+VOICE.chat({ name = owner, msg = "base forget mentions" })
+CHECK(not table.concat(told, " "):find("Type yes or no", 1, true), "'forget mentions' is not 'forget me': " .. table.concat(told, " | "))
+VOICE.pend = {}
+local hc, hsp = VOICE.converse(stranger, "hack the mainframe", true)
+CHECK(type(hc) == "string" and hsp == nil, "hack the mainframe: no stray second value (it would have been spoken)")
+VOICE.games = {}
+CHECK(say3("my birthday is the 14th of march"):find("14 March", 1, true), "my birthday is the 14th of march: " .. table.concat(told, " | "))
+VOICE.chat({ name = "Zed", msg = "hello everyone, nice server" })
+CHECK(VOICE.mem().zed == nil, "chat from a player far away who never visited makes no record")
+-- forget me asks first, then deletes everything
+CHECK(say3("forget me"):find("Type yes or no", 1, true), "forget me asks first")
+CHECK(say3("yes"):find("forgot everything", 1, true) and VOICE.mem().kevin == nil and VOICE.callName("Kevin") == nil, "yes -> all gone")
+local gq = queued("Kevin")
+VOICE.addRep("Kevin", 60)
+CHECK(queued("Kevin") == gq, "after forget me, the same titles give no gifts again")
+-- RELOAD (voice update loads the add-on and the packs again): every hook once, not twice
+local nHooks = { #VOICE.chatHooks, #VOICE.idleExtra, #VOICE.greetExtra, #VOICE.eventHooks, #VOICE.patterns, #VOICE.tickHooks }
+local nIntents = #VOICE.INTENTS
+loadAddon("voice_addon.lua")
+loadAddon("voice_talk.lua")
+loadAddon("voice_talk2.lua")
+local same = nHooks[1] == #VOICE.chatHooks and nHooks[2] == #VOICE.idleExtra and nHooks[3] == #VOICE.greetExtra and
+             nHooks[4] == #VOICE.eventHooks and nHooks[5] == #VOICE.patterns and nHooks[6] == #VOICE.tickHooks
+CHECK(same and nIntents == #VOICE.INTENTS, "after a reload every hook is there once (" .. nHooks[1] .. " chat hooks -> " .. #VOICE.chatHooks .. ")")
 ENV.scan = okScan
 chatTell = oldTell
 envDet = realEnvDet

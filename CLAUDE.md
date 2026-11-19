@@ -943,8 +943,7 @@ PneumaticCraft drone rides, turtle mapping/surveys, and an AE2 ME network view.
   VOICE.cfg uses an if - false stays false). test_voice.lua (fake speaker / http / dfpwm, players walking up).
   FUN (v3; the owner: "make it interactive, react to players / strangers, listen to chat"; voice.fun, default
   on; `voice fun on|off`, `voice chatter <min>` (10, 0 = never), `voice sing|joke|forget`): CHAT - its name as a
-  WORD anywhere in a sentence -> VOICE.answer (also: joke, fact, sing (VOICE.TUNES on playNote, queue item
-  .tune), who are you, how are you (mood = VOICE.needCount), what can you do, where is turtle <n|name>
+  WORD anywhere in a sentence -> VOICE.answer (also: joke, fact, who are you, how are you (mood = VOICE.needCount), what can you do, where is turtle <n|name>
   (VOICE.whereText: blocks + compass from the drone home, task / offline), thanks, good / bad bot);
   REACTIONS (VOICE.REACT: hi, thanks, gg, lol (50 %), good night, bye, brb, i'm back, creeper) from someone AT
   the base - spoken only, 15 s between any two, 45 s per player. GREETINGS vary (partOfDay from ENV.clock);
@@ -960,9 +959,9 @@ PneumaticCraft drone rides, turtle mapping/surveys, and an AE2 ME network view.
   summary (default) | all | errors | off - summary: warnings COLLECTED (VOICE.pending) and said as ONE line every
   announceEvery 900 s while someone is there, errors at once but 120 s apart, good news 15 min apart; goodbyes
   30 %, hurt 10 min, mob-close 5 min apart. IDLE (VOICE.idle, every ~chatter 6 min): fact / joke / tip / what it
-  sees (animals / monsters from ENV.data.ents, a full moon at night) / musings / an idle quiz question / humming
-  (VOICE.sing(3)); AFK = a near player whose Player Detector x z has not changed for 5 min ("are you still
-  there?"), 10 min (a lullaby). INTERACTIONS (VOICE.extraAnswer, before the old answers): flip a coin, roll a
+  sees (animals / monsters from ENV.data.ents, a full moon at night) / musings / an idle quiz question
+  ; AFK = a near player whose Player Detector x z has not changed for 5 min ("are you still
+  there?"), 10 min ("sweet dreams"). INTERACTIONS (VOICE.extraAnswer, before the old answers): flip a coin, roll a
   dice, pick a number, guess my number (VOICE.games[player] kind guess, higher / lower, 8 tries), rock paper
   scissors, quiz (VOICE.QUIZ, points in memory, `my score`), magic 8 ball (should / will / is / am / can I ...),
   roast me, compliment me, a story, are you alive, I love you, where am I (Player Detector + compass), how many
@@ -1029,7 +1028,51 @@ PneumaticCraft drone rides, turtle mapping/surveys, and an AE2 ME network view.
   ... type: base what did people say about me"), the welcome back names them; the owner asks (intent "heard":
   "what did ppl say about me", "mentions" ...) -> newest 8 in chat (one line each, "-> who: answer"); strangers
   "That stays between me and <owner>"; "forget what they said" / `voice heard [clear]`. voice.listenTell (default
-  OFF) = say at the base "I will pass it on". test_voice part 18.
+  OFF) = say at the base "I will pass it on" (`voice listen tell on|off`). test_voice part 18.
+  NO SINGING (the owner: "remove the singing as a whole" - note-block tunes were never in time with the server's
+  TPS, and the note blocks have another plan later): no VOICE.TUNES / VOICE.sing / playNote anywhere; "sing"
+  -> VOICE.NOSING ("I do not sing ... want a joke instead?"). test_voice checks the three files hold none.
+  TALK PACK 2 (voice_talk2.lua, VOICE_FILES[3], slim ~80 KB; the owner: "more interactions, idle talk and good
+  ideas"): FRIENDSHIP (mem[player].rep; V.addRep with daily caps: kind words 5, games 10, a visit 2; rude -2;
+  titles stranger 0 / visitor 5 / regular 15 / friend 40 / good friend 80 / best friend 150, owner = boss; a new
+  title is told in chat), 27 BADGES (V.badge / checkBadges from stats; +3 friendship), MEMORY (call me X ->
+  r.nick, used by fill {name} via V.callName; my favourite X is Y; my birthday is D month (parseDate: "14th of
+  march"); what do you know about me; forget me -> asks, then V.forgetPlayer + V.justForgot so the hooks of
+  that message make no new record), DAILY (secret word of the day - said at the base = DING + badge; hint for
+  strangers, the word for the owner; word / question / fact / fortune of the day via daily(list, salt)), GAMES
+  (true or false streak, guess the mob with hints, word chain - their own word from V.lastRaw, higher or lower,
+  mad libs, count to 20, hack the mainframe; pack 1 hangman / their knock knock / adventure endings wrapped for
+  badges), IDEAS (build idea, pet / base / team / hero names, what should I do, pick for me, random number
+  between), 30 GUIDES ("how do I get diamonds" ...), STYLES (pirate / robot / cowboy / knight per player 10 min,
+  whole-word swaps - no %f patterns; core reply() runs V.restyle), HOLIDAYS (real UTC dates) + birthdays, DIARY
+  (base.diary per day, 7 kept), the owner / friends ask "how many <item> do we have" (ME getItem, strangers:
+  secret), emoticon reactions (spoken only, 60 s per player), idle (Base FM news, turtles chatting / racing with
+  real names, moon, world day, personal lines, secret word teaser, question of the day, wisdom, night coming).
+  Core hooks: chatHooks (after every chat message; VOICE.chat = chatCore + hooks), greetExtra, eventHooks
+  (VOICE.event: guess / quiz / rps wins), tickHooks, commands (`voice <word>` from a pack), gameKinds, hash,
+  patterns, idleExtra - ALL reset to {} when the add-on loads (`voice update` reloads it + the packs: kept lists
+  ran every hook twice). Chat from far away makes no record (only players at the base / already known).
+  GIFTS (the owner: "on certain friendship levels open AE2 and gift them stuff with the drones" + "be generous, I
+  am rich"): V.giftEarn(who, why) queues V.giftList(why) (V.GIFT_DEFAULT, CONFIG.voice.gifts overrides per
+  reward, false = none) in base.giftQ (max 80, 30 days): titles regular .. best friend (64 golden carrots + 32
+  emeralds / 32 diamonds + 64 xp bottles / 64 diamonds + 16 golden apples + 16 ender pearls / 8 netherite + 4
+  enchanted golden apples + 16 diamond blocks), every 5 badges, birthday (only one told 30+ days before - "my
+  birthday is today" = a wish; once a year), the secret word (once a day). Never the owner, never voice.giftBlock.
+  base.gm[player] (t titles / b badges / s day / y year) survives "forget me": nothing is given twice. A tick
+  hook (every 10 s) sends the first gift whose player is AT the base (nearNow) to DW.giftRun when a drone is free;
+  limits voice.giftDaily 10 per player, giftDailyAll 80; V.giftWhy says why it waits. DW.giftRun (base_dronework):
+  stepUnload -> stepLoad (plain items via the work chest) -> fly above the player -> "pneumaticcraft:drop_item"
+  at their feet (setDropStraight) -> stepUnload; still(name) false (left the base) / another dimension = no trip;
+  tripDone kind "gift" -> cb(ok, carried - back, why). Delivered -> base.giftLog (60) + chat + pushNote INFO;
+  the owner hears "I gave N gifts to ..." after the welcome back. Console `voice gifts [on|off|block <n>|unblock
+  <n>|give <n> <item> [count]|clear]`. test_dronework (drone trip: 100 diamonds dropped next to the player, your
+  enchanted one stays, left the base = nothing dropped, Nether = no trip), test_voice part 19.
+  REVIEW (the owner: "go over all the code you added"): voice announce all|summary|errors worked never (an
+  earlier branch); a waiting yes / no / menu took EVERY message for 2-3 min as meant for it (now only answers);
+  the voice cache dropped files alphabetically, not the oldest; "forget mentions" started "forget me"; hack
+  returned a 2nd value (spoken as a number); "my birthday is ..." / "forget me" without an open conversation
+  were ignored (TELLS / ASKWORDS forget, remember); greet replaced the player's record (quiz points / notes
+  lost); `voice update` with a pack that could not be installed lost that pack until a restart.
 - REMOVED AGAIN: remote access in a web browser (Cloud Catcher; base_remote.lua / remote.lua / pocket.lua
   in local mode on the base) - the owner: "taking space and seems useless". removeOldFiles (base_theme.lua,
   run by inventory.lua at start) deletes its files (remote.lua, base_remote.lua, cloud.lua on the computer
@@ -1137,6 +1180,7 @@ The old Block UI (stone buttons, bedrock theme) is gone.
 | base_pocket.lua / pocket.lua | the pocket remote: base side (pairing, status, actions, messages) / the program on the pocket computer |
 | voice_addon.lua | OPTIONAL add-on on a data floppy (`voice install`): the base talks through Speakers - greetings, warnings, chat answers, alarm |
 | voice_talk.lua | its TALK PACK (also on a data floppy): 140+ more chat interactions, games, idle talk |
+| voice_talk2.lua | TALK PACK 2: friendship + titles, badges, player memory, daily secret word, more games, ideas, guides, styles, holidays, diary, FRIENDSHIP GIFTS by drone |
 
 ## The owner's setup (found out the hard way)
 Peripherals (from the `report` command): `me_bridge_4`, `inventory_manager_3`,

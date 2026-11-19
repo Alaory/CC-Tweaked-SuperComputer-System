@@ -60,8 +60,8 @@ add(V.JOKES, {
 })
 add(V.QUIZ, {
 { q = "Which mob drops ender pearls?", a = { "enderman", "endermen" } },
-{ q = "What block do you need to make a beacon work? Iron, gold, emerald, diamond or netherite...", a = { "pyramid" } },
-{ q = "What do you use to tame a horse? Nothing but patience. How many hearts can a horse have at most?", a = { "15", "fifteen" } },
+{ q = "A beacon has to stand on top of a shape made of mineral blocks. What shape?", a = { "pyramid" } },
+{ q = "How many hearts can a horse have at most?", a = { "15", "fifteen" } },
 { q = "What do you get when lightning hits a pig?", a = { "zombified piglin", "piglin", "zombie pigman" } },
 { q = "Which tool do you need to collect a cobweb as a block?", a = { "shears" } },
 { q = "What do you need to make an anvil besides iron blocks?", a = { "iron ingots", "ingots", "iron" } },
@@ -70,7 +70,7 @@ add(V.QUIZ, {
 { q = "What colour is redstone dust?", a = { "red" } },
 { q = "What do you call the dimension full of lava and ghasts?", a = { "nether", "the nether" } },
 { q = "Which animal can you milk besides a cow?", a = { "goat", "mooshroom" } },
-{ q = "What do you right-click a villager with to trade? Nothing! What do villagers use as money?", a = { "emerald", "emeralds" } },
+{ q = "What do villagers use as money?", a = { "emerald", "emeralds" } },
 { q = "How many slots does a hopper have?", a = { "5", "five" } },
 { q = "What is the strongest material for armour?", a = { "netherite" } },
 { q = "What do you need to brew potions?", a = { "brewing stand", "blaze powder", "blaze" } },
@@ -79,8 +79,8 @@ add(V.QUIZ, {
 { q = "What do you call a baby zombie riding a chicken?", a = { "chicken jockey", "jockey" } },
 { q = "What do you need to sleep through the night?", a = { "bed", "a bed" } },
 { q = "Which block does a turtle egg hatch best on?", a = { "sand" } },
-{ q = "What food never goes bad and heals a lot? Golden ...", a = { "apple", "carrot", "golden apple", "golden carrot" } },
-{ q = "Which ore gives you lapis lazuli? Its colour?", a = { "blue" } },
+{ q = "Which golden food fills your hunger best: a golden carrot or a golden apple?", a = { "carrot", "golden carrot" } },
+{ q = "What colour is lapis lazuli?", a = { "blue" } },
 { q = "How many pieces of armour can a player wear?", a = { "4", "four" } },
 { q = "What do you call the boss with three heads?", a = { "wither", "the wither" } },
 
@@ -156,7 +156,7 @@ add(V.LONELY_TALK, {
 "Would you like to hear about the time {owner} fell in lava? I have it on record.",
 "You are welcome to look around. Please do not take the furnace. It is my friend.",
 "I have read every sign in this base a thousand times.", "Do you know {owner}? Tell them I said hello.",
-"It gets dark here at night. I hum to the turtles.", "I counted the days. Then I lost count. Then I counted again.",
+"It gets dark here at night. I tell the turtles stories.", "I counted the days. Then I lost count. Then I counted again.",
 "Every visitor gets a place in my memory. You too.", "Sometimes the wind blows through the base and I pretend it is {owner} walking in.",
 "Leave a message for {owner} if you like. Just say leave a message.", "You can sign my guestbook. I keep every name.",
 })
@@ -230,8 +230,9 @@ for w in text:gmatch("%a+") do if #w >= 4 and q:find(w, 1, true) then hits = hit
 return hits
 end
 V.gameKinds.wyr = function(g, who, q, strict, k)
-local pickA = q:find(" 1 ", 1, true) or q:find(" first ", 1, true) or q:find(" one ", 1, true)
-local pickB = q:find(" 2 ", 1, true) or q:find(" second ", 1, true) or q:find(" two ", 1, true)
+local pickA = q:find(" 1 ", 1, true) or q:find(" first ", 1, true)
+local pickB = q:find(" 2 ", 1, true) or q:find(" second ", 1, true)
+if pickA and pickB then return nil end
 if not pickA and not pickB then
 local a, b = sideOf(q, g.a), sideOf(q, g.b)
 if a > b then pickA = true elseif b > a then pickB = true end
@@ -547,7 +548,7 @@ lines("favmob", { "favourite mob", "favorite mob", "best mob" }, { "Turtles. Not
 lines("favfood", { "favourite food", "favorite food", "what do you eat", "do you eat", "best food" },
 { "I eat electricity. With a side of redstone.", "Golden carrots, if I had a mouth.", "Cookies. Not the browser kind." }),
 lines("favmusic", { "favourite song", "favorite song", "favourite music", "favorite music", "what music" },
-{ "Note block music. Any genre.", "The sound of a hopper clicking. Very relaxing.", "The disc called cat. It slaps." }),
+{ "The sound of a hopper clicking. Very relaxing.", "The disc called cat. It slaps.", "Rain on the roof. Best music there is." }),
 lines("favdim", { "favourite dimension", "favorite dimension", "best dimension" }, { "The overworld. It has my base.",
 "The mining dimension. My turtles love it there.", "The Nether is too hot for computers." }),
 lines("favnumber", { "favourite number", "favorite number", "lucky number" },
@@ -673,7 +674,8 @@ lines("shutdown", { "shut down", "shutdown", "turn off", "self destruct", "power
 lines("openup", { "open the door", "let me in", "open door", "give me access" }, { "I am afraid I cannot do that, {name}. The doors are {owner}'s.",
 "Doors stay closed. But I can tell you a joke." }),
 lines("freestuff", { "free stuff", "free items", "give me items", "give me diamonds", "gimme" },
-{ "The only free thing here is a joke. Want one?", "I cannot give items away. {owner}'s rules.", "Here: one free virtual diamond. Shiny." }),
+{ "Nothing for free... but friends of the base get gifts, brought by drone! Say: how do I get a gift.",
+"Be nice, visit often, play games with me. Friends get presents. Say friendship level to see yours." }),
 lines("teleport", { "teleport", "tp me", "tp" }, { "No teleports for visitors, sorry.", "I can not teleport you. The drones only fly friends." }),
 lines("mods", { "what mods", "modpack", "mods", "which mods" }, { "I run on CC Tweaked and Advanced Peripherals. The rest is a secret.",
 "Lots of mods! I talk to AE2, drones and turtles." }),
@@ -763,7 +765,7 @@ lines("whyname", { "why are you called", "why is your name", "who named you" }, 
 "My name is short so it is easy to type. Smart, right?" }),
 lines("languages", { "do you speak", "language", "english", "spanish", "french", "german" },
 { "I speak English and Lua. A little bit of beep.", "English only, sorry. Hola is all I know." }),
-lines("cando", { "can you dance", "dance for me" }, function() V.sing(3) return "*does a little dance* Did you hear the beep?" end),
+lines("cando", { "can you dance", "dance for me" }, { "*does a little dance* Computers dance in blinking lights.", "I would dance, but I am a block." }),
 lines("joketoo", { "i have a joke", "i know a joke", "want to hear a joke" }, function(w)
 V.pend[tostring(w):lower()] = { kind = "react", lines = { "Hahaha! Good one.", "Haha, I will tell that one to the turtles.",
 "Oh no. That is so bad it is good.", "Beep beep. That means I laughed." }, till = os.clock() + 120 }
@@ -776,7 +778,6 @@ lines("friends", { "your friends", "do you have friends", "best friend" }, { "My
 lines("enemies", { "enemies", "enemy", "who do you hate" }, { "Creepers. And lava. And empty floppies.", "I do not hate anyone. Except creepers." }),
 lines("weatherwill", { "will it rain", "forecast", "tomorrow weather" }, { "My forecast: some sun, some rain, maybe a creeper.",
 "Rain is coming. Or not. Weather is hard." }),
-lines("sing2", { "sing for me", "sing a song", "can you sing" }, function() local _, n = V.sing() return "Here is " .. tostring(n) .. ". La la la." end),
 }
 V.addIntents(T)
 
@@ -813,7 +814,7 @@ local MC_FACTS = {
 }
 local SELF_TALK = { "Running diagnostics. Everything looks fine. Probably.", "Checking the storage. Yep, still full of stuff.",
 "Counting turtles. One, two, ... I will finish later.", "Defragmenting my thoughts. Please hold.", "Beep. Boop. Just keeping my voice warm.",
-"Hmm hmm hmm. That is me humming.", "If anyone needs me, I will be right here. Always.", "Today's goal: map one more chunk than yesterday.",
+"If anyone needs me, I will be right here. Always.", "Today's goal: map one more chunk than yesterday.",
 "I just remembered a joke. Then I forgot it.", "Reminder: drink water. Not you, the crops." }
 local VISITOR_LINES = { "Welcome, traveller. Ask me anything in chat.", "Visitors! Say hello in chat, I like company.",
 "Feel free to look around. Do not touch, the base is claimed. But you can talk to me.", "If you are bored, say let's play a game.",

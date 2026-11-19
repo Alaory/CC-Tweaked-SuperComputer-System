@@ -472,7 +472,7 @@ end
 
 
 
-VOICE_FILES = { "voice_addon.lua", "voice_talk.lua" }
+VOICE_FILES = { "voice_addon.lua", "voice_talk.lua", "voice_talk2.lua" }
 function addonPath(file)
 for _, d in ipairs(mountedDisks()) do
 local p = fs.combine(d.mount, file)

@@ -52,7 +52,7 @@ def _():
         if rc != 0: bad.append(out.strip())
     return not bad, "\n".join(bad)
 
-for label, files in [("base", ["inventory.lua"] + sorted(os.path.basename(f) for f in glob.glob(os.path.join(ROOT, "base_*.lua"))) + ["voice_addon.lua", "voice_talk.lua"]),
+for label, files in [("base", ["inventory.lua"] + sorted(os.path.basename(f) for f in glob.glob(os.path.join(ROOT, "base_*.lua"))) + ["voice_addon.lua", "voice_talk.lua", "voice_talk2.lua"]),
                      ("miner.lua", ["miner.lua"]), ("store.lua", ["store.lua"]), ("startup.lua", ["startup.lua"]),
                      ("node.lua", ["node.lua"]), ("pocket.lua", ["pocket.lua"])]:
     @check("globals", label)
@@ -62,7 +62,7 @@ for label, files in [("base", ["inventory.lua"] + sorted(os.path.basename(f) for
 
 @check("globals", "missing locals (base)")
 def _():
-    files = ["inventory.lua"] + sorted(os.path.basename(f) for f in glob.glob(os.path.join(ROOT, "base_*.lua"))) + ["voice_addon.lua", "voice_talk.lua"]
+    files = ["inventory.lua"] + sorted(os.path.basename(f) for f in glob.glob(os.path.join(ROOT, "base_*.lua"))) + ["voice_addon.lua", "voice_talk.lua", "voice_talk2.lua"]
     rc, out = run(["python3", "tools/check_globals.py", "--leaks"] + files)
     return rc == 0, out.strip()
 for f in ["miner.lua", "store.lua", "startup.lua", "node.lua", "pocket.lua"]:

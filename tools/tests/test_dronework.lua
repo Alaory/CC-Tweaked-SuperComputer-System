@@ -39,6 +39,11 @@ local function world()
           for name, n in pairs(W.inv) do invAdd(target, name, n) end
           W.inv = {}
         end
+      elseif a == "pneumaticcraft:drop_item" then
+        W.dropped = W.dropped or {}
+        for name, n in pairs(W.inv) do W.dropped[name] = (W.dropped[name] or 0) + n end
+        W.dropAt, W.dropFrom = { x = p.x, y = p.y, z = p.z }, { x = W.pos.x, y = W.pos.y, z = W.pos.z }
+        W.inv = {}
       elseif a == "pneumaticcraft:place" then
         for _, q in ipairs(pts) do
           local name = next(W.inv)
@@ -247,6 +252,40 @@ state.turtles[9].fuel = 0
 state.turtles[9].lastSeen = os.clock() - 9999
 local okF, whyF = DW.fuelRun(9)
 CHECK(not okF and tostring(whyF):find("offline", 1, true), "an offline turtle gets no drone (" .. tostring(whyF) .. ")")
+
+------------------------------------------------------------------ gifts (the talking base: friendship rewards)
+dr = world()
+CONFIG.drone.slots = 2
+W.stock["minecraft:diamond"], W.own["minecraft:diamond"] = 100, 1
+state.players[#state.players + 1] = { name = "Kevin", p = { x = 6.5, y = 70, z = 3.5 }, dim = DRONE_DIM }
+local gOk, gDel, gWhy
+local okG, whyG = DW.giftRun("Kevin", "minecraft:diamond", 100, function(o, d, w) gOk, gDel, gWhy = o, d, w end, function() return true end)
+CHECK(okG, "a gift trip starts: " .. tostring(whyG))
+CHECK(not DW.giftRun("Kevin", "minecraft:diamond", 5, nil), "... only one drone job at a time")
+run(dr)
+CHECK(gOk and gDel == 100 and W.dropped and W.dropped["minecraft:diamond"] == 100, "100 diamonds dropped (2 slots = 128 max): " .. tostring(gDel) .. " / " .. tostring(gWhy))
+CHECK(W.dropAt and W.dropAt.x == 6 and W.dropAt.z == 3 and W.dropAt.y == 71, "dropped right next to Kevin")
+CHECK(not W.tookOwn and W.stock["minecraft:diamond"] == 0 and W.own["minecraft:diamond"] == 1, "only PLAIN diamonds - your own one stays in AE2")
+-- the player leaves the base: the trip stops, nothing is dropped, everything goes back to AE2
+dr = world()
+CONFIG.drone.slots = 1
+W.stock["minecraft:emerald"] = 50
+state.players[#state.players + 1] = { name = "Kevin", p = { x = 6.5, y = 70, z = 3.5 }, dim = DRONE_DIM }
+local here = true
+gOk, gDel = nil, nil
+DW.giftRun("Kevin", "minecraft:emerald", 32, function(o, d) gOk, gDel = o, d end, function() return here end)
+here = false
+run(dr)
+CHECK(gOk == false and gDel == 0 and not (W.dropped and W.dropped["minecraft:emerald"]), "the player left: no gift dropped (" .. tostring(gOk) .. ")")
+run(dr)
+DW.tick()
+local inDrone = W.inv["minecraft:emerald"] or 0
+CHECK(W.stock["minecraft:emerald"] + inDrone == 50, "the emeralds are back in AE2 or still in the drone for the next first step (" .. W.stock["minecraft:emerald"] .. " + " .. inDrone .. ")")
+-- another dimension: no trip
+state.players[#state.players].dim = "minecraft:the_nether"
+local okD, whyD = DW.giftRun("Kevin", "minecraft:emerald", 5, nil)
+CHECK(not okD and tostring(whyD):find("another dimension", 1, true), "a player in another dimension gets no drone (" .. tostring(whyD) .. ")")
+CONFIG.drone.slots = 1
 
 ------------------------------------------------------------------ places
 state.players = { { name = "Alaory", isOwner = true, p = { x = 10.5, y = 71, z = -3.2 }, dim = DRONE_DIM } }

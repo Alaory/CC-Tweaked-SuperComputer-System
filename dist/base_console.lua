@@ -974,6 +974,8 @@ for i = 2, #VOICE_FILES do
 if ok then
 local okP, msgP = installAddon(VOICE_FILES[i], "voice", say)
 say(okP and ("Talk pack " .. VOICE_FILES[i] .. " on " .. tostring(msgP)) or ("Talk pack " .. VOICE_FILES[i] .. " not installed: " .. tostring(msgP)))
+
+if not okP and addonPath(VOICE_FILES[i]) then pcall(loadAddon, VOICE_FILES[i]) end
 end
 end
 elseif a == "remove" then
@@ -986,7 +988,7 @@ for _, l in ipairs(VOICE.command(words)) do say(l) end
 else
 say("The base can TALK (an optional add-on, kept on a data floppy): greets people near the base,")
 say("says warnings out loud, answers  base, status?  in chat. Needs a Speaker next to the computer")
-say("or on the cable, a data floppy with ~40 KB free and the internet. Type:  voice install")
+say("or on the cable, data floppies with ~260 KB free in all (3 files, each ~65-80 KB) and the internet. Type:  voice install")
 end
 
 elseif cmd == "pocket" then
