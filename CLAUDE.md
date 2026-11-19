@@ -938,7 +938,7 @@ PneumaticCraft drone rides, turtle mapping/surveys, and an AE2 ME network view.
   text-to-speech service music.madefor.cc/tts?text= (DFPWM; the owner tested `speaker play` on it in game) ->
   cc.audio.dfpwm decoder -> playAudio on EVERY speaker (peripheral.hasType speaker; waits for
   speaker_audio_empty, gives up after 40 tries); phrases <= 80 chars cached on the data floppy (voice/<hash>.dfpwm,
-  CONFIG.voice.cacheKB 200, oldest out first; never on the computer). WHO IS AT THE BASE = the ENVIRONMENT DETECTOR's scan (the
+  CONFIG.voice.cacheKB 200 for ALL floppies together, oldest out first; never on the computer; never into a floppy's reserved room = floppyReserve(); THE CACHE FILLED EVERY FLOPPY before: cacheKB per folder + a new folder on whichever floppy had the most room - the owner: "disk12/drone_logs.dat not saved (7 KB free)" with the map already on the helpers. Base side (base_theme, works with an old add-on too): voiceCacheFiles / voiceCacheBytes / freeFloppyRoom / trimVoiceCache (mapWorker every 10 min + `disks move`); moveDataFile first deletes old speech on the file's OWN floppy, then counts speech as room elsewhere; `disks` shows the speech cache per floppy. test_helpers 10, test_voice). WHO IS AT THE BASE = the ENVIRONMENT DETECTOR's scan (the
   owner: "it makes sure the player is near the system"; VOICE.useEnv, `voice detector on|off`): VOICE.tick
   runs ENV.scan every voice.scanEvery 5 s; players in ENV.data.ents (kind player, radius CONFIG.env.range) -
   named by ENV.nameOf (owner uuid / only player near the base), unnamed ones get the Player Detector's

@@ -22,7 +22,7 @@
 -- Console: voice [on|off|say <text>|greet|announce|chat|alarm on|off|volume <0-3>|range <n>|name <w>]
 
 VOICE = VOICE or {}
-VOICE.VERSION = 7
+VOICE.VERSION = 8
 VOICE.queue = VOICE.queue or {}
 VOICE.near = VOICE.near or {}           -- [name] = true while near the base
 VOICE.greeted = VOICE.greeted or {}     -- [name] = os.clock() of the last greeting
@@ -167,10 +167,13 @@ local function hash(s)
   return string.format("%08x%08x", h1, h2)
 end
 -- the cache folder on a DATA floppy (never on the computer)
+-- (never into the room a floppy keeps for the data files - floppyReserve, base_theme)
+local function cacheKeep() return floppyReserve and floppyReserve() or 16 * 1024 end
 function VOICE.cacheDir()
   local best
+  local keep = cacheKeep()
   for _, d in ipairs(mountedDisks and mountedDisks() or {}) do
-    if d.data and (d.free or 0) > 16 * 1024 and (not best or d.free > best.free) then best = d end
+    if d.data and (d.free or 0) > keep and (not best or d.free > best.free) then best = d end
   end
   return best and fs.combine(best.mount, "voice") or nil
 end
@@ -202,26 +205,27 @@ function VOICE.audio(text)
   local data = h.readAll()
   h.close()
   if not data or #data < 100 then return nil, "no audio came back" end
-  -- short, common phrases are kept (at most cacheKB on the floppy; the oldest go first)
-  if path and #text <= 80 then
+  -- short, common phrases are kept: at most cacheKB on ALL floppies together (the oldest go
+  -- first) and never into a floppy's reserved room. (Before: cacheKB PER FOLDER, and a new
+  -- folder on whichever floppy had the most room - the cache filled every floppy.)
+  if path and #text <= 80 and fs.getFreeSpace(fs.getDir(dir)) - #data >= cacheKeep() then
     pcall(fs.makeDir, dir)
     local max = (tonumber(VOICE.cfg("cacheKB", 200)) or 200) * 1024
-    local list = fs.list(dir)
-    local age = {}
-    for _, f in ipairs(list) do
-      local okA, at = pcall(fs.attributes, fs.combine(dir, f))
-      age[f] = okA and type(at) == "table" and (at.modified or at.created) or 0
-    end
-    table.sort(list, function(x, y) return age[x] < age[y] end)
-    local used = cacheUsed(dir)
-    local i = 1
-    while used + #data > max and i <= #list do
-      local f = fs.combine(dir, list[i])
-      used = used - fs.getSize(f)
-      pcall(fs.delete, f)
-      i = i + 1
-    end
-    if used + #data <= max then
+    if voiceCacheFiles then
+      local files = voiceCacheFiles()                -- (every floppy, oldest first)
+      local used = 0
+      for _, f in ipairs(files) do used = used + f.size end
+      local i = 1
+      while used + #data > max and i <= #files do
+        pcall(fs.delete, files[i].path)
+        used = used - files[i].size
+        i = i + 1
+      end
+      if used + #data <= max then
+        local w = fs.open(path, "wb")
+        if w then w.write(data) w.close() end
+      end
+    elseif cacheUsed(dir) + #data <= max then        -- (an old base: this folder only)
       local w = fs.open(path, "wb")
       if w then w.write(data) w.close() end
     end

@@ -139,18 +139,92 @@ end
 -- dataPath cache is reset so the next save / read finds it). Not program files
 -- (.lua), logs (they keep their .old partner) or anything in a folder (map ...).
 -- Returns the new path, or nil.
+-- ===== the voice add-on's SPEECH CACHE (voice/*.dfpwm on the data floppies) =====
+-- It is only a cache (fetched again when needed), so data files always come first. The old
+-- add-on capped it PER FLOPPY and wrote to the floppy with the most room - every time that
+-- changed it started a new cache there, so it crept over EVERY floppy and filled each to its
+-- last ~16 KB (the owner: "disk12/drone_logs.dat not saved (7 KB free)" with the map already
+-- off the floppies). These run on the base, also with an old add-on.
+-- every cached phrase on every floppy, oldest first: { path, size, at, mount }
+function voiceCacheFiles()
+  local out = {}
+  for _, d in ipairs(mountedDisks()) do
+    local dir = fs.combine(d.mount, "voice")
+    if fs.isDir(dir) then
+      for _, f in ipairs(fs.list(dir)) do
+        local p = fs.combine(dir, f)
+        local okA, at = pcall(fs.attributes, p)
+        out[#out + 1] = { path = p, size = fs.getSize(p) or 0, mount = d.mount,
+                          at = okA and type(at) == "table" and (at.modified or at.created) or 0 }
+      end
+    end
+  end
+  table.sort(out, function(a, b) if a.at ~= b.at then return a.at < b.at end return a.path < b.path end)
+  return out
+end
+function voiceCacheBytes(mount)
+  local n = 0
+  for _, f in ipairs(voiceCacheFiles()) do if not mount or f.mount == mount then n = n + f.size end end
+  return n
+end
+-- what a floppy keeps free for data files (the map keeps it too)
+function floppyReserve()
+  if MAP and MAP.floppyKeep then
+    local ok, k = pcall(MAP.floppyKeep)
+    if ok and type(k) == "number" then return k end
+  end
+  return 16 * 1024
+end
+-- delete the oldest cached speech on one floppy until `need` bytes are free there
+function freeFloppyRoom(mount, need)
+  if fs.getFreeSpace(mount) >= need then return true end
+  for _, f in ipairs(voiceCacheFiles()) do
+    if f.mount == mount then
+      pcall(fs.delete, f.path)
+      if fs.getFreeSpace(mount) >= need then return true end
+    end
+  end
+  return fs.getFreeSpace(mount) >= need
+end
+-- the whole cache at most CONFIG.voice.cacheKB (all floppies together), and no floppy
+-- under its reserve because of it. Returns how many phrases went.
+function trimVoiceCache()
+  local v = CONFIG.voice or {}
+  local max = (tonumber(v.cacheKB) or 200) * 1024
+  local files = voiceCacheFiles()
+  local total, n = 0, 0
+  for _, f in ipairs(files) do total = total + f.size end
+  local keep = floppyReserve()
+  for _, f in ipairs(files) do
+    local low = fs.getFreeSpace(f.mount) < keep
+    if total > max or low then
+      if pcall(fs.delete, f.path) then total, n = total - f.size, n + 1 end
+    end
+  end
+  return n, total
+end
+
 function moveDataFile(path, text)
   local dir, name = fs.getDir(path), fs.getName(path)
-  if name:find("%.lua$") or name:find("%.log$") then return nil end
   local disks = mountedDisks()
   local here
   for _, d in ipairs(disks) do if d.data and d.mount == dir then here = d end end
   if not here then return nil end
-  local best
+  -- first: cached speech on its OWN floppy makes room (any file there, also .lua / .log)
+  if freeFloppyRoom(dir, #text + 4096) then
+    if writeSafe(path, text) then return path end
+  end
+  if name:find("%.lua$") or name:find("%.log$") then return nil end
+  -- else: the data floppy with the most room, counting the cached speech there
+  local best, bestRoom
   for _, d in ipairs(disks) do
-    if d.data and d ~= here and d.free >= #text + 8192 and (not best or d.free > best.free) then best = d end
+    if d.data and d ~= here then
+      local room = (d.free or 0) + voiceCacheBytes(d.mount)
+      if room >= #text + 8192 and (not best or room > bestRoom) then best, bestRoom = d, room end
+    end
   end
   if not best then return nil end
+  if not freeFloppyRoom(best.mount, #text + 8192) then return nil end
   local np = fs.combine(best.mount, name)
   if not writeSafe(np, text) then pcall(fs.delete, np) return nil end
   pcall(fs.delete, path)

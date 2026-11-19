@@ -1213,6 +1213,25 @@ newBody = pack3
 installAddon("voice_talk3.lua", "voice", function() end)
 loadfile = realLoadfile
 CHECK(io.open(SRC_DIR .. "/base_console.lua"):read("a"):find("pcall(voiceUpdate, log)", 1, true), "upgrade also updates the voice files")
+-- THE CACHE CREPT OVER EVERY FLOPPY (the owner: "disk12/drone_logs.dat not saved (7 KB free)" with the map
+-- already on the helpers): cacheKB was PER FOLDER and each new phrase went to the floppy with the most room ->
+-- a cache folder on every floppy, each filled to ~16 KB free. Now: cacheKB for ALL floppies together, and
+-- never into a floppy's reserved room.
+http = { get = function(u) return { readAll = function() return string.rep("s", 12000) end, close = function() end } end }
+for _, f in ipairs(voiceCacheFiles()) do fs.delete(f.path) end
+for i = 1, 80 do VOICE.audio("cache spread phrase number " .. i) end
+local totalC = voiceCacheBytes()
+CHECK(totalC > 0 and totalC <= 200 * 1024, "the speech cache on ALL floppies together stays under cacheKB (" ..
+      math.floor(totalC / 1024) .. " KB)")
+for _, d in ipairs(mountedDisks()) do
+  if d.data then
+    CHECK(d.free >= floppyReserve(), "the cache never takes " .. d.mount .. "'s reserved room (" ..
+          math.floor(d.free / 1024) .. " KB free)")
+  end
+end
+http = realHttp
+for _, f in ipairs(voiceCacheFiles()) do fs.delete(f.path) end
+
 -- RELOAD (voice update loads the add-on and the packs again): every hook once, not twice
 local nHooks = { #VOICE.chatHooks, #VOICE.idleExtra, #VOICE.greetExtra, #VOICE.eventHooks, #VOICE.patterns, #VOICE.tickHooks }
 local nIntents = #VOICE.INTENTS

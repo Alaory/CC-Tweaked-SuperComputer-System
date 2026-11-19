@@ -139,18 +139,92 @@ end
 
 
 
+
+
+
+
+
+
+
+function voiceCacheFiles()
+local out = {}
+for _, d in ipairs(mountedDisks()) do
+local dir = fs.combine(d.mount, "voice")
+if fs.isDir(dir) then
+for _, f in ipairs(fs.list(dir)) do
+local p = fs.combine(dir, f)
+local okA, at = pcall(fs.attributes, p)
+out[#out + 1] = { path = p, size = fs.getSize(p) or 0, mount = d.mount,
+at = okA and type(at) == "table" and (at.modified or at.created) or 0 }
+end
+end
+end
+table.sort(out, function(a, b) if a.at ~= b.at then return a.at < b.at end return a.path < b.path end)
+return out
+end
+function voiceCacheBytes(mount)
+local n = 0
+for _, f in ipairs(voiceCacheFiles()) do if not mount or f.mount == mount then n = n + f.size end end
+return n
+end
+
+function floppyReserve()
+if MAP and MAP.floppyKeep then
+local ok, k = pcall(MAP.floppyKeep)
+if ok and type(k) == "number" then return k end
+end
+return 16 * 1024
+end
+
+function freeFloppyRoom(mount, need)
+if fs.getFreeSpace(mount) >= need then return true end
+for _, f in ipairs(voiceCacheFiles()) do
+if f.mount == mount then
+pcall(fs.delete, f.path)
+if fs.getFreeSpace(mount) >= need then return true end
+end
+end
+return fs.getFreeSpace(mount) >= need
+end
+
+
+function trimVoiceCache()
+local v = CONFIG.voice or {}
+local max = (tonumber(v.cacheKB) or 200) * 1024
+local files = voiceCacheFiles()
+local total, n = 0, 0
+for _, f in ipairs(files) do total = total + f.size end
+local keep = floppyReserve()
+for _, f in ipairs(files) do
+local low = fs.getFreeSpace(f.mount) < keep
+if total > max or low then
+if pcall(fs.delete, f.path) then total, n = total - f.size, n + 1 end
+end
+end
+return n, total
+end
+
 function moveDataFile(path, text)
 local dir, name = fs.getDir(path), fs.getName(path)
-if name:find("%.lua$") or name:find("%.log$") then return nil end
 local disks = mountedDisks()
 local here
 for _, d in ipairs(disks) do if d.data and d.mount == dir then here = d end end
 if not here then return nil end
-local best
+
+if freeFloppyRoom(dir, #text + 4096) then
+if writeSafe(path, text) then return path end
+end
+if name:find("%.lua$") or name:find("%.log$") then return nil end
+
+local best, bestRoom
 for _, d in ipairs(disks) do
-if d.data and d ~= here and d.free >= #text + 8192 and (not best or d.free > best.free) then best = d end
+if d.data and d ~= here then
+local room = (d.free or 0) + voiceCacheBytes(d.mount)
+if room >= #text + 8192 and (not best or room > bestRoom) then best, bestRoom = d, room end
+end
 end
 if not best then return nil end
+if not freeFloppyRoom(best.mount, #text + 8192) then return nil end
 local np = fs.combine(best.mount, name)
 if not writeSafe(np, text) then pcall(fs.delete, np) return nil end
 pcall(fs.delete, path)

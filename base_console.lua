@@ -483,6 +483,8 @@ function handleCommand(line)
             (fs.getDir(cur2) ~= fs.getDir(cur1) and (" -> " .. fs.getDir(cur2)) or "") .. ", mining, turtles, AE2 names)")
       end
       local movedMap = 0
+      local okV, nV = pcall(trimVoiceCache)             -- old speech off the floppies (it is only a cache)
+      if okV and (nV or 0) > 0 then say("Speech cache:     removed " .. nV .. " old phrase(s) to make room") end
       local okO, nO = pcall(MAP.offload, 100000)        -- map files off the computer (+ off the floppies onto the helpers)
       if okO then movedMap = nO or 0 end
       if hasData then pcall(MAP.save, true) end         -- (the rest of the map, as before)
@@ -528,7 +530,9 @@ function handleCommand(line)
       if #list == 0 then say("No floppy disks found (Disk Drives next to this computer or on the network).") end
       for _, d in ipairs(list) do
         local role = d.data and "DATA" or (d.installer and "INSTALLER" or (d.empty and "empty" or "other"))
-        say(string.format(" %-7s %-10s %4d KB free  %s", d.mount, role, math.floor(d.free / 1024), tostring(d.label or "")))
+        local vc = voiceCacheBytes(d.mount)
+        say(string.format(" %-7s %-10s %4d KB free  %s", d.mount, role, math.floor(d.free / 1024), tostring(d.label or "")) ..
+            (vc > 0 and ("  (speech cache " .. math.ceil(vc / 1024) .. " KB)") or ""))
       end
       say("This computer: " .. math.floor(fs.getFreeSpace("/") / 1024) .. " KB free.   'disks data' = use empty floppies for data")
       -- storage helpers (store.lua on computers on the cable): the map goes there FIRST

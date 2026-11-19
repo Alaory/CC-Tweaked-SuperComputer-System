@@ -203,3 +203,33 @@ end
 local okN = saveFileSafe(fullest .. "/mining.dat", string.rep("m", 20000))
 CHECK(not okN and state.offloadAt == nil and state.offloadLeft == nil, "a failed data save starts the map move at once")
 for _, m in ipairs({ "disk9", "disk10", "disk11" }) do FILES[m .. "/junk.bin"] = nil end
+
+-- 10) THE SPEECH CACHE gives way to data files (the owner: "disk12/drone_logs.dat not saved (7 KB free)":
+-- the voice add-on's cache had crept over every floppy)
+local function fillCache(m, n)
+  for i = 1, n do FILES[m .. "/voice/p" .. m .. i .. ".dfpwm"] = string.rep("v", 9000) end
+end
+for _, m in ipairs({ "disk9", "disk10", "disk11" }) do
+  fillCache(m, 8)
+  FILES[m .. "/junk.bin"] = string.rep("x", math.max(0, fs.getFreeSpace(m) - 5000))
+end
+local logs2 = string.rep("drone log ", 2100)            -- ~21 KB, 5 KB free everywhere
+local okC, npC = saveFileSafe("disk10/drone_logs.dat", logs2)
+CHECK(okC and npC == "disk10/drone_logs.dat" and FILES["disk10/drone_logs.dat"] == logs2,
+      "drone_logs.dat saved IN PLACE: old speech on its own floppy made room (" .. tostring(npC) .. ")")
+CHECK(voiceCacheBytes("disk10") < 8 * 9000 and voiceCacheBytes("disk9") == 8 * 9000,
+      "only the oldest speech on THAT floppy went")
+-- the cache over every floppy: at most cacheKB in all, no floppy under its reserve because of it
+for _, m in ipairs({ "disk9", "disk10", "disk11" }) do FILES[m .. "/junk.bin"] = nil end
+CONFIG.voice = CONFIG.voice or {}
+local was = CONFIG.voice.cacheKB
+CONFIG.voice.cacheKB = 100
+local nT, left = trimVoiceCache()
+CHECK(nT > 0 and left <= 100 * 1024 and voiceCacheBytes() <= 100 * 1024, "trimVoiceCache: all floppies together under cacheKB (" ..
+      math.floor(voiceCacheBytes() / 1024) .. " KB)")
+FILES["disk9/junk.bin"] = string.rep("x", math.max(0, fs.getFreeSpace("disk9") - 10000))
+trimVoiceCache()
+CHECK(voiceCacheBytes("disk9") == 0 or fs.getFreeSpace("disk9") >= floppyReserve(),
+      "a floppy under its reserve loses its cached speech")
+FILES["disk9/junk.bin"] = nil
+CONFIG.voice.cacheKB = was

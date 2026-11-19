@@ -478,6 +478,14 @@ for _, d in ipairs(mountedDisks()) do
 if d.data and (d.free or 0) < MAP.floppyKeep() then every = 10 end
 end
 end
+
+if os.clock() - (state.vcTrimAt or -1000) > 600 then
+state.vcTrimAt = os.clock()
+local okT, nT = pcall(trimVoiceCache)
+if okT and (nT or 0) > 0 and sysLog then
+sysLog("Speech cache: removed " .. nT .. " old phrase(s) - the floppies keep room for the data files", "INFO")
+end
+end
 if os.clock() - (state.offloadAt or -1000) > every then
 state.offloadAt = os.clock()
 local okO, _, left = pcall(MAP.offload)

@@ -22,7 +22,7 @@
 
 
 VOICE = VOICE or {}
-VOICE.VERSION = 7
+VOICE.VERSION = 8
 VOICE.queue = VOICE.queue or {}
 VOICE.near = VOICE.near or {}
 VOICE.greeted = VOICE.greeted or {}
@@ -167,10 +167,13 @@ end
 return string.format("%08x%08x", h1, h2)
 end
 
+
+local function cacheKeep() return floppyReserve and floppyReserve() or 16 * 1024 end
 function VOICE.cacheDir()
 local best
+local keep = cacheKeep()
 for _, d in ipairs(mountedDisks and mountedDisks() or {}) do
-if d.data and (d.free or 0) > 16 * 1024 and (not best or d.free > best.free) then best = d end
+if d.data and (d.free or 0) > keep and (not best or d.free > best.free) then best = d end
 end
 return best and fs.combine(best.mount, "voice") or nil
 end
@@ -203,25 +206,26 @@ local data = h.readAll()
 h.close()
 if not data or #data < 100 then return nil, "no audio came back" end
 
-if path and #text <= 80 then
+
+
+if path and #text <= 80 and fs.getFreeSpace(fs.getDir(dir)) - #data >= cacheKeep() then
 pcall(fs.makeDir, dir)
 local max = (tonumber(VOICE.cfg("cacheKB", 200)) or 200) * 1024
-local list = fs.list(dir)
-local age = {}
-for _, f in ipairs(list) do
-local okA, at = pcall(fs.attributes, fs.combine(dir, f))
-age[f] = okA and type(at) == "table" and (at.modified or at.created) or 0
-end
-table.sort(list, function(x, y) return age[x] < age[y] end)
-local used = cacheUsed(dir)
+if voiceCacheFiles then
+local files = voiceCacheFiles()
+local used = 0
+for _, f in ipairs(files) do used = used + f.size end
 local i = 1
-while used + #data > max and i <= #list do
-local f = fs.combine(dir, list[i])
-used = used - fs.getSize(f)
-pcall(fs.delete, f)
+while used + #data > max and i <= #files do
+pcall(fs.delete, files[i].path)
+used = used - files[i].size
 i = i + 1
 end
 if used + #data <= max then
+local w = fs.open(path, "wb")
+if w then w.write(data) w.close() end
+end
+elseif cacheUsed(dir) + #data <= max then
 local w = fs.open(path, "wb")
 if w then w.write(data) w.close() end
 end
