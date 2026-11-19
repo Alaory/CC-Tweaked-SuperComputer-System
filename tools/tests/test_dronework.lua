@@ -324,6 +324,25 @@ CONFIG.drone.workChest = wc
 -- the console command
 local out = handleCommand("dw test") or {}
 CHECK(table.concat(out, " "):find("Work chest:", 1, true), "console: dw test")
+-- in CHAT at the chest (the owner: "how do I test it when the chest is far away from the console")
+dr = world()
+state.players[1].p = { x = CH.x + 2.5, y = CH.y + 1, z = CH.z + 0.5 }
+local toldT = {}
+local tellT = chatTell
+chatTell = function(n, t) toldT[#toldT + 1] = t end
+handleChat({ name = "Alaory", uuid = state.ownerUuid, msg = "$" .. CONFIG.chat.command .. " test" })
+run(dr)
+chatTell = tellT
+local chatText = table.concat(toldT, "\n")
+CHECK(chatText:find("OK: AE2 put 1 Stone", 1, true) and chatText:find("brings 1 Stone to Alaory", 1, true),
+      "chat  $drone test : the steps come back in chat\n" .. chatText)
+CHECK(chatText:find("DRONE TEST: it works", 1, true), "... and the drone's result too (in chat, not only on the monitor)")
+-- a stranger cannot
+toldT = {}
+chatTell = function(n, t) toldT[#toldT + 1] = t end
+handleChat({ name = "Griefer", uuid = "x-1", msg = "$" .. CONFIG.chat.command .. " test" })
+chatTell = tellT
+CHECK(#dr.queue == 0 and table.concat(toldT, " "):find("Only", 1, true), "only the owner can run the drone test")
 pushNote = realNote
 
 ------------------------------------------------------------------ places

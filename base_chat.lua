@@ -150,7 +150,7 @@ function handleChat(m)
     reply("Use: " .. c .. " home | " .. c .. " to <place" ..
           ((owner or CONFIG.chat.othersToPlayers) and "|player" or "") .. "> | " .. c .. " back | " ..
           c .. " places | " .. c .. " status | " .. c .. " stop")
-    if owner then reply("Places: " .. c .. " mark <name> (stand ON the block) | " .. c .. " unmark <name> | " .. c .. " workchest (stand ON the drones' work chest)") end
+    if owner then reply("Places: " .. c .. " mark <name> (stand ON the block) | " .. c .. " unmark <name> | " .. c .. " workchest (stand ON the drones' work chest) | " .. c .. " test (test it, standing near it)") end
     if owner then reply("Owner: " .. c .. " allow/deny <name> | " ..
                         c .. " allowed | " .. c .. " yes/no <name> | " .. c .. " notify on/all/off") end
 
@@ -206,6 +206,14 @@ function handleChat(m)
     else
       reply("Work chest spot saved: " .. fmtPos(x, y, z) .. ". Several empty chests are on the cable - pick this one with CHEST > on the DRONE WORK page.")
     end
+
+  elseif sub == "test" then
+    -- test the drones' WORK CHEST from where it is (the console may be far away): the base side
+    -- (AE2 -> chest -> AE2), then a drone takes one item out and drops it at your feet
+    if not owner then reply("Only " .. tostring(state.owner) .. " can test the drones.") return end
+    local item = words[3] and SUPPLY.fullName(words[3]) or nil
+    local okT, err = pcall(DW.test, reply, item, function(m) chatTell(name, m) end, c .. " test")
+    if not okT then reply("Test stopped: " .. cleanErr(err)) end
 
   elseif sub == "places" then
     local n = {}

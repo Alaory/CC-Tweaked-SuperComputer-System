@@ -665,7 +665,9 @@ PneumaticCraft drone rides, turtle mapping/surveys, and an AE2 ME network view.
   DW.test / console `dw test [item]` (the owner: "how do I test the drone chest"): DW.notReady, the chest's spot + distance
   from the drones' home, 1 PLAIN item (DW.TEST_ITEMS: the first AE2 has, or the one named) AE2 -> work chest -> AE2;
   then, with the owner within 48 of the chest, DW.giftRun(owner, item, 1) = a drone takes it out of the chest and drops
-  it at their feet -> DONE / WARNING note "DRONE TEST: ..."; farther away it says to come closer. test_dronework.lua.
+  it at their feet -> DONE / WARNING note "DRONE TEST: ..."; farther away it says to come closer. CHAT `$drone test
+  [item]` (owner; the owner: "how do I test it when the chest is far from the console"): the same, every line +
+  the drone's result in chat (DW.test(say, item, tell, again)). test_dronework.lua.
 - PLACES BY STANDING ON THEM (base_drones.lua playerBlock / posArg): chat `$drone mark <name>` (the
   block under you; `feet` = where you stand) / `$drone unmark`, console `save <name> me|feet|x y z`;
   posArg(words, i) = "x y z" | a saved place | me | feet | @player - used by `dw chest`, `schem build`.

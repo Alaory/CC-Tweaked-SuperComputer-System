@@ -354,8 +354,11 @@ end
 -- say(line) prints; the drone part ends with a DONE / WARNING note. Returns true when it got that far.
 DW.TEST_ITEMS = { "minecraft:cobblestone", "minecraft:dirt", "minecraft:stone", "minecraft:cobbled_deepslate",
                   "minecraft:oak_planks", "minecraft:coal", "minecraft:torch" }
-function DW.test(say, item)
+-- tell(msg): the drone part's result also goes there (chat: `$drone test` at the chest - the console
+-- may be far away); again = the command to type again ("dw test" / "$drone test").
+function DW.test(say, item, tell, again)
   say = say or function() end
+  again = again or "dw test"
   local bad = DW.notReady()
   if bad then say("NOT READY: " .. bad) return false end
   local c = DW.chestName()
@@ -375,7 +378,7 @@ function DW.test(say, item)
       if okV and (plain or 0) > 0 then item = it break end
     end
   end
-  if not item then say("No test item in AE2 (cobblestone, dirt, stone ...) - name one:  dw test <item>") return false end
+  if not item then say("No test item in AE2 (cobblestone, dirt, stone ...) - name one:  " .. again .. " <item>") return false end
   local n, why = DW.giveToChest(item, 1)
   if n <= 0 then say("FAILED: AE2 -> work chest: " .. tostring(why)) return false end
   local got = chestCount(item)
@@ -390,22 +393,26 @@ function DW.test(say, item)
   local p = owner and DW.playerAt(owner)
   local function near(pp) return pp and math.abs(pp.x - x) <= 48 and math.abs(pp.z - z) <= 48 and math.abs(pp.y - y) <= 32 end
   if not near(p) then
-    say("The base side works. For the DRONE part stand within 48 blocks of the work chest and type  dw test  again")
+    say("The base side works. For the DRONE part stand within 48 blocks of the work chest and type  " .. again .. "  again")
     say("(a drone then takes 1 " .. prettify(item) .. " out of the chest and drops it at your feet).")
     return true
   end
   local ok, msg = DW.giftRun(owner, item, 1, function(done, delivered, w)
+    local m
     if done then
-      pushNote("DONE", "DRONE TEST: it works - the drone took " .. delivered .. " " .. prettify(item) ..
-               " out of the work chest and dropped it next to you", C.good)
+      m = "DRONE TEST: it works - the drone took " .. delivered .. " " .. prettify(item) ..
+          " out of the work chest and dropped it next to you"
+      pushNote("DONE", m, C.good)
     else
-      pushNote("WARNING", "DRONE TEST: the drone trip did not work: " .. tostring(w or "?") ..
-               " - is the work chest's position right (dw chest " .. c .. " me, standing ON it)?", C.warn)
+      m = "DRONE TEST: the drone trip did not work: " .. tostring(w or "?") ..
+          " - is the work chest's position right? Stand ON the chest and type  $drone workchest"
+      pushNote("WARNING", m, C.warn)
     end
+    if tell then pcall(tell, m) end
   end, function() return near(DW.playerAt(owner)) end)
   if not ok then say("FAILED: no drone trip: " .. tostring(msg)) return false end
   say("  " .. msg .. " - watch it: it flies to the chest, takes it, comes to you and drops it.")
-  say("  A message box says how it went (DRONE TEST ...).")
+  say("  You get a message when it is over (DRONE TEST ...).")
   return true
 end
 
