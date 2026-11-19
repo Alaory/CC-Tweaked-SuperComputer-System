@@ -965,6 +965,8 @@ VOICE.hash = {}
 VOICE.patterns = {}
 VOICE.idleExtra = {}
 VOICE.commands = {}
+VOICE.farHooks = {}
+
 
 VOICE.dupIntents = {}
 function VOICE.addIntents(list)
@@ -1216,7 +1218,16 @@ end
 
 local how = VOICE.addressed(who, text, near)
 if how then
-if not near and not isOwner(who) then return false end
+if not near and not isOwner(who) then
+for _, fn in ipairs(VOICE.farHooks) do
+local okF, c = pcall(fn, who, text)
+if okF and type(c) == "string" then
+if chatTell then chatTell(who, c) end
+return true
+end
+end
+return false
+end
 local c, sp = VOICE.converse(who, text, how == "direct")
 if c then reply(c, sp) return true end
 if sp and near and not VOICE.isQuiet() then VOICE.say(sp) return true end

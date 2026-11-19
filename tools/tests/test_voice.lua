@@ -1057,6 +1057,87 @@ B3.giftLog[#B3.giftLog + 1] = { who = "Kevin", item = "minecraft:diamond", n = 5
 k3("lol nice")
 local th = k3("thanks so much!!")
 CHECK(th:find("welcome", 1, true) or th:find("earned", 1, true) or th:find("pleasure", 1, true), "thanks right after a gift: a special answer: " .. th)
+-- TAXI (the owner: "we know players' bed positions (overworld only) - offer a free drone trip from the base
+-- to their home or the other way")
+local realDet, realStart = det, startRide
+local rides = {}
+local P3 = { kevin = { x = HOME.x + 3, y = HOME.y, z = HOME.z, respawnPosition = { x = HOME.x + 900, y = 70, z = HOME.z - 400 },
+                       respawnDimension = "minecraft:overworld" } }
+det = { getPlayer = function(n) return P3[tostring(n):lower()] end, getOnlinePlayers = function() return { "Kevin", owner } end }
+startRide = function(name, dest, owner2)
+  rides[#rides + 1] = { name = name, dest = dest }
+  state.lastRide = state.lastRide or {}
+  state.lastRide[name:lower()] = (state.lastRide[name:lower()] or 0) + 1
+end
+VOICE.convo, VOICE.pend, VOICE.games = {}, {}, {}
+ENV.data.ents = { { kind = "player", name = "Kevin", dist = 3 } }
+VOICE.mem().kevin = { visits = 1, rep = 0 }
+CHECK(k3("base take me home"):find("friends of the base", 1, true) and #rides == 0, "a stranger gets no taxi (friends only): " .. table.concat(told, " | "))
+VOICE.mem().kevin.rep = 20
+CHECK(k3("base take me home"):find("on the house", 1, true) or told[1]:find("takes you home", 1, true), "a regular at the base: a free ride home: " .. table.concat(told, " | "))
+CHECK(#rides == 1 and rides[1].dest.x == HOME.x + 900 and rides[1].dest.y == 71 and rides[1].dest.name == "your bed", "... to their bed (one above it)")
+CHECK(not table.concat(told, " "):find(tostring(HOME.x + 900), 1, true), "the bed's coordinates are never said in chat")
+CHECK(k3("base take me home"):find("short break", 1, true) and #rides == 1, "5 min between rides")
+CLOCK = CLOCK + 400
+-- at home: "base, take me to the base" (far away - only the taxi is answered there)
+ENV.data.ents = {}
+place("Kevin", 900)
+P3.kevin.x, P3.kevin.z = HOME.x + 905, HOME.z - 398
+told = {}
+VOICE.chat({ name = "Kevin", msg = "base, take me to the base pls" })
+CHECK(#rides == 2 and rides[2].dest.name == "the base", "far away at home: base, take me to the base -> a ride to the base: " .. table.concat(told, " | "))
+told = {}
+VOICE.chat({ name = "Kevin", msg = "base tell me a joke" })
+CHECK(#told == 0, "far away, anything else is still not answered")
+CLOCK = CLOCK + 400
+P3.kevin.x, P3.kevin.z = HOME.x + 3000, HOME.z
+told = {}
+VOICE.chat({ name = "Kevin", msg = "base take me to the base" })
+CHECK(#rides == 2 and table.concat(told, " "):find("near your bed", 1, true), "neither at the base nor near the bed: no ride: " .. table.concat(told, " | "))
+-- bed in the Nether / no bed / bed at the base
+P3.kevin.x, P3.kevin.z = HOME.x + 3, HOME.z
+place("Kevin", 3)
+ENV.data.ents = { { kind = "player", name = "Kevin", dist = 3 } }
+P3.kevin.respawnDimension = "minecraft:the_nether"
+CHECK(k3("base take me home"):find("not in the overworld", 1, true), "a bed in the Nether: no taxi")
+P3.kevin.respawnDimension, P3.kevin.respawnPosition = "minecraft:overworld", nil
+CHECK(k3("base take me home"):find("no bed set", 1, true), "no bed: it says so")
+P3.kevin.respawnPosition = { x = HOME.x + 10, y = HOME.y, z = HOME.z }
+CHECK(k3("base take me home"):find("right here at the base", 1, true), "a bed at the base: no taxi needed")
+P3.kevin.respawnPosition = { x = HOME.x + 900, y = 70, z = HOME.z - 400 }
+-- the daily limit, taxi off
+setSetting("voice.taxiDaily", 2)
+CHECK(k3("base take me home"):find("2 free rides", 1, true), "the daily limit (voice.taxiDaily)")
+resetSetting("voice.taxiDaily")
+setSetting("voice.taxi", false)
+VOICE.mem().kevin.taxi = nil
+CHECK(k3("base free ride"):find("closed", 1, true), "voice.taxi off: closed")
+resetSetting("voice.taxi")
+-- the offer: once a visit, after 4 min at the base
+VOICE.mem().kevin.taxi = nil
+VOICE.pend, VOICE.games, VOICE.taxiOffered, VOICE.taxiNext = {}, {}, {}, 0
+VOICE.since = VOICE.since or {}
+VOICE.since.Kevin = CLOCK - 300
+told, VOICE.queue = {}, {}
+for _, fn in ipairs(VOICE.tickHooks) do fn(CLOCK, { Kevin = true }) end
+CHECK(table.concat(told, " "):find("ride to your bed", 1, true) and VOICE.pend.kevin and VOICE.pend.kevin.yes == "#taxi:bed", "after 4 min: the offer: " .. table.concat(told, " | "))
+local nr = #rides
+k3("yes")
+CHECK(#rides == nr + 1 and rides[#rides].dest.name == "your bed", "yes -> the ride home")
+VOICE.taxiNext = 0
+told = {}
+for _, fn in ipairs(VOICE.tickHooks) do fn(CLOCK, { Kevin = true }) end
+CHECK(not table.concat(told, " "):find("ride to your bed", 1, true), "... only once a visit")
+-- the owner: no title / limits needed
+P3[owner:lower()] = { x = HOME.x + 2, y = HOME.y, z = HOME.z, respawnPosition = { x = HOME.x - 7000, y = 64, z = HOME.z }, respawnDimension = "minecraft:overworld" }
+ENV.data.ents = { { kind = "player", name = owner, dist = 2 } }
+place(owner, 2)
+told = {}
+VOICE.chat({ name = owner, msg = "base fly me home" })
+CHECK(rides[#rides].name == owner and rides[#rides].dest.x == HOME.x - 7000, "the owner: home even 7000 blocks away (no limit)")
+det, startRide = realDet, realStart
+place(owner, 5000)
+ENV.data.ents = { { kind = "player", name = "Kevin", dist = 3 } }
 -- RELOAD (voice update loads the add-on and the packs again): every hook once, not twice
 local nHooks = { #VOICE.chatHooks, #VOICE.idleExtra, #VOICE.greetExtra, #VOICE.eventHooks, #VOICE.patterns, #VOICE.tickHooks }
 local nIntents = #VOICE.INTENTS

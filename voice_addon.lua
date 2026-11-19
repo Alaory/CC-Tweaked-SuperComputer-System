@@ -965,6 +965,8 @@ VOICE.hash = {}                        -- ["adv"] = function(who, arg) for menu 
 VOICE.patterns = {}                    -- function(who, raw, ws) -> chat, spoken (exact shapes, tried first)
 VOICE.idleExtra = {}                   -- function(nearNow, who) -> text said / true (more idle talk)
 VOICE.commands = {}                    -- ["gifts"] = function(words, say) - console  voice <word> ...  from a pack
+VOICE.farHooks = {}                    -- function(who, text) -> chat reply: a player FAR from the base said its name
+                                       --  (normally ignored - TALK PACK 3: "base, take me to the base" from home)
 -- add intents ({ id, keys, reply = lines | function(who, ws, raw, key) }); the base's own come first on a tie
 VOICE.dupIntents = {}                  -- ids a pack tried to add twice (skipped - the tests fail on any)
 function VOICE.addIntents(list)
@@ -1216,7 +1218,16 @@ function VOICE.chatCore(m)
   -- meant for the base: understood loosely and answered (spoken at the base + privately in chat)
   local how = VOICE.addressed(who, text, near)
   if how then
-    if not near and not isOwner(who) then return false end
+    if not near and not isOwner(who) then
+      for _, fn in ipairs(VOICE.farHooks) do
+        local okF, c = pcall(fn, who, text)
+        if okF and type(c) == "string" then
+          if chatTell then chatTell(who, c) end
+          return true
+        end
+      end
+      return false
+    end
     local c, sp = VOICE.converse(who, text, how == "direct")
     if c then reply(c, sp) return true end
     if sp and near and not VOICE.isQuiet() then VOICE.say(sp) return true end    -- (a small reaction, spoken only)

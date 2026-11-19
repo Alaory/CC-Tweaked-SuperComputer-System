@@ -1090,6 +1090,17 @@ PneumaticCraft drone rides, turtle mapping/surveys, and an AE2 ME network view.
   at hangman - rematch?" (eventHooks keep r.lastGame; 40 % on a greeting, yes = the game again), MILESTONES (chunks
   mapped / turtles / players met / gifts given - the biggest new one said once, only with someone there), a
   special answer to "thanks" within 5 min of a gift, who visits the most, uptime. test_voice part 21.
+  TAXI (pack 3; the owner: "we know players' bed positions (overworld only) - offer a free drone trip from the base
+  to their home or vice versa"): V.bedOf = the Player Detector's respawnPosition (respawnDimension must be the
+  drone's dimension), NEVER said to anyone. V.taxi(who, "bed"|"base"|nil): the owner always; allowed list; friends
+  from voice.taxiTitle ("regular") up; voice.taxi off = closed. Only base -> bed (player AT the base) or bed ->
+  base (within 64 of the bed); a bed within 48 of the base = no taxi; voice.taxiMax 5000 blocks, voice.taxiDaily 6,
+  5 min apart (the owner: no limits); the ride = startRide(name, dest, true) (base_chat - the best free drone);
+  counted only when state.lastRide changed (startRide tells why it could not). Offer (tick hook): ONCE per visit
+  (VOICE.since) to a friend at the base 4+ min whose bed is 150+ blocks away -> pend yesno "#taxi:bed". FAR AWAY:
+  chatCore answered nobody away from the base; VOICE.farHooks (core) get a player far away who used its name -
+  pack 3 answers only taxi phrases (checked on the WHOLE message: the base's name "base" is stripped from
+  intents, so "take me to the base" lost its key word). test_voice part 21 TAXI.
 - REMOVED AGAIN: remote access in a web browser (Cloud Catcher; base_remote.lua / remote.lua / pocket.lua
   in local mode on the base) - the owner: "taking space and seems useless". removeOldFiles (base_theme.lua,
   run by inventory.lua at start) deletes its files (remote.lua, base_remote.lua, cloud.lua on the computer
@@ -1197,7 +1208,7 @@ The old Block UI (stone buttons, bedrock theme) is gone.
 | base_pocket.lua / pocket.lua | the pocket remote: base side (pairing, status, actions, messages) / the program on the pocket computer |
 | voice_addon.lua | OPTIONAL add-on on a data floppy (`voice install`): the base talks through Speakers - greetings, warnings, chat answers, alarm |
 | voice_talk.lua | its TALK PACK (also on a data floppy): 140+ more chat interactions, games, idle talk |
-| voice_talk3.lua | TALK PACK 3: visit streaks, mail between players, Minecraft glossary + recipes, jokes on a topic, spirit mob, ship, rematches, milestones |
+| voice_talk3.lua | TALK PACK 3: free drone TAXI for friends (base <-> their bed), visit streaks, mail between players, Minecraft glossary + recipes, jokes on a topic, spirit mob, ship, rematches, milestones |
 | voice_talk2.lua | TALK PACK 2: friendship + titles, badges, player memory, daily secret word, more games, ideas, guides, styles, holidays, diary, FRIENDSHIP GIFTS by drone |
 
 ## The owner's setup (found out the hard way)

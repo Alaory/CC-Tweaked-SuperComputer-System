@@ -48,10 +48,10 @@ base base_workers.lua 31645 5213537c
 pocket pocket.lua 25876 c940e352
 pocket upgrade.lua 10858 725e2cf0
 miner miner.lua 119568 5955c787
-voice voice_addon.lua 103427 08a1d5d1
+voice voice_addon.lua 103895 c0117b0f
 voice voice_talk.lua 68323 c0d847ee
 voice voice_talk2.lua 95014 ada4dabf
-voice voice_talk3.lua 31687 a3881f7b
+voice voice_talk3.lua 40201 dc14f4c5
 slim:base inventory.lua 2514 c4ee454b dist/inventory.lua
 slim:base startup.lua 833 00f3544b dist/startup.lua
 slim:base node.lua 119205 f13d339a dist/node.lua
@@ -102,7 +102,7 @@ slim:base base_workers.lua 20056 35c9a84a dist/base_workers.lua
 slim:pocket pocket.lua 21398 2b717c01 dist/pocket.lua
 slim:pocket upgrade.lua 7424 b8d25fcc dist/upgrade.lua
 slim:miner miner.lua 80631 4d0a0a8f dist/miner.lua
-slim:voice voice_addon.lua 83379 59c33741 dist/voice_addon.lua
+slim:voice voice_addon.lua 83569 cdce6e1b dist/voice_addon.lua
 slim:voice voice_talk.lua 63197 664cc5c9 dist/voice_talk.lua
 slim:voice voice_talk2.lua 84485 950b55c1 dist/voice_talk2.lua
-slim:voice voice_talk3.lua 28134 b2cd78e5 dist/voice_talk3.lua
+slim:voice voice_talk3.lua 34861 2361accc dist/voice_talk3.lua

@@ -10,6 +10,8 @@
 --               "last time you won at hangman - rematch?" when a player comes back.
 --   MILESTONES  the base's own achievements (chunks mapped, turtles, visitors, gifts) said once each.
 --   THANKS      a thank you right after a gift gets a special answer.
+--   TAXI        free drone rides for friends of the base: from the base to their bed, from their bed to the
+--               base ("base, take me to the base" - far away, only that is answered). Offered once a visit.
 --   OTHERS      who visits the most, how long it has been running, more would-you-rather / this-or-that.
 if not (VOICE and VOICE.addIntents and VOICE.badge and VOICE.addBadge and VOICE.giftOnce) then return end
 local V = VOICE
@@ -477,6 +479,142 @@ add(V.chatHooks, {
     end
   end,
 })
+
+-- ===== 9b. TAXI (the owner: "we know players' bed positions (overworld only) - offer them a free drone trip
+-- from the base to their home or the other way") =====
+-- Who: the owner, players on the allowed list, and friends of the base from voice.taxiTitle ("regular") up.
+-- From the base (they are AT it) to their bed, or from near their bed (within 64 blocks) to the base - never
+-- anywhere else. Their bed = the Player Detector's respawnPosition, overworld only; never told to anyone.
+-- At most voice.taxiDaily (6) rides a day, 5 min apart, voice.taxiMax (5000) blocks (the owner: no limits).
+-- Offered ONCE per visit to a friend who has stood at the base 4 min and lives far away. The ride itself is the
+-- normal chat ride (startRide, base_chat.lua): the best free drone with air picks them up.
+local RANK = { stranger = 0, visitor = 1, regular = 2, friend = 3, ["good friend"] = 4, ["best friend"] = 5, boss = 9 }
+local function taxiOn() return V.cfg("taxi", true) ~= false end
+local function homeXZ() local h = CONFIG.drone and CONFIG.drone.home return h and h.x and h end
+function V.bedOf(name)
+  if not det then return nil, "I have no Player Detector, so I cannot find your bed" end
+  local fn = det.getPlayer or det.getPlayerPos
+  if not fn then return nil, "my Player Detector cannot see beds" end
+  local ok, p = pcall(fn, name)
+  if not ok or type(p) ~= "table" then return nil, "I cannot see you right now" end
+  local b = p.respawnPosition
+  if type(b) ~= "table" or not tonumber(b.x) then return nil, "you have no bed set - sleep in one first", p end
+  local d = p.respawnDimension
+  if d and tostring(d) ~= (DRONE_DIM or "minecraft:overworld") then return nil, "your bed is not in the overworld - drones only fly there", p end
+  return { x = math.floor(b.x), y = math.floor(b.y), z = math.floor(b.z) }, p
+end
+local function taxiAllowed(who)
+  if V.isOwner(who) then return true end
+  if not taxiOn() then return false, "The free drone taxi is closed right now." end
+  if V.isFriend(who) then return true end
+  local need = tostring(V.cfg("taxiTitle", "regular"))
+  if (RANK[V.titleOf(who)] or 0) >= (RANK[need] or 2) then return true end
+  return false, "The free drone taxi is for friends of the base (from " .. need .. " up). You are my " .. V.titleOf(who) ..
+                ". Visit, play games, be kind - say friendship level to see how far you are."
+end
+local function flat(a, b) return math.max(math.abs(a.x - b.x), math.abs(a.z - b.z)) end
+local function baseDest()
+  local w = findWaypoint and findWaypoint("Base")
+  if w then return { kind = "waypoint", name = "the base", x = w.x, y = w.y, z = w.z } end
+  local h = homeXZ()
+  if h then return { kind = "waypoint", name = "the base", x = h.x, y = h.y, z = h.z } end
+end
+-- where = "bed" | "base" | nil (which way: at the base -> bed, near the bed -> base)
+function V.taxi(who, where)
+  local ok, why = taxiAllowed(who)
+  if not ok then return why end
+  if not startRide then return "The drone taxi needs a newer base program (upgrade)." end
+  local bed, p = V.bedOf(who)
+  if not bed then return "No taxi: " .. tostring(p) .. "." end
+  local h = homeXZ()
+  if not h then return "I do not know where the base is (CONFIG.drone.home)." end
+  local at = { x = tonumber(p.x) or bed.x, z = tonumber(p.z) or bed.z }
+  local atBase = isNear(who) or flat(at, h) <= 64
+  local atBed = flat(at, bed) <= 64
+  if flat(bed, h) <= 48 then return "Your bed is right here at the base. No taxi needed!" end
+  if not where then where = atBase and "bed" or (atBed and "base") or "bed" end
+  if where == "bed" and not atBase then
+    return atBed and "You are at home already. Want to come to the base? Say: base, take me to the base."
+           or "I fly from the base to your bed, or from your bed to the base. Come to the base first."
+  end
+  if where == "base" and not atBed then
+    return atBase and "You are at the base already!" or "I only pick you up near your bed. Go home first, then say: base, take me to the base."
+  end
+  local r = rec(who)
+  local owner = V.isOwner(who)
+  if not owner then
+    local max = tonumber(V.cfg("taxiMax", 5000)) or 5000
+    if flat(bed, h) > max then return "Your bed is " .. flat(bed, h) .. " blocks away - the taxi goes " .. max .. " blocks at most." end
+    r.taxi = (type(r.taxi) == "table" and r.taxi.d == today()) and r.taxi or { d = today(), n = 0 }
+    local daily = tonumber(V.cfg("taxiDaily", 6)) or 6
+    if r.taxi.n >= daily then return "That was your " .. daily .. " free rides for today. More tomorrow!" end
+    if r.taxi.at and os.clock() - r.taxi.at < 300 then return "The taxi needs a short break - try again in " .. math.ceil((300 - (os.clock() - r.taxi.at)) / 60) .. " min." end
+  end
+  local dest = (where == "bed") and { kind = "coords", name = "your bed", x = bed.x, y = bed.y + 1, z = bed.z } or baseDest()
+  if not dest then return "I do not know where the base is." end
+  state.lastRide = state.lastRide or {}
+  local before = state.lastRide[tostring(who):lower()]
+  startRide(who, dest, true)
+  if state.lastRide[tostring(who):lower()] == before then return nil end    -- (startRide said why in chat)
+  if not owner then
+    r.taxi.n, r.taxi.at = r.taxi.n + 1, os.clock()
+    V.saveMem()
+  end
+  if where == "bed" then
+    return fill(pick({ "Free ride home, on the house! Hold on tight, {name}.", "The base taxi takes you home, {name}. Enjoy the view!" }), who) ..
+           " (To come back from home, say: base, take me to the base.)"
+  end
+  return fill(pick({ "Hop on, {name}! Next stop: the base.", "Taxi to the base is on its way, {name}." }), who)
+end
+V.hash.taxi = function(who, arg) return V.taxi(who, arg ~= "" and arg or nil) end
+V.addIntents({
+  L("taxihome", { "take me home", "fly me home", "ride home", "drone home", "take me to my bed", "fly me to my bed", "ride to my bed",
+      "take me to my house", "fly me to my house", "taxi home", "free ride home" }, function(w) return V.taxi(w, "bed") end),
+  L("taxibase", { "take me back", "bring me back", "fly me back", "pick me up", "come get me", "take me to the base",
+      "fly me to the base" }, function(w) return V.taxi(w, "base") end),
+  L("taxi", { "taxi", "free ride", "drone ride", "drone taxi", "can i get a ride", "give me a ride" }, function(w) return V.taxi(w, nil) end),
+})
+-- far from the base (at home): only the taxi is answered
+add(V.farHooks, {
+  function(who, text)
+    -- (the whole message: the base's own name is "base" by default, and "take me to the base" needs that word)
+    local t = " " .. table.concat(V.fix(V.norm(text)), " ") .. " "
+    for _, ph in ipairs({ " to the base ", " to base ", " take me back ", " bring me back ", " fly me back ", " pick me up ",
+                          " come get me ", " taxi ", " ride ", " take me home ", " fly me home " }) do
+      if t:find(ph, 1, true) then return V.taxi(who, "base") or "OK." end
+    end
+    return nil
+  end,
+})
+-- the offer: once per visit, a friend who has been at the base 4 min and lives far away
+V.taxiOffered = V.taxiOffered or {}
+V.taxiNext = 0
+add(V.tickHooks, {
+  function(now, nearNow)
+    if not taxiOn() or now < (V.taxiNext or 0) then return end
+    V.taxiNext = now + 10
+    local h = homeXZ()
+    if not h then return end
+    for name in pairs(nearNow or {}) do
+      local k = tostring(name):lower()
+      local visit = V.since and V.since[name]
+      if name ~= "someone" and not V.isOwner(name) and visit and now - visit >= 240 and V.taxiOffered[k] ~= visit
+         and not V.pend[k] and not V.games[k] and taxiAllowed(name) then
+        V.taxiOffered[k] = visit
+        local bed = V.bedOf(name)
+        if bed and flat(bed, h) > 150 and flat(bed, h) <= (tonumber(V.cfg("taxiMax", 5000)) or 5000) then
+          V.pend[k] = { kind = "yesno", yes = "#taxi:bed", till = os.clock() + 120 }
+          V.openConvo(name)
+          tell(name, "Friends ride free: want a drone ride to your bed (" .. flat(bed, h) .. " blocks)? Type yes. From home, type: base, take me to the base.")
+          V.say(name .. ", want a free drone ride home? Type yes.")
+          return
+        end
+      end
+    end
+  end,
+})
+add(V.TIPS, { "Tip: friends of the base ride free. Say: take me home. From home, say: base, take me to the base." })
+add(V.MORE, { { "a free drone ride home (friends)", "#taxi:bed" } })
 
 -- ===== 10. more choices for the games of pack 1 + idle =====
 add(V.MUSINGS, { "Somebody asked me what a shulker box is. I explained. I love explaining.",
