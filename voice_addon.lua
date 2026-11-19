@@ -22,7 +22,7 @@
 -- Console: voice [on|off|say <text>|greet|announce|chat|alarm on|off|volume <0-3>|range <n>|name <w>]
 
 VOICE = VOICE or {}
-VOICE.VERSION = 9
+VOICE.VERSION = 10
 VOICE.queue = VOICE.queue or {}
 VOICE.near = VOICE.near or {}           -- [name] = true while near the base
 VOICE.greeted = VOICE.greeted or {}     -- [name] = os.clock() of the last greeting
@@ -86,21 +86,52 @@ local function envPlayers()
       end
     end
   end
-  -- unnamed ones: the Player Detector's online players nearest the base, not named yet
+  -- WHO IS WHO with several players (the owner: "when more than one person uses it it acts weird"): the
+  -- detector cannot name them, so unnamed ones were given the Player Detector's names IN SCAN ORDER - an order
+  -- that changes between scans, so Steve and Alex swapped names every few seconds (greetings, answers and
+  -- "you are hurt" to the wrong one; a swap looked like leaving + arriving). Now each one gets the online
+  -- player whose real position is nearest to where the detector saw it: VOICE.detAt (the detector's own spot,
+  -- learned from a player it CAN name: their position minus the scan's relative x y z), else the base.
+  local h = homePos()
+  local P = {}
+  for _, pe in ipairs(state.players or {}) do
+    local pp = pe.p
+    local online = not state.online or state.online[tostring(pe.name):lower()]
+    if online and pp and tonumber(pp.x) and inOverworld(pe) then P[tostring(pe.name):lower()] = pe end
+  end
+  for _, e in ipairs(d.ents) do
+    local n = tostring(e.name or ""):lower()
+    if e.kind == "player" and P[n] and tonumber(e.x) and n ~= "player" then
+      local pp = P[n].p
+      VOICE.detAt = { x = math.floor(pp.x - e.x + 0.5), y = math.floor((tonumber(pp.y) or 0) - (e.y or 0) + 0.5),
+                      z = math.floor(pp.z - e.z + 0.5) }
+    end
+  end
   if #unnamed > 0 then
-    local h = homePos()
-    local cands = {}
-    for _, pe in ipairs(state.players or {}) do
-      local pp = pe.p
-      local online = not state.online or state.online[tostring(pe.name):lower()]
-      if online and pp and tonumber(pp.x) and h and h.x and inOverworld(pe) and not taken[tostring(pe.name):lower()] then
-        cands[#cands + 1] = { name = pe.name, d = math.abs(pp.x - h.x) + math.abs(pp.z - h.z) }
+    local at = VOICE.detAt or (h and h.x and { x = h.x, y = h.y or 64, z = h.z })
+    local pairs_ = {}
+    for i, e in ipairs(unnamed) do
+      for k, pe in pairs(P) do
+        if not taken[k] then
+          local pp = pe.p
+          local d2
+          if at and tonumber(e.x) then
+            local ax, ay, az = at.x + e.x, at.y + (e.y or 0), at.z + e.z
+            d2 = (pp.x - ax) ^ 2 + ((tonumber(pp.y) or ay) - ay) ^ 2 + (pp.z - az) ^ 2
+          elseif h and h.x then
+            d2 = (math.abs(pp.x - h.x) + math.abs(pp.z - h.z)) ^ 2
+          end
+          if d2 then pairs_[#pairs_ + 1] = { i = i, k = k, d = d2 } end
+        end
       end
     end
-    table.sort(cands, function(a, b) return a.d < b.d end)
+    table.sort(pairs_, function(a, b) if a.d ~= b.d then return a.d < b.d end return a.k < b.k end)
+    local got, used = {}, {}
+    for _, pr in ipairs(pairs_) do
+      if not got[pr.i] and not used[pr.k] then got[pr.i], used[pr.k] = P[pr.k].name, true end
+    end
     for i, e in ipairs(unnamed) do
-      local c = cands[i]
-      out[#out + 1] = { name = c and c.name or "someone", dist = e.dist, env = true, guessed = true, hp = e.hp, max = e.max }
+      out[#out + 1] = { name = got[i] or "someone", dist = e.dist, env = true, guessed = true, hp = e.hp, max = e.max }
     end
   end
   return out
@@ -146,15 +177,21 @@ end
 -- sentence it has already said it makes no sound" - flip a coin 10 times: "It is heads." was spoken once,
 -- the rest went to chat only). The 30-s "same words" rule is for things it says by itself (warnings ...).
 function VOICE.say(text, sound, answer)
-  if VOICE.cfg("on", true) == false then return false end
+  if VOICE.cfg("on", true) == false or VOICE.mute then return false end
   text = tostring(text or ""):gsub("%s+", " ")
   if text == "" then return false end
   if #text > 200 then text = text:sub(1, 197) .. "..." end
   local last = VOICE.said[text]
   if not answer and last and os.clock() - last < 30 then return false end      -- (the same words just now)
   VOICE.said[text] = os.clock()
-  if #VOICE.queue >= 6 then table.remove(VOICE.queue, 1) end    -- (never a long backlog)
-  VOICE.queue[#VOICE.queue + 1] = { text = text, sound = sound }
+  -- (never a long backlog - but with several people talking, an ANSWER is never the one dropped: the
+  --  oldest thing it said by itself goes first)
+  if #VOICE.queue >= 6 then
+    local drop = 1
+    for i, q in ipairs(VOICE.queue) do if not q.answer then drop = i break end end
+    table.remove(VOICE.queue, drop)
+  end
+  VOICE.queue[#VOICE.queue + 1] = { text = text, sound = sound, answer = answer or nil }
   os.queueEvent("voice_say")
   return true
 end
@@ -367,12 +404,35 @@ end
 -- ===== personality =====
 -- "shh": no small talk / reactions / idle chatter for a while (answers still come)
 function VOICE.isQuiet() return VOICE.quietUntil ~= nil and os.clock() < VOICE.quietUntil end
-local function pick(list) return list[math.random(1, #list)] end
+-- a random line - a SHUFFLE BAG per list (the owner: "new players hear the same sentences"): every line comes
+-- once, in random order, before any comes again; at a refill the ones said last go to the back of the new bag
+local RECENT = setmetatable({}, { __mode = "k" })
+local function pick(list)
+  local n = #list
+  if n <= 1 then return list[1] end
+  local b = RECENT[list]
+  if not b or b.n ~= n then b = { n = n, bag = {}, last = {} } RECENT[list] = b end
+  if #b.bag == 0 then
+    local recent = {}
+    for _, j in ipairs(b.last) do recent[j] = true end
+    local fresh, old = {}, {}
+    for j = 1, n do if recent[j] then old[#old + 1] = j else fresh[#fresh + 1] = j end end
+    for j = #fresh, 2, -1 do local r = math.random(1, j) fresh[j], fresh[r] = fresh[r], fresh[j] end
+    -- (the bag is used from its END: the recent ones first in the table = last out)
+    for _, j in ipairs(old) do b.bag[#b.bag + 1] = j end
+    for _, j in ipairs(fresh) do b.bag[#b.bag + 1] = j end
+  end
+  local i = table.remove(b.bag)
+  b.last[#b.last + 1] = i
+  while #b.last > math.floor(n / 2) do table.remove(b.last, 1) end
+  return list[i]
+end
 local function fill(line, name)
   if name and VOICE.callName then local okN, n = pcall(VOICE.callName, name) if okN and n then name = n end end
   line = tostring(line):gsub("{name}", tostring(name or "friend"))
   if line:find("{", 1, true) then
     line = line:gsub("{owner}", tostring((knownOwner and knownOwner()) or state.owner or "my owner"))
+    line = line:gsub("{botl}", VOICE.botName and VOICE.botName():lower() or "base")
     line = line:gsub("{bot}", VOICE.botName and VOICE.botName() or "the base")
   end
   return line
@@ -1281,7 +1341,12 @@ function VOICE.chatCore(m)
       if sp then local okS, s2 = pcall(VOICE.restyle, who, sp) if okS and type(s2) == "string" then sp = s2 end end
     end
     if chatTell then chatTell(who, c) end
-    if near then VOICE.say(sp or c, nil, true) end
+    if near then
+      local line = sp or c
+      -- several people at the base: SAY who the answer is for (in chat it goes to them alone)
+      if othersNear(who) > 0 and not line:lower():find(who:lower(), 1, true) then line = who .. ", " .. line end
+      VOICE.say(line, nil, true)
+    end
     VOICE.openConvo(who)
   end
   -- a running game (guess my number / quiz / rock paper scissors): the reply needs no name
@@ -1634,7 +1699,66 @@ function VOICE.lonelyAnswer(q, who)
 end
 
 -- greeting a player who just arrived (varied; remembers first meetings and long absences)
-function VOICE.greet(name)
+-- GREETINGS (the owner: "when new players visit they hear the same sentences") - picked without repeats
+VOICE.HELLO_NEW = {
+  "Hello {name}. I have not seen you before. I am {bot}, the computer of this base.",
+  "Oh, a new face! Welcome, {name}. I am {bot}, and I run this place for {owner}.",
+  "Well hello there, {name}. First time here? I am {bot}, the base computer. Be nice and we will get along.",
+  "Greetings, {name}. You are standing in {owner}'s base. I am {bot}, and I see everything.",
+  "A visitor! Hi {name}. I am {bot}. Type {botl} help in chat to see what I can do.",
+  "Hey {name}! I do not think we have met. I am {bot}, the talking computer. Yes, really.",
+  "Welcome, {name}. My sensors say this is your first visit. I am {bot}.",
+  "Oh! Someone new. Hello {name}, I am {bot}. Talk to me in chat, just start with my name.",
+  "Hello {name}. I am {bot}, the brain of this base. The turtles do the hard work.",
+  "Hi {name}, welcome to {owner}'s base. I am {bot}. I am watching you. In a friendly way.",
+  "New visitor detected: {name}. Hello! I am {bot}. I like visitors who do not break things.",
+  "Well, well. {name}. Fresh face. I am {bot}, the computer here. Ask me for a joke sometime.",
+}
+VOICE.HELLO_AGAIN = {
+  "Oh, it is {name} again.", "Welcome back, {name}.", "{name} is here again. I remember you.",
+  "Hello again, {name}. I hope you wiped your boots.", "Look who is back. Hi {name}.", "{name}! Back for more?",
+  "Visitor near the base: {name}.", "Ah, {name}. My favourite visitor. Do not tell the others.",
+  "Hi {name}, nice to see you again.", "{name} returns! The turtles will be thrilled.",
+  "Hello {name}. Visit number {n}. I am counting.", "Back again, {name}? You must like it here.",
+}
+VOICE.HELLO_FRIEND = {
+  "Hey {name}, good to see you.", "Hello {name}. Make yourself at home.", "Hi {name}!",
+  "{name}! The best part of my day.", "Welcome back, {name}. The kettle is on. Well, I do not have a kettle.",
+  "There you are, {name}.", "Good to see you, {name}. Everything is running smoothly.",
+  "{name} is here! Turtles, look busy.", "Hello friend. Hi {name}.", "Ah, {name}. Always a pleasure.",
+}
+VOICE.HELLO_OWNER = {
+  "{part}, {name}. Welcome back.", "{name} is back! I missed you.", "Welcome home, {name}.",
+  "Hello boss. Good to see you, {name}.", "{name}, you are back. The base behaved itself. Mostly.",
+  "The boss is here. Everybody look busy. Hi {name}.", "Welcome back, {name}. I kept everything running.",
+  "Hey {name}. Pull up a chair, here is the news.",
+}
+VOICE.HELLO_GROUP = {
+  "Hello {names}! Welcome to the base.", "Oh, a group! Hi {names}.", "Visitors! Welcome, {names}.",
+  "Hello everyone. I see {names}.", "{names}, welcome. Make yourselves at home.",
+  "A party! Hello {names}.", "Hi {names}. Please do not all talk at once. Start with my name in chat.",
+}
+VOICE.ICEBREAK = {
+  { text = "{name}, would you like a quick tour of the base?", yes = "#tour" },
+  { text = "{name}, do you like jokes? I know a few.", yes = "tell me a joke" },
+  { text = "Bored, {name}? I know some games. Want to play one?", yes = "#games" },
+  { text = "{name}, want to try my quiz? I keep score.", yes = "quiz" },
+  { text = "Psst, {name}. Want to know who lives here?", yes = "who lives here" },
+  { text = "{name}, want to hear a fun fact?", yes = "tell me a fact" },
+  { text = "So, {name}. What brings you to this base?", kind = "react",
+    lines = { "Interesting! Make yourself at home, {name}.", "Fair enough. If you need anything, start a message with {botl}.",
+              "Nice. I hope you find what you are looking for, {name}." } },
+  { text = "{name}, what do you think of the base so far?", kind = "react",
+    lines = { "Thank you, {name}. I will tell the turtles.", "Noted, {name}. I keep it running myself, you know.",
+              "Ha. I will pass that on to {owner}." } },
+}
+-- "Steve, Alex and Bob"
+function VOICE.joinNames(list)
+  if #list <= 1 then return list[1] or "" end
+  return table.concat(list, ", ", 1, #list - 1) .. " and " .. list[#list]
+end
+-- quiet = several arrived together: one group line is said instead (memory / notes still kept here)
+function VOICE.greet(name, quiet)
   local mem = VOICE.mem()
   local k = tostring(name):lower()
   local rec = mem[k]
@@ -1644,7 +1768,10 @@ function VOICE.greet(name)
   mem[k].first, mem[k].last, mem[k].visits = rec and rec.first or nowE, nowE, (rec and rec.visits or 0) + 1
   VOICE.saveMem()
   local fun = VOICE.cfg("fun", true) ~= false
-  if name == "someone" then return VOICE.say("Hello there.", "minecraft:block.note_block.chime") end
+  if name == "someone" then
+    if quiet then return end
+    return VOICE.say("Hello there.", "minecraft:block.note_block.chime")
+  end
   if not isOwner(name) then
     VOICE.noteVisitor(name)
     local days = VOICE.lonelyDays()
@@ -1669,26 +1796,44 @@ function VOICE.greet(name)
       end
       return VOICE.say(line, "minecraft:block.note_block.chime")
     end
+    if quiet then return end
     local line
     if fun and away and away > 3600 then
       line = "Long time no see, " .. name .. ". You were away " .. fmtSpan(away) .. "."
     elseif fun then
-      line = fill(pick({ partOfDay() .. ", {name}. Welcome back.", "{name} is back! I missed you.", "Welcome home, {name}." }), name)
+      line = fill(pick(VOICE.HELLO_OWNER):gsub("{part}", partOfDay()), name)
     else
       line = "Welcome back, " .. name .. "."
     end
     return VOICE.say(line .. " " .. VOICE.statusText(true), "minecraft:block.note_block.chime")
   end
+  -- (a new visitor who says nothing gets an ICEBREAKER ~30 s later - VOICE.tick)
+  if not rec and not isFriend(name) then VOICE.newcomer = VOICE.newcomer or {} VOICE.newcomer[k] = os.clock() end
+  -- the first meeting: how to talk to it, privately in chat (a new player does not know it listens)
+  if not rec and chatTell then
+    chatTell(name, fill("Hi {name}! I am {bot}, this base's computer. Talk to me in chat - start with my name: " ..
+                        "{botl} hello, {botl} tell me a joke, {botl} play a game, {botl} help.", name))
+  end
+  if quiet then
+    -- (a stranger in a group still rings the alarm)
+    if not isFriend(name) and VOICE.cfg("alarm", false) and (not VOICE.alarmAt.stranger or os.clock() - VOICE.alarmAt.stranger > 300) then
+      VOICE.alarmAt.stranger = os.clock()
+      VOICE.mute = nil
+      VOICE.say("Intruder alert.", "minecraft:block.bell.use")
+      VOICE.mute = true
+    end
+    return
+  end
   if isFriend(name) then
     if not rec and fun then return VOICE.say("Nice to meet you, " .. name .. ". I am " .. VOICE.botName() .. ", the base computer.", "minecraft:block.note_block.chime") end
-    return VOICE.say(fill(fun and pick({ "Hey {name}, good to see you.", "Hello {name}. Make yourself at home.", "Hi {name}!" }) or "Hello, {name}.", name),
-                     "minecraft:block.note_block.chime")
+    return VOICE.say(fill(fun and pick(VOICE.HELLO_FRIEND) or "Hello, {name}.", name), "minecraft:block.note_block.chime")
   end
   -- a stranger
   if not rec and fun then
-    VOICE.say("Hello " .. name .. ". I have not seen you before. I am " .. VOICE.botName() .. ", and I am watching you.", "minecraft:block.note_block.bell")
+    VOICE.say(fill(pick(VOICE.HELLO_NEW), name), "minecraft:block.note_block.bell")
   else
-    VOICE.say(fill(fun and pick({ "Visitor near the base: {name}.", "Oh, it is {name} again." }) or "Visitor near the base: {name}.", name),
+    local n = (mem[k] and mem[k].visits) or 2
+    VOICE.say(fill(fun and pick(VOICE.HELLO_AGAIN) or "Visitor near the base: {name}.", name):gsub("{n}", tostring(n)),
               "minecraft:block.note_block.bell")
   end
   local now = os.clock()
@@ -1712,6 +1857,7 @@ function VOICE.tick()
   -- LEFT = not seen for voice.leaveAfter (90 s); GREETED again only after being AWAY greetEvery (600 s).
   VOICE.seenNear = VOICE.seenNear or {}
   local leave = tonumber(VOICE.cfg("leaveAfter", 90)) or 90
+  local arrivals = {}
   local every = tonumber(VOICE.cfg("greetEvery", 600)) or 600
   for _, p in ipairs(list) do
     local prev = VOICE.seenNear[p.name]
@@ -1724,8 +1870,7 @@ function VOICE.tick()
       local away = not prev or now - prev > every
       if VOICE.cfg("greet", true) ~= false and away and (not last or now - last > every) then
         VOICE.greeted[p.name] = now
-        VOICE.greet(p.name)
-        for _, fn in ipairs(VOICE.greetExtra) do pcall(fn, p.name) end
+        arrivals[#arrivals + 1] = p.name
       end
     end
     if fun then
@@ -1741,6 +1886,53 @@ function VOICE.tick()
         VOICE.flags["hurt:" .. p.name] = now
         VOICE.say(pick({ "{name}, you are hurt. Maybe eat something.", "Careful {name}, your health is low." }):gsub("{name}", p.name), nil)
       end
+    end
+  end
+  -- greetings: one arrival = its own greeting; SEVERAL at once = one group line (it said one greeting per
+  -- person, one after the other, and the queue dropped some), each still remembered and told how to talk.
+  -- The owner's report (visitors / messages while away) is always said.
+  -- (the owner always gets their own welcome + news; a group is the OTHERS. While a group is greeted the packs'
+  --  per-player lines - badges, titles, streaks, mail - go to chat only: six of them pushed the greeting itself
+  --  out of the speech queue)
+  local others, named = {}, {}
+  for _, n in ipairs(arrivals) do
+    if isOwner(n) then
+      VOICE.greet(n)
+      for _, fn in ipairs(VOICE.greetExtra) do pcall(fn, n) end
+    else
+      others[#others + 1] = n
+      if n ~= "someone" then named[#named + 1] = n end
+    end
+  end
+  local group = #others >= 2
+  if group then
+    if #named > 0 then
+      VOICE.say(pick(VOICE.HELLO_GROUP):gsub("{names}", VOICE.joinNames(named)), "minecraft:block.note_block.chime")
+    else
+      VOICE.say("Hello everyone.", "minecraft:block.note_block.chime")
+    end
+  end
+  for _, n in ipairs(others) do
+    VOICE.mute = group or nil
+    pcall(VOICE.greet, n, group)
+    for _, fn in ipairs(VOICE.greetExtra) do pcall(fn, n) end
+    VOICE.mute = nil
+  end
+  -- ICEBREAKERS (the owner: "more interactions when a new player visits"): a first-time visitor who has not
+  -- talked to it within ~30 s gets ONE offer - a tour, a joke, a game, a question - answered with "yes" in chat
+  for k, t0 in pairs(VOICE.newcomer or {}) do
+    local nm
+    for _, p in ipairs(list) do if p.name:lower() == k then nm = p.name end end
+    if not nm or now - t0 > 600 then VOICE.newcomer[k] = nil
+    elseif now - t0 >= 30 and not VOICE.pend[k] and not VOICE.games[k] and not (VOICE.convo[k] and now < VOICE.convo[k])
+           and fun and not VOICE.isQuiet() then
+      VOICE.newcomer[k] = nil
+      local ice = pick(VOICE.ICEBREAK)
+      VOICE.pend[k] = { kind = ice.kind or "yesno", yes = ice.yes, lines = ice.lines, till = now + 120 }
+      VOICE.openConvo(nm, 120)
+      local line = fill(ice.text, nm)
+      if chatTell then chatTell(nm, line .. (ice.kind == "react" and "" or "  (type yes or no)")) end
+      VOICE.say(line, nil, true)
     end
   end
   -- who left (now and then a goodbye) - only after `leave` s out of sight (a few steps out is not leaving)

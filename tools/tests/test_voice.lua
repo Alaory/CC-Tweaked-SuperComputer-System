@@ -61,6 +61,9 @@ VOICE.tick()
 CHECK(said():find(owner, 1, true) and said():find("working", 1, true) and VOICE.queue[1].sound, "the owner is welcomed back (+ how the turtles are): " .. said())
 speakAll()
 CHECK(#gets == 1 and gets[1]:find("music.madefor.cc/tts", 1, true) and played > 0, "spoken: text-to-speech fetched, played on the speaker")
+VOICE.said = {}
+VOICE.say("Short and sweet.")                          -- (phrases up to 80 letters are kept; the greeting may be longer)
+speakAll()
 CHECK(fs.list("disk7/voice")[1] ~= nil, "the phrase is kept on the DATA floppy (voice/)")
 VOICE.tick()
 CHECK(#VOICE.queue == 0, "not greeted again while staying")
@@ -93,7 +96,9 @@ CHECK(#VOICE.queue == 0, "info messages are not said")
 -- 5. a stranger comes near: "Visitor"; the alarm only when switched on
 place("Steve", 20)
 VOICE.tick()
-CHECK(said():find("Steve", 1, true) and said():find("not seen you before", 1, true) and not said():find("Intruder", 1, true),
+local firstLine = false                              -- (one of the first-meeting lines - picked at random now)
+for _, l in ipairs(VOICE.HELLO_NEW) do if said():find(l:gsub("{name}", "Steve"):sub(1, 20), 1, true) then firstLine = true end end
+CHECK(said():find("Steve", 1, true) and firstLine and not said():find("Intruder", 1, true),
       "a stranger met for the first time: introduced, no alarm (off by default): " .. said())
 VOICE.queue = {}
 setSetting("voice.alarm", true)
@@ -1436,3 +1441,129 @@ VOICE.say("The rain has stopped.")
 CHECK(#VOICE.queue == 1, "its own lines (weather, warnings) are still not said twice within 30 s")
 chatTell = tell3
 envDet = saveEnv
+
+-- 24. SEVERAL PEOPLE + NEW VISITORS (the owner: "when more than one person uses it it acts weird", "new players
+--     hear the same sentences")
+local SCAN2 = {}
+local env2 = envDet
+envDet = setmetatable({ scanEntities = function(r) return SCAN2 end }, { __index = {} })
+local tell4 = chatTell
+local told4 = {}
+chatTell = function(n, t) told4[#told4 + 1] = n .. ": " .. t end
+state.ownerUuid = "u-owner"
+state.players = {}
+state.online = { [owner:lower()] = true, steve = true, alex = true }
+VOICE.detAt = nil
+local function at(name, dx, dz)
+  for _, e in ipairs(state.players) do
+    if e.name == name then e.p = { x = HOME.x + dx, y = HOME.y, z = HOME.z + dz } e.dim = "minecraft:overworld" return end
+  end
+  state.players[#state.players + 1] = { name = name, p = { x = HOME.x + dx, y = HOME.y, z = HOME.z + dz }, dim = "minecraft:overworld" }
+end
+at(owner, 5000, 0)
+at("Steve", 5, 0)
+at("Alex", -6, 2)
+-- the detector cannot name either (two near the base): unnamed players at their relative spots
+local function names()
+  ENV.scanAt = -100
+  ENV.scan()
+  local byDist = {}
+  for _, p in ipairs(VOICE.nearPlayers()) do byDist[math.floor(p.dist + 0.5)] = p.name end
+  return byDist
+end
+local wrong = 0
+for round = 1, 6 do
+  if round % 2 == 1 then
+    SCAN2 = { { name = "minecraft:player", x = 5, y = 0, z = 0 }, { name = "minecraft:player", x = -6, y = 0, z = 2 } }
+  else
+    SCAN2 = { { name = "minecraft:player", x = -6, y = 0, z = 2 }, { name = "minecraft:player", x = 5, y = 0, z = 0 } }
+  end
+  local b = names()
+  if b[5] ~= "Steve" or b[6] ~= "Alex" then wrong = wrong + 1 end
+end
+CHECK(wrong == 0, "two players the detector cannot name: each keeps HIS name, whatever the scan order (" .. wrong .. " of 6 wrong)")
+-- they walk around: the names follow where they really are
+at("Steve", -6, 2) at("Alex", 5, 0)
+SCAN2 = { { name = "minecraft:player", x = 5, y = 0, z = 0 }, { name = "minecraft:player", x = -6, y = 0, z = 2 } }
+local b2 = names()
+CHECK(b2[5] == "Alex" and b2[6] == "Steve", "they swap places: the names go with them")
+-- the detector learns where it stands from a player it CAN name (the owner by uuid)
+at(owner, 3, 3)
+SCAN2 = { { name = "minecraft:player", uuid = "u-owner", x = 3, y = 0, z = 3 } }
+names()
+CHECK(VOICE.detAt and VOICE.detAt.x == HOME.x and VOICE.detAt.z == HOME.z, "the detector's own spot is learned from the owner")
+at(owner, 5000, 0)
+-- a group arrives at once: ONE greeting naming them, not three in a row (and each new one told how to talk)
+VOICE.near, VOICE.greeted, VOICE.seenNear, VOICE.queue, VOICE.said = {}, {}, {}, {}, {}
+local m = VOICE.mem()
+m.steve, m.alex, m.kim = nil, nil, nil
+at("Steve", 5, 0) at("Alex", -6, 2) at("Kim", 0, 7)
+state.online.kim = true
+SCAN2 = { { name = "minecraft:player", x = 5, y = 0, z = 0 }, { name = "minecraft:player", x = -6, y = 0, z = 2 },
+          { name = "minecraft:player", x = 0, y = 0, z = 7 } }
+ENV.scanAt = -100
+told4 = {}
+VOICE.tick()
+local greetings = 0
+for _, q in ipairs(VOICE.queue) do
+  if q.text:find("Steve", 1, true) or q.text:find("Alex", 1, true) or q.text:find("Kim", 1, true) then greetings = greetings + 1 end
+end
+CHECK(greetings == 1 and said():find("Steve", 1, true) and said():find("Alex", 1, true) and said():find("Kim", 1, true),
+      "3 arrive together: one greeting with all three names: " .. said())
+local tips = 0
+for _, l in ipairs(told4) do if l:find("start with my name", 1, true) then tips = tips + 1 end end
+CHECK(tips == 3, "each new visitor is told (privately in chat) how to talk to it (" .. tips .. ")")
+-- answers to two people: the spoken one says who it is for
+VOICE.queue, VOICE.said = {}, {}
+VOICE.convo, VOICE.pend, VOICE.games = {}, {}, {}
+VOICE.chat({ name = "Steve", msg = "base flip a coin" })
+VOICE.chat({ name = "Alex", msg = "base flip a coin" })
+CHECK(said():find("Steve, ", 1, true) and said():find("Alex, ", 1, true), "several at the base: a spoken answer says who it is for: " .. said())
+-- a full queue never drops an answer while it has its own lines to drop
+VOICE.queue, VOICE.said = {}, {}
+for i = 1, 6 do VOICE.say("idle line " .. i) end
+VOICE.say("Steve, it is heads.", nil, true)
+VOICE.say("Alex, it is tails.", nil, true)
+CHECK(said():find("Steve, it is heads", 1, true) and said():find("Alex, it is tails", 1, true) and #VOICE.queue == 6,
+      "the queue is full: its own lines go, the answers stay")
+-- new visitors one after another: many different first lines (not the same sentence every time)
+local firsts = {}
+for i = 1, 12 do
+  local who = "Visitor" .. i
+  state.online[who:lower()] = true
+  VOICE.queue, VOICE.said = {}, {}
+  VOICE.greet(who)
+  if VOICE.queue[1] then firsts[VOICE.queue[1].text:gsub(who, "X")] = true end
+end
+local nf = 0
+for _ in pairs(firsts) do nf = nf + 1 end
+CHECK(nf >= 9, "12 new visitors: " .. nf .. " different first greetings")
+chatTell = tell4
+envDet = env2
+-- an ICEBREAKER: a new visitor who stays quiet for ~30 s gets one offer; "yes" takes it
+envDet = setmetatable({ scanEntities = function(r) return SCAN2 end }, { __index = {} })
+chatTell = function(n, t) told4[#told4 + 1] = n .. ": " .. t end
+VOICE.near, VOICE.greeted, VOICE.seenNear, VOICE.newcomer, VOICE.pend, VOICE.convo, VOICE.games = {}, {}, {}, {}, {}, {}, {}
+VOICE.quietUntil = nil
+local mm = VOICE.mem()
+mm.newbie = nil
+state.players = {}
+at(owner, 5000, 0)
+at("Newbie", 4, 1)
+state.online = { [owner:lower()] = true, newbie = true }
+SCAN2 = { { name = "Newbie", x = 4, y = 0, z = 1 } }
+ENV.scanAt = -100
+VOICE.tick()
+CHECK(VOICE.newcomer.newbie, "a first-time visitor is noted for an icebreaker")
+told4 = {}
+for _ = 1, 16 do CLOCK = CLOCK + 2 ENV.scanAt = -100 VOICE.tick() end
+local offer = table.concat(told4, " | ")
+CHECK(VOICE.pend.newbie and offer:find("Newbie", 1, true), "after ~30 s of silence: one offer (" .. offer .. ")")
+local P = VOICE.pend.newbie
+told4 = {}
+VOICE.chat({ name = "Newbie", msg = P.kind == "react" and "just exploring" or "yes" })
+CHECK(#told4 > 0 and told4[#told4] ~= "", "the answer gets a reply: " .. tostring(told4[#told4]))
+for _ = 1, 30 do CLOCK = CLOCK + 2 ENV.scanAt = -100 VOICE.tick() end
+CHECK(not VOICE.newcomer.newbie, "only ONE icebreaker per visit")
+chatTell = tell4
+envDet = env2

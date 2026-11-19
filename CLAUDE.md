@@ -993,6 +993,20 @@ PneumaticCraft drone rides, turtle mapping/surveys, and an AE2 ME network view.
   ANSWERS ARE ALWAYS SPOKEN (the owner: "flip a coin" 10x - "It is heads." spoken once, the rest chat only):
   VOICE.say(text, sound, answer) - answer = true skips the 30-s same-words rule (core reply(), the spoken-only
   reaction, pack 2 level-up, pack 3 gift-thanks); its own lines (weather, warnings, idle) keep it. Part 23.
+  SEVERAL PEOPLE (the owner: "when more than one person uses it it acts weird"): the detector cannot name two
+  near the base, and envPlayers gave unnamed ones the Player Detector's names IN SCAN ORDER - it changes, names
+  swapped every scan (answers / greetings / "you are hurt" to the wrong one, swaps = leave + arrive). Now:
+  VOICE.detAt (the detector's spot, learned from a player it CAN name: position minus the scan's relative
+  x y z; else the drone home) + each unnamed one -> the online player nearest to detAt + rel (greedy pairs).
+  Answers spoken with "<name>, " when others are near; a full queue drops its OWN lines first (q.answer);
+  arrivals in one tick: the owner own welcome, 2+ others ONE line (VOICE.HELLO_GROUP, joinNames) + greet(n,
+  quiet) + greetExtra under VOICE.mute (the packs' badge / title lines pushed the greeting out of the queue);
+  a stranger in a group still rings the alarm. NEW VISITORS (the owner: "they hear the same sentences"): pick()
+  = a SHUFFLE BAG per list (every line once, random order, before any again; at a refill the last ~half go to
+  the back; RECENT, weak keys); HELLO_NEW / HELLO_AGAIN ({n} visits)
+  / HELLO_FRIEND / HELLO_OWNER lists; the first meeting tells them in chat how to talk ("start with my name");
+  ICEBREAKER (VOICE.newcomer, VOICE.ICEBREAK): a first-time visitor silent ~30 s gets ONE offer (tour / joke /
+  game / quiz / who lives here / fact = pend yesno; a question = pend react with lines). Part 24.
   ALARM (voice.alarm, default OFF): a stranger arriving / a hostile within alarmRange 12 of the
   Environment Detector (ENV.data.ents) -> bell + spoken, once per 5 min, only when someone is near. Settings
   via `voice on|off|greet|announce|chat|alarm on|off|volume <0-3>|range <n>|name <word>` (setSetting voice.*;
