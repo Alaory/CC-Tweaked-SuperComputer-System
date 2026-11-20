@@ -1705,3 +1705,55 @@ end)()
   setSetting("voice.pitch", 1)
   setSetting("voice.speed", 0.8)
 end)()
+
+-- ===== part 27: CLEARER SPEECH (the owner: "some words are hard to hear - they need to be slowed or said in another tone")
+;(function()
+  -- words espeak says badly -> words it can say
+  local t = VOICE.clarifyText("AE2 has 64 KB free, 50% done -> GPS ok. Radiation 0.1 uSv, x64 diamonds (#3).")
+  CHECK(t:find("A E 2 has", 1, true) and t:find("kilobytes free,", 1, true) and t:find("50 percent", 1, true) and
+        t:find(" to G P S ok.", 1, true) and t:find("micro sieverts,", 1, true) and t:find("times 64", 1, true) and
+        t:find("(number 3).", 1, true), "codes and signs said as words, punctuation kept: " .. t)
+  CHECK(VOICE.clarifyText("Welcome back, Alaory! The farm is fine.") == "Welcome back, Alaory! The farm is fine.",
+        "plain words untouched")
+  -- the owner's own words
+  VOICE.command({ "voice", "sayas", "Alaory", "ah", "lory" })
+  CHECK(VOICE.clarifyText("Hello Alaory.") == "Hello ah lory.", "voice sayas: a name said the owner's way (any case)")
+  local list = table.concat(VOICE.command({ "voice", "sayas" }), "\n")
+  CHECK(list:find("alaory -> ah lory", 1, true), "voice sayas lists them")
+  VOICE.command({ "voice", "sayas", "alaory", "off" })
+  CHECK(VOICE.clarifyText("Hello Alaory.") == "Hello Alaory.", "voice sayas <word> off: as written again")
+  -- the text that goes to the speech service is the clear one
+  VOICE.queue, VOICE.said = {}, {}
+  gets = {}
+  local http0 = http
+  http = { get = function(url) gets[#gets + 1] = url
+    return { readAll = function() return string.rep("\85", 3000) end, close = function() end } end }
+  VOICE.say("AE2 is 90% full.", nil, true)
+  speakAll()
+  http = http0
+  CHECK(gets[1] and gets[1]:find("A%20E%202", 1, true) and gets[1]:find("percent", 1, true), "sent to the service as words: " .. tostring(gets[1]))
+  -- the sound: two loud "words" with a short gap, a quiet consonant, a pause - then a silence at the end
+  local pcm = {}
+  local function tone(n, amp) for i = 1, n do pcm[#pcm + 1] = math.floor(amp * math.sin(i * 0.3) + 0.5) end end
+  local function hush(n) for _ = 1, n do pcm[#pcm + 1] = 0 end end
+  tone(9600, 100) hush(1440) tone(9600, 100) tone(2400, 15) hush(7200) tone(9600, 100) hush(2400)
+  setSetting("voice.clear", true)
+  local out = VOICE.clarifyPcm(pcm)
+  CHECK(#out >= #pcm + 60 * 48 + 160 * 48 - 500, "gaps between words / pauses made longer (" .. #pcm .. " -> " .. #out .. " samples)")
+  local function peakIn(t, a, b) local m = 0 for i = a, b do local v = math.abs(t[i] or 0) if v > m then m = v end end return m end
+  -- find the quiet part again: it sits right before the long pause - the loudest stretch of small values
+  local quietPeak = 0
+  for i = 1, #out - 2400 do
+    local v = math.abs(out[i])
+    if v > 25 and v < 80 then quietPeak = math.max(quietPeak, v) end
+  end
+  CHECK(quietPeak >= 30, "the quiet sound (a consonant) is made louder: " .. quietPeak .. " (was 15)")
+  local lo, hi = 0, 0
+  for _, v in ipairs(out) do lo, hi = math.min(lo, v), math.max(hi, v) end
+  CHECK(lo >= -128 and hi <= 127, "never out of range")
+  CHECK(peakIn(out, #out - 2000, #out) == 0, "silence is NOT made louder (no hiss)")
+  setSetting("voice.clear", false)
+  CHECK(#VOICE.clarifyPcm(pcm) == #pcm, "voice clear off: the service's own sound")
+  setSetting("voice.clear", true)
+  VOICE.queue, VOICE.said = {}, {}
+end)()

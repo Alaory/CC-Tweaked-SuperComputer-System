@@ -1241,6 +1241,14 @@ PneumaticCraft drone rides, turtle mapping/surveys, and an AE2 ME network view.
   (NOW marked). A voice name the service refuses (no sound back while the PLAIN voice works) ->
   VOICE.badAccent, the line in the plain voice - never silence; the service down blames no voice name.
   test_voice part 26 (500 Hz sine: length / crossings per speed + pitch, fallback, try / preset).
+  CLEARER SPEECH (the owner: "some words are hard to hear - they need to be slowed or said in another tone"):
+  VOICE.clarifyText (in VOICE.play, before the split): codes / signs espeak says badly -> words (VOICE.SAYAS: AE2
+  ME GPS KB uSv ...; x64 = times 64, 50% = 50 percent, -> = to, #3 = number 3; punctuation kept) + the owner's
+  own (`voice sayas <word> <how>` / `off`, voice.sayas table, any case). VOICE.clarifyPcm (end of pcmOf; voice.clear
+  default on, `voice clear on|off`): 5-ms frames, a gentle compressor (speech frames up to 3x toward 75 % of the
+  peak, silence never boosted, gains smoothed - Minecraft speakers lose the quiet consonants), then silences
+  inside the line made longer: 20-80 ms (between words) + voice.gap 60 ms, >= 80 ms (commas / full stops) +
+  voice.pause 160 ms (`voice gap|pause <ms>`). test_voice part 27.
   UPDATES (the owner: "on each update I have to run disks"): the map fills the data floppies and installAddon
   wanted a floppy with room for the WHOLE new file + 16 KB beside the old copy -> "type disks data". Now: the
   same text = nothing written ("up to date"); room = free + the old copy + cached speech (voice/*.dfpwm, oldest

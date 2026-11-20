@@ -425,6 +425,89 @@ pcall(function() os.queueEvent("voice_breath") os.pullEvent("voice_breath") end)
 end
 
 
+
+
+
+VOICE.SAYAS = {
+AE2 = "A E 2", ME = "M E", GPS = "G P S", FE = "F E", RF = "R F", KB = "kilobytes", MB = "megabytes",
+XP = "X P", HP = "H P", AFK = "A F K", UTC = "U T C", ID = "I D", TPS = "T P S", NBT = "N B T", AP = "A P",
+CC = "C C", uSv = "micro sieverts", mB = "millibuckets", ETA = "E T A", NPC = "N P C", PvP = "P V P",
+}
+function VOICE.clarifyText(text)
+local own = VOICE.cfg("sayas", nil)
+own = type(own) == "table" and own or {}
+text = tostring(text or "")
+text = text:gsub("(%d)%%", "%1 percent"):gsub("%s*%->%s*", " to "):gsub("%s&%s", " and "):gsub("#(%d+)", "number %1")
+local out = {}
+for word in text:gmatch("%S+") do
+local pre, core, post = word:match("^([%(%[\"']*)(.-)([%.,;:!%?%)%]\"']*)$")
+if not core or core == "" then pre, core, post = "", word, "" end
+local say = own[core:lower()] or VOICE.SAYAS[core]
+if not say then
+local n = core:match("^x(%d+)$")
+if n then say = "times " .. n end
+end
+out[#out + 1] = pre .. (say or core) .. post
+end
+return table.concat(out, " ")
+end
+
+
+
+
+
+function VOICE.clarifyPcm(pcm)
+if VOICE.cfg("clear", true) == false or #pcm < 960 then return pcm end
+local F = 240
+local nf = math.floor(#pcm / F)
+local env, peak = {}, 0
+for f = 0, nf - 1 do
+local sum = 0
+for i = f * F + 1, f * F + F do local v = pcm[i] if v < 0 then v = -v end sum = sum + v end
+env[f] = sum / F
+if env[f] > peak then peak = env[f] end
+end
+if peak < 2 then return pcm end
+local quiet = math.max(2, peak * 0.06)
+local target = peak * 0.75
+
+local gain = {}
+for f = 0, nf - 1 do
+if env[f] > quiet then gain[f] = math.max(1, math.min(3, target / env[f])) else gain[f] = 1 end
+end
+for f = 1, nf - 1 do gain[f] = gain[f - 1] * 0.6 + gain[f] * 0.4 end
+
+local gapMs = tonumber(VOICE.cfg("gap", 60)) or 60
+local pauseMs = tonumber(VOICE.cfg("pause", 160)) or 160
+local add = {}
+local f = 0
+while f < nf do
+if env[f] <= quiet then
+local s0 = f
+while f < nf and env[f] <= quiet do f = f + 1 end
+local len = f - s0
+if s0 > 0 and f < nf then
+if len >= 16 then add[s0 + math.floor(len / 2)] = math.floor(pauseMs * 48)
+elseif len >= 4 then add[s0 + math.floor(len / 2)] = math.floor(gapMs * 48) end
+end
+else f = f + 1 end
+end
+local out, n = {}, 0
+for fr = 0, nf - 1 do
+if add[fr] then for _ = 1, add[fr] do n = n + 1 out[n] = 0 end end
+local g0, g1 = gain[fr], gain[fr + 1] or gain[fr]
+for i = 0, F - 1 do
+local v = pcm[fr * F + i + 1] * (g0 + (g1 - g0) * i / F)
+v = math.floor(v + 0.5)
+n = n + 1
+out[n] = (v > 127 and 127) or (v < -128 and -128) or v
+end
+end
+for i = nf * F + 1, #pcm do n = n + 1 out[n] = pcm[i] end
+return out
+end
+
+
 function VOICE.pcmOf(data, style)
 local okD, dfpwm = pcall(require, "cc.audio.dfpwm")
 if not okD then return nil, "this CC:Tweaked has no cc.audio.dfpwm" end
@@ -437,7 +520,7 @@ end
 local sp = tonumber(style and style.speed) or VOICE.speed()
 sp = math.max(0.5, math.min(1, sp))
 local p = VOICE.pitch(style)
-return VOICE.repitch(VOICE.stretch(pcm, sp / p, breath), p)
+return VOICE.clarifyPcm(VOICE.repitch(VOICE.stretch(pcm, sp / p, breath), p))
 end
 local function playPcm(sps, pcm, vol)
 for i = 1, #pcm, 16 * 1024 do
@@ -466,7 +549,7 @@ if item.sound then
 for _, sp in ipairs(sps) do pcall(sp.playSound, item.sound, vol, 1) end
 sleep(0.6)
 end
-local pieces = VOICE.split(item.text)
+local pieces = VOICE.split(VOICE.clarifyText(item.text))
 local style = item.style
 local accentOver = style and style.accent
 local data, err = VOICE.audio(pieces[1], accentOver)
@@ -2350,6 +2433,34 @@ if v > 2 then v = v / 100 end
 setSetting("voice.pitch", math.max(0.7, math.min(1.4, v)))
 VOICE.say("This is my voice now.", nil, true)
 say("Pitch " .. math.floor(VOICE.pitch() * 100 + 0.5) .. " percent (70 = deep, 100 = normal, 140 = high)")
+elseif a == "clear" and (b == "on" or b == "off") then
+setSetting("voice.clear", b == "on")
+VOICE.say("This is how I sound now. Can you hear every word?", nil, true)
+say("Clear speech " .. (b == "on" and "ON (quiet sounds louder, longer gaps between words)" or "OFF (the service's own sound)"))
+elseif (a == "gap" or a == "pause") and tonumber(words[3]) then
+setSetting("voice." .. a, math.max(0, math.min(a == "gap" and 300 or 600, math.floor(tonumber(words[3])))))
+VOICE.say("One, two, three. This is how I sound now.", nil, true)
+say((a == "gap" and "Gap between words " or "Pause at commas and full stops ") .. VOICE.cfg(a, 0) .. " ms")
+elseif a == "sayas" then
+local own = VOICE.cfg("sayas", nil)
+own = type(own) == "table" and own or {}
+local w = words[3] and words[3]:lower()
+local how = table.concat(words, " ", 4)
+if not w then
+say("Words said another way (voice sayas <word> <how to say it> | voice sayas <word> off):")
+local any = false
+for k, v in pairs(own) do say("  " .. k .. " -> " .. v) any = true end
+if not any then say("  (none of your own yet; built in: AE2, ME, GPS, KB, uSv, x64, 50% ...)") end
+elseif how == "off" or how == "" then
+own[w] = nil
+setSetting("voice.sayas", own)
+say("'" .. w .. "' is said as written again")
+else
+own[w] = how
+setSetting("voice.sayas", own)
+VOICE.say(how, nil, true)
+say("'" .. w .. "' is now said as: " .. how)
+end
 elseif a == "try" then
 
 local only = words[3] and VOICE.preset(words[3])
@@ -2428,6 +2539,8 @@ say("  voice announce all|summary|errors|off" .. (VOICE.pending.n > 0 and ("   (
 say("  voice " .. (VOICE.presetNow() or "own mix") .. ": speed " .. math.floor(VOICE.speed() * 100 + 0.5) .. " %, pitch " ..
 math.floor(VOICE.pitch() * 100 + 0.5) .. " %, accent " .. tostring(VOICE.cfg("accent", nil) or "default") ..
 "   voice try | preset <n> | speed <50-100> | pitch <70-140> | accent <en-gb|...|off>")
+say("  clear speech " .. (VOICE.cfg("clear", true) == false and "OFF" or "ON") .. ": gap " .. VOICE.cfg("gap", 60) ..
+" ms, pause " .. VOICE.cfg("pause", 160) .. " ms   voice clear on|off | gap <ms> | pause <ms> | sayas <word> <how>")
 say("  voice volume <0-3> | range <n> | name <word> | scan <s> | lonely <days> | message <text> | visitors | forget | remove")
 end
 return out
