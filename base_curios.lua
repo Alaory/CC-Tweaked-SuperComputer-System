@@ -23,8 +23,23 @@ local function load(path)
   if h then h.close() end
   return type(t) == "table" and t or nil
 end
-CURIOS.fits = load(FITS_FILE) or {}
-CURIOS.auto = load(AUTO_FILE) or {}
+-- (an odd / old file never stops the base: only {slot = {item = true}} and {slot, item} rules are kept)
+do
+  local fits, auto = {}, {}
+  for slot, list in pairs(load(FITS_FILE) or {}) do
+    if type(slot) == "string" and type(list) == "table" then
+      local l = {}
+      for n, v in pairs(list) do if type(n) == "string" and v then l[n] = true end end
+      fits[slot] = l
+    end
+  end
+  for _, r in ipairs(load(AUTO_FILE) or {}) do
+    if type(r) == "table" and type(r.slot) == "string" and type(r.item) == "string" then
+      auto[#auto + 1] = { slot = r.slot, item = r.item, display = type(r.display) == "string" and r.display or nil }
+    end
+  end
+  CURIOS.fits, CURIOS.auto = fits, auto
+end
 for _, list in pairs(CURIOS.fits) do
   for n in pairs(list) do if meRememberName then meRememberName(n) end end   -- (the partial ME view looks them up)
 end

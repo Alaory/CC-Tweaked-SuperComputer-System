@@ -394,6 +394,79 @@ function TT.dupText(t)
          table.concat(where, ", ") .. " - break them"
 end
 
+-- EVERY MESSAGE IN THE SHAPE THE BASE EXPECTS (the owner: "check every feature" - a fuzz test sent real, signed
+-- messages with one field odd: a turtle / miner on an OLDER program, a field renamed or missing). The base kept
+-- whatever came: pos = 12 was stored, and the next message, the TURTLES / PLAYERS page or a background job
+-- crashed on it - every time, until the base restarted. Now each known field is checked once, here: the right
+-- type, else it is left out (as if the turtle had not sent it).
+local CLEAN = {
+  str = { "label", "task", "gear", "ver", "msg", "cmd", "want", "mode", "name", "scan", "route", "walls", "dead", "clears",
+          "dim", "role", "phase", "code", "err", "ses", "scanErr", "updReady" },
+  strOrFalse = { "front", "up", "down" },                      -- (false = air in front / above / below)
+  num = { "fuel", "fuelMax", "items", "freeSlots", "free", "ci", "li", "nl", "idx", "transit", "rowLength", "nextDump",
+          "lastCmd", "scanR", "tx", "tz", "fx", "fz", "py", "x", "y", "z", "trail", "copy", "leader", "partner" },
+  pos = { "pos", "home", "at", "station" },
+  tbl = { "seen", "recipe", "missing", "notes", "team", "stats", "carry", "got" },
+}
+local function cleanPos(p)
+  if type(p) ~= "table" then return nil end
+  local x, y, z = tonumber(p.x), tonumber(p.y), tonumber(p.z)
+  if not (x and z) or x ~= x or z ~= z or math.abs(x) > 3e7 or math.abs(z) > 3e7 then return nil end
+  local out = {}
+  for k, v in pairs(p) do out[k] = v end                       -- (other fields - facing ... - kept)
+  out.x, out.y, out.z = x, (y and y == y and math.abs(y) < 1e5) and y or nil, z
+  return out
+end
+function TT.clean(m)
+  for _, k in ipairs(CLEAN.str) do
+    local v = m[k]
+    if type(v) == "number" then m[k] = tostring(v) elseif v ~= nil and type(v) ~= "string" then m[k] = nil end
+  end
+  for _, k in ipairs(CLEAN.strOrFalse) do
+    local v = m[k]
+    if v ~= nil and v ~= false and type(v) ~= "string" then m[k] = nil end
+  end
+  for _, k in ipairs(CLEAN.num) do
+    local v = m[k]
+    if v ~= nil then
+      v = tonumber(v)
+      if v and (v ~= v or v == math.huge or v == -math.huge) then v = nil end
+      m[k] = v
+    end
+  end
+  for _, k in ipairs(CLEAN.pos) do if m[k] ~= nil then m[k] = cleanPos(m[k]) end end
+  for _, k in ipairs(CLEAN.tbl) do if m[k] ~= nil and type(m[k]) ~= "table" then m[k] = nil end end
+  -- inside the tables: counts are numbers, ids are numbers, places are places
+  for _, k in ipairs({ "carry", "got" }) do
+    if m[k] then
+      local o = {}
+      for name, n in pairs(m[k]) do
+        n = tonumber(n)
+        if type(name) == "string" and n and n == n and n ~= math.huge then o[name] = n end
+      end
+      m[k] = o
+    end
+  end
+  for _, k in ipairs({ "team", "missing" }) do
+    if m[k] then
+      local o = {}
+      for _, v in ipairs(m[k]) do v = tonumber(v) if v then o[#o + 1] = v end end
+      m[k] = o
+    end
+  end
+  if m.seen then
+    local o = {}
+    for _, p in ipairs(m.seen) do p = cleanPos(p) if p then o[#o + 1] = p end end
+    m.seen = o
+  end
+  if m.notes then
+    local o = {}
+    for _, v in ipairs(m.notes) do if type(v) == "string" or type(v) == "number" then o[#o + 1] = tostring(v) end end
+    m.notes = o
+  end
+  return m
+end
+
 function TT.receive(id, m)
   if type(m) ~= "table" or type(m.n) ~= "number" or type(m.t) ~= "string" then return end
   if m.sig ~= TT.sign(CONFIG.turtles.key, m.t, m.n) then
@@ -407,6 +480,7 @@ function TT.receive(id, m)
     end
     return
   end
+  TT.clean(m)
   -- a COPY that is a turtle of its own ("[c<n>]" in its name): its own number
   local cn = tonumber(m.copy)
   if cn and cn >= 1 and cn < 100 then id = cn * TT.COPYSTEP + TT.realId(id) end
@@ -776,7 +850,13 @@ local VER_FILE = "turtle_versions.dat"
 TT.versions = { next = 1, byHash = {} }
 do
   local t = readSafe(VER_FILE)
-  if type(t) == "table" and type(t.byHash) == "table" then TT.versions = t end
+  if type(t) == "table" and type(t.byHash) == "table" then
+    local by, top = {}, 0
+    for h, n in pairs(t.byHash) do
+      if type(h) == "string" and tonumber(n) then by[h] = tonumber(n) top = math.max(top, tonumber(n)) end
+    end
+    TT.versions = { next = math.max(tonumber(t.next) or 1, top + 1), byHash = by }
+  end
 end
 -- "v7" for a checksum (number given when the base first loads that node.lua)
 function TT.verName(hash)
@@ -1364,9 +1444,13 @@ function TT.loadList()
   for _, e in ipairs(list) do
     if type(e) == "table" and tonumber(e.id) then
       local t = TT.get(tonumber(e.id))
-      if e.label then t.label = e.label end
-      t.pos, t.home, t.seenEpoch, t.task = e.pos, e.home, e.seen, e.task
-      t.ver, t.gear, t.anchor = e.ver, e.gear, e.anchor
+      -- (an odd / old file: a word where a number belongs, a number for a position - kept out like a bad message)
+      local seen = tonumber(e.seen)
+      local c = { label = e.label, pos = e.pos, home = e.home, task = e.task, ver = e.ver, gear = e.gear }
+      if TT.clean then TT.clean(c) end
+      if c.label then t.label = c.label end
+      t.pos, t.home, t.seenEpoch, t.task = c.pos, c.home, seen, c.task
+      t.ver, t.gear, t.anchor = c.ver, c.gear, e.anchor
       t.rescuerRole = e.rescuerRole
       t.held = e.held
       t.recall = e.recall

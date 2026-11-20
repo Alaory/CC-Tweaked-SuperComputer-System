@@ -17,7 +17,16 @@ local FILE = "pockets.dat"
 
 do
 local t = readSafe(FILE)
-if type(t) == "table" then POCKET.pockets = t end
+if type(t) == "table" then
+
+for id, p in pairs(t) do
+if tonumber(id) and type(p) == "table" and type(p.key) == "string" then
+p.seen, p.lastN = tonumber(p.seen), tonumber(p.lastN) or 0
+p.name = (type(p.name) == "string" or type(p.name) == "number") and tostring(p.name) or nil
+POCKET.pockets[tonumber(id)] = p
+end
+end
+end
 end
 local function save() saveFileSafe(FILE, serialSmall(POCKET.pockets)) end
 POCKET.save = save
@@ -312,6 +321,12 @@ if type(m.n) ~= "number" or m.n <= (p.lastN or 0) then return end
 if m.n / 100 < os.epoch("utc") - 60000 then return end
 if m.sig ~= sign(p.key, m.t, m.n, m.a, m.args) then return end
 p.lastN, p.seen = m.n, os.epoch("utc")
+
+local args = {}
+for _, v in ipairs(type(m.args) == "table" and m.args or {}) do
+if type(v) == "string" or type(v) == "number" then args[#args + 1] = tostring(v) end
+end
+m.args = args
 if m.t == "req" then
 local data = POCKET.status()
 

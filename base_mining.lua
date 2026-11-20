@@ -42,8 +42,16 @@ function MINE.load()
   local t = readSafe(path)
   if type(t) == "table" then
     for id, u in pairs(t) do
-      u.id, u.log, u.queue = tonumber(id) or u.id, u.log or {}, {}
-      MINE.units[u.id] = u
+      local uid = tonumber(id) or (type(u) == "table" and tonumber(u.id))
+      if uid and type(u) == "table" then          -- (an odd / old file: kept out like a bad message)
+        -- (only what MINE.save writes; odd values cleaned like a bad message)
+        local c = { label = u.label, role = u.role, dim = u.dim, got = u.got, stats = u.stats, pos = u.pos }
+        if TT.clean then TT.clean(c) end
+        local log = {}
+        for _, e in ipairs(type(u.log) == "table" and u.log or {}) do if type(e) == "table" then log[#log + 1] = e end end
+        c.id, c.log, c.queue, c.seenEpoch = uid, log, {}, tonumber(u.seenEpoch)
+        MINE.units[uid] = c
+      end
     end
   end
 end

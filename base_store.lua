@@ -16,7 +16,9 @@ local KNOWN_FILE = "store_helpers.dat"
 STORE.known = {}
 do
   local t = readSafe(KNOWN_FILE)
-  if type(t) == "table" then STORE.known = t end
+  if type(t) == "table" then
+    for id, v in pairs(t) do if tonumber(id) then STORE.known[tonumber(id)] = type(v) == "table" and v or true end end
+  end
 end
 local function saveKnown()
   writeSafe(KNOWN_FILE, textutils.serialize(STORE.known))

@@ -34,9 +34,14 @@ do
 do
 local t = readSafe(FILE)
 if type(t) == "table" then
-AWAY.on, AWAY.since, AWAY.lastSeen, AWAY.snap, AWAY.last, AWAY.page = t.on, t.since, t.lastSeen, t.snap, t.last, t.page
-AWAY.autoOn = t.autoOn
-AWAY.left, AWAY.acc, AWAY.prev = t.left, t.acc, t.prev
+
+local function tb(v) return type(v) == "table" and v or nil end
+AWAY.on = t.on == true
+AWAY.since, AWAY.lastSeen, AWAY.left = tonumber(t.since), tonumber(t.lastSeen), tonumber(t.left)
+AWAY.snap, AWAY.last, AWAY.acc, AWAY.prev = tb(t.snap), tb(t.last), tb(t.acc), tb(t.prev)
+AWAY.page = type(t.page) == "string" and t.page or nil
+AWAY.autoOn = t.autoOn and true or nil
+if AWAY.on and (not AWAY.since or not AWAY.snap) then AWAY.on = false end
 end
 end
 end

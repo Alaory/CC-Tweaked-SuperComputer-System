@@ -36,7 +36,10 @@ do
   if f then
     do
       local t = readSafe(f)
-      if type(t) == "table" then savedLogs = t end
+      if type(t) == "table" then
+        savedLogs = {}
+        for k, l in pairs(t) do if type(l) == "table" then savedLogs[k] = l end end   -- (odd entries out)
+      end
     end
   end
 end
@@ -156,7 +159,13 @@ function loadAccess()
   local f = CONFIG.chat.accessFile
   do
     local t = readSafe(f)
-    if type(t) == "table" and type(t.allowed) == "table" then state.access = t end
+    if type(t) == "table" and type(t.allowed) == "table" then
+      -- (an odd / old file: only entries with a name)
+      local ok = {}
+      for k, e in pairs(t.allowed) do if type(e) == "table" and type(e.name) == "string" then ok[k] = e end end
+      t.allowed = ok
+      state.access = t
+    end
   end
 end
 
@@ -213,7 +222,18 @@ function loadWaypoints()
   local f = CONFIG.drone.waypointFile
   do
     local t = readSafe(f)
-    if type(t) == "table" then state.waypoints = t end
+    if type(t) == "table" then
+      -- (only places with a name and x y z: an odd / old file never stops the base)
+      local out = {}
+      for _, w in ipairs(t) do
+        if type(w) == "table" and (type(w.name) == "string" or type(w.name) == "number")
+           and tonumber(w.x) and tonumber(w.y) and tonumber(w.z) then
+          w.name, w.x, w.y, w.z = tostring(w.name), tonumber(w.x), tonumber(w.y), tonumber(w.z)
+          out[#out + 1] = w
+        end
+      end
+      state.waypoints = out
+    end
   end
 end
 

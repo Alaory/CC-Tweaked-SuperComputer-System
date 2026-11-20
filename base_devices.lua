@@ -70,9 +70,22 @@ end
 do
   local t = readSafe(SETTINGS_FILE)
   if type(t) == "table" then SETTINGS = t end
+  -- only "group.name" keys with a plain value; never one that would replace a whole CONFIG table (an odd /
+  -- hand-edited settings.dat with "turtles = 7" left CONFIG.turtles a number: the base broke everywhere)
   for path, v in pairs(SETTINGS) do
-    CONFIG_ORIGINAL[path] = getConfigPath(path)
-    pcall(setConfigPath, path, v)
+    local cur = type(path) == "string" and path:find("%.") and getConfigPath(path)
+    local tv = type(v)
+    local tc = type(cur)
+    if type(path) ~= "string" or not path:find("^[%w_]+%.[%w_.]+$")
+       or (tv ~= "number" and tv ~= "string" and tv ~= "boolean" and tv ~= "table")
+       or (tc == "table" and tv ~= "table")                                   -- a table (a position) became a word
+       or (tv == "table" and cur ~= nil and cur ~= false and tc ~= "table")    -- a number / word became a table
+       or (tc == "number" and tv == "string") then                            -- a number became a word
+      SETTINGS[path] = nil
+    else
+      CONFIG_ORIGINAL[path] = cur
+      pcall(setConfigPath, path, v)
+    end
   end
 end
 local function saveSettings()

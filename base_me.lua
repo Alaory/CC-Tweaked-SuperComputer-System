@@ -185,6 +185,8 @@ function setPopup(title, msg, col) pushNote(title, msg, col or C.warn) end
 
 -- pcall wrapper: returns ok, r1, r2
 function callx(obj, fn, ...)
+  -- (no peripheral at all - the ME Bridge not connected / found again yet: `factory items` crashed here)
+  if type(obj) ~= "table" then return false, "not connected" end
   if type(obj[fn]) ~= "function" then return false, "missing function " .. fn end
   return pcall(obj[fn], ...)
 end
@@ -195,6 +197,7 @@ end
 -- trying both is safe; the order that worked is remembered.
 local ORDER = {}                     -- [function name] = "it" (item first) or "ti" (target first)
 function transfer(obj, names, target, item)
+  if type(obj) ~= "table" then return false, "not connected" end   -- (the bridge / manager gone right now)
   for _, fn in ipairs(names) do
     if type(obj[fn]) == "function" then
       local function call(order)
@@ -1930,7 +1933,7 @@ local SIDES = { "north", "south", "east", "west", "up", "down" }
 -- use the buffer chest found by 'mesetup' (me_setup.dat)
 function loadMESetup()
   local t = readSafe(SETUP_FILE)
-  if type(t) == "table" and t.managerSide and t.bridge then
+  if type(t) == "table" and type(t.managerSide) == "string" and type(t.bridge) == "string" then
     CONFIG.me.bufferFromManager = t.managerSide
     CONFIG.me.giveFromManager, CONFIG.me.takeFromManager = nil, nil   -- one chest for both ways
     CONFIG.me.giveChest, CONFIG.me.takeChest = nil, nil

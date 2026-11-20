@@ -53,6 +53,15 @@ local JOBS = {
   { "MAP.autoSave", function() MAP.autoSave() end }, { "KNOW.save", function() KNOW.save() end },
   { "MINE.save", function() MINE.save() end }, { "SCHEM.processPending", function() SCHEM.processPending() end },
   { "POCKET.status", function() POCKET.status() end }, { "TT.codeLoad", function() TT.codeLoad() end },
+  -- (the review: these workers' jobs were not run here yet)
+  { "CURIOS.autoTick", function() CURIOS.autoTick() end }, { "ENV.tick", function() ENV.tick(true) end },
+  { "MEX.tick", function() MEX.tick(true) end }, { "MEX.jobTick", function() MEX.jobTick() end },
+  { "TT.partyTick", function() TT.partyTick() end }, { "trackPlayers", function() trackPlayers() end },
+  { "settleOwed", function() settleOwed() end }, { "MAP.offload", function() MAP.offload() end },
+  { "trimVoiceCache", function() trimVoiceCache() end }, { "TT.codeOffload", function() TT.codeOffload() end },
+  { "TT.prepareInstallFloppy", function() TT.prepareInstallFloppy(true) end },
+  { "MAP.floppySpace", function() MAP.floppySpace() end }, { "MAP.diskUse", function() MAP.diskUse() end },
+  { "CURIOS.learnWorn", function() CURIOS.learnWorn() end }, { "TT.rescueQueueTick", function() if TT.rescueQueueTick then TT.rescueQueueTick() end end },
 }
 local PAGES = { "home", "inventory", "players", "env", "mesys", "drone", "work", "access", "turtles", "drive", "map", "mining", "system", "events", "settings", "me" }
 local failed = {}

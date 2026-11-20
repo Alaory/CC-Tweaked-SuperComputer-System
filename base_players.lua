@@ -472,7 +472,10 @@ local function backSave()
 end
 do
   local t = readSafe(CONFIG.back.file)
-  if type(t) == "table" then backSpots = t end
+  if type(t) == "table" then
+    backSpots = {}
+    for k, v in pairs(t) do if type(k) == "string" and type(v) == "table" then backSpots[k] = v end end
+  end
 end
 
 -- the dimension a player is in (nil = not known)

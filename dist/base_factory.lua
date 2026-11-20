@@ -50,14 +50,21 @@ do
 do
 local t = readSafe(FILE)
 if type(t) == "table" then
-FACTORY.job, FACTORY.builder, FACTORY.chest = t.job, t.builder, t.chest
-FACTORY.fails, FACTORY.last, FACTORY.built = t.fails or 0, t.last, t.built
-FACTORY.crafter = t.crafter
+
+FACTORY.job = type(t.job) == "table" and type(t.job.step) == "string" and t.job or nil
+FACTORY.builder, FACTORY.crafter = tonumber(t.builder), tonumber(t.crafter)
+FACTORY.chest = type(t.chest) == "string" and t.chest or nil
+FACTORY.fails = tonumber(t.fails) or 0
+FACTORY.last = type(t.last) == "table" and t.last or nil
+FACTORY.built = tonumber(t.built)
 end
 end
 do
 local t = readSafe(RECIPE_FILE)
-if type(t) == "table" then FACTORY.recipes = t end
+if type(t) == "table" then
+FACTORY.recipes = {}
+for k, r in pairs(t) do if type(k) == "string" and type(r) == "table" then FACTORY.recipes[k] = r end end
+end
 end
 end
 

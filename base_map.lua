@@ -249,6 +249,7 @@ local function mExists(p) if STORE and STORE.isRemote(p) then return true end re
 local STALE_FILE = "map_stale.dat"
 MAP.stale = readSafe(STALE_FILE)
 if type(MAP.stale) ~= "table" then MAP.stale = {} end
+for k in pairs(MAP.stale) do if type(k) ~= "string" then MAP.stale[k] = nil end end
 local function saveStale() writeSafe(STALE_FILE, serialSmall(MAP.stale)) end
 local function mDelete(p)
   if STORE and STORE.isRemote(p) then
@@ -1079,7 +1080,17 @@ do
   if not fs.exists(qf) then qf = QUEUE_FILE end
   do
     local t = readSafe(qf)
-    if type(t) == "table" and t.cols then MAP.queue = t end
+    -- (an odd / old file: a queue whose numbers are not numbers is dropped - a new one starts)
+    local good = type(t) == "table" and tonumber(t.cols) and tonumber(t.rows or 0)
+    if good then
+      for _, k in ipairs({ "cursor", "sent", "skipped", "step", "x1", "z1", "x2", "z2", "cx", "cz", "r", "y" }) do
+        if t[k] ~= nil and type(t[k]) ~= "number" then good = false end
+      end
+      for _, k in ipairs({ "out", "redo", "rr", "rect" }) do
+        if t[k] ~= nil and type(t[k]) ~= "table" then good = false end
+      end
+    end
+    if good then MAP.queue = t end
   end
 end
 
@@ -1183,7 +1194,9 @@ local AUTO_FILE = "auto_survey.dat"
 MAP.auto = { on = (CONFIG.map.autoSurvey ~= false), cursor = 0 }
 do
   local t = readSafe(AUTO_FILE)
-  if type(t) == "table" then MAP.auto = t end
+  if type(t) == "table" then
+    MAP.auto = { on = t.on and true or false, cursor = tonumber(t.cursor) or 0, done = t.done and true or nil }
+  end
 end
 function MAP.saveAuto() saveFileSafe(AUTO_FILE, serialSmall(MAP.auto)) end
 function MAP.setAuto(on)

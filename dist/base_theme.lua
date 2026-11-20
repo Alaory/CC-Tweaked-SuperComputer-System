@@ -52,7 +52,9 @@ local function chooseTheme()
 local saved = {}
 do
 local t = readSafe(THEME_FILE)
-if type(t) == "table" then saved = t end
+if type(t) == "table" then
+saved = { mode = type(t.mode) == "string" and t.mode or nil, last = type(t.last) == "string" and t.last or nil }
+end
 end
 local want = saved.mode or CONFIG.theme or "teal"
 if THEMES[want] then return want, saved end

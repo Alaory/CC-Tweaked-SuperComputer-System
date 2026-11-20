@@ -488,7 +488,12 @@ function DW.save()
 end
 function DW.load()
   local t = readSafe(dataPath(DW.FILE))
-  if type(t) == "table" and t.name and t.done then DW.job = t end
+  if type(t) == "table" and type(t.name) == "string" and type(t.done) == "string" and type(t.dug or "") == "string"
+     and tonumber(t.x) and tonumber(t.y) and tonumber(t.z) and tonumber(t.rot or 0) then
+    t.dug = t.dug or ""
+    t.plan = nil                                       -- (rebuilt from the schematic)
+    DW.job = t
+  end
 end
 
 -- the plan of the running build (rebuilt from the schematic after a restart: same order)
