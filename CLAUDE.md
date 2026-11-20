@@ -976,6 +976,26 @@ PneumaticCraft drone rides, turtle mapping/surveys, and an AE2 ME network view.
   inventory.lua (STORE.code, must compile) goes to every helper whose version
   (hello -> ver = checksum of its startup.lua) differs (op "upd": checksum +
   compile check, then startup.lua + reboot) - STORE.updateAll in the mapWorker.
+- STORAGE REVIEW (the owner: "check the storage code too - floppy drives, helpers, how the map is saved";
+  test_storage.lua, tools/tests/store_helper.lua runs the REAL store.lua): A PLACE IS WRITTEN ONLY AFTER IT WAS
+  READ THIS RUN (MAP.readAt[dir] = true / the floppy's disk.getID; places() leaves the others out - a floppy with
+  no map folder counts as read at once). MAP.readLate (map worker every turn + first thing in MAP.save) reads a
+  helper that did not answer at the start / a floppy that was out of its drive / ANOTHER floppy put in, and JOINS
+  it: readText never replaces a key already in memory - K chunks: at the start the newer s wins, later the memory
+  cells stay and its EMPTY ones come from the file; V overview: cell by cell the same (a partial cell takes a full
+  one). A key found twice = joined, MAP.extra[key] = the other copies, deleted when writeFile saves the key.
+  readPlace: MAP.where[k] is set only for files that really came back (before: a helper that stopped answering
+  half way had ALL its files "read" -> the next save overwrote / staled the unread ones = overview lost for
+  chunks whose detail was dropped); STORE.list = nil when no answer (an empty list looked like "no files");
+  batches ask again for what did not come (store.lua's 200 KB per answer). Before: the copy read FIRST counted -
+  a helper starting late after a server restart + new scans in its area = the old overview or the new one lost.
+  store.lua: an EMPTY file made get crash (readAll nil -> restart loop for every read of it); a file caught
+  between "old deleted" and "new moved in" (a stop right there) was only its .tmp - never read: recoverTmp at
+  start (a lone .tmp put back, a .tmp beside its file deleted); file count cached 30 s, screen at most 1/s.
+  dataFile: the computer's copy is deleted only when the floppy's copy has the SAME size (a full floppy cut the
+  copy off). saveFileSafe: goneFloppy (path "diskN/..." whose floppy is out - fs.exists false or isDriveRoot
+  false; dataPath keeps a place 60 s) -> saved where the file belongs now, not into a folder "diskN" made on the
+  computer (the floppy then mounts under another name). MAP.offload: getSize pcall'd (floppy out).
 - THE BASE TALKS (voice_addon.lua VOICE - an OPTIONAL ADD-ON kept on a DATA FLOPPY, not on the computer):
   console `voice install` = installAddon (base_theme.lua: upgrade.lua fetch mode, manifest group "voice" +
   slim:voice - NOT a base_* name, so never installed on the computer) -> saved on the data floppy with most

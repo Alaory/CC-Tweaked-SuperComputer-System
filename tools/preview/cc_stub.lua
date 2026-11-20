@@ -117,6 +117,11 @@ function fs.delete(p) FILES[p] = nil DIRS[p] = nil end
 function fs.move(a, b) FILES[b] = FILES[a] FILES[a] = nil end
 function fs.copy(a, b) FILES[b] = FILES[a] end
 function fs.combine(a, b) if a == "" then return b end return a .. "/" .. b end
+function fs.isDriveRoot(p)
+  if p == "" then return true end
+  for _, m in pairs(DRIVES or {}) do if m == p then return true end end
+  return false
+end
 function fs.getDir(p) return p:match("^(.*)/[^/]*$") or "" end
 function fs.getName(p) return p:match("([^/]*)$") end
 function fs.getFreeSpace(p)

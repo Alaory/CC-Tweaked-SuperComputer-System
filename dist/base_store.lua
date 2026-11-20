@@ -236,7 +236,7 @@ end
 
 function STORE.readMany(id, names)
 local r = STORE.call(id, { op = "get", names = names }, 15)
-return r and r.files or {}
+return r and type(r.files) == "table" and r.files or {}
 end
 function STORE.delete(path)
 local id, name = STORE.parse(path)
@@ -244,9 +244,15 @@ local r = STORE.call(id, { op = "del", name = name }, 4)
 return r ~= nil
 end
 
+
 function STORE.list(id, dir)
-local r = STORE.call(id, { op = "list", dir = dir }, 6)
-return r and r.files or {}
+local r, err = STORE.call(id, { op = "list", dir = dir }, 6)
+if not r then
+local h = STORE.helpers[id]
+if h and err == "no answer" then h.down = os.clock() end
+return nil, err
+end
+return type(r.files) == "table" and r.files or {}
 end
 
 

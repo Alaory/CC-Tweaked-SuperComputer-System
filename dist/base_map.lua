@@ -277,11 +277,29 @@ local kb = tonumber(m.floppyKeepKB)
 if not kb then kb = MAP.helpersFirst() and 48 or 16 end
 return kb * 1024
 end
+
+
+
+MAP.readAt = {}
+MAP.extra = {}
+local function floppyId(d) return d.id ~= nil and tostring(d.id) or true end
+local function isRead(dir, id)
+local r = MAP.readAt[dir]
+return r ~= nil and (id == nil or r == true or id == true or r == id)
+end
 local function places()
 local out = {}
 local fkeep = MAP.floppyKeep()
 for _, d in ipairs(mountedDisks()) do
-if d.data then out[#out + 1] = { dir = fs.combine(d.mount, DIR), free = math.max(0, (d.free or 0) - fkeep), floppy = true } end
+if d.data then
+local dir = fs.combine(d.mount, DIR)
+local id = floppyId(d)
+
+if MAP.loaded and not isRead(dir, id) and not fs.exists(dir) then MAP.readAt[dir] = id end
+if not MAP.loaded or isRead(dir, id) then
+out[#out + 1] = { dir = dir, free = math.max(0, (d.free or 0) - fkeep), floppy = true, id = id }
+end
+end
 end
 local okF, free = pcall(fs.getFreeSpace, "/")
 free = okF and free or 0
@@ -295,7 +313,8 @@ local keep = (tonumber(CONFIG.map.keepFreeKB) or 96) * 1024
 out[#out + 1] = { dir = DIR, free = math.max(0, math.min(free - keep, cap)), floppy = false }
 
 for id, h in pairs(STORE and STORE.helpers or {}) do
-if STORE.usable(h) then out[#out + 1] = { dir = "store:" .. id .. "/" .. DIR, free = h.free or 0, remote = id } end
+local dir = "store:" .. id .. "/" .. DIR
+if STORE.usable(h) and (not MAP.loaded or isRead(dir)) then out[#out + 1] = { dir = dir, free = h.free or 0, remote = id } end
 end
 return out
 end
@@ -403,8 +422,34 @@ return table.concat(head, "\n") .. "\n" .. table.concat(body, "\n") .. "\n"
 end
 
 
+
+local function mergeCells(old, new, n)
+if old == new then return old, false end
+local parts, took = {}, false
+for i = 0, n - 1 do
+local a = old:sub(i * 4 + 1, i * 4 + 4)
+local b = new:sub(i * 4 + 1, i * 4 + 4)
+local use = a
+if b ~= a and #b == 4 then
+local b3, b4 = b:byte(3, 4)
+if b3 ~= 0 or b4 ~= 0 then
+local a3, a4 = a:byte(3, 4)
+if (a3 == 0 and a4 == 0) or (a:byte(1) >= 128 and b:byte(1) < 128) then use = b end
+end
+end
+if use ~= a then took = true end
+parts[i + 1] = use
+end
+return table.concat(parts), took
+end
+
+
+
+
+
 local function readText(text)
 local glob, nloc = {}, 0
+local took = false
 for line in tostring(text or ""):gmatch("[^\n]+") do
 local tag = line:sub(1, 1)
 if tag == "P" then
@@ -413,27 +458,49 @@ nloc = nloc + 1
 elseif tag == "K" then
 local cx, cz, s, data = line:match("^K (%-?%d+) (%-?%d+) (%d+) (.*)$")
 if data then
+local had = chunkAt(tonumber(cx), tonumber(cz))
 local c = chunkAt(tonumber(cx), tonumber(cz), true)
-c.s = tonumber(s)
-if c.s > MAP.tick then MAP.tick = c.s end
-c.d = readCells(data, 256, glob)
+local fs_, d = tonumber(s), readCells(data, 256, glob)
+if not had then
+c.s, c.d = fs_, d
+else
+pack(c, 256)
+if not MAP.loaded and fs_ > (c.s or 0) then
+if c.d ~= d then took = true end
+c.s, c.d = fs_, d
+else
+local t
+c.d, t = mergeCells(c.d, d, 256)
+took = took or t
+end
+end
+if fs_ > MAP.tick then MAP.tick = fs_ end
 end
 elseif tag == "V" then
 local ox, oz, data = line:match("^V (%-?%d+) (%-?%d+) (.*)$")
 if data then
+local had = ovAt(tonumber(ox) * OVR, tonumber(oz) * OVR)
 local o = ovAt(tonumber(ox) * OVR, tonumber(oz) * OVR, true)
-o.d = readCells(data, OVR * OVR, glob)
+local d = readCells(data, OVR * OVR, glob)
+if not had then o.d = d
+else
+pack(o, OVR * OVR)
+local t
+o.d, t = mergeCells(o.d, d, OVR * OVR)
+took = took or t
 end
 end
 end
+end
+return took
 end
 local function readFile(path)
 local h = fs.open(path, "r")
 if not h then return end
 local t = h.readAll()
 h.close()
-readText(t)
-return t
+local took = readText(t)
+return t, took
 end
 
 
@@ -483,6 +550,11 @@ mDelete(old)
 if not (STORE and STORE.isRemote(old)) and fs.exists(old) then pcall(fs.delete, old) end
 end
 if not p.remote then MAP.rsize[key] = nil end
+
+for _, xp in ipairs(MAP.extra[key] or {}) do
+if xp ~= path and mExists(xp) then mDelete(xp) end
+end
+MAP.extra[key] = nil
 MAP.where[key] = path
 p.free = p.free - #text
 return true
@@ -498,6 +570,7 @@ end
 
 function MAP.save(toDisks, noTrim)
 if not MAP.loaded then return false end
+pcall(MAP.readLate)
 if toDisks then
 for k, p in pairs(MAP.where) do if dirOf(p) == DIR then MAP.dirty[k] = true end end
 end
@@ -600,7 +673,8 @@ local hRoom = (STORE and STORE.space() or 0) - 32 * 1024
 local nPick = 0
 for i = 1, math.min(limit, #onFloppy) do
 local k = onFloppy[i]
-local size = fs.getSize(MAP.where[k]) + 4096
+local okS, sz = pcall(fs.getSize, MAP.where[k])
+local size = (okS and tonumber(sz) or 0) + 4096
 if size > hRoom then break end
 hRoom = hRoom - size
 nPick = nPick + 1
@@ -755,7 +829,8 @@ function MAP.clear()
 if not MAP.loaded then return false end
 MAP.version = MAP.version + 1
 for _, p in pairs(MAP.where) do if mExists(p) then mDelete(p) end end
-MAP.ch, MAP.order, MAP.ov, MAP.where, MAP.dirty = {}, {}, {}, {}, {}
+for _, list in pairs(MAP.extra) do for _, p in ipairs(list) do if mExists(p) then mDelete(p) end end end
+MAP.ch, MAP.order, MAP.ov, MAP.where, MAP.dirty, MAP.extra = {}, {}, {}, {}, {}, {}
 MAP.names, MAP.nameIdx = {}, {}
 MAP.scans, MAP.tick, MAP.ovN = 0, 0, 0
 for _, p in ipairs({ CONFIG.map.file, dataFile(CONFIG.map.file, true) }) do
@@ -800,59 +875,90 @@ end
 
 
 
-function MAP.load()
 
-if STORE and next(STORE.known) then pcall(STORE.find, true) end
-for _, p in ipairs(places()) do
+
+
+
+
+
+local function noteFile(k, path, took, size)
+local cur = MAP.where[k]
+if not cur then
+MAP.where[k] = path
+if STORE and STORE.isRemote(path) then MAP.rsize[k] = size end
+if took then MAP.dirty[k] = true end
+elseif cur ~= path then
+MAP.extra[k] = MAP.extra[k] or {}
+local seen = false
+for _, p in ipairs(MAP.extra[k]) do if p == path then seen = true end end
+if not seen then MAP.extra[k][#MAP.extra[k] + 1] = path end
+MAP.dirty[k] = true
+end
+end
+local function readPlace(p)
 if p.remote then
-
 local okL, list = pcall(STORE.list, p.remote, DIR)
-local want = {}
+if not okL or type(list) ~= "table" then return false end
+local want, sizes = {}, {}
 local staleGone = false
-for f, size in pairs(okL and list or {}) do
+for f, size in pairs(list) do
 local k = f:match("^(o?%-?%d+_%-?%d+)%.dat$")
 local path = p.dir .. "/" .. f
 if k and MAP.stale[path] then
 local okD, done = pcall(STORE.delete, path)
 if okD and done then MAP.stale[path] = nil staleGone = true end
-elseif k and not MAP.where[k] then
+elseif k and MAP.where[k] ~= path then
 want[#want + 1] = f
-MAP.where[k] = path
-MAP.rsize[k] = size
+sizes[f] = size
 end
 end
 if staleGone then saveStale() end
-local i = 1
-while i <= #want do
+table.sort(want)
+local left = want
+while #left > 0 do
 local batch = {}
-for j = i, math.min(#want, i + 19) do batch[#batch + 1] = DIR .. "/" .. want[j] end
+for j = 1, math.min(#left, 20) do batch[#batch + 1] = DIR .. "/" .. left[j] end
 local okR, files = pcall(STORE.readMany, p.remote, batch)
-local got = 0
-for name, text in pairs(okR and files or {}) do pcall(readText, text) got = got + 1 end
-loadYield()
-if got == 0 then break end
-i = i + got
+local got, rest = {}, {}
+for name, text in pairs(okR and type(files) == "table" and files or {}) do
+local f = tostring(name):match("([^/]+)$")
+if type(text) == "string" and f and sizes[f] then
+local okT, took = pcall(readText, text)
+if okT then
+noteFile(f:match("^(o?%-?%d+_%-?%d+)%.dat$"), p.dir .. "/" .. f, took, #text)
+got[f] = true
 end
-elseif fs.exists(p.dir) and fs.isDir(p.dir) then
+end
+end
+for _, f in ipairs(left) do if not got[f] then rest[#rest + 1] = f end end
+loadYield()
+if #rest == #left then return false end
+left = rest
+end
+MAP.readAt[p.dir] = true
+return true
+end
+if fs.exists(p.dir) and fs.isDir(p.dir) then
 for _, f in ipairs(fs.list(p.dir)) do
 local k = f:match("^(o?%-?%d+_%-?%d+)%.dat$")
-if k and not MAP.where[k] then
-MAP.where[k] = fs.combine(p.dir, f)
-local okR, t = pcall(readFile, MAP.where[k])
+local path = fs.combine(p.dir, f)
+if k and MAP.where[k] ~= path then
+local okR, t, took = pcall(readFile, path)
+if okR and type(t) == "string" then
+noteFile(k, path, took)
 
-if okR and type(t) == "string" and k:sub(1, 1) ~= "o" and t:find("\nO ", 1, true) then MAP.dirty[k] = true end
+if k:sub(1, 1) ~= "o" and t:find("\nO ", 1, true) then MAP.dirty[k] = true end
+end
 loadYield()
 end
 end
 end
+MAP.readAt[p.dir] = p.id or true
+return true
 end
-local oldFiles = {}
-for _, f in ipairs({ CONFIG.map.file, dataFile(CONFIG.map.file) }) do
-if fs.exists(f) then oldFiles[f] = true end
-end
-if next(oldFiles) and not next(MAP.ch) then
-for f in pairs(oldFiles) do pcall(loadOld, f) break end
-end
+
+
+local function afterRead()
 
 countOverview()
 
@@ -862,7 +968,49 @@ local h, _, partial = MAP.getOverview(c.cx * 16, c.cz * 16)
 if not h or not partial then summarize(c) end
 end
 for _, o in pairs(MAP.ov) do pack(o, OVR * OVR) end
+countOverview()
 table.sort(MAP.order, function(a, b) return MAP.ch[a].s < MAP.ch[b].s end)
+end
+
+
+
+
+function MAP.readLate()
+if not MAP.loaded then return 0 end
+local n = 0
+for _, d in ipairs(mountedDisks()) do
+if d.data then
+local dir = fs.combine(d.mount, DIR)
+local id = floppyId(d)
+if not isRead(dir, id) and readPlace({ dir = dir, floppy = true, id = id }) then n = n + 1 end
+end
+end
+for id, h in pairs(STORE and STORE.helpers or {}) do
+local dir = "store:" .. id .. "/" .. DIR
+if STORE.usable(h) and not isRead(dir) and readPlace({ dir = dir, remote = id }) then n = n + 1 end
+end
+if n > 0 then
+afterRead()
+MAP.version = MAP.version + 1
+if sysLog then sysLog("Map: read " .. n .. " storage place(s) that were away at the start - joined with the new scans", "INFO") end
+end
+return n
+end
+
+
+
+function MAP.load()
+
+if STORE and next(STORE.known) then pcall(STORE.find, true) end
+for _, p in ipairs(places()) do readPlace(p) end
+local oldFiles = {}
+for _, f in ipairs({ CONFIG.map.file, dataFile(CONFIG.map.file) }) do
+if fs.exists(f) then oldFiles[f] = true end
+end
+if next(oldFiles) and not next(MAP.ch) then
+for f in pairs(oldFiles) do pcall(loadOld, f) break end
+end
+afterRead()
 MAP.trim()
 if next(oldFiles) then
 

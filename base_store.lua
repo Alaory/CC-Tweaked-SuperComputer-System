@@ -236,17 +236,23 @@ end
 -- several files of one helper in one go (start-up): { [name] = text }
 function STORE.readMany(id, names)
   local r = STORE.call(id, { op = "get", names = names }, 15)
-  return r and r.files or {}
+  return r and type(r.files) == "table" and r.files or {}
 end
 function STORE.delete(path)
   local id, name = STORE.parse(path)
   local r = STORE.call(id, { op = "del", name = name }, 4)
   return r ~= nil
 end
--- the files in a folder of a helper: { [name] = size }
+-- the files in a folder of a helper: { [name] = size } - nil when it did not answer (an empty list
+-- would look like "no files there": the map then wrote over the ones it never read)
 function STORE.list(id, dir)
-  local r = STORE.call(id, { op = "list", dir = dir }, 6)
-  return r and r.files or {}
+  local r, err = STORE.call(id, { op = "list", dir = dir }, 6)
+  if not r then
+    local h = STORE.helpers[id]
+    if h and err == "no answer" then h.down = os.clock() end
+    return nil, err
+  end
+  return type(r.files) == "table" and r.files or {}
 end
 -- all helpers together: free bytes, count
 -- a helper the base may write to now (answers; not quiet in the last 60 s)

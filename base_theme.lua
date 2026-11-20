@@ -243,7 +243,27 @@ function moveDataFile(path, text)
   return np
 end
 
+-- a path on a floppy that is no longer in its drive ("disk2/turtles.dat": dataPath keeps a place for a
+-- minute): writing there would make a FOLDER "disk2" on the computer - the file lost on the computer's
+-- disk, and the floppy, put back, mounted under another name. Such a save goes to where the file
+-- belongs now (dataFile: another data floppy, else the computer).
+local function goneFloppy(path)
+  local top = tostring(path):match("^([^/]+)/")
+  if not top or not top:find("^disk%d*$") or not fs.isDriveRoot then return false end
+  if not fs.exists(top) then return true end           -- (isDriveRoot says true for a path that is not there)
+  local okR, root = pcall(fs.isDriveRoot, top)
+  return okR and root == false
+end
 function saveFileSafe(path, text)
+  if goneFloppy(path) then
+    if dataPathReset then dataPathReset() end
+    local np = dataFile(fs.getName(path), true)
+    if np ~= path and not goneFloppy(np) then
+      local ok, err = saveFileSafe(np, text)
+      if ok then return true, np end
+      return false, err
+    end
+  end
   local dir = fs.getDir(path)
   local okF, free = pcall(fs.getFreeSpace, dir == "" and "/" or dir)
   if okF and type(free) == "number" and free < #text + 4096 then
@@ -281,7 +301,8 @@ function mountedDisks()
       local m = disk.getMountPath(n)
       if m then
         local okF, free = pcall(fs.getFreeSpace, m)
-        out[#out + 1] = { name = n, mount = m, label = disk.getLabel(n), free = okF and free or 0,
+        local okI, id = pcall(disk.getID or function() end, n)        -- (which floppy: another one put in = new)
+        out[#out + 1] = { name = n, mount = m, label = disk.getLabel(n), free = okF and free or 0, id = okI and id or nil,
                           data = fs.exists(fs.combine(m, "base_data")),
                           installer = fs.exists(fs.combine(m, "turtle_installer")),
                           empty = #fs.list(m) == 0 }
@@ -313,7 +334,10 @@ function dataFile(path, forSave)
     if fs.exists(path) then
       if fs.getSize(path) + 2048 < best.free then
         pcall(fs.copy, path, p)
-        if fs.exists(p) then pcall(fs.delete, path) end
+        -- (the computer's copy goes only when the floppy's is WHOLE - a copy cut off by a full floppy
+        -- left a half file there and none on the computer)
+        if fs.exists(p) and fs.getSize(p) == fs.getSize(path) then pcall(fs.delete, path)
+        else pcall(fs.delete, p) return path end
       elseif not forSave then
         return path                -- too big to move as it is: read the computer's copy
       end

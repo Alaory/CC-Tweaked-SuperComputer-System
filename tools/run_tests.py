@@ -163,6 +163,11 @@ def _():
     rc, out = run(["lua5.3", "tools/tests/node_junk.lua", "node.lua"])
     return rc == 0, out.strip()
 
+@check("node", "storage helper program: requests, empty files, leftovers, updates (store_helper.lua)")
+def _():
+    rc, out = run(["lua5.3", "tools/tests/store_helper.lua", "store.lua"])
+    return rc == 0, out.strip()
+
 @check("node", "saving on a full disk keeps the old state (node_save_safe.lua)")
 def _():
     rc, out = run(["lua5.3", "tools/tests/node_save_safe.lua", "node.lua"])

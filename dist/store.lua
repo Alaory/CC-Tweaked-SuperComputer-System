@@ -123,20 +123,47 @@ end
 return n
 end
 
+
+
+
+local function recoverTmp(dir)
+if not fs.exists(dir) or not fs.isDir(dir) then return 0 end
+local n = 0
+for _, f in ipairs(fs.list(dir)) do
+local p = fs.combine(dir, f)
+if fs.isDir(p) then n = n + recoverTmp(p)
+elseif f:find("%.tmp$") then
+local real = p:sub(1, -5)
+if fs.exists(real) then pcall(fs.delete, p)
+elseif pcall(fs.move, p, real) then n = n + 1 end
+end
+end
+return n
+end
+local recovered = recoverTmp(ROOT)
+
 local stats = { put = 0, get = 0, del = 0 }
-local function show()
+local nFiles, nFilesAt = 0, -100
+local function fileCount()
+if os.clock() - nFilesAt > 30 or os.clock() < nFilesAt then nFiles, nFilesAt = countFiles(ROOT), os.clock() end
+return nFiles
+end
+local shownAt = -100
+local function show(force)
+if not force and os.clock() - shownAt < 1 and os.clock() >= shownAt then return end
+shownAt = os.clock()
 term.clear()
 term.setCursorPos(1, 1)
 print("STORAGE HELPER " .. os.getComputerID() .. "  (" .. (os.getComputerLabel() or "") .. ")")
 print("Base: " .. (owner and ("computer " .. owner) or "none yet (waiting for one)"))
 print(string.format("Disk: %d KB free%s", math.floor(freeSpace() / 1024),
 capacity() and (" of " .. math.floor(capacity() / 1024) .. " KB") or ""))
-print("Files kept: " .. countFiles(ROOT))
+print("Files kept: " .. fileCount() .. (recovered > 0 and ("  (" .. recovered .. " recovered at the start)") or ""))
 print(string.format("Written %d, read %d, deleted %d", stats.put, stats.get, stats.del))
 print("")
 print("Ctrl+T stops it.  'store reset' = give it to another base.")
 end
-show()
+show(true)
 
 local function answer(id, req, t)
 t.re = req.n
@@ -158,7 +185,7 @@ end
 if owner and id ~= owner then
 answer(id, req, { ok = false, err = "this helper belongs to computer " .. owner .. " (store reset to change)" })
 elseif req.op == "hello" then
-answer(id, req, { ok = true, free = freeSpace(), cap = capacity(), files = countFiles(ROOT),
+answer(id, req, { ok = true, free = freeSpace(), cap = capacity(), files = fileCount(),
 label = os.getComputerLabel(), ver = MYVER })
 elseif req.op == "upd" then
 
@@ -199,6 +226,7 @@ if okW then
 if fs.exists(path) then fs.delete(path) end
 fs.move(tmp, path)
 stats.put = stats.put + 1
+nFilesAt = -100
 answer(id, req, { ok = true, free = freeSpace() })
 else
 if h then pcall(h.close) end
@@ -212,10 +240,13 @@ for _, name in ipairs(type(req.names) == "table" and req.names or {}) do
 local path = safe(name)
 if path and fs.exists(path) and not fs.isDir(path) and size < 200000 then
 local h = fs.open(path, "r")
-files[name] = h.readAll()
-h.close()
+if h then
+local okR, t = pcall(h.readAll)
+pcall(h.close)
+files[name] = okR and t or ""
 size = size + #files[name]
 stats.get = stats.get + 1
+end
 end
 end
 answer(id, req, { ok = true, files = files })
@@ -231,7 +262,7 @@ end
 answer(id, req, { ok = true, files = files })
 elseif req.op == "del" then
 local path = safe(req.name)
-if path and fs.exists(path) then fs.delete(path) stats.del = stats.del + 1 end
+if path and fs.exists(path) then fs.delete(path) stats.del = stats.del + 1 nFilesAt = -100 end
 answer(id, req, { ok = true, free = freeSpace() })
 else
 answer(id, req, { ok = false, err = "unknown request" })

@@ -1,6 +1,6 @@
 base inventory.lua 4512 c75bda90
 base startup.lua 1532 dcf086f6
-base store.lua 9364 dfbf002c
+base store.lua 10804 0167b959
 base upgrade.lua 10858 725e2cf0
 base base_away.lua 18931 6402daf6
 base base_chat.lua 18121 9cf43a8a
@@ -12,7 +12,7 @@ base base_dronework.lua 41037 bb49cb80
 base base_env.lua 10269 b6081e20
 base base_factory.lua 29444 4933f33c
 base base_input.lua 28481 8fa4989e
-base base_map.lua 82558 6da2dd10
+base base_map.lua 88990 67b31f34
 base base_me.lua 93300 b81b988b
 base base_meplus.lua 15773 3ac38582
 base base_mining.lua 23133 c880c481
@@ -21,9 +21,9 @@ base base_pocket.lua 17517 5b9116dd
 base base_schem.lua 18382 f71f07f2
 base base_state.lua 5331 2a808592
 base base_storage.lua 11536 e6593881
-base base_store.lua 11435 9b0899ac
+base base_store.lua 11756 2a26c1dc
 base base_supply.lua 19688 1390bb7a
-base base_theme.lua 30478 ac843f4f
+base base_theme.lua 31881 acb6828a
 base base_turtles.lua 117328 ccff1d61
 base base_ui_chat.lua 5324 057af588
 base base_ui_core.lua 36846 0d3ff309
@@ -43,7 +43,7 @@ base base_ui_storage.lua 13810 0a7a3da0
 base base_ui_system.lua 8218 439b99e8
 base base_ui_turtles.lua 18517 4f076605
 base base_ui_work.lua 11599 71bbb499
-base base_workers.lua 33136 c35b3660
+base base_workers.lua 33249 546ec2c3
 node node.lua 169593 33f9b001
 pocket pocket.lua 25876 c940e352
 pocket upgrade.lua 10858 725e2cf0
@@ -54,7 +54,7 @@ voice voice_talk2.lua 95064 830a24e3
 voice voice_talk3.lua 40799 e5f8e99d
 slim:base inventory.lua 2515 d1528a1a dist/inventory.lua
 slim:base startup.lua 833 00f3544b dist/startup.lua
-slim:base store.lua 6835 6ac5e947 dist/store.lua
+slim:base store.lua 7737 3311f57d dist/store.lua
 slim:base upgrade.lua 7424 b8d25fcc dist/upgrade.lua
 slim:base base_away.lua 13520 e0d66b8f dist/base_away.lua
 slim:base base_chat.lua 13452 3813a205 dist/base_chat.lua
@@ -66,7 +66,7 @@ slim:base base_dronework.lua 31536 3798bd07 dist/base_dronework.lua
 slim:base base_env.lua 7154 ae1b2584 dist/base_env.lua
 slim:base base_factory.lua 21629 0269dab1 dist/base_factory.lua
 slim:base base_input.lua 20108 1ecbe11c dist/base_input.lua
-slim:base base_map.lua 52830 b5497bce dist/base_map.lua
+slim:base base_map.lua 56401 297f5447 dist/base_map.lua
 slim:base base_me.lua 66834 d40a14d7 dist/base_me.lua
 slim:base base_meplus.lua 11765 8b3ef560 dist/base_meplus.lua
 slim:base base_mining.lua 16792 4c3c506f dist/base_mining.lua
@@ -75,9 +75,9 @@ slim:base base_pocket.lua 13810 69e92a80 dist/base_pocket.lua
 slim:base base_schem.lua 13483 11a1f7a3 dist/base_schem.lua
 slim:base base_state.lua 2184 53b39d2a dist/base_state.lua
 slim:base base_storage.lua 8505 9bb686f2 dist/base_storage.lua
-slim:base base_store.lua 7637 04420126 dist/base_store.lua
+slim:base base_store.lua 7814 38b89a07 dist/base_store.lua
 slim:base base_supply.lua 14825 3e655c85 dist/base_supply.lua
-slim:base base_theme.lua 18870 24f9583e dist/base_theme.lua
+slim:base base_theme.lua 19562 65314f76 dist/base_theme.lua
 slim:base base_turtles.lua 81085 1de3ad18 dist/base_turtles.lua
 slim:base base_ui_chat.lua 4262 56e2d3cf dist/base_ui_chat.lua
 slim:base base_ui_core.lua 27121 8bea5a69 dist/base_ui_core.lua
@@ -97,7 +97,7 @@ slim:base base_ui_storage.lua 11336 07fce5d6 dist/base_ui_storage.lua
 slim:base base_ui_system.lua 6821 e8b2ce28 dist/base_ui_system.lua
 slim:base base_ui_turtles.lua 15841 219f967c dist/base_ui_turtles.lua
 slim:base base_ui_work.lua 9922 43d80f5d dist/base_ui_work.lua
-slim:base base_workers.lua 20857 13e9c4c5 dist/base_workers.lua
+slim:base base_workers.lua 20877 4db85bae dist/base_workers.lua
 slim:node node.lua 119205 f13d339a dist/node.lua
 slim:pocket pocket.lua 21398 2b717c01 dist/pocket.lua
 slim:pocket upgrade.lua 7424 b8d25fcc dist/upgrade.lua
