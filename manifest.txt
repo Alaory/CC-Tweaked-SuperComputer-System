@@ -33,7 +33,7 @@ base base_ui_env.lua 11053 2e164c54
 base base_ui_events.lua 3192 fead898d
 base base_ui_home.lua 14594 5ee5d617
 base base_ui_inventory.lua 6147 752b5390
-base base_ui_map.lua 14717 6578181b
+base base_ui_map.lua 15742 7f791ee4
 base base_ui_me.lua 16789 d4bdd4e6
 base base_ui_mesys.lua 16602 41e3deaf
 base base_ui_mining.lua 11618 848cba10
@@ -87,7 +87,7 @@ slim:base base_ui_env.lua 8993 0700d4eb dist/base_ui_env.lua
 slim:base base_ui_events.lua 2398 625dcdc5 dist/base_ui_events.lua
 slim:base base_ui_home.lua 12035 10209cb0 dist/base_ui_home.lua
 slim:base base_ui_inventory.lua 5120 94ca73c2 dist/base_ui_inventory.lua
-slim:base base_ui_map.lua 11423 075b0cc3 dist/base_ui_map.lua
+slim:base base_ui_map.lua 11944 ebfc5261 dist/base_ui_map.lua
 slim:base base_ui_me.lua 13603 6435cdda dist/base_ui_me.lua
 slim:base base_ui_mesys.lua 13664 4ec0e530 dist/base_ui_mesys.lua
 slim:base base_ui_mining.lua 9799 4662c94b dist/base_ui_mining.lua

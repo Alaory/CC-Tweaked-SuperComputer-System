@@ -27,6 +27,17 @@ if i >= 0 and i < g.mw and j >= 0 and j < g.mh then return g.mx0 + i, g.my0 + j 
 end
 
 
+
+
+function mapMarker(t)
+if TT and TT.online and not TT.online(t) then return "x", colors.purple end
+if t.stuck then return "!", C.bad end
+local task = tostring(t.task or "idle")
+if task:find("^survey") or task:find("^scann") then return "T", C.good end
+if task == "idle" or task == "" or task:find("^waiting") then return "T", colors.orange end
+return "T", colors.white
+end
+
 function mapWorldAt(tx, ty)
 local g = state.mapGeom
 if not g then return nil end
@@ -159,12 +170,14 @@ local sx, sy = toScreen(g, V, dr.pos.x, dr.pos.z)
 if sx then text(sx, sy, "D", C.ink, colors.pink) end
 end
 end
+
+
 for _, t in pairs(state.turtles) do
-if t.pos and t.pos.x then
+if t.pos and t.pos.x and not t.missing then
 local sx, sy = toScreen(g, V, t.pos.x, t.pos.z)
 if sx then
-if t.stuck then text(sx, sy, "!", C.ink, C.bad)
-else text(sx, sy, "T", C.ink, state.tSel == t.id and C.accent or C.good) end
+local mk, col = mapMarker(t)
+text(sx, sy, mk, C.ink, state.tSel == t.id and C.accent or col)
 end
 end
 end
@@ -282,11 +295,15 @@ end
 local lh = bottom - ly + 1
 if lh >= 6 then
 local gx, gy, gw = panel(rx, ly, rw, lh, "LEGEND")
-local mk = { { "B", C.warn, "base" }, { "@", C.accent, "you" }, { "D", colors.pink, "drone" }, { "T", C.good, "turtle" },
+local mk = { { "B", C.warn, "base" }, { "@", C.accent, "you" }, { "D", colors.pink, "drone" }, { "T", C.good, "mapping" },
+{ "T", colors.white, "other job" }, { "T", colors.orange, "idle" }, { "x", colors.purple, "offline" },
 { "!", C.bad, "stuck" } }
 local mx = gx
 for _, m in ipairs(mk) do
-if mx + 3 + #m[3] > gx + gw then break end
+if mx + 3 + #m[3] > gx + gw then
+if gy + 1 >= ly + lh - 1 then break end
+gy, mx = gy + 1, gx
+end
 text(mx, gy, m[1], C.ink, m[2])
 text(mx + 2, gy, m[3], C.dim, C.panel)
 mx = mx + 4 + #m[3]

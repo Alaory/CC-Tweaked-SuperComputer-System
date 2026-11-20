@@ -102,6 +102,12 @@ PneumaticCraft drone rides, turtle mapping/surveys, and an AE2 ME network view.
   ~10 s. node.lua (TT.codeLoad: compile, shrink, hash) is also checked in the
   mapWorker (start + every 30 s) with TT.workYield pauses, not in the comms
   worker (the install-floppy "disk" event still loads it at once).
+  TURTLE MARKERS (mapMarker, base_ui_map.lua; the owner: "should the turtles be this scattered?" - every turtle
+  ever known was a green T at its LAST spot): green T mapping (survey / scanning), white T another job (home,
+  fuel, a trip), orange T idle / waiting, purple x OFFLINE (last known spot), red ! stuck, MISSING not drawn;
+  fixed status colours only (the grey slots are theme colours - invisible). Legend wraps to a 2nd row.
+  test_map_markers.lua. With RINGS the mapping turtles work round the EDGE of the mapped square; T's inside it are
+  on their way to / from the base (home, fuel) or offline.
   World border is -20000..20000 (CONFIG.map.border); zoom goes to 512 so the
   whole world fits. Big surveys (> 400x400 blocks) go through a queue
   (MAP.queueSurvey / feedSurvey, 64 spots per idle turtle). Every batch
