@@ -148,6 +148,25 @@ local function notePlayer(e)
   if not i.t or now - i.t >= 1000 then i.x, i.y, i.z, i.t, i.sdim = p.x, p.y, p.z, now, e.dim end
 end
 
+-- one detector answer made safe for the screen: numbers that are not numbers dropped (another AP version /
+-- a flaky answer: the PLAYERS page, the MAP and the drones do arithmetic on them - draw() is not pcall'd)
+local PL_NUM = { "x", "y", "z", "health", "maxHealth", "airSupply", "maxAirSupply", "eyeHeight", "yaw", "pitch",
+                 "respawnAngle", "experience", "level", "food", "saturation" }
+function cleanPlayerData(pl)
+  for _, k in ipairs(PL_NUM) do
+    if pl[k] ~= nil and type(pl[k]) ~= "number" then pl[k] = tonumber(pl[k]) end
+  end
+  if not (pl.x and pl.y and pl.z) then pl.x, pl.y, pl.z = nil, nil, nil end
+  for _, k in ipairs({ "dimension", "dim", "respawnDimension", "name" }) do
+    if pl[k] ~= nil and type(pl[k]) ~= "string" then pl[k] = nil end
+  end
+  local rp = pl.respawnPosition
+  if rp ~= nil and not (type(rp) == "table" and type(rp.x) == "number" and type(rp.y) == "number" and type(rp.z) == "number") then
+    pl.respawnPosition = nil
+  end
+  return pl
+end
+
 -- full = every online player (PLAYERS page); otherwise only the owner
 function refreshPlayers(full)
   if not det then return end
@@ -191,7 +210,7 @@ function refreshPlayers(full)
   local needRange = false
   for i, name in ipairs(names) do
     local r = res[i]
-    if r and r.ok and type(r.pl) == "table" and next(r.pl)
+    if r and r.ok and type(r.pl) == "table" and next(r.pl) and cleanPlayerData(r.pl).x
        and not dimFromData(r.pl) and not dimCache[name] then
       needRange = true
     end
@@ -211,7 +230,7 @@ function refreshPlayers(full)
   for i, name in ipairs(names) do
     local e = { name = name, isOwner = (name == owner) }
     local r = res[i]
-    if r and r.ok and type(r.pl) == "table" and next(r.pl) then
+    if r and r.ok and type(r.pl) == "table" and next(r.pl) and cleanPlayerData(r.pl).x then
       e.p = r.pl
       local fromData = dimFromData(r.pl)
       if fromData then rememberDim(name, fromData) end
@@ -506,7 +525,7 @@ function trackPlayers()
       return okP and pl or false
     end)
     for i, n in ipairs(names) do
-      if type(res[i]) == "table" then samples[#samples + 1] = { name = n, pl = res[i] } end
+      if type(res[i]) == "table" then samples[#samples + 1] = { name = n, pl = cleanPlayerData(res[i]) } end
     end
   end
   for _, sm in ipairs(samples) do

@@ -26,6 +26,22 @@ PneumaticCraft drone rides, turtle mapping/surveys, and an AE2 ME network view.
   new timer each tick replaces a lost one), uiLoop re-arms clockTimer / drawTimer,
   waitFor has a deadline. (Before: one lost timer stopped every 2-s job - updates
   "queued" forever, idle turtles never sent home.) test_lost_timer.lua.
+- FUZZ TESTS (the owner: "go over every feature and check them"; tools/tests/test_fuzz_*.lua): ui = every page at
+  4 sizes, normal + messy world, every tap area twice + the queued actions run (fake AE2: tests/lib/fake_ae2.lua);
+  cmds = every console command + the sub-words its block checks, odd arguments, with / without AE2, every $drone
+  sub-command as owner and stranger ("attempt to" in the output counts as an error); msgs = 6000 signed turtle /
+  miner messages with broken fields + pocket actions + garbage, then pages + jobs; files = every .dat odd (a
+  number, a word, odd fields, a list of odd tables) -> the base must START (module loading is NOT pcall'd - an
+  error = startup.lua restarts it into the same error for ever), pages draw, jobs run; periph = every peripheral
+  call errors / nil / odd shape (10 .. 100 %), the reading jobs run, every page draws (draw() in uiLoop is NOT
+  pcall'd - one odd value = the base stops). What they found, fixed: TT.clean(m) (base_turtles; in TT.receive
+  right after the signature check: fields of the wrong kind dropped by a schema - str / num / pos / tbl); pocket
+  m.args = strings / numbers only; ME callx / transfer without a bridge; EVERY saved table checked on load
+  (settings.dat: only "group.key" with a fitting kind - "turtles = 7" replaced CONFIG.turtles; curios fits /
+  rules; turtles.dat via TT.clean; mining units = only what MINE.save writes; places need name + x y z; access;
+  pockets need a key; factory job / recipes; survey queue numbers; auto-map; away; theme; versions; me_setup;
+  back spots; helpers; drone logs; the DW job); cleanPlayerData (base_players: detector answers - numbers that
+  are not numbers dropped, no x y z = not found); MEX first() = numbers only.
 - **Peripheral calls belong in workers or fetch functions, never in drawing
   code.** Drawing reads `state.*` only.
 - Drawing: everything is drawn into an off-screen window `win` (text / fill CLIPPED to the

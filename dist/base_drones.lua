@@ -372,7 +372,7 @@ if not det then return nil, "no Player Detector (needed to find players)" end
 local fn = det.getPlayer or det.getPlayerPos
 if not fn then return nil, "Detector has no getPlayer()" end
 local ok, p = pcall(fn, name)
-if ok and type(p) == "table" and p.x then
+if ok and type(p) == "table" and cleanPlayerData(p).x then
 local d = playerDimNow(name, p)
 if d and d ~= DRONE_DIM then
 return nil, tostring(name) .. " is in " .. dimName(d) .. " - drones only fly in the overworld", d

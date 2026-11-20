@@ -22,8 +22,8 @@ return a, b
 end
 local function first(...)
 for _, fn in ipairs({ ... }) do
-local v = get(fn)
-if v ~= nil then return tonumber(v) or v end
+local v = tonumber((get(fn)))
+if v then return v end
 end
 end
 

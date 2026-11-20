@@ -22,8 +22,8 @@ local function get(fn, ...)
 end
 local function first(...)                            -- the first function name that exists and answers
   for _, fn in ipairs({ ... }) do
-    local v = get(fn)
-    if v ~= nil then return tonumber(v) or v end
+    local v = tonumber((get(fn)))                    -- (numbers only: the page does sums with them)
+    if v then return v end
   end
 end
 -- a resource's name (item / fluid / chemical - the keys differ by type and version: in the
