@@ -1220,6 +1220,16 @@ PneumaticCraft drone rides, turtle mapping/surveys, and an AE2 ME network view.
   (default 0.8; `voice speed <50-100>`), voice.accent = an espeak voice sent as &voice= (`voice accent en-gb|off`),
   part of the cache name. The cache keeps the service's sound. test_voice: 500 Hz for 1 s -> 25 % longer, the
   same zero crossings (a plain slow-down would fail), as loud, -128..127.
+  LONG LINES + BURSTS (the owner: "long speeches cut midway and do not go on; with a lot to say it jumps
+  between speeches - when I log back in I hear a lot of lines, hard to understand"): VOICE.say cut lines at
+  200 characters ("...") and, with 6 queued, threw away the OLDEST own line (stories lost their start). Now:
+  lines up to 600 kept WHOLE; VOICE.split(text) -> pieces <= VOICE.PIECE 80 (sentence ends, then , ; : / " - ",
+  then words; short sentences joined) - each piece one request (<= 80 = cached too); VOICE.play plays piece by
+  piece and FETCHES THE NEXT while one plays (parallel.waitForAll; pcmOf / playPcm), then WAITS until the
+  speaker has said it (samples / 48000 from the first piece) + VOICE.GAP 0.8 s - lines never run into each
+  other. Queue: at most VOICE.MAX_OWN 4 of its own lines waiting - more are LEFT OUT from the end
+  (VOICE.skipped), never the start; an answer always gets in (VOICE.MAX_QUEUE 8: its own newest line makes
+  room). test_voice part 25 (a function scope: the file's main chunk is at 200 locals).
   UPDATES (the owner: "on each update I have to run disks"): the map fills the data floppies and installAddon
   wanted a floppy with room for the WHOLE new file + 16 KB beside the old copy -> "type disks data". Now: the
   same text = nothing written ("up to date"); room = free + the old copy + cached speech (voice/*.dfpwm, oldest

@@ -176,21 +176,83 @@ end
 
 
 
+VOICE.MAX_OWN = 4
+VOICE.MAX_QUEUE = 8
+VOICE.PIECE = 80
+VOICE.GAP = 0.8
+
+
+function VOICE.split(text, max)
+max = max or VOICE.PIECE
+text = tostring(text or ""):gsub("%s+", " "):gsub("^ ", ""):gsub(" $", "")
+if #text <= max then return { text } end
+local function cut(s, seps)
+if #s <= max then return { s } end
+for _, sep in ipairs(seps) do
+local parts, cur = {}, ""
+local pos = 1
+local found = false
+while true do
+local a, b = s:find(sep, pos)
+if not a then break end
+found = true
+local chunk = s:sub(pos, b)
+if cur ~= "" and #cur + #chunk > max then parts[#parts + 1] = cur cur = "" end
+cur = cur .. chunk
+pos = b + 1
+end
+if found then
+local tail = s:sub(pos)
+if cur ~= "" and #cur + #tail > max then parts[#parts + 1] = cur cur = "" end
+cur = cur .. tail
+if cur ~= "" then parts[#parts + 1] = cur end
+local out = {}
+for _, pc in ipairs(parts) do
+pc = pc:gsub("^ +", ""):gsub(" +$", "")
+if pc ~= "" then
+if #pc > max then
+local rest = {}
+for i = 1, #seps do if seps[i] == sep then for j = i + 1, #seps do rest[#rest + 1] = seps[j] end end end
+for _, q in ipairs(cut(pc, rest)) do out[#out + 1] = q end
+else out[#out + 1] = pc end
+end
+end
+return out
+end
+end
+
+local out = {}
+for i = 1, #s, max do out[#out + 1] = s:sub(i, i + max - 1) end
+return out
+end
+return cut(text, { "[%.!?]+ ", "[,;:] ", " %- ", " " })
+end
+
 function VOICE.say(text, sound, answer)
 if VOICE.cfg("on", true) == false or VOICE.mute then return false end
 text = tostring(text or ""):gsub("%s+", " ")
 if text == "" then return false end
-if #text > 200 then text = text:sub(1, 197) .. "..." end
+
+
+if #text > 600 then text = text:sub(1, 597) .. "..." end
 local last = VOICE.said[text]
 if not answer and last and os.clock() - last < 30 then return false end
-VOICE.said[text] = os.clock()
 
 
-if #VOICE.queue >= 6 then
-local drop = 1
-for i, q in ipairs(VOICE.queue) do if not q.answer then drop = i break end end
-table.remove(VOICE.queue, drop)
+
+
+local own = 0
+for _, q in ipairs(VOICE.queue) do if not q.answer then own = own + 1 end end
+if not answer and own >= VOICE.MAX_OWN then
+VOICE.skipped = (VOICE.skipped or 0) + 1
+return false
 end
+if answer and #VOICE.queue >= VOICE.MAX_QUEUE then
+for i = #VOICE.queue, 1, -1 do
+if not VOICE.queue[i].answer then table.remove(VOICE.queue, i) VOICE.skipped = (VOICE.skipped or 0) + 1 break end
+end
+end
+VOICE.said[text] = os.clock()
 VOICE.queue[#VOICE.queue + 1] = { text = text, sound = sound, answer = answer or nil }
 os.queueEvent("voice_say")
 return true
@@ -324,26 +386,18 @@ pcall(function() os.queueEvent("voice_breath") os.pullEvent("voice_breath") end)
 end
 
 
-function VOICE.play(item)
-local sps = VOICE.speakers()
-if #sps == 0 then VOICE.err = "no Speaker found (put one next to the computer or on the cable)" return false end
-local vol = math.max(0, math.min(3, tonumber(VOICE.cfg("volume", 2)) or 2))
-if item.sound then
-for _, sp in ipairs(sps) do pcall(sp.playSound, item.sound, vol, 1) end
-sleep(0.6)
-end
-local data, err = VOICE.audio(item.text)
-if not data then VOICE.err = err return false end
+function VOICE.pcmOf(data)
 local okD, dfpwm = pcall(require, "cc.audio.dfpwm")
-if not okD then VOICE.err = "this CC:Tweaked has no cc.audio.dfpwm" return false end
+if not okD then return nil, "this CC:Tweaked has no cc.audio.dfpwm" end
 local decoder = dfpwm.make_decoder()
 local pcm = {}
 for i = 1, #data, 16 * 1024 do
 local b = decoder(data:sub(i, i + 16 * 1024 - 1))
 for j = 1, #b do pcm[#pcm + 1] = b[j] end
 end
-pcm = VOICE.stretch(pcm, VOICE.speed(), breath)
-VOICE.lastSamples = #pcm
+return VOICE.stretch(pcm, VOICE.speed(), breath)
+end
+local function playPcm(sps, pcm, vol)
 for i = 1, #pcm, 16 * 1024 do
 local buffer = {}
 for j = i, math.min(#pcm, i + 16 * 1024 - 1) do buffer[#buffer + 1] = pcm[j] end
@@ -357,8 +411,44 @@ repeat local ev, a = os.pullEventRaw() until ev == "speaker_audio_empty" or (ev 
 end
 end
 end
+end
+
+
+
+
+function VOICE.play(item)
+local sps = VOICE.speakers()
+if #sps == 0 then VOICE.err = "no Speaker found (put one next to the computer or on the cable)" return false end
+local vol = math.max(0, math.min(3, tonumber(VOICE.cfg("volume", 2)) or 2))
+if item.sound then
+for _, sp in ipairs(sps) do pcall(sp.playSound, item.sound, vol, 1) end
+sleep(0.6)
+end
+local pieces = VOICE.split(item.text)
+local data, err = VOICE.audio(pieces[1])
+if not data then VOICE.err = err return false end
+local total, t0 = 0, nil
+VOICE.lastPieces = #pieces
+for i = 1, #pieces do
+local pcm, perr = VOICE.pcmOf(data)
+if not pcm then VOICE.err = perr return false end
+t0 = t0 or os.clock()
+total = total + #pcm
+local nextData, nextErr
+parallel.waitForAll(function() playPcm(sps, pcm, vol) end,
+function() if pieces[i + 1] then nextData, nextErr = VOICE.audio(pieces[i + 1]) end end)
+if i < #pieces then
+if not nextData then VOICE.err = nextErr break end
+data = nextData
+end
+end
+VOICE.lastSamples = total
 VOICE.err = nil
 VOICE.lastSaid = { text = item.text, at = os.clock() }
+
+local left = (t0 or os.clock()) + total / 48000 - os.clock()
+if left > 0 then sleep(math.min(left, 60)) end
+sleep(VOICE.GAP)
 return true
 end
 

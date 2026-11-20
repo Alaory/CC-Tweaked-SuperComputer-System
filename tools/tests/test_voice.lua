@@ -13,6 +13,9 @@ fs.exists = function(p) if HIDDEN[tostring(p):gsub("^/", "")] then return false 
 addDrive("drive_7", "disk7")
 local function put(p, t) local h = fs.open(p, "w") h.write(t) h.close() end
 put("disk7/base_data", "data")
+-- (a second data floppy: the add-on alone takes ~97 KB of a 125 KB floppy - the speech cache goes where there is room)
+addDrive("drive_8", "disk8")
+put("disk8/base_data", "data")
 put("disk7/voice_addon.lua", io.open(SRC_DIR .. "/dist/voice_addon.lua"):read("a"))     -- (the slim copy - what voice install puts there)
 if dataPathReset then dataPathReset() end
 CHECK(addonPath("voice_addon.lua") == "disk7/voice_addon.lua", "the add-on is found on the data floppy")
@@ -60,11 +63,11 @@ place(owner, 10)
 VOICE.tick()
 CHECK(said():find(owner, 1, true) and said():find("working", 1, true) and VOICE.queue[1].sound, "the owner is welcomed back (+ how the turtles are): " .. said())
 speakAll()
-CHECK(#gets == 1 and gets[1]:find("music.madefor.cc/tts", 1, true) and played > 0, "spoken: text-to-speech fetched, played on the speaker")
+CHECK(#gets >= 1 and gets[1]:find("music.madefor.cc/tts", 1, true) and played > 0, "spoken: text-to-speech fetched, played on the speaker")
 VOICE.said = {}
 VOICE.say("Short and sweet.")                          -- (phrases up to 80 letters are kept; the greeting may be longer)
 speakAll()
-CHECK(fs.list("disk7/voice")[1] ~= nil, "the phrase is kept on the DATA floppy (voice/)")
+CHECK((fs.list("disk7/voice")[1] or fs.list("disk8/voice")[1]) ~= nil, "the phrase is kept on a DATA floppy (voice/)")
 VOICE.tick()
 CHECK(#VOICE.queue == 0, "not greeted again while staying")
 
@@ -97,7 +100,12 @@ CHECK(#VOICE.queue == 0, "info messages are not said")
 place("Steve", 20)
 VOICE.tick()
 local firstLine = false                              -- (one of the first-meeting lines - picked at random now)
-for _, l in ipairs(VOICE.HELLO_NEW) do if said():find(l:gsub("{name}", "Steve"):sub(1, 20), 1, true) then firstLine = true end end
+for _, l in ipairs(VOICE.HELLO_NEW) do
+  -- (up to the first other {word} - "{bot}" is filled in with the base's name)
+  local t = l:gsub("{name}", "Steve")
+  t = (t:match("^([^{]*)") or t):sub(1, 20)
+  if #t >= 6 and said():find(t, 1, true) then firstLine = true end
+end
 CHECK(said():find("Steve", 1, true) and firstLine and not said():find("Intruder", 1, true),
       "a stranger met for the first time: introduced, no alarm (off by default): " .. said())
 VOICE.queue = {}
@@ -1567,3 +1575,64 @@ for _ = 1, 30 do CLOCK = CLOCK + 2 ENV.scanAt = -100 VOICE.tick() end
 CHECK(not VOICE.newcomer.newbie, "only ONE icebreaker per visit")
 chatTell = tell4
 envDet = env2
+
+;(function()
+-- ===== part 25: LONG LINES SPOKEN WHOLE, NO JUMBLE (the owner: "long speeches cut midway and do not go on;
+-- with a lot to say it jumps between speeches - when I log back in I hear a lot of lines, hard to understand")
+VOICE.queue, VOICE.said = {}, {}
+setSetting("voice.on", true)
+VOICE.mute = nil
+PERIPHS["speaker_0"] = { types = { "speaker" }, obj = { playAudio = function() played = played + 1 return true end,
+                                                        playSound = function() return true end } }
+http = { get = function(url) gets[#gets + 1] = url
+  return { readAll = function() return string.rep("\85", 3000) end, close = function() end } end }
+package.preload["cc.audio.dfpwm"] = function() return { make_decoder = function() return function(s) return { #s } end end } end
+package.loaded["cc.audio.dfpwm"] = nil
+local long = "Welcome back! While you were away, 3 visitors came: Steve, Alex and Notch. They left 2 messages " ..
+             "for you, one about the farm and one about the big tower by the river. 12 turtles working, 3 idle, " ..
+             "2 need a look, 5 offline. 2 mining teams running. Survey 45 percent done. Have a nice evening."
+CHECK(#long > 250, "(a long line: " .. #long .. " characters)")
+VOICE.say(long, nil, true)
+CHECK(VOICE.queue[1] and VOICE.queue[1].text == long, "a long line is queued WHOLE (it was cut at 200 characters)")
+-- spoken in pieces: every piece asked for, in order, nothing left out, each short enough to be cached
+gets = {}
+local sleeps = {}
+local sleep0 = sleep
+sleep = function(t) sleeps[#sleeps + 1] = t end
+speakAll()
+sleep = sleep0
+local asked = {}
+for _, u in ipairs(gets) do
+  local q = u:match("text=([^&]*)") or ""
+  q = q:gsub("%%(%x%x)", function(h) return string.char(tonumber(h, 16)) end):gsub("+", " ")
+  asked[#asked + 1] = q
+end
+local joined = table.concat(asked, " ")
+CHECK(#asked >= 4, "spoken in " .. #asked .. " pieces")
+CHECK(joined:gsub("%s", "") == long:gsub("%s", ""), "every word of it, in order (nothing cut off): " .. joined)
+local maxLen = 0
+for _, q in ipairs(asked) do maxLen = math.max(maxLen, #q) end
+CHECK(maxLen <= 80, "each piece <= 80 characters (short pieces are cached too): " .. maxLen)
+local cuts = 0
+for i = 1, #asked - 1 do if not asked[i]:find("[%.!?,;:]$") then cuts = cuts + 1 end end
+CHECK(cuts == 0, "pieces end at a sentence / comma, never inside one: " .. table.concat(asked, " | "))
+-- after a line: it waits until the speaker has said it, then a short pause
+local gap = false
+for _, t in ipairs(sleeps) do if math.abs(t - VOICE.GAP) < 1e-9 then gap = true end end
+CHECK(gap, "a pause after each line (lines never run into each other)")
+-- A BURST (logging back in: welcome, the away report, visitors, mentions, gifts ... at once): what is queued is
+-- said in ORDER and WHOLE - extra lines of its own are left out from the END, never the start
+VOICE.queue, VOICE.said = {}, {}
+for i = 1, 10 do VOICE.say("Burst line number " .. i .. ".") end
+local q1 = {}
+for _, q in ipairs(VOICE.queue) do q1[#q1 + 1] = q.text end
+CHECK(#q1 == VOICE.MAX_OWN and q1[1] == "Burst line number 1." and q1[#q1] == "Burst line number " .. VOICE.MAX_OWN .. ".",
+      "10 lines at once: the FIRST " .. VOICE.MAX_OWN .. " kept, in order (" .. table.concat(q1, " ") .. ")")
+-- an answer to a player still gets in
+CHECK(VOICE.say("It is heads.", nil, true) and VOICE.queue[#VOICE.queue].text == "It is heads.", "an answer always gets in")
+for i = 1, 6 do VOICE.say("Answer " .. i, nil, true) end
+local hasFirst = false
+for _, q in ipairs(VOICE.queue) do if q.text == "Burst line number 1." then hasFirst = true end end
+CHECK(#VOICE.queue <= VOICE.MAX_QUEUE + 6 and hasFirst, "many answers: its own LAST lines make room, the first one stays")
+VOICE.queue, VOICE.said = {}, {}
+end)()
