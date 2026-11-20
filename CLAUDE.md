@@ -1230,6 +1230,17 @@ PneumaticCraft drone rides, turtle mapping/surveys, and an AE2 ME network view.
   other. Queue: at most VOICE.MAX_OWN 4 of its own lines waiting - more are LEFT OUT from the end
   (VOICE.skipped), never the start; an answer always gets in (VOICE.MAX_QUEUE 8: its own newest line makes
   room). test_voice part 25 (a function scope: the file's main chunk is at 200 locals).
+  BETTER VOICE, PLUG AND PLAY (the owner: "a better voice ... customizable ... plug and play, not install a
+  server"): no other public CC speech service exists (CCSpeaks = music.madefor.cc: text + voice only); anything
+  more natural needs a self-hosted server (Piper / OpenTTS) - refused. So the parameters are done ON THE BASE:
+  PITCH (VOICE.pitch 0.7 .. 1.4, voice.pitch; `voice pitch <70-140>`): VOICE.stretch(pcm, speed / p) then
+  VOICE.repitch(p) (linear resample) = the speed's length, p x the pitch; stretch now also SHORTENS (speed > 1).
+  READY-MADE VOICES VOICE.PRESETS (standard / deep / british / bright / narrator / robot / tiny = espeak voice
+  + pitch + speed): `voice try [name]` says a line in each (item.style {accent, pitch, speed}, answers so all
+  get in), `voice preset <n|name>` keeps one (voice.accent false = the plain voice), `voice presets` lists
+  (NOW marked). A voice name the service refuses (no sound back while the PLAIN voice works) ->
+  VOICE.badAccent, the line in the plain voice - never silence; the service down blames no voice name.
+  test_voice part 26 (500 Hz sine: length / crossings per speed + pitch, fallback, try / preset).
   UPDATES (the owner: "on each update I have to run disks"): the map fills the data floppies and installAddon
   wanted a floppy with room for the WHOLE new file + 16 KB beside the old copy -> "type disks data". Now: the
   same text = nothing written ("up to date"); room = free + the old copy + cached speech (voice/*.dfpwm, oldest

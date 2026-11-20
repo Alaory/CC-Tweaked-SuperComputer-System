@@ -228,7 +228,7 @@ function VOICE.split(text, max)
   return cut(text, { "[%.!?]+ ", "[,;:] ", " %- ", " " })
 end
 
-function VOICE.say(text, sound, answer)
+function VOICE.say(text, sound, answer, style)
   if VOICE.cfg("on", true) == false or VOICE.mute then return false end
   text = tostring(text or ""):gsub("%s+", " ")
   if text == "" then return false end
@@ -253,7 +253,7 @@ function VOICE.say(text, sound, answer)
     end
   end
   VOICE.said[text] = os.clock()
-  VOICE.queue[#VOICE.queue + 1] = { text = text, sound = sound, answer = answer or nil }
+  VOICE.queue[#VOICE.queue + 1] = { text = text, sound = sound, answer = answer or nil, style = style }
   os.queueEvent("voice_say")
   return true
 end
@@ -285,10 +285,28 @@ local function cacheUsed(dir)
   return n
 end
 
--- the audio (DFPWM bytes) for a sentence: from the cache, else the web
-function VOICE.audio(text)
-  local accent = VOICE.cfg("accent", nil)
+-- the audio (DFPWM bytes) for a sentence: from the cache, else the web. accentOver = a preset's voice (false =
+-- the plain one). A voice name the service does not take (no sound came back) is remembered as BAD and the
+-- line comes in the plain voice - never silence (plug and play: any preset is safe to try).
+VOICE.badAccent = VOICE.badAccent or {}
+function VOICE.audio(text, accentOver)
+  local data, err = VOICE.audioOnce(text, accentOver)
+  local acc = VOICE.accentOf(accentOver)
+  if not data and acc and not tostring(err):find("no internet", 1, true) then
+    data, err = VOICE.audioOnce(text, false)
+    if data then VOICE.badAccent[acc] = true end    -- (the plain voice works: it was the voice name)
+  end
+  return data, err
+end
+function VOICE.accentOf(accentOver)
+  local accent = accentOver
+  if accent == nil then accent = VOICE.cfg("accent", nil) end
   accent = (type(accent) == "string" and accent:match("^[%w%-%+]+$")) and accent or nil
+  if accent and VOICE.badAccent[accent] then accent = nil end
+  return accent
+end
+function VOICE.audioOnce(text, accentOver)
+  local accent = VOICE.accentOf(accentOver)
   local key = hash(text:lower() .. (accent and ("|" .. accent) or ""))
   -- (a phrase saved before is read from whichever floppy holds it - also a full one)
   for _, d in ipairs(mountedDisks and mountedDisks() or {}) do
@@ -353,7 +371,7 @@ function VOICE.stretch(pcm, speed, yield)
   local T = 240                                   -- (moved up to 5 ms to fit)
   local len = #pcm
   local frames = math.floor((len - N - T) / Ha)
-  if speed >= 0.999 or frames < 2 then return pcm end
+  if math.abs(speed - 1) < 0.001 or frames < 2 then return pcm end
   if not HANN.ready then for n = 0, N - 1 do HANN[n] = 0.5 - 0.5 * math.cos(2 * math.pi * n / N) end HANN.ready = true end
   local out, outLen = {}, (frames - 1) * Hs + N
   for i = 1, outLen do out[i] = 0 end
@@ -381,12 +399,33 @@ function VOICE.stretch(pcm, speed, yield)
   end
   return out
 end
+-- PITCH (the owner: "a better voice ... plug and play"): done HERE too - the service has no pitch. Raise /
+-- lower by p: stretch to p x the length (same pitch), then play it p x faster (resample) = the length the
+-- speed setting wants, the pitch p times higher. voice.pitch 0.7 .. 1.4 (1 = the service's own).
+function VOICE.pitch(style)
+  local v = tonumber(style and style.pitch or VOICE.cfg("pitch", 1)) or 1
+  return math.max(0.7, math.min(1.4, v))
+end
+function VOICE.repitch(pcm, p)
+  if math.abs(p - 1) < 0.001 then return pcm end
+  local n = math.floor((#pcm - 1) / p)
+  local out = {}
+  for i = 0, n - 1 do
+    local x = i * p
+    local k = math.floor(x)
+    local f = x - k
+    local a, b = pcm[k + 1] or 0, pcm[k + 2] or pcm[k + 1] or 0
+    local v = math.floor(a + (b - a) * f + 0.5)
+    out[i + 1] = (v > 127 and 127) or (v < -128 and -128) or v
+  end
+  return out
+end
 local function breath()                           -- (a long stretch must not freeze the computer)
   pcall(function() os.queueEvent("voice_breath") os.pullEvent("voice_breath") end)
 end
 
 -- sound -> samples, stretched (the speed setting)
-function VOICE.pcmOf(data)
+function VOICE.pcmOf(data, style)
   local okD, dfpwm = pcall(require, "cc.audio.dfpwm")
   if not okD then return nil, "this CC:Tweaked has no cc.audio.dfpwm" end
   local decoder = dfpwm.make_decoder()
@@ -395,7 +434,10 @@ function VOICE.pcmOf(data)
     local b = decoder(data:sub(i, i + 16 * 1024 - 1))
     for j = 1, #b do pcm[#pcm + 1] = b[j] end
   end
-  return VOICE.stretch(pcm, VOICE.speed(), breath)
+  local sp = tonumber(style and style.speed) or VOICE.speed()
+  sp = math.max(0.5, math.min(1, sp))
+  local p = VOICE.pitch(style)
+  return VOICE.repitch(VOICE.stretch(pcm, sp / p, breath), p)
 end
 local function playPcm(sps, pcm, vol)
   for i = 1, #pcm, 16 * 1024 do
@@ -425,18 +467,20 @@ function VOICE.play(item)
     sleep(0.6)
   end
   local pieces = VOICE.split(item.text)
-  local data, err = VOICE.audio(pieces[1])
+  local style = item.style
+  local accentOver = style and style.accent
+  local data, err = VOICE.audio(pieces[1], accentOver)
   if not data then VOICE.err = err return false end
   local total, t0 = 0, nil
   VOICE.lastPieces = #pieces
   for i = 1, #pieces do
-    local pcm, perr = VOICE.pcmOf(data)
+    local pcm, perr = VOICE.pcmOf(data, style)
     if not pcm then VOICE.err = perr return false end
     t0 = t0 or os.clock()
     total = total + #pcm
     local nextData, nextErr
     parallel.waitForAll(function() playPcm(sps, pcm, vol) end,
-                        function() if pieces[i + 1] then nextData, nextErr = VOICE.audio(pieces[i + 1]) end end)
+                        function() if pieces[i + 1] then nextData, nextErr = VOICE.audio(pieces[i + 1], accentOver) end end)
     if i < #pieces then
       if not nextData then VOICE.err = nextErr break end
       data = nextData
@@ -2188,6 +2232,30 @@ function VOICE.idle(nearNow)
   return VOICE.say(pick(VOICE.MUSINGS))
 end
 
+-- READY-MADE VOICES (plug and play: nothing to install) - the service's espeak voice + speed + pitch done
+-- here. `voice try` says a line in each, `voice preset <name|n>` keeps one. A voice name the service does not
+-- take falls back to the plain voice (VOICE.badAccent), so every preset is safe.
+VOICE.PRESETS = {
+  { name = "standard", accent = false,      pitch = 1,    speed = 0.8,  what = "the plain voice, a little slower" },
+  { name = "deep",     accent = "en-us+m3", pitch = 0.85, speed = 0.8,  what = "lower and calm" },
+  { name = "british",  accent = "en-gb",    pitch = 0.95, speed = 0.78, what = "British, a little lower" },
+  { name = "bright",   accent = "en-us+f3", pitch = 1.1,  speed = 0.85, what = "higher and lighter" },
+  { name = "narrator", accent = "en-us+m1", pitch = 0.9,  speed = 0.72, what = "slow and clear" },
+  { name = "robot",    accent = false,      pitch = 0.78, speed = 0.9,  what = "a deep robot" },
+  { name = "tiny",     accent = "en-us+f2", pitch = 1.3,  speed = 0.9,  what = "a small, quick helper bot" },
+}
+function VOICE.preset(which)
+  local n = tonumber(which)
+  if n then return VOICE.PRESETS[n], n end
+  for i, p in ipairs(VOICE.PRESETS) do if p.name == tostring(which or ""):lower() then return p, i end end
+end
+function VOICE.presetNow()
+  local acc = VOICE.cfg("accent", nil) or nil          -- (false = the plain voice)
+  for i, p in ipairs(VOICE.PRESETS) do
+    if (p.accent or nil) == acc and math.abs(VOICE.pitch() - p.pitch) < 0.01 and math.abs(VOICE.speed() - p.speed) < 0.01 then return p.name, i end
+  end
+end
+
 -- the add-on's own loop (run by addonWorker, base_workers.lua)
 function VOICE.loop()
   while state.running do
@@ -2276,6 +2344,39 @@ function VOICE.command(words)
     setSetting("voice.speed", math.max(0.5, math.min(1, v)))
     VOICE.say("This is how fast I talk now.")
     say("Speech speed " .. math.floor(VOICE.speed() * 100 + 0.5) .. " percent (50 = very slow, 100 = the service's own speed)")
+  elseif a == "pitch" and tonumber(words[3]) then
+    local v = tonumber(words[3])
+    if v > 2 then v = v / 100 end                   -- (voice pitch 90 = 0.9)
+    setSetting("voice.pitch", math.max(0.7, math.min(1.4, v)))
+    VOICE.say("This is my voice now.", nil, true)
+    say("Pitch " .. math.floor(VOICE.pitch() * 100 + 0.5) .. " percent (70 = deep, 100 = normal, 140 = high)")
+  elseif a == "try" then
+    -- every ready-made voice says who it is (answers: all of them get in)
+    local only = words[3] and VOICE.preset(words[3])
+    for i, p in ipairs(VOICE.PRESETS) do
+      if not only or only == p then
+        VOICE.say("Voice " .. i .. ", " .. p.name .. ". Hello, I am your base.", nil, true,
+                  { accent = p.accent, pitch = p.pitch, speed = p.speed })
+      end
+    end
+    say(only and ("Trying voice " .. only.name) or ("Saying a line in each of the " .. #VOICE.PRESETS .. " voices - then: voice preset <number or name>"))
+    for i, p in ipairs(VOICE.PRESETS) do say("  " .. i .. ". " .. p.name .. " - " .. p.what) end
+  elseif a == "preset" or a == "voices" or a == "presets" then
+    local p = words[3] and VOICE.preset(words[3])
+    if p then
+      setSetting("voice.accent", p.accent or false)     -- (false = the plain voice, also over base_config)
+      setSetting("voice.pitch", p.pitch)
+      setSetting("voice.speed", p.speed)
+      VOICE.say("Hello. This is my new voice.", nil, true)
+      say("Voice: " .. p.name .. " - " .. p.what)
+    else
+      say("Ready-made voices (voice try = hear them all, voice preset <n> = keep one):")
+      local now = VOICE.presetNow()
+      for i, q in ipairs(VOICE.PRESETS) do
+        say("  " .. i .. ". " .. q.name .. " - " .. q.what .. (q.name == now and "   <- NOW" or "") ..
+            ((q.accent and VOICE.badAccent[q.accent]) and "   (its voice name was refused: plain voice)" or ""))
+      end
+    end
   elseif a == "accent" and words[3] then
     if words[3] == "off" or words[3] == "default" then resetSetting("voice.accent") else setSetting("voice.accent", words[3]) end
     VOICE.say("Hello. This is my new voice.")
@@ -2324,8 +2425,9 @@ function VOICE.command(words)
     say("  voice on|off | say <text> | joke | greet|chat|alarm|detector|fun on|off | chatter <min>")
     say("  voice announce all|summary|errors|off" .. (VOICE.pending.n > 0 and ("   (" .. VOICE.pending.n .. " warnings waiting)") or "") ..
         (VOICE.isQuiet() and "   QUIET for " .. math.ceil((VOICE.quietUntil - os.clock()) / 60) .. " min" or ""))
-    say("  speech speed " .. math.floor(VOICE.speed() * 100 + 0.5) .. " %, voice " .. tostring(VOICE.cfg("accent", "default")) ..
-        "   voice speed <50-100> | voice accent <en-us|en-gb|...|off>")
+    say("  voice " .. (VOICE.presetNow() or "own mix") .. ": speed " .. math.floor(VOICE.speed() * 100 + 0.5) .. " %, pitch " ..
+        math.floor(VOICE.pitch() * 100 + 0.5) .. " %, accent " .. tostring(VOICE.cfg("accent", nil) or "default") ..
+        "   voice try | preset <n> | speed <50-100> | pitch <70-140> | accent <en-gb|...|off>")
     say("  voice volume <0-3> | range <n> | name <word> | scan <s> | lonely <days> | message <text> | visitors | forget | remove")
   end
   return out

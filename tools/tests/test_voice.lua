@@ -1636,3 +1636,72 @@ for _, q in ipairs(VOICE.queue) do if q.text == "Burst line number 1." then hasF
 CHECK(#VOICE.queue <= VOICE.MAX_QUEUE + 6 and hasFirst, "many answers: its own LAST lines make room, the first one stays")
 VOICE.queue, VOICE.said = {}, {}
 end)()
+
+-- ===== part 26: A BETTER VOICE, PLUG AND PLAY (the owner: "is there a better voice ... customizable parameters ...
+-- plug and play, not install a server"): pitch done on the base, ready-made voices, a refused voice name falls back
+;(function()
+  local function sine(hz, n)
+    local t = {}
+    for i = 1, n do t[i] = math.floor(100 * math.sin(2 * math.pi * hz * i / 48000) + 0.5) end
+    return t
+  end
+  local function crossings(t)
+    local c = 0
+    for i = 2, #t do if (t[i - 1] < 0) ~= (t[i] < 0) then c = c + 1 end end
+    return c / (#t / 48000)                           -- per second
+  end
+  local base = sine(500, 48000)
+  local c0 = crossings(base)
+  for _, case in ipairs({ { s = 1, p = 1.25 }, { s = 1, p = 0.8 }, { s = 0.8, p = 1.2 }, { s = 0.8, p = 0.85 } }) do
+    local out = VOICE.repitch(VOICE.stretch(base, case.s / case.p), case.p)
+    local wantLen = #base / case.s
+    local ratio = crossings(out) / c0
+    CHECK(math.abs(#out - wantLen) / wantLen < 0.04, "speed " .. case.s .. ", pitch " .. case.p .. ": length as the SPEED wants (" ..
+          #out .. " vs " .. math.floor(wantLen) .. ")")
+    CHECK(math.abs(ratio - case.p) < 0.06, "speed " .. case.s .. ", pitch " .. case.p .. ": the pitch moves by " ..
+          string.format("%.2f", ratio) .. " (crossings per second)")
+    local lo, hi = 0, 0
+    for _, v in ipairs(out) do lo, hi = math.min(lo, v), math.max(hi, v) end
+    CHECK(lo >= -128 and hi <= 127 and hi > 60, "... in range and about as loud (" .. lo .. " .. " .. hi .. ")")
+  end
+  CHECK(VOICE.stretch(base, 1.25) and math.abs(#VOICE.stretch(base, 1.25) - #base / 1.25) / (#base / 1.25) < 0.04,
+        "the stretch can also SHORTEN (a low pitch at full speed needs it)")
+  setSetting("voice.pitch", 9)
+  CHECK(VOICE.pitch() == 1.4, "pitch kept in 0.7 .. 1.4")
+  setSetting("voice.pitch", 1)
+  -- a voice name the service does not take: the plain voice, never silence; remembered
+  local http0 = http
+  local urls = {}
+  http = { get = function(url) urls[#urls + 1] = url
+    if url:find("voice=xx%-bad") then return { readAll = function() return "" end, close = function() end } end
+    return { readAll = function() return string.rep("\85", 3000) end, close = function() end } end }
+  VOICE.badAccent = {}
+  local d = VOICE.audio("Plain voice test one.", "xx-bad")
+  CHECK(d and #d > 100 and VOICE.badAccent["xx-bad"], "a refused voice name: the line comes in the plain voice, the name is remembered")
+  urls = {}
+  VOICE.audio("Plain voice test two.", "xx-bad")
+  CHECK(#urls == 1 and not urls[1]:find("voice=", 1, true), "... and not asked for again")
+  -- no internet at all: no voice is blamed
+  http = { get = function() return nil, "timeout" end }
+  VOICE.audio("Nothing works now.", "en-gb")
+  CHECK(not VOICE.badAccent["en-gb"], "the service down: the voice name is NOT marked bad")
+  http = http0
+  -- `voice try`: a line in every ready-made voice, each with its own settings; `voice preset` keeps one
+  VOICE.queue, VOICE.said = {}, {}
+  VOICE.command({ "voice", "try" })
+  CHECK(#VOICE.queue == #VOICE.PRESETS, "voice try: one line per voice (" .. #VOICE.queue .. " of " .. #VOICE.PRESETS .. ")")
+  local styled = 0
+  for _, q in ipairs(VOICE.queue) do if q.style and q.style.pitch then styled = styled + 1 end end
+  CHECK(styled == #VOICE.PRESETS, "each line carries its voice's settings")
+  VOICE.queue = {}
+  VOICE.command({ "voice", "preset", "deep" })
+  CHECK(VOICE.cfg("accent") == "en-us+m3" and math.abs(VOICE.pitch() - 0.85) < 1e-9 and VOICE.presetNow() == "deep",
+        "voice preset deep: kept (accent, pitch, speed)")
+  VOICE.command({ "voice", "preset", "1" })
+  CHECK(VOICE.presetNow() == "standard" and VOICE.accentOf(nil) == nil, "voice preset 1: the plain voice again")
+  local out = table.concat(VOICE.command({ "voice", "presets" }), "\n")
+  CHECK(out:find("NOW", 1, true) and out:find("narrator", 1, true), "voice presets lists them, the one in use marked")
+  VOICE.queue, VOICE.said = {}, {}
+  setSetting("voice.pitch", 1)
+  setSetting("voice.speed", 0.8)
+end)()
