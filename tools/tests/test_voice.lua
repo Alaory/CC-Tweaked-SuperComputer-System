@@ -1617,9 +1617,7 @@ local cuts = 0
 for i = 1, #asked - 1 do if not asked[i]:find("[%.!?,;:]$") then cuts = cuts + 1 end end
 CHECK(cuts == 0, "pieces end at a sentence / comma, never inside one: " .. table.concat(asked, " | "))
 -- after a line: it waits until the speaker has said it, then a short pause
-local gap = false
-for _, t in ipairs(sleeps) do if math.abs(t - VOICE.GAP) < 1e-9 then gap = true end end
-CHECK(gap, "a pause after each line (lines never run into each other)")
+-- (the next line waits for this one + a breath - checked in part 28)
 -- A BURST (logging back in: welcome, the away report, visitors, mentions, gifts ... at once): what is queued is
 -- said in ORDER and WHOLE - extra lines of its own are left out from the END, never the start
 VOICE.queue, VOICE.said = {}, {}
@@ -1711,7 +1709,7 @@ end)()
   -- words espeak says badly -> words it can say
   local t = VOICE.clarifyText("AE2 has 64 KB free, 50% done -> GPS ok. Radiation 0.1 uSv, x64 diamonds (#3).")
   CHECK(t:find("A E 2 has", 1, true) and t:find("kilobytes free,", 1, true) and t:find("50 percent", 1, true) and
-        t:find(" to G P S ok.", 1, true) and t:find("micro sieverts,", 1, true) and t:find("times 64", 1, true) and
+        t:find(" to G P S okay.", 1, true) and t:find("micro sieverts,", 1, true) and t:find("times 64", 1, true) and
         t:find("(number 3).", 1, true), "codes and signs said as words, punctuation kept: " .. t)
   CHECK(VOICE.clarifyText("Welcome back, Alaory! The farm is fine.") == "Welcome back, Alaory! The farm is fine.",
         "plain words untouched")
@@ -1763,4 +1761,36 @@ end)()
   CHECK(#VOICE.clarifyPcm(pcm) == #pcm, "voice clear off: the service's own sound")
   setSetting("voice.clear", true)
   VOICE.queue, VOICE.said = {}, {}
+end)()
+
+-- ===== part 28: STRETCHED WORDS + NO LONG SILENCE BETWEEN LINES (the owner: "the hiii is spelled as h e e e, also
+-- there is long silence between when the base wants to talk about something new like the status or messages")
+;(function()
+  for raw, want in pairs({ ["hiiii"] = "hi", ["sooooo cool"] = "so cool", ["cooool"] = "cool", ["noooo!"] = "no!",
+                           ["brb pls, idk"] = "be right back please, I don't know", ["Hello Steve"] = "Hello Steve",
+                           ["at x 100, y 64"] = "at x 100, y 64", ["hmm ok"] = "hum okay" }) do
+    CHECK(VOICE.clarifyText(raw) == want, "'" .. raw .. "' -> '" .. VOICE.clarifyText(raw) .. "' (want '" .. want .. "')")
+  end
+  -- two lines in a row: the 2nd one's first piece is fetched WHILE the 1st is being said, and the wait for
+  -- the 1st comes only when the 2nd is ready (before: wait + pause, THEN fetch + decode = a long silence)
+  local events = {}
+  local http0, sleep0 = http, sleep
+  http = { get = function(url)
+    events[#events + 1] = "get " .. (url:match("text=([^&]*)") or "")
+    return { readAll = function() return string.rep("\85", 3000) end, close = function() end } end }
+  sleep = function(t) events[#events + 1] = "sleep" end
+  VOICE.queue, VOICE.said, VOICE.pre, VOICE.busyUntil = {}, {}, nil, nil
+  VOICE.say("First line here.", nil, true)
+  VOICE.say("Second topic now.", nil, true)
+  speakAll()
+  http, sleep = http0, sleep0
+  local iGet2, iSleep, gets2 = nil, nil, 0
+  for i, e in ipairs(events) do
+    if e:find("Second", 1, true) then gets2 = gets2 + 1 iGet2 = iGet2 or i end
+    if e == "sleep" and not iSleep then iSleep = i end
+  end
+  CHECK(iGet2 and iSleep and iGet2 < iSleep, "the next line is fetched BEFORE the wait between lines: " .. table.concat(events, ", "))
+  CHECK(gets2 == 1, "... and only once (the fetched one is used): " .. gets2)
+  CHECK(VOICE.GAP <= 0.6, "a short breath between lines: " .. VOICE.GAP .. " s")
+  VOICE.queue, VOICE.said, VOICE.pre, VOICE.busyUntil = {}, {}, nil, nil
 end)()

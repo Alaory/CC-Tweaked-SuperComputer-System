@@ -179,7 +179,7 @@ end
 VOICE.MAX_OWN = 4          -- lines it says by itself waiting at once (more = left out)
 VOICE.MAX_QUEUE = 8        -- everything waiting
 VOICE.PIECE = 80           -- one request to the speech service (<= 80 characters are also cached)
-VOICE.GAP = 0.8            -- a pause between two lines (s)
+VOICE.GAP = 0.6            -- a breath between two lines (s)
 -- a long line -> pieces of at most `max` characters, cut at sentence ends first, then at commas / dashes,
 -- then between words (never inside a word)
 function VOICE.split(text, max)
@@ -433,6 +433,34 @@ VOICE.SAYAS = {
   XP = "X P", HP = "H P", AFK = "A F K", UTC = "U T C", ID = "I D", TPS = "T P S", NBT = "N B T", AP = "A P",
   CC = "C C", uSv = "micro sieverts", mB = "millibuckets", ETA = "E T A", NPC = "N P C", PvP = "P V P",
 }
+-- chat shorthand espeak SPELLS letter by letter (the owner: "hiiii is spelled h e e e") - lower case only
+VOICE.SHORTHAND = {
+  brb = "be right back", pls = "please", plz = "please", thx = "thanks", ty = "thank you", idk = "I don't know",
+  omg = "oh my god", btw = "by the way", np = "no problem", gg = "good game", gn = "good night", gm = "good morning",
+  wb = "welcome back", imo = "in my opinion", rn = "right now", tbh = "to be honest", ikr = "I know, right",
+  lmao = "ha ha", lmfao = "ha ha", rofl = "ha ha", xd = "ha ha", lol = "lol", ok = "okay",
+  hmm = "hum", hm = "hum", mhm = "mm hum", u = "you", ur = "your", ppl = "people",
+  bc = "because", cuz = "because", nvm = "never mind", ily = "I love you", gl = "good luck",
+  -- (no other single letters: the base itself says "x 100, y 64" - y is not "why" there)
+}
+-- "hiiii" -> "hi", "sooooo" -> "so", "cooool" -> "cool", "noooo" -> "no": a letter 3+ times in a row
+local function unstretch(w)
+  local out, i, n = {}, 1, #w
+  while i <= n do
+    local c = w:sub(i, i)
+    local j = i
+    while j < n and w:sub(j + 1, j + 1):lower() == c:lower() do j = j + 1 end
+    local run = j - i + 1
+    if run >= 3 then
+      -- (o / e inside a word stay double: cooool -> cool, sweeeet -> sweet; at the end one: sooo -> so)
+      if (c:lower() == "o" or c:lower() == "e") and j < n then out[#out + 1] = c .. c else out[#out + 1] = c end
+    else
+      out[#out + 1] = w:sub(i, j)
+    end
+    i = j + 1
+  end
+  return table.concat(out)
+end
 function VOICE.clarifyText(text)
   local own = VOICE.cfg("sayas", nil)
   own = type(own) == "table" and own or {}
@@ -442,7 +470,8 @@ function VOICE.clarifyText(text)
   for word in text:gmatch("%S+") do
     local pre, core, post = word:match("^([%(%[\"']*)(.-)([%.,;:!%?%)%]\"']*)$")
     if not core or core == "" then pre, core, post = "", word, "" end
-    local say = own[core:lower()] or VOICE.SAYAS[core]
+    if core:match("^%a+$") then core = unstretch(core) end
+    local say = own[core:lower()] or VOICE.SAYAS[core] or (core == core:lower() and VOICE.SHORTHAND[core])
     if not say then
       local n = core:match("^x(%d+)$")                 -- (x64 = times 64)
       if n then say = "times " .. n end
@@ -548,25 +577,47 @@ function VOICE.play(item)
   local sps = VOICE.speakers()
   if #sps == 0 then VOICE.err = "no Speaker found (put one next to the computer or on the cable)" return false end
   local vol = math.max(0, math.min(3, tonumber(VOICE.cfg("volume", 2)) or 2))
+  local pieces = VOICE.split(VOICE.clarifyText(item.text))
+  local style = item.style
+  local accentOver = style and style.accent
+  -- (the first piece was fetched while the line before played - the owner: "a long silence when the base
+  --  wants to talk about something new": fetch + decode came AFTER the wait + the pause)
+  local data, err
+  local pre = VOICE.pre
+  VOICE.pre = nil
+  if pre and pre.item == item and pre.data then data = pre.data end
+  if not data then data, err = VOICE.audio(pieces[1], accentOver) end
+  if not data then VOICE.err = err return false end
+  local pcm, perr = VOICE.pcmOf(data, style)
+  if not pcm then VOICE.err = perr return false end
+  -- the line before is still being said: wait for its end (+ a breath) only NOW, with this one ready
+  local wait = (VOICE.busyUntil or 0) + VOICE.GAP - os.clock()
+  if wait > 0 and VOICE.busyUntil then sleep(math.min(wait, 60)) end
   if item.sound then
     for _, sp in ipairs(sps) do pcall(sp.playSound, item.sound, vol, 1) end
     sleep(0.6)
   end
-  local pieces = VOICE.split(VOICE.clarifyText(item.text))
-  local style = item.style
-  local accentOver = style and style.accent
-  local data, err = VOICE.audio(pieces[1], accentOver)
-  if not data then VOICE.err = err return false end
-  local total, t0 = 0, nil
+  local total, endAt = 0, os.clock()
   VOICE.lastPieces = #pieces
   for i = 1, #pieces do
-    local pcm, perr = VOICE.pcmOf(data, style)
-    if not pcm then VOICE.err = perr return false end
-    t0 = t0 or os.clock()
+    if i > 1 then
+      pcm, perr = VOICE.pcmOf(data, style)
+      if not pcm then VOICE.err = perr break end
+    end
     total = total + #pcm
+    endAt = math.max(endAt, os.clock()) + #pcm / 48000          -- (when the speaker will have said it)
     local nextData, nextErr
     parallel.waitForAll(function() playPcm(sps, pcm, vol) end,
-                        function() if pieces[i + 1] then nextData, nextErr = VOICE.audio(pieces[i + 1], accentOver) end end)
+                        function()
+                          if pieces[i + 1] then nextData, nextErr = VOICE.audio(pieces[i + 1], accentOver)
+                          elseif VOICE.queue[1] then
+                            -- the NEXT line's first piece, while this one is still being said
+                            local q = VOICE.queue[1]
+                            local qp = VOICE.split(VOICE.clarifyText(q.text))
+                            local okA, d = pcall(VOICE.audio, qp[1], q.style and q.style.accent)
+                            if okA and d then VOICE.pre = { item = q, data = d } end
+                          end
+                        end)
     if i < #pieces then
       if not nextData then VOICE.err = nextErr break end
       data = nextData
@@ -575,10 +626,7 @@ function VOICE.play(item)
   VOICE.lastSamples = total
   VOICE.err = nil
   VOICE.lastSaid = { text = item.text, at = os.clock() }
-  -- (the speaker plays on after its last piece was handed over: wait for the end, then a breath)
-  local left = (t0 or os.clock()) + total / 48000 - os.clock()
-  if left > 0 then sleep(math.min(left, 60)) end
-  sleep(VOICE.GAP)
+  VOICE.busyUntil = endAt
   return true
 end
 
@@ -2351,6 +2399,7 @@ function VOICE.loop()
       local ok, err = pcall(VOICE.play, item)
       if not ok then VOICE.err = tostring(err) end
     end
+    VOICE.pre = nil
     waitFor(1, "voice_say")
   end
 end

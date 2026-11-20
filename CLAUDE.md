@@ -1251,6 +1251,15 @@ PneumaticCraft drone rides, turtle mapping/surveys, and an AE2 ME network view.
   100-150 ms ones. IN GAME the first version ("it cuts on each letter like de as oo aa") stretched every silence
   >= 20 ms as a "word gap" - espeak is silent 20-100 ms INSIDE words (d t p k), so every word was cut up.
   `voice gap|pause <ms>`. test_voice part 27 (30 / 90 ms silences inside words keep their length).
+  STRETCHED WORDS + SHORTHAND (the owner: "hiii is spelled as h e e e"): espeak SPELLS words it does not know -
+  clarifyText unstretches (a letter 3+ times -> one; o / e inside a word -> two: cooool = cool) and turns
+  lower-case chat shorthand into words (VOICE.SHORTHAND: brb pls idk omg gg u ur hmm ok ...; no single letters
+  but u - the base says "x 100, y 64"). NO LONG SILENCE BETWEEN LINES (the owner: "a long silence when the base
+  wants to talk about something new"): the wait + pause came FIRST, then the fetch + decode of the next line.
+  Now VOICE.play fetches the NEXT queued line's first piece while the last piece of this one plays (VOICE.pre),
+  decodes its own first piece, and only then waits for VOICE.busyUntil (when the speaker will have said the
+  line before: endAt per piece) + VOICE.GAP 0.6 s. test_voice part 28 (the 2nd line fetched before the wait,
+  once).
   UPDATES (the owner: "on each update I have to run disks"): the map fills the data floppies and installAddon
   wanted a floppy with room for the WHOLE new file + 16 KB beside the old copy -> "type disks data". Now: the
   same text = nothing written ("up to date"); room = free + the old copy + cached speech (voice/*.dfpwm, oldest
