@@ -1127,6 +1127,12 @@ PneumaticCraft drone rides, turtle mapping/surveys, and an AE2 ME network view.
   unscramble + maths through the quiz kind = points, hangman, would you rather, knock knock both ways, a
   choose-your-own ADVENTURE through numbered menus, this or that, dares, fortunes, rate me, the GUESTBOOK
   in "#base".guest), +40 jokes, +40 quiz / riddles, +30 musings, stories, roasts, compliments, lonely lines.
+  HANGMAN (the owner's screenshot: "hint" got no answer, "hangman" typed again counted as a WRONG 7-letter
+  guess, "tried: )" empty): while playing, the typed message (V.lastRaw, the base's name in front stripped)
+  is checked first - HANG_SAME (hangman ...) = the board again, no miss; HANG_NEW (new word ...) = a fresh
+  game; HANG_QUIT (give up ...) = the word, over; HANG_HINT (hint / clue / help ...) = one open letter shown,
+  costs a miss, max 2, never with 1 miss left. Wrong whole words in g.words (listed under tried, never counted
+  twice); hangTried = "" when nothing tried.
   test_voice part 17: every pack intent reachable by its own words and answering, 90 % of one-letter-swap
   typos understood, each game played through, idle variety (passes with 60 random seeds).
   LISTENING (the owner: "read the chat and remember if people talk about the owner - while the owner is offline"):

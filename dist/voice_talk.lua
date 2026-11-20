@@ -292,13 +292,63 @@ local t = {}
 for c in g.w:gmatch(".") do t[#t + 1] = g.got[c] and c:upper() or "_" end
 return table.concat(t, " ")
 end
+
+local function hangTried(g)
+local parts = {}
+if g.tried ~= "" then parts[#parts + 1] = g.tried:upper():gsub(".", "%0 "):gsub(" $", "") end
+for _, w in ipairs(g.words or {}) do parts[#parts + 1] = w:upper() end
+if #parts == 0 then return "" end
+return ", tried: " .. table.concat(parts, ", ")
+end
+local function hangLeft(g) return "(" .. (6 - g.miss) .. " misses left" .. hangTried(g) .. ")" end
 local function hangman(who)
 local w = pick(WORDS)
-V.startGame(who, { kind = "hang", w = w, got = {}, miss = 0, tried = "" })
-return "Hangman! " .. #w .. " letters: " .. hangShow({ w = w, got = {} }) .. "   Type a letter (or the whole word). 6 misses and I win.",
+V.startGame(who, { kind = "hang", w = w, got = {}, miss = 0, tried = "", words = {}, hints = 0 })
+return "Hangman! " .. #w .. " letters: " .. hangShow({ w = w, got = {} }) ..
+"   Type a letter (or the whole word). Say hint for a letter, give up to stop. 6 misses and I win.",
 "Let's play hangman. The word is in your chat. Type a letter."
 end
+
+local HANG_SAME = { hangman = true, ["hang man"] = true, ["play hangman"] = true, ["lets play hangman"] = true,
+["hangman again"] = true, ["guess the word"] = true }
+local HANG_NEW = { ["new word"] = true, ["new game"] = true, ["another word"] = true, ["another one"] = true,
+restart = true, ["start over"] = true, ["new hangman"] = true }
+local HANG_HINT = { hint = true, clue = true, help = true, ["a hint"] = true, ["give me a hint"] = true,
+["hint please"] = true, ["can i have a hint"] = true, ["give me a clue"] = true }
+local HANG_QUIT = { ["give up"] = true, ["i give up"] = true, quit = true, stop = true, ["stop playing"] = true,
+["tell me"] = true, ["tell me the word"] = true, ["what is it"] = true, ["what was it"] = true }
 V.gameKinds.hang = function(g, who, q, strict, k)
+g.words, g.hints = g.words or {}, g.hints or 0
+
+local said = tostring(V.lastRaw or q or ""):lower():gsub("[^%a ]", " "):gsub("%s+", " "):gsub("^ ", ""):gsub(" $", "")
+local nm = tostring(VOICE.cfg("name", "base")):lower()
+if said:sub(1, #nm + 1) == nm .. " " then said = said:sub(#nm + 2) end
+if HANG_SAME[said] then
+g.till = os.clock() + 180
+return "We are already playing! " .. hangShow(g) .. "   " .. hangLeft(g) .. "  Say new word for another one."
+end
+if HANG_NEW[said] then
+local a = hangman(who)
+return "New word! " .. a
+end
+if HANG_QUIT[said] then
+V.games[k] = nil
+return "The word was " .. g.w:upper() .. ". Say hangman to play again."
+end
+if HANG_HINT[said] then
+g.till = os.clock() + 180
+if g.hints >= 2 then return "No more hints in this game, sorry! " .. hangShow(g) .. "   " .. hangLeft(g) end
+if 6 - g.miss <= 1 then return "No hint now - one more miss and I win! " .. hangShow(g) end
+local open = {}
+for c in g.w:gmatch(".") do if not g.got[c] then open[#open + 1] = c end end
+local c = open[math.random(1, #open)]
+g.got[c], g.hints, g.miss = true, g.hints + 1, g.miss + 1
+if not g.tried:find(c, 1, true) then g.tried = g.tried .. c end
+local done = true
+for ch in g.w:gmatch(".") do if not g.got[ch] then done = false end end
+if done then V.games[k] = nil return hangShow(g) .. "  That was the last letter - the word was " .. g.w:upper() .. "." end
+return "Hint: there is " .. (c:match("[aeiou]") and "an " or "a ") .. c:upper() .. ". It costs a miss. " .. hangShow(g) .. "   " .. hangLeft(g)
+end
 local t = q:gsub("%s+", "")
 local r = tostring(V.lastRaw or ""):lower():gsub("[^%a]", "")
 if #r == 1 then t = r end
@@ -307,6 +357,10 @@ g.till = os.clock() + 180
 if #t > 1 then
 if t == g.w then V.games[k] = nil return "Yes! The word was " .. g.w:upper() .. ". Well done, " .. who .. "!" end
 if #t < #g.w - 1 then return nil end
+for _, w in ipairs(g.words) do
+if w == t then return "You tried " .. t:upper() .. " already. " .. hangShow(g) .. "   " .. hangLeft(g) end
+end
+g.words[#g.words + 1] = t
 g.miss = g.miss + 1
 else
 if not t:find("%a") then return nil end
@@ -322,7 +376,7 @@ end
 g.miss = g.miss + 1
 end
 if g.miss >= 6 then V.games[k] = nil return "That is 6 misses. The word was " .. g.w:upper() .. ". Want to play again? Say hangman." end
-return "No. " .. hangShow(g) .. "   (" .. (6 - g.miss) .. " misses left, tried: " .. g.tried:upper() .. ")"
+return "No. " .. hangShow(g) .. "   " .. hangLeft(g)
 end
 
 local THISTHAT = { { "Cats", "dogs" }, { "Caves", "mountains" }, { "Day", "night" }, { "Building", "mining" }, { "Swords", "bows" },

@@ -570,6 +570,19 @@ CHECK(say2("q"):find("No", 1, true) or hw:find("q", 1, true), "a wrong letter")
 VOICE.games.kevin.w = "turn"
 CHECK(say2("u"):find("U", 1, true) and told[1]:find("Yes", 1, true), "'u' is a letter in hangman, not 'you': " .. told[1])
 CHECK(say2("turn"):find("The word was TURN", 1, true), "the whole word wins")
+-- (the owner, in game: "hint" got no answer, and "hangman" typed again counted as a wrong 7-letter guess,
+--  then "tried: )" with nothing in it)
+CHECK(say2("hangman"):find("hint", 1, true), "hangman says how to get a hint")
+VOICE.games.kevin.w, VOICE.games.kevin.got = "creeper", {}
+CHECK(say2("hangman"):find("already playing", 1, true) and VOICE.games.kevin.miss == 0, "'hangman' while playing: the board again, NOT a wrong guess: " .. told[1])
+CHECK(not told[1]:find("tried: )", 1, true) and not told[1]:find("tried:", 1, true), "nothing tried yet: no empty 'tried:' - " .. told[1])
+CHECK(say2("hint"):find("Hint: there is", 1, true) and VOICE.games.kevin.miss == 1, "'hint' shows a letter (costs a miss): " .. told[1])
+CHECK(say2("base, give me a hint"):find("Hint: there is", 1, true) and VOICE.games.kevin.miss == 2, "a 2nd hint (with the name in front): " .. told[1])
+CHECK(say2("hint"):find("No more hints", 1, true) and VOICE.games.kevin.miss == 2, "at most 2 hints: " .. told[1])
+CHECK(say2("zombies"):find("ZOMBIES", 1, true) and VOICE.games.kevin.miss == 3, "a wrong whole word is listed under tried: " .. told[1])
+CHECK(say2("zombies"):find("already", 1, true) and VOICE.games.kevin.miss == 3, "... and never counted twice")
+CHECK(say2("new word"):find("New word", 1, true) and VOICE.games.kevin.miss == 0, "'new word': a fresh game")
+CHECK(say2("give up"):find("The word was", 1, true) and not VOICE.games.kevin, "'give up': the word, game over")
 -- would you rather
 CHECK(say2("would u rather"):find("Would you rather", 1, true), "would u rather")
 CHECK(say2("2"):find("You would", 1, true), "2 -> its reaction: " .. told[1])
