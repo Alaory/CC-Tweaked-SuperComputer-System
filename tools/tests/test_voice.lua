@@ -1640,7 +1640,7 @@ for _, q in ipairs(VOICE.queue) do q1[#q1 + 1] = q.text end
 CHECK(#q1 == VOICE.MAX_OWN and q1[1] == "Burst line number 1." and q1[#q1] == "Burst line number " .. VOICE.MAX_OWN .. ".",
       "10 lines at once: the FIRST " .. VOICE.MAX_OWN .. " kept, in order (" .. table.concat(q1, " ") .. ")")
 -- an answer to a player still gets in
-CHECK(VOICE.say("It is heads.", nil, true) and VOICE.queue[#VOICE.queue].text == "It is heads.", "an answer always gets in")
+CHECK(VOICE.say("It is heads.", nil, true) and VOICE.queue[1].text == "It is heads.", "an answer always gets in (first)")
 for i = 1, 6 do VOICE.say("Answer " .. i, nil, true) end
 local hasFirst = false
 for _, q in ipairs(VOICE.queue) do if q.text == "Burst line number 1." then hasFirst = true end end
@@ -1805,5 +1805,48 @@ end)()
   CHECK(iGet2 and iSleep and iGet2 < iSleep, "the next line is fetched BEFORE the wait between lines: " .. table.concat(events, ", "))
   CHECK(gets2 == 1, "... and only once (the fetched one is used): " .. gets2)
   CHECK(VOICE.GAP <= 0.6, "a short breath between lines: " .. VOICE.GAP .. " s")
+  VOICE.queue, VOICE.said, VOICE.pre, VOICE.busyUntil = {}, {}, nil, nil
+end)()
+
+-- ===== part 29: ANSWERS FIRST (the owner: "I ask it something and it takes like a minute to respond") =====
+;(function()
+  VOICE.queue, VOICE.said, VOICE.pre, VOICE.busyUntil = {}, {}, nil, nil
+  for i = 1, 4 do VOICE.say("Own line number " .. i .. ".") end
+  VOICE.say("Your answer one.", nil, true)
+  VOICE.say("Your answer two.", nil, true)
+  CHECK(VOICE.queue[1].text == "Your answer one." and VOICE.queue[2].text == "Your answer two." and
+        VOICE.queue[3].text == "Own line number 1.", "answers go BEFORE its own lines, in the order asked: " ..
+        VOICE.queue[1].text .. " | " .. VOICE.queue[2].text .. " | " .. VOICE.queue[3].text)
+  -- someone asks while it is saying a long line of its own: that line ends after the sentence it is on
+  VOICE.queue, VOICE.said = {}, {}
+  local http0, sleep0 = http, sleep
+  local asked = false
+  local fetched = {}
+  http = { get = function(url)
+    local t = (url:match("text=([^&]*)") or ""):gsub("%%(%x%x)", function(h) return string.char(tonumber(h, 16)) end)
+    fetched[#fetched + 1] = t
+    if t:find("Second sentence", 1, true) and not asked then asked = true VOICE.say("Here is your answer.", nil, true) end
+    return { readAll = function() return string.rep("\85", 3000) end, close = function() end } end }
+  sleep = function() end
+  VOICE.say("First sentence of a long story about the base and all of its many turtles. Second sentence keeps " ..
+            "going about the map and the storage. Third sentence is about the drones and the mining teams.")
+  local item = table.remove(VOICE.queue, 1)
+  VOICE.play(item)
+  CHECK(asked and VOICE.lastCut == 1, "its own long line stops after the sentence it was on (" .. tostring(VOICE.lastCut) .. ")")
+  CHECK(VOICE.queue[1] and VOICE.queue[1].text == "Here is your answer.", "... and the answer is next")
+  local third = false
+  for _, t in ipairs(fetched) do if t:find("Third sentence", 1, true) then third = true end end
+  CHECK(not third, "the rest of its own line is not even fetched")
+  http, sleep = http0, sleep0
+  -- an answer is not cut by another answer
+  VOICE.queue, VOICE.said = {}, {}
+  -- chat: the answer goes out before lines that only wait (notes, menus queued earlier)
+  state.chatOut = { { name = "x", text = "a note" }, { name = "x", text = "another note" } }
+  chatTell("Kevin", "the answer", true)
+  chatTell("Kevin", "the 2nd answer", true)
+  chatTell("x", "a later note")
+  CHECK(state.chatOut[1].text == "the answer" and state.chatOut[2].text == "the 2nd answer" and state.chatOut[3].text == "a note" and
+        state.chatOut[5].text == "a later note", "chat: answers first, in order; other lines keep theirs")
+  state.chatOut = {}
   VOICE.queue, VOICE.said, VOICE.pre, VOICE.busyUntil = {}, {}, nil, nil
 end)()

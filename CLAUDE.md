@@ -1265,7 +1265,12 @@ PneumaticCraft drone rides, turtle mapping/surveys, and an AE2 ME network view.
   Now VOICE.play fetches the NEXT queued line's first piece while the last piece of this one plays (VOICE.pre),
   decodes its own first piece, and only then waits for VOICE.busyUntil (when the speaker will have said the
   line before: endAt per piece) + VOICE.GAP 0.6 s. test_voice part 28 (the 2nd line fetched before the wait,
-  once).
+  once). ANSWERS FIRST (the owner: "I ask it something and it takes like a minute to respond" - the processing
+  is fast, ~0.2 s per 5 s of speech; the answer WAITED behind up to 4 lines it was saying by itself): VOICE.say
+  with answer = true goes BEFORE its own lines (after earlier answers); VOICE.play of its OWN line stops at the
+  next piece (sentence) when an answer waits (VOICE.lastCut; the rest is not even fetched); chatTell(name,
+  text, urgent) - the voice reply() sends urgent: before waiting chat lines (notes, menus), answers in order.
+  test_voice part 29.
   UPDATES (the owner: "on each update I have to run disks"): the map fills the data floppies and installAddon
   wanted a floppy with room for the WHOLE new file + 16 KB beside the old copy -> "type disks data". Now: the
   same text = nothing written ("up to date"); room = free + the old copy + cached speech (voice/*.dfpwm, oldest

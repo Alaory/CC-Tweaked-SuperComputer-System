@@ -253,7 +253,13 @@ if not VOICE.queue[i].answer then table.remove(VOICE.queue, i) VOICE.skipped = (
 end
 end
 VOICE.said[text] = os.clock()
-VOICE.queue[#VOICE.queue + 1] = { text = text, sound = sound, answer = answer or nil, style = style }
+
+
+local at = #VOICE.queue + 1
+if answer then
+for i, q in ipairs(VOICE.queue) do if not q.answer then at = i break end end
+end
+table.insert(VOICE.queue, at, { text = text, sound = sound, answer = answer or nil, style = style })
 os.queueEvent("voice_say")
 return true
 end
@@ -599,8 +605,11 @@ sleep(0.6)
 end
 local total, endAt = 0, os.clock()
 VOICE.lastPieces = #pieces
+VOICE.lastCut = nil
 for i = 1, #pieces do
 if i > 1 then
+
+if not item.answer and VOICE.queue[1] and VOICE.queue[1].answer then VOICE.lastCut = i - 1 break end
 pcm, perr = VOICE.pcmOf(data, style)
 if not pcm then VOICE.err = perr break end
 end
@@ -1608,7 +1617,7 @@ local okR, c2 = pcall(VOICE.restyle, who, c)
 if okR and type(c2) == "string" then c = c2 end
 if sp then local okS, s2 = pcall(VOICE.restyle, who, sp) if okS and type(s2) == "string" then sp = s2 end end
 end
-if chatTell then chatTell(who, c) end
+if chatTell then chatTell(who, c, true) end
 if near then
 local line = sp or c
 

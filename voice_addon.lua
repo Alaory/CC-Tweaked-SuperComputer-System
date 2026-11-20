@@ -253,7 +253,13 @@ function VOICE.say(text, sound, answer, style)
     end
   end
   VOICE.said[text] = os.clock()
-  VOICE.queue[#VOICE.queue + 1] = { text = text, sound = sound, answer = answer or nil, style = style }
+  -- ANSWERS FIRST (the owner: "I ask it something and it takes like a minute to respond" - an answer waited
+  -- behind every line it was going to say by itself): an answer goes before its own lines, after earlier answers
+  local at = #VOICE.queue + 1
+  if answer then
+    for i, q in ipairs(VOICE.queue) do if not q.answer then at = i break end end
+  end
+  table.insert(VOICE.queue, at, { text = text, sound = sound, answer = answer or nil, style = style })
   os.queueEvent("voice_say")
   return true
 end
@@ -599,8 +605,11 @@ function VOICE.play(item)
   end
   local total, endAt = 0, os.clock()
   VOICE.lastPieces = #pieces
+  VOICE.lastCut = nil
   for i = 1, #pieces do
     if i > 1 then
+      -- someone asked something while it talks by itself: the sentence it is on ends, the rest of this line goes
+      if not item.answer and VOICE.queue[1] and VOICE.queue[1].answer then VOICE.lastCut = i - 1 break end
       pcm, perr = VOICE.pcmOf(data, style)
       if not pcm then VOICE.err = perr break end
     end
@@ -1608,7 +1617,7 @@ function VOICE.chatCore(m)
       if okR and type(c2) == "string" then c = c2 end
       if sp then local okS, s2 = pcall(VOICE.restyle, who, sp) if okS and type(s2) == "string" then sp = s2 end end
     end
-    if chatTell then chatTell(who, c) end
+    if chatTell then chatTell(who, c, true) end           -- (an answer: before lines that only wait)
     if near then
       local line = sp or c
       -- several people at the base: SAY who the answer is for (in chat it goes to them alone)

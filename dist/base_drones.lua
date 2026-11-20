@@ -148,9 +148,16 @@ scanDrones()
 if #droneOrder > 0 then print("Drone interfaces: " .. table.concat(droneOrder, ", ")) end
 
 
-function chatTell(name, text)
+
+
+function chatTell(name, text, urgent)
 if not name or name == "" then return end
-state.chatOut[#state.chatOut + 1] = { name = name, text = text }
+local item = { name = name, text = text, urgent = urgent or nil }
+local at = #state.chatOut + 1
+if urgent then
+for i, o in ipairs(state.chatOut) do if not o.urgent then at = i break end end
+end
+table.insert(state.chatOut, at, item)
 os.queueEvent("chat_send")
 end
 
