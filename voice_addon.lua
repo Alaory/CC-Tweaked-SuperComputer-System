@@ -454,8 +454,11 @@ end
 
 -- 2) SOUND: Minecraft speakers lose the QUIET parts (consonants - "s", "t", "f") and run words together.
 -- VOICE.clarifyPcm: quiet speech made louder (a gentle compressor: gain up to 3x on speech, never on silence,
--- smoothed - no clicks), then the short silences BETWEEN words get longer (voice.gap ms, default 60) and the
--- pauses at commas / full stops too (voice.pause ms, default 160). voice.clear on (default) / off.
+-- smoothed - no clicks), then the PAUSES at commas / full stops get longer (voice.pause ms, default 160).
+-- NOT the short silences inside a line (the owner, in game: "it cuts on each letter like de as oo aa"): espeak
+-- goes silent for 20-100 ms INSIDE words too (d, t, p, k ...) - those were taken for word gaps and stretched,
+-- which cut every word into pieces. Only silences >= 150 ms (real pauses) are lengthened; voice.gap (default 0
+-- = off) can still add to silences >= 100 ms. voice.clear on (default) / off.
 function VOICE.clarifyPcm(pcm)
   if VOICE.cfg("clear", true) == false or #pcm < 960 then return pcm end
   local F = 240                                       -- (5 ms frames)
@@ -477,7 +480,7 @@ function VOICE.clarifyPcm(pcm)
   end
   for f = 1, nf - 1 do gain[f] = gain[f - 1] * 0.6 + gain[f] * 0.4 end     -- (smooth: no pumping / clicks)
   -- silences: where and how long (in frames)
-  local gapMs = tonumber(VOICE.cfg("gap", 60)) or 60
+  local gapMs = tonumber(VOICE.cfg("gap", 0)) or 0
   local pauseMs = tonumber(VOICE.cfg("pause", 160)) or 160
   local add = {}                                      -- [frame where the silence starts] = extra samples
   local f = 0
@@ -487,8 +490,8 @@ function VOICE.clarifyPcm(pcm)
       while f < nf and env[f] <= quiet do f = f + 1 end
       local len = f - s0
       if s0 > 0 and f < nf then                       -- (not the silence before / after the whole line)
-        if len >= 16 then add[s0 + math.floor(len / 2)] = math.floor(pauseMs * 48)        -- >= 80 ms: a pause
-        elseif len >= 4 then add[s0 + math.floor(len / 2)] = math.floor(gapMs * 48) end   -- >= 20 ms: between words
+        if len >= 30 then add[s0 + math.floor(len / 2)] = math.floor(pauseMs * 48)        -- >= 150 ms: a pause
+        elseif len >= 20 and gapMs > 0 then add[s0 + math.floor(len / 2)] = math.floor(gapMs * 48) end   -- >= 100 ms
       end
     else f = f + 1 end
   end
@@ -2436,11 +2439,12 @@ function VOICE.command(words)
   elseif a == "clear" and (b == "on" or b == "off") then
     setSetting("voice.clear", b == "on")
     VOICE.say("This is how I sound now. Can you hear every word?", nil, true)
-    say("Clear speech " .. (b == "on" and "ON (quiet sounds louder, longer gaps between words)" or "OFF (the service's own sound)"))
+    say("Clear speech " .. (b == "on" and "ON (quiet sounds louder, longer pauses at commas / full stops)" or "OFF (the service's own sound)"))
   elseif (a == "gap" or a == "pause") and tonumber(words[3]) then
     setSetting("voice." .. a, math.max(0, math.min(a == "gap" and 300 or 600, math.floor(tonumber(words[3])))))
     VOICE.say("One, two, three. This is how I sound now.", nil, true)
-    say((a == "gap" and "Gap between words " or "Pause at commas and full stops ") .. VOICE.cfg(a, 0) .. " ms")
+    say((a == "gap" and "Extra on short silences (100-150 ms; 0 = off - higher can cut words) " or
+         "Pause at commas and full stops ") .. VOICE.cfg(a, 0) .. " ms")
   elseif a == "sayas" then
     local own = VOICE.cfg("sayas", nil)
     own = type(own) == "table" and own or {}
@@ -2539,7 +2543,7 @@ function VOICE.command(words)
     say("  voice " .. (VOICE.presetNow() or "own mix") .. ": speed " .. math.floor(VOICE.speed() * 100 + 0.5) .. " %, pitch " ..
         math.floor(VOICE.pitch() * 100 + 0.5) .. " %, accent " .. tostring(VOICE.cfg("accent", nil) or "default") ..
         "   voice try | preset <n> | speed <50-100> | pitch <70-140> | accent <en-gb|...|off>")
-    say("  clear speech " .. (VOICE.cfg("clear", true) == false and "OFF" or "ON") .. ": gap " .. VOICE.cfg("gap", 60) ..
+    say("  clear speech " .. (VOICE.cfg("clear", true) == false and "OFF" or "ON") .. ": gap " .. VOICE.cfg("gap", 0) ..
         " ms, pause " .. VOICE.cfg("pause", 160) .. " ms   voice clear on|off | gap <ms> | pause <ms> | sayas <word> <how>")
     say("  voice volume <0-3> | range <n> | name <word> | scan <s> | lonely <days> | message <text> | visitors | forget | remove")
   end

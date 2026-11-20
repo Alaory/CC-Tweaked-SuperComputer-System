@@ -1736,10 +1736,17 @@ end)()
   local pcm = {}
   local function tone(n, amp) for i = 1, n do pcm[#pcm + 1] = math.floor(amp * math.sin(i * 0.3) + 0.5) end end
   local function hush(n) for _ = 1, n do pcm[#pcm + 1] = 0 end end
-  tone(9600, 100) hush(1440) tone(9600, 100) tone(2400, 15) hush(7200) tone(9600, 100) hush(2400)
+  -- (the owner, in game: "it cuts on each letter like de as oo aa" - the short silences INSIDE words (d, t, p, k:
+  --  20-100 ms) were stretched as if they were gaps between words)
+  tone(9600, 100) hush(1440) tone(4800, 100) hush(4320) tone(4800, 100) tone(2400, 15) hush(9600) tone(9600, 100) hush(2400)
   setSetting("voice.clear", true)
   local out = VOICE.clarifyPcm(pcm)
-  CHECK(#out >= #pcm + 60 * 48 + 160 * 48 - 500, "gaps between words / pauses made longer (" .. #pcm .. " -> " .. #out .. " samples)")
+  CHECK(#out == #pcm + 160 * 48, "ONLY the real pause (200 ms) is made longer (+160 ms); the 30 ms and 90 ms silences " ..
+        "inside words are left alone - no chopped words (" .. #pcm .. " -> " .. #out .. " samples)")
+  -- the 30 ms silence inside the first word is still exactly 30 ms
+  local run, best = 0, 0
+  for i = 9000, 12000 do if out[i] == 0 then run = run + 1 best = math.max(best, run) else run = 0 end end
+  CHECK(best <= 1440 + 10, "a silence inside a word keeps its length (" .. best .. " samples)")
   local function peakIn(t, a, b) local m = 0 for i = a, b do local v = math.abs(t[i] or 0) if v > m then m = v end end return m end
   -- find the quiet part again: it sits right before the long pause - the loudest stretch of small values
   local quietPeak = 0

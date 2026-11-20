@@ -456,6 +456,9 @@ end
 
 
 
+
+
+
 function VOICE.clarifyPcm(pcm)
 if VOICE.cfg("clear", true) == false or #pcm < 960 then return pcm end
 local F = 240
@@ -477,7 +480,7 @@ if env[f] > quiet then gain[f] = math.max(1, math.min(3, target / env[f])) else 
 end
 for f = 1, nf - 1 do gain[f] = gain[f - 1] * 0.6 + gain[f] * 0.4 end
 
-local gapMs = tonumber(VOICE.cfg("gap", 60)) or 60
+local gapMs = tonumber(VOICE.cfg("gap", 0)) or 0
 local pauseMs = tonumber(VOICE.cfg("pause", 160)) or 160
 local add = {}
 local f = 0
@@ -487,8 +490,8 @@ local s0 = f
 while f < nf and env[f] <= quiet do f = f + 1 end
 local len = f - s0
 if s0 > 0 and f < nf then
-if len >= 16 then add[s0 + math.floor(len / 2)] = math.floor(pauseMs * 48)
-elseif len >= 4 then add[s0 + math.floor(len / 2)] = math.floor(gapMs * 48) end
+if len >= 30 then add[s0 + math.floor(len / 2)] = math.floor(pauseMs * 48)
+elseif len >= 20 and gapMs > 0 then add[s0 + math.floor(len / 2)] = math.floor(gapMs * 48) end
 end
 else f = f + 1 end
 end
@@ -2436,11 +2439,12 @@ say("Pitch " .. math.floor(VOICE.pitch() * 100 + 0.5) .. " percent (70 = deep, 1
 elseif a == "clear" and (b == "on" or b == "off") then
 setSetting("voice.clear", b == "on")
 VOICE.say("This is how I sound now. Can you hear every word?", nil, true)
-say("Clear speech " .. (b == "on" and "ON (quiet sounds louder, longer gaps between words)" or "OFF (the service's own sound)"))
+say("Clear speech " .. (b == "on" and "ON (quiet sounds louder, longer pauses at commas / full stops)" or "OFF (the service's own sound)"))
 elseif (a == "gap" or a == "pause") and tonumber(words[3]) then
 setSetting("voice." .. a, math.max(0, math.min(a == "gap" and 300 or 600, math.floor(tonumber(words[3])))))
 VOICE.say("One, two, three. This is how I sound now.", nil, true)
-say((a == "gap" and "Gap between words " or "Pause at commas and full stops ") .. VOICE.cfg(a, 0) .. " ms")
+say((a == "gap" and "Extra on short silences (100-150 ms; 0 = off - higher can cut words) " or
+"Pause at commas and full stops ") .. VOICE.cfg(a, 0) .. " ms")
 elseif a == "sayas" then
 local own = VOICE.cfg("sayas", nil)
 own = type(own) == "table" and own or {}
@@ -2539,7 +2543,7 @@ say("  voice announce all|summary|errors|off" .. (VOICE.pending.n > 0 and ("   (
 say("  voice " .. (VOICE.presetNow() or "own mix") .. ": speed " .. math.floor(VOICE.speed() * 100 + 0.5) .. " %, pitch " ..
 math.floor(VOICE.pitch() * 100 + 0.5) .. " %, accent " .. tostring(VOICE.cfg("accent", nil) or "default") ..
 "   voice try | preset <n> | speed <50-100> | pitch <70-140> | accent <en-gb|...|off>")
-say("  clear speech " .. (VOICE.cfg("clear", true) == false and "OFF" or "ON") .. ": gap " .. VOICE.cfg("gap", 60) ..
+say("  clear speech " .. (VOICE.cfg("clear", true) == false and "OFF" or "ON") .. ": gap " .. VOICE.cfg("gap", 0) ..
 " ms, pause " .. VOICE.cfg("pause", 160) .. " ms   voice clear on|off | gap <ms> | pause <ms> | sayas <word> <how>")
 say("  voice volume <0-3> | range <n> | name <word> | scan <s> | lonely <days> | message <text> | visitors | forget | remove")
 end

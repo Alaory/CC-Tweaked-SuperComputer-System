@@ -1246,9 +1246,11 @@ PneumaticCraft drone rides, turtle mapping/surveys, and an AE2 ME network view.
   ME GPS KB uSv ...; x64 = times 64, 50% = 50 percent, -> = to, #3 = number 3; punctuation kept) + the owner's
   own (`voice sayas <word> <how>` / `off`, voice.sayas table, any case). VOICE.clarifyPcm (end of pcmOf; voice.clear
   default on, `voice clear on|off`): 5-ms frames, a gentle compressor (speech frames up to 3x toward 75 % of the
-  peak, silence never boosted, gains smoothed - Minecraft speakers lose the quiet consonants), then silences
-  inside the line made longer: 20-80 ms (between words) + voice.gap 60 ms, >= 80 ms (commas / full stops) +
-  voice.pause 160 ms (`voice gap|pause <ms>`). test_voice part 27.
+  peak, silence never boosted, gains smoothed - Minecraft speakers lose the quiet consonants), then only REAL
+  PAUSES (silences >= 150 ms: commas / full stops) + voice.pause 160 ms; voice.gap (default 0 = off) adds to
+  100-150 ms ones. IN GAME the first version ("it cuts on each letter like de as oo aa") stretched every silence
+  >= 20 ms as a "word gap" - espeak is silent 20-100 ms INSIDE words (d t p k), so every word was cut up.
+  `voice gap|pause <ms>`. test_voice part 27 (30 / 90 ms silences inside words keep their length).
   UPDATES (the owner: "on each update I have to run disks"): the map fills the data floppies and installAddon
   wanted a floppy with room for the WHOLE new file + 16 KB beside the old copy -> "type disks data". Now: the
   same text = nothing written ("up to date"); room = free + the old copy + cached speech (voice/*.dfpwm, oldest
