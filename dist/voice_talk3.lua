@@ -652,3 +652,6 @@ if type(r) ~= "table" or (r.streak or 0) < 2 then return nil end
 return V.say(who .. ", you have visited " .. r.streak .. " days in a row. Do not break the streak!")
 end,
 })
+
+V.L = V.L or {}
+V.L.SPIRIT, V.L.SPIRIT_WHY, V.L.GLOSS, V.L.GLOSS_ALIAS = SPIRIT, SPIRIT_WHY, GLOSS, GLOSS_ALIAS

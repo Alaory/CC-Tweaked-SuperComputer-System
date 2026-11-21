@@ -614,7 +614,8 @@ end
 -- voice_addon.lua (the base talks): `voice install` downloads it onto a data floppy, the base
 -- loads it at start when it finds it there (or next to inventory.lua), `voice remove` deletes it.
 -- the talking base = the add-on + its TALK PACKS (more things to say; each on a data floppy with room)
-VOICE_FILES = { "voice_addon.lua", "voice_talk.lua", "voice_talk2.lua", "voice_talk3.lua" }
+-- (+ LINES PACKS voice_lines / voice_idle: 100+ ways to say each thing; LORE PACK voice_lore: why drones not /tp, modpack tips)
+VOICE_FILES = { "voice_addon.lua", "voice_talk.lua", "voice_talk2.lua", "voice_talk3.lua", "voice_lines.lua", "voice_idle.lua", "voice_lore.lua" }
 function addonPath(file)
   for _, d in ipairs(mountedDisks()) do
     local p = fs.combine(d.mount, file)

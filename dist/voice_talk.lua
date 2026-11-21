@@ -550,7 +550,8 @@ return table.concat(t, ", ") .. "!"
 end,
 
 function(who, raw, ws)
-if ws[1] == "knock" and ws[2] == "knock" and #ws <= 3 then
+
+if ws[1] == "knock" and ws[2] == "knock" and #ws <= 3 and ws[3] ~= "joke" and ws[3] ~= "jokes" then
 V.startGame(who, { kind = "theyknock", step = 1 })
 return "Who is there?"
 end
@@ -929,3 +930,8 @@ end,
 })
 
 V.hash.games = function(who) return V.showMenu(who, V.GAMES, "Which game? Type a number:") end
+
+V.L = V.L or {}
+V.L.RIDDLES, V.L.WORDS, V.L.WYR, V.L.KNOCK, V.L.THISTHAT, V.L.REACT_OK, V.L.QUESTIONS = RIDDLES, WORDS, WYR, KNOCK, THISTHAT, REACT_OK, QUESTIONS
+V.L.FORTUNES, V.L.POEMS, V.L.TIME_LINES, V.L.WEATHER_LINES, V.L.MC_FACTS, V.L.SELF_TALK, V.L.VISITOR_LINES =
+FORTUNES, POEMS, TIME_LINES, WEATHER_LINES, MC_FACTS, SELF_TALK, VISITOR_LINES

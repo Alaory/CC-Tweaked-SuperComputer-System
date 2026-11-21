@@ -24,7 +24,8 @@ CHECK(not hasTab, "no GIFTS tab without the add-on")
 
 -- 2) the add-on and its packs on data floppies
 local realExists = fs.exists
-local HIDDEN = { ["voice_addon.lua"] = true, ["voice_talk.lua"] = true, ["voice_talk2.lua"] = true, ["voice_talk3.lua"] = true }
+local HIDDEN = { ["voice_addon.lua"] = true, ["voice_talk.lua"] = true, ["voice_talk2.lua"] = true, ["voice_talk3.lua"] = true,
+                 ["voice_lines.lua"] = true, ["voice_idle.lua"] = true, ["voice_lore.lua"] = true }
 fs.exists = function(p) if HIDDEN[tostring(p):gsub("^/", "")] then return false end return realExists(p) end
 local function put(p, t) local h = fs.open(p, "w") h.write(t) h.close() end
 local k = 20

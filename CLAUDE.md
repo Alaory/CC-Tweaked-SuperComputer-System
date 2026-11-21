@@ -1415,6 +1415,25 @@ PneumaticCraft drone rides, turtle mapping/surveys, and an AE2 ME network view.
   with noLoad, then loadVoiceChain once; `upgrade` (baseUpgrade) runs it too when the add-on is installed. CHAIN:
   a pack loaded ALONE added its hooks again -> loadAddon(any voice file) = loadVoiceChain (the add-on first: it
   empties the hook lists, then every pack in order); inventory.lua calls loadVoiceChain once.
+  100 WAYS TO SAY EACH THING (the owner: "at least 100 variants for EACH - roast me keeps giving the same sentences, and
+  other interactions and idle talk") + LORE: three more add-on files on data floppies (VOICE_FILES 5-7, manifest group
+  voice; ~118 KB slim together). voice_lines.lua (asked for: roasts, compliments, jokes, riddles + the quiz - riddles go
+  into V.L.RIDDLES too, knock knock (one per setup), would you rather (pairs from one group), true or false, facts, tips,
+  words of the day, unscramble words), voice_idle.lua (greetings, the 9 chat reactions, musings, self talk, time of day,
+  weather, turtle gossip, the race, wisdom, fortunes, poems, questions / question of the day, this or that, stories =
+  hero x goal with its own twist / ending, 8 ball, are you alive, no singing, lonely talk, icebreakers, VOICE.EXTRA),
+  voice_lore.lua (why drones and not /tp, why are drones slow + the measured server speed (VOICE.tps), lag, why
+  turtles, the map, lost turtles, chunk loading, floppies, how it talks, the modpack: start / power / AE2 / Mekanism /
+  Create / magic / storage / farms / travel / bosses / dimensions / end game, 70 mod words in the glossary, V.MODTIPS
+  100+ "give me a mod tip" + idle). Many lists are PIECES: every opener with every ending (combos) - natural, hundreds,
+  small. HOOKS: the talk packs share their file-level lists as V.L.<NAME> (same tables - a later pack adds to them);
+  the lines written into voice_addon.lua go through VOICE.more(key, list) (VOICE.EXTRA[key] = a pack's own table, so
+  the shuffle bag works: howare right love goodbot badbot newturtle nope bye sorry hurt ownerbye night morning). Found:
+  "fun fact" tied with the games intent ("fun") and opened the games menu - fact keys "fun fact"; VOICE.factText now
+  draws from V.L.FACTS / MC_FACTS (90 %); "knock knock joke" was taken as THEIR knock knock (the pattern) - "Who is
+  there?". test_voice part 33: every list (69) has 100+ different lines, asking the same thing 100 times (roast,
+  compliment, joke, story, fact, riddle, wyr, knock knock, fortune, 8 ball, alive, mod tip) gives 95+ different
+  answers, the lore questions answered.
 - REMOVED AGAIN: remote access in a web browser (Cloud Catcher; base_remote.lua / remote.lua / pocket.lua
   in local mode on the base) - the owner: "taking space and seems useless". removeOldFiles (base_theme.lua,
   run by inventory.lua at start) deletes its files (remote.lua, base_remote.lua, cloud.lua on the computer
@@ -1525,6 +1544,8 @@ The old Block UI (stone buttons, bedrock theme) is gone.
 | voice_addon.lua | OPTIONAL add-on on a data floppy (`voice install`): the base talks through Speakers - greetings, warnings, chat answers, alarm |
 | voice_talk.lua | its TALK PACK (also on a data floppy): 140+ more chat interactions, games, idle talk |
 | voice_talk3.lua | TALK PACK 3: free drone TAXI for friends (base <-> their bed), visit streaks, mail between players, Minecraft glossary + recipes, jokes on a topic, spirit mob, ship, rematches, milestones |
+| voice_lines.lua / voice_idle.lua | LINES PACKS: 100+ ways to say each thing (asked for / idle, greetings, reactions) |
+| voice_lore.lua | LORE PACK: why drones and not /tp and other questions about the base, modpack tips, mod glossary |
 | voice_talk2.lua | TALK PACK 2: friendship + titles, badges, player memory, daily secret word, more games, ideas, guides, styles, holidays, diary, FRIENDSHIP GIFTS by drone |
 
 ## The owner's setup (found out the hard way)

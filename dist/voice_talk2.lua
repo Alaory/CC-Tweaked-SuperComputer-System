@@ -1612,3 +1612,7 @@ return V.say("Night falls in about " .. math.max(1, math.floor(c.secs / 60 + 0.5
 end,
 function() return V.say(buildIdea() .. " Just an idea.") end,
 })
+
+V.L = V.L or {}
+V.L.TF, V.L.MOBS, V.L.FACTS, V.L.DAILY_FORTUNE, V.L.QOTD, V.L.WOTD, V.L.ACTIVITIES, V.L.MOTTOS, V.L.WISDOM, V.L.TURTLE_TALK, V.L.RACE =
+TF, MOBS, FACTS, DAILY_FORTUNE, QOTD, WOTD, ACTIVITIES, MOTTOS, WISDOM, TURTLE_TALK, RACE

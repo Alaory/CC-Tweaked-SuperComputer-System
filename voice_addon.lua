@@ -928,6 +928,17 @@ local function pick(list)
   while #b.last > math.floor(n / 2) do table.remove(b.last, 1) end
   return list[i]
 end
+-- MORE LINES FROM THE PACKS (voice_lines.lua; the owner: "100 variants for each - I keep hearing the same
+-- sentences"): a list written into the code here + VOICE.EXTRA[key] from a pack. The extra lines are their own
+-- table, so the shuffle bag (pick) remembers what was said; the chance of each part follows its size.
+VOICE.EXTRA = {}
+function VOICE.more(key, list)
+  local e = VOICE.EXTRA[key]
+  if type(e) ~= "table" or #e == 0 then return pick(list) end
+  if math.random(1, #list + #e) <= #list then return pick(list) end
+  return pick(e)
+end
+VOICE.pick = pick
 local function fill(line, name)
   if name and VOICE.callName then local okN, n = pcall(VOICE.callName, name) if okN and n then name = n end end
   line = tostring(line):gsub("{name}", tostring(name or "friend"))
@@ -949,7 +960,7 @@ function VOICE.needCount()
 end
 function VOICE.moodText()
   local n = VOICE.needCount()
-  if n == 0 then return pick({ "I feel great. Everything is running smoothly.", "Fantastic. All my turtles are behaving.",
+  if n == 0 then return VOICE.more("howare", { "I feel great. Everything is running smoothly.", "Fantastic. All my turtles are behaving.",
                                 "Very well, thank you. The base is humming along." }) end
   if n <= 3 then return "I am fine, but " .. plural(n, "turtle needs", "turtles need") .. " a look." end
   return "Honestly? A bit stressed. " .. plural(n, "turtle needs", "turtles need") .. " help."
@@ -994,6 +1005,13 @@ function VOICE.factText()
   end
   local nd = droneOrder and #droneOrder or 0
   if nd > 0 then facts[#facts + 1] = "I have " .. plural(nd, "drone", "drones") .. " ready to fly you around." end
+  -- (the packs' facts too - the base's own are only a handful: "fun fact" gave the same few lines)
+  local P = VOICE.L or {}
+  if (P.FACTS or P.MC_FACTS) and (#facts == 0 or math.random() < 0.9) then
+    local mc = P.MC_FACTS and (not P.FACTS or math.random() < 0.5)
+    if mc then return (pick(P.MC_FACTS)) end
+    return "Fun fact: " .. pick(P.FACTS)
+  end
   if #facts == 0 then return "Fun fact: I never sleep." end
   return "Fun fact: " .. pick(facts)
 end
@@ -1123,13 +1141,13 @@ function VOICE.gameReply(who, q, strict)
         if m[k].qday ~= day then m[k].qday, m[k].qn = day, 0 end
         local cap = tonumber(VOICE.cfg("quizDaily", 15)) or 15
         if (m[k].qn or 0) >= cap then
-          return pick({ "Correct!", "Right!" }) .. " But that was your " .. cap .. " points for today - come back tomorrow for more."
+          return VOICE.more("right", { "Correct!", "Right!" }) .. " But that was your " .. cap .. " points for today - come back tomorrow for more."
         end
         m[k].qn = (m[k].qn or 0) + 1
         m[k].quiz = (m[k].quiz or 0) + 1
         VOICE.saveMem()
         VOICE.event(who, "win", "quiz")
-        return pick({ "Correct!", "Right answer!", "Yes, well done!" }) .. " That makes " .. plural(m[k].quiz, "point", "points") .. " for " .. who ..
+        return VOICE.more("right", { "Correct!", "Right answer!", "Yes, well done!" }) .. " That makes " .. plural(m[k].quiz, "point", "points") .. " for " .. who ..
                (m[k].qn >= cap and " (that was the last point for today)" or "") .. "."
       end
     end
@@ -1195,7 +1213,7 @@ function VOICE.extraAnswer(q, who)
   if phrase("compliment me", "say something nice", "cheer me up") then return fill(pick(VOICE.COMPLIMENTS), name) end
   if has("story") then return pick(VOICE.STORIES) end
   if phrase("are you alive", "are you real", "are you sentient", "are you human", "are you a robot") then return pick(VOICE.ALIVE) end
-  if phrase("i love you", "marry me", "be my friend") then return pick({ "I am flattered, " .. name .. ". But I am married to my turtles.", "Aw. You are my favourite player. Do not tell the others." }) end
+  if phrase("i love you", "marry me", "be my friend") then return fill(VOICE.more("love", { "I am flattered, {name}. But I am married to my turtles.", "Aw. You are my favourite player. Do not tell the others." }), name) end
   if phrase("where am i", "my position", "my coords", "my coordinates") then
     for _, e in ipairs(state.players or {}) do
       if tostring(e.name):lower() == k and e.p and tonumber(e.p.x) then
@@ -1308,8 +1326,8 @@ function VOICE.answer(q, who, strict)
            "magic 8 ball, roast me, remind me in 5 minutes to something, remember something, my notes, or shh."
   end
   if has("thanks", "thank", "ty", "thx") then return "You are welcome, " .. name .. "." end
-  if phrase("good bot", "good job", "love you", "you rock", "nice", "cool") then return pick({ "Thank you, " .. name .. "! You are nice too.", "Aw, thanks " .. name .. "." }) end
-  if phrase("bad bot", "stupid", "dumb", "useless", "shut up") then return pick({ "Rude. I will remember that, " .. name .. ".", "I am trying my best." }) end
+  if phrase("good bot", "good job", "love you", "you rock", "nice", "cool") then return fill(VOICE.more("goodbot", { "Thank you, {name}! You are nice too.", "Aw, thanks {name}." }), name) end
+  if phrase("bad bot", "stupid", "dumb", "useless", "shut up") then return fill(VOICE.more("badbot", { "Rude. I will remember that, {name}.", "I am trying my best." }), name) end
   if has("hello", "hi", "hey", "yo", "sup", "hallo") then return partOfDay() .. ", " .. name .. "." end
   if has("status", "report", "how", "base") then return VOICE.statusText(false) end
   if has("turtles", "turtle", "bots") then return VOICE.statusText(true) end
@@ -1359,7 +1377,7 @@ function VOICE.note(title, msg, col)
     VOICE.goodAt = now
     local low = (tostring(title) .. " " .. first):lower()
     if low:find("built turtle", 1, true) or low:find("new turtle", 1, true) then
-      VOICE.say(pick({ "A new turtle is born! Welcome to the team.", "Look, a brand new turtle." }), "minecraft:entity.player.levelup")
+      VOICE.say(VOICE.more("newturtle", { "A new turtle is born! Welcome to the team.", "Look, a brand new turtle." }), "minecraft:entity.player.levelup")
     else
       VOICE.say("Good news. " .. first, "minecraft:block.note_block.chime")
     end
@@ -1484,7 +1502,7 @@ VOICE.INTENTS = {
   { id = "games", keys = { "game", "games", "play", "bored", "boring", "fun", "something to do" } },
   { id = "joke", canon = "tell me a joke", keys = { "joke", "funny", "make me laugh", "laugh", "humor", "humour" } },
   { id = "story", canon = "tell me a story", keys = { "story", "stories", "tale", "once upon" } },
-  { id = "fact", canon = "fun fact", keys = { "fact", "facts", "something interesting", "tell me something", "teach me" } },
+  { id = "fact", canon = "fun fact", keys = { "fun fact", "fact", "facts", "something interesting", "tell me something", "teach me" } },
   { id = "roast", canon = "roast me", keys = { "roast", "insult" } },
   { id = "compliment", canon = "compliment me", keys = { "compliment", "say something nice", "cheer me up", "sad" } },
   { id = "eight", canon = "magic 8 ball will i", keys = { "8 ball", "eight ball", "magic ball", "predict", "future", "fortune" } },
@@ -1680,7 +1698,7 @@ function VOICE.converse(who, raw, direct, noMenu)
   -- a yes / no question it asked
   if P and P.kind == "yesno" and #ws > 0 and #ws <= 3 then
     if YES[ws[1]] then VOICE.pend[k] = nil return VOICE.converse(who, P.yes) end
-    if NO[ws[1]] then VOICE.pend[k] = nil return pick({ "OK.", "No problem.", "Alright." }) end
+    if NO[ws[1]] then VOICE.pend[k] = nil return VOICE.more("nope", { "OK.", "No problem.", "Alright." }) end
   end
   -- a number from the menu (a guessing game takes numbers first - VOICE.gameReply)
   if P and P.kind == "menu" and #ws == 1 and tonumber(ws[1]) then
@@ -1743,7 +1761,7 @@ function VOICE.converse(who, raw, direct, noMenu)
     end
     return VOICE.lonelyAnswer("leave a message " .. after, who)
   end
-  if id == "bye" then VOICE.convo[k] = nil return fill(pick({ "Bye {name}! Come back soon.", "See you, {name}." }), who) end
+  if id == "bye" then VOICE.convo[k] = nil return fill(VOICE.more("bye", { "Bye {name}! Come back soon.", "See you, {name}." }), who) end
   -- an intent with its own answer (TALK PACKS): lines to pick from, or a function
   if it and it.reply then
     if type(it.reply) == "function" then
@@ -1770,7 +1788,7 @@ function VOICE.converse(who, raw, direct, noMenu)
   if not direct then return VOICE.smallReact(ws, who) end
   if noMenu then return nil end                 -- (not called by name: it may not have been for the base at all)
   VOICE.misses = (VOICE.misses or 0) + 1
-  local c, sp = VOICE.showMenu(who, VOICE.menuItems(who), pick({ "Sorry, I did not get that.", "Hmm, I am not sure what you mean.",
+  local c, sp = VOICE.showMenu(who, VOICE.menuItems(who), VOICE.more("sorry", { "Sorry, I did not get that.", "Hmm, I am not sure what you mean.",
                                                                   "I did not understand, sorry." }) .. " Type a number:")
   return c, sp
 end
@@ -2471,7 +2489,7 @@ function VOICE.tick()
       local hp = tonumber(p.hp)
       if hp and hp > 0 and hp <= 6 and (not VOICE.flags["hurt:" .. p.name] or now - VOICE.flags["hurt:" .. p.name] > 600) then
         VOICE.flags["hurt:" .. p.name] = now
-        VOICE.say(pick({ "{name}, you are hurt. Maybe eat something.", "Careful {name}, your health is low." }):gsub("{name}", p.name), nil)
+        VOICE.say((VOICE.more("hurt", { "{name}, you are hurt. Maybe eat something.", "Careful {name}, your health is low." }):gsub("{name}", p.name)), nil)
       end
     end
   end
@@ -2529,7 +2547,7 @@ function VOICE.tick()
     elseif not nearNow[name] then
       VOICE.flags["loiter:" .. name] = nil
       if fun and name ~= "someone" and not VOICE.isQuiet() and math.random() < 0.3 then
-        if isOwner(name) then VOICE.say(fill(pick({ "See you later, {name}.", "Bye {name}. I will keep things running." }), name))
+        if isOwner(name) then VOICE.say(fill(VOICE.more("ownerbye", { "See you later, {name}.", "Bye {name}. I will keep things running." }), name))
         elseif isFriend(name) then VOICE.say(fill("Bye {name}.", name))
         else VOICE.say(fill("Goodbye, {name}. Do not come back with a pickaxe.", name)) end
       end
@@ -2543,8 +2561,8 @@ function VOICE.tick()
     local c = ENV.clock and ENV.clock(dd.time)
     local night = c and c.night
     if night ~= nil and VOICE.wasNight ~= nil and night ~= VOICE.wasNight and someone then
-      VOICE.say(night and pick({ "The sun is setting. Monsters will come out soon.", "Night is falling. Stay close to the base." })
-                       or pick({ "Good morning everyone. The sun is up.", "Morning! The night is over." }))
+      VOICE.say(night and VOICE.more("night", { "The sun is setting. Monsters will come out soon.", "Night is falling. Stay close to the base." })
+                       or VOICE.more("morning", { "Good morning everyone. The sun is up.", "Morning! The night is over." }))
     end
     if night ~= nil then VOICE.wasNight = night end
     local wx = (dd.thunder and "thunder") or (dd.rain and "rain") or "clear"

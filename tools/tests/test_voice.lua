@@ -7,7 +7,8 @@ envDet = nil                 -- (parts 1-9: no Environment Detector - the Player
 CONFIG.drone.home = HOME
 -- (the repo's own copies "next to inventory.lua" are not on this computer: the voice files come from floppies)
 local realExists = fs.exists
-local HIDDEN = { ["voice_addon.lua"] = true, ["voice_talk.lua"] = true, ["voice_talk2.lua"] = true, ["voice_talk3.lua"] = true }
+local HIDDEN = { ["voice_addon.lua"] = true, ["voice_talk.lua"] = true, ["voice_talk2.lua"] = true, ["voice_talk3.lua"] = true,
+                 ["voice_lines.lua"] = true, ["voice_idle.lua"] = true, ["voice_lore.lua"] = true }
 fs.exists = function(p) if HIDDEN[tostring(p):gsub("^/", "")] then return false end return realExists(p) end
 -- a data floppy with the add-on on it
 addDrive("drive_7", "disk7")
@@ -2150,4 +2151,103 @@ end)()
   CHECK(table.concat(tl, " "):find("Type a number", 1, true), "called by name and not understood: the menu")
   fresh()
   chatTell, state.online, state.players, envDet = ct0, on0, pl0, envd0
+end)()
+
+-- 33) 100 WAYS TO SAY EACH THING (the owner: "at least 100 variants for each - if I ask the base to roast me I keep
+-- hearing the same sentences, also other interactions and idle talk; 100 for EACH, not total") + the LORE PACK
+-- (the owner: "questions like why the drones, why not /tp; read about Craftoria or other modpacks").
+;(function()
+  local k = 40
+  for _, f in ipairs({ "voice_lines.lua", "voice_idle.lua", "voice_lore.lua" }) do
+    k = k + 1
+    addDrive("drive_" .. k, "disk" .. k)
+    put("disk" .. k .. "/base_data", "data")
+    put("disk" .. k .. "/" .. f, io.open(SRC_DIR .. "/dist/" .. f):read("a"))
+  end
+  if dataPathReset then dataPathReset() end
+  loadVoiceChain()
+  CHECK(VOICE.packs["voice_lines.lua"] and VOICE.packs["voice_idle.lua"] and VOICE.packs["voice_lore.lua"], "the lines + lore packs load from floppies")
+  CHECK(#VOICE.dupIntents == 0, "no intent id twice: " .. table.concat(VOICE.dupIntents, ", "))
+  local function distinct(list)
+    local seen, n = {}, 0
+    for _, x in ipairs(list or {}) do
+      local key = type(x) == "table" and (x.q or x.text or table.concat({ tostring(x[1]), tostring(x[2]) }, "|")) or tostring(x)
+      if not seen[key] then seen[key] = true n = n + 1 end
+    end
+    return n
+  end
+  local L = VOICE.L
+  local pools = { ROASTS = VOICE.ROASTS, COMPLIMENTS = VOICE.COMPLIMENTS, JOKES = VOICE.JOKES, EIGHT = VOICE.EIGHT, STORIES = VOICE.STORIES,
+    ALIVE = VOICE.ALIVE, TIPS = VOICE.TIPS, MUSINGS = VOICE.MUSINGS, LONELY_TALK = VOICE.LONELY_TALK, NOSING = VOICE.NOSING,
+    HELLO_NEW = VOICE.HELLO_NEW, HELLO_AGAIN = VOICE.HELLO_AGAIN, HELLO_FRIEND = VOICE.HELLO_FRIEND, HELLO_OWNER = VOICE.HELLO_OWNER,
+    HELLO_GROUP = VOICE.HELLO_GROUP, MODTIPS = VOICE.MODTIPS,
+    FORTUNES = L.FORTUNES, POEMS = L.POEMS, MC_FACTS = L.MC_FACTS, SELF_TALK = L.SELF_TALK, VISITOR_LINES = L.VISITOR_LINES,
+    QUESTIONS = L.QUESTIONS, WYR = L.WYR, KNOCK = L.KNOCK, RIDDLES = L.RIDDLES, THISTHAT = L.THISTHAT, REACT_OK = L.REACT_OK,
+    TF = L.TF, FACTS = L.FACTS, DAILY_FORTUNE = L.DAILY_FORTUNE, QOTD = L.QOTD, WOTD = L.WOTD, ACTIVITIES = L.ACTIVITIES, MOTTOS = L.MOTTOS,
+    WISDOM = L.WISDOM, TURTLE_TALK = L.TURTLE_TALK, RACE = L.RACE, SPIRIT_WHY = L.SPIRIT_WHY, WORDS = L.WORDS }
+  for _, when in ipairs({ "morning", "noon", "evening", "night" }) do pools["TIME_" .. when] = L.TIME_LINES[when] end
+  for _, w in ipairs({ "clear", "rain", "thunder" }) do pools["WEATHER_" .. w] = L.WEATHER_LINES[w] end
+  for _, r in ipairs(VOICE.REACT) do pools["REACT " .. tostring((r.words and r.words[1]) or (r.phrases and r.phrases[1]))] = r.lines end
+  for key, e in pairs(VOICE.EXTRA) do pools["EXTRA " .. key] = e end
+  local quizN = 0
+  for _, q in ipairs(VOICE.QUIZ) do if not q.q:find("^Riddle") then quizN = quizN + 1 end end
+  pools.QUIZ = {}
+  for i = 1, quizN do pools.QUIZ[i] = "q" .. i end
+  local low = {}
+  local names = {}
+  for name in pairs(pools) do names[#names + 1] = name end
+  table.sort(names)
+  for _, name in ipairs(names) do
+    local n = distinct(pools[name])
+    if n < 100 then low[#low + 1] = name .. " " .. n end
+  end
+  CHECK(#low == 0 and #names >= 50, #names .. " lists, each with 100+ different lines - short: " .. table.concat(low, ", "))
+  -- asking the same thing again and again: a different answer every time for 100 asks
+  VOICE.games, VOICE.pend, VOICE.convo = {}, {}, {}
+  local function hundred(msg)
+    local seen, n = {}, 0
+    for _ = 1, 100 do
+      VOICE.games, VOICE.pend = {}, {}
+      local c = VOICE.converse(owner, msg, true)
+      local g = VOICE.games[owner:lower()]
+      if g and g.kind == "knock" and g.j then c = g.j[1] end        -- (knock knock: the joke it picked)
+      if c and not seen[c] then seen[c] = true n = n + 1 end
+    end
+    return n
+  end
+  for _, ask in ipairs({ "roast me", "compliment me", "tell me a joke", "tell me a story", "fun fact", "give me a riddle", "would you rather",
+                         "knock knock joke", "fortune cookie", "magic 8 ball will i find diamonds", "are you alive", "give me a mod tip" }) do
+    local n = hundred(ask)
+    CHECK(n >= (ask == "fun fact" and 88 or 95), "'" .. ask .. "' 100 times: " .. n .. " different answers")
+  end
+  -- the lines from the base's own code (VOICE.more): mostly new ones
+  local seen, n = {}, 0
+  for _ = 1, 200 do
+    local l = VOICE.more("hurt", { "{name}, you are hurt. Maybe eat something.", "Careful {name}, your health is low." })
+    if not seen[l] then seen[l] = true n = n + 1 end
+  end
+  CHECK(n >= 90, "'you are hurt' said 200 times: " .. n .. " different lines (was 2)")
+  -- the LORE: why drones and not /tp, why slow (the server's measured speed), mods
+  local function q(msg) VOICE.games, VOICE.pend = {}, {} return tostring(VOICE.converse(owner, msg, true)) end
+  CHECK(q("why cant you just tp me?"):lower():find("drone", 1, true), "why not /tp -> the drones: " .. q("why cant you just tp me?"))
+  CHECK(q("why are drones so slow"):find("120", 1, true), "why are drones slow -> the teleport wait: " .. q("why are drones so slow"))
+  VOICE.tpsS = { { c = os.clock() - 30, e = VOICE.rt() - 60 }, { c = os.clock(), e = VOICE.rt() } }
+  CHECK(q("is the server lagging"):find("10 ticks", 1, true), "is the server lagging -> its measured speed: " .. q("is the server lagging"))
+  VOICE.tpsS = {}
+  CHECK(q("what is ae2"):find("Applied Energistics", 1, true), "what is ae2 -> the glossary: " .. q("what is ae2"))
+  CHECK(q("what is craftoria"):find("NeoForge", 1, true), "what is craftoria: " .. q("what is craftoria"))
+  CHECK(q("explain the digital miner"):find("Mekanism", 1, true), "explain the digital miner: " .. q("explain the digital miner"))
+  CHECK(q("how do i start"):find("quest", 1, true) or q("how do i start"):find("backpack", 1, true), "how do i start -> modpack steps")
+  local a2 = q("how do i start ae2")
+  CHECK(a2:find("meteorite", 1, true) or a2:find("controller", 1, true) or a2:find("AE2", 1, true), "how do i start ae2: " .. a2)
+  CHECK(q("why turtles"):lower():find("map", 1, true), "why turtles -> they map: " .. q("why turtles"))
+  -- idle talk can say a mod tip
+  local hasTip = false
+  for _, fn in ipairs(VOICE.idleExtra) do
+    VOICE.queue = {}
+    local okF = pcall(fn, {}, nil)
+    for _, it in ipairs(VOICE.queue) do if tostring(it.text):find("Mod tip", 1, true) then hasTip = true end end
+  end
+  CHECK(hasTip, "idle talk includes mod tips")
+  VOICE.queue, VOICE.games, VOICE.pend, VOICE.convo = {}, {}, {}, {}
 end)()

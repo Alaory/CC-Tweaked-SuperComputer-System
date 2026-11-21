@@ -652,3 +652,6 @@ add(V.idleExtra, {
     return V.say(who .. ", you have visited " .. r.streak .. " days in a row. Do not break the streak!")
   end,
 })
+-- (its lists, for the packs after it - voice_lore.lua adds mod words to the glossary)
+V.L = V.L or {}
+V.L.SPIRIT, V.L.SPIRIT_WHY, V.L.GLOSS, V.L.GLOSS_ALIAS = SPIRIT, SPIRIT_WHY, GLOSS, GLOSS_ALIAS
