@@ -247,8 +247,10 @@ CLOCK = CLOCK + 6
 VOICE.tick()
 VOICE.queue = {}
 local isJoke = function(t) for _, j in ipairs(VOICE.JOKES) do if t and t:sub(1, #j) == j then return true end end return false end
-CHECK(VOICE.chat({ name = owner, msg = "can the base tell me a joke" }) and #VOICE.queue == 1 and isJoke(told[#told]),
-      "its name ANYWHERE in a sentence: answered (a joke): " .. tostring(told[#told]))
+-- (its name as an ordinary word - "can the base ..." - is no call any more: the owner, "when I mention a base word it
+--  also does this"; a call = first / last word / after hey / set off by a comma - part 32)
+CHECK(VOICE.chat({ name = owner, msg = "ok base, can you tell me a joke" }) and #VOICE.queue == 1 and isJoke(told[#told]),
+      "called by name ('ok base, ...'): answered (a joke): " .. tostring(told[#told]))
 VOICE.queue, told = {}, {}
 VOICE.chat({ name = owner, msg = "base, sing" })
 local isNoSing = false
@@ -1082,11 +1084,11 @@ VOICE.pend = {}
 local hc, hsp = VOICE.converse(stranger, "hack the mainframe", true)
 CHECK(type(hc) == "string" and hsp == nil, "hack the mainframe: no stray second value (it would have been spoken)")
 VOICE.games = {}
-CHECK(say3("my birthday is the 14th of march"):find("14 March", 1, true), "my birthday is the 14th of march: " .. table.concat(told, " | "))
+CHECK(say3("base my birthday is the 14th of march"):find("14 March", 1, true), "my birthday is the 14th of march: " .. table.concat(told, " | "))
 VOICE.chat({ name = "Zed", msg = "hello everyone, nice server" })
 CHECK(VOICE.mem().zed == nil, "chat from a player far away who never visited makes no record")
 -- forget me asks first, then deletes everything
-CHECK(say3("forget me"):find("Type yes or no", 1, true), "forget me asks first")
+CHECK(say3("base forget me"):find("Type yes or no", 1, true), "forget me asks first")
 CHECK(say3("yes"):find("forgot everything", 1, true) and VOICE.mem().kevin == nil and VOICE.callName("Kevin") == nil, "yes -> all gone")
 local gq = queued("Kevin")
 VOICE.addRep("Kevin", 60)
@@ -2069,4 +2071,83 @@ end)()
   VOICE.tpsS = {}
   for k, v in pairs(keep) do if v == nil then resetSetting("voice." .. k) else setSetting("voice." .. k, v) end end
   VOICE.queue, VOICE.said, VOICE.pre, VOICE.busyUntil, VOICE.keep = {}, {}, nil, nil, nil
+end)()
+
+-- 32) NOT TALKING TO IT (the owner's chat: "DSLGLITCHERS" / "u free rn?" / "uh" / "in the overworld rn?" - all for
+-- another player; the base answered twice with its menu - "the base keeps trying to talk to me when I am not talking
+-- to it, also when I mention a base word")
+;(function()
+  local tl = {}
+  local ct0 = chatTell
+  chatTell = function(n, t) tl[#tl + 1] = tostring(n) .. ": " .. tostring(t) end
+  local on0, pl0, envd0 = state.online, state.players, envDet
+  envDet = nil
+  local H0 = CONFIG.drone.home
+  state.online = { [owner:lower()] = true, dslglitchers = true, anotherdaniele = true }
+  state.players = { { name = owner, p = { x = H0.x + 2, y = H0.y, z = H0.z + 1 }, dim = DRONE_DIM },
+                    { name = "DSLGLITCHERS", p = { x = H0.x + 3000, y = 70, z = H0.z }, dim = DRONE_DIM },
+                    { name = "AnotherDaniele", p = { x = H0.x - 4000, y = 70, z = H0.z }, dim = DRONE_DIM } }
+  setSetting("voice.chat", true)
+  local function fresh()
+    VOICE.convo, VOICE.pend, VOICE.chatAt, VOICE.talkingTo, VOICE.games = {}, {}, {}, {}, {}
+    CLOCK = CLOCK + 1000
+  end
+  local function chat(who, msg) VOICE.chat({ name = who, msg = msg }) end
+  fresh()
+  tl = {}
+  chat(owner, "DSLGLITCHERS")
+  chat(owner, "u free rn?")
+  chat("DSLGLITCHERS", "Not currently")
+  chat("DSLGLITCHERS", "Whats up")
+  chat(owner, "uh")
+  chat(owner, "in the overworld rn?")
+  CHECK(#tl == 0, "chatting with another player: the base stays out of it (" .. table.concat(tl, " | ") .. ")")
+  -- the other player chatting a minute ago is enough (no name in the owner's line)
+  fresh()
+  tl = {}
+  chat("DSLGLITCHERS", "anyone wanna trade?")
+  CLOCK = CLOCK + 30
+  chat(owner, "what do you need?")
+  CHECK(#tl == 0, "another player just chatted: a question without the name is for them (" .. table.concat(tl, " | ") .. ")")
+  -- its name as an ordinary word
+  for _, m in ipairs({ "brb going back to my base", "the base is lagging a bit", "is your base far from spawn?",
+                       "i will build a new base there", "come to the base later?" }) do
+    fresh()
+    tl = {}
+    chat(owner, m)
+    CHECK(#tl == 0, "'" .. m .. "' is not a call to the base (" .. table.concat(tl, " | ") .. ")")
+  end
+  -- a real call still works - also while others chat
+  local function called(m)
+    fresh()
+    chat("DSLGLITCHERS", "lol")
+    tl = {}
+    chat(owner, m)
+    return table.concat(tl, " | ")
+  end
+  for _, m in ipairs({ "base, how are the turtles?", "base tell me a joke", "hey base tell me a joke",
+                       "how are the turtles base?", "so, base, tell me a joke" }) do
+    CHECK(called(m) ~= "", "'" .. m .. "' is answered")
+  end
+  CHECK(VOICE.calledByName(VOICE.norm("thanks base"), "thanks base"), "thanks base = a call")
+  CHECK(not VOICE.calledByName(VOICE.norm("back to base"), "back to base"), "back to base = not a call")
+  CHECK(VOICE.calledByName(VOICE.norm("ok base: status"), "ok base: status"), "ok base: status = a call")
+  -- alone, nobody else ONLINE: a question it understands is answered, one it does not get NO menu
+  state.online = { [owner:lower()] = true }
+  fresh()
+  tl = {}
+  chat(owner, "how are the turtles?")
+  CHECK(#tl == 1, "alone, nobody else online: a question it understands is still answered (" .. table.concat(tl, " | ") .. ")")
+  fresh()
+  tl = {}
+  chat(owner, "wanna go mining in the nether later?")
+  CHECK(not table.concat(tl, " "):find("Type a number", 1, true), "a question it does not understand without its name: no menu (" ..
+        table.concat(tl, " | ") .. ")")
+  -- by name and not understood: the menu, as before
+  fresh()
+  tl = {}
+  chat(owner, "base, blorf the quibbles?")
+  CHECK(table.concat(tl, " "):find("Type a number", 1, true), "called by name and not understood: the menu")
+  fresh()
+  chatTell, state.online, state.players, envDet = ct0, on0, pl0, envd0
 end)()

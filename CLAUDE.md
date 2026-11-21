@@ -1178,6 +1178,17 @@ PneumaticCraft drone rides, turtle mapping/surveys, and an AE2 ME network view.
   text of a message ("can i leave a mesage" -> "what should it say?" -> the next line). No intent -> VOICE.answer
   STRICT (only the parts that read details: lonely / extra answers / where is - the loose one-word checks "how",
   "who", "base" answered anything with the status). test_voice part 16 (passes with 60 random seeds).
+  NOT TALKING TO IT (the owner's chat: "DSLGLITCHERS" / "u free rn?" / "uh" / "in the overworld rn?" - all for another
+  player, the base answered twice with its menu; "also when I mention a base word"): VOICE.calledByName - its name is
+  a CALL only as the first word, after a filler / greeting (VOICE.CALL_LEAD: hey ok(=yes) uh uhh thanks ...), the
+  last word unless after my / the / to / back ... (VOICE.NOT_CALL), or set off by , ! : ("so, base, ...") - "back
+  to my base" / "the base is lagging" are not. VOICE.withOthers: a message naming another ONLINE player (or the name
+  without digits) = for them + that speaker's next messages for VOICE.OTHERS_S 120 s (VOICE.talkingTo); another
+  player chatting in the last 120 s (VOICE.chatAt - every speaker, near or far; a message the base ANSWERED is taken
+  out again) = players talking -> without the name nothing is for the base. A question without the name alone at
+  the base = "guess" only while NOBODY ELSE is online (server chat is shared): answered when understood, never the
+  menu (converse noMenu); the menu only when called by name / "bot" / in an open conversation. A question word 2nd
+  only after a filler ("uhh how do i" - not "i will build"). test_voice part 32 (the owner's chat replayed).
   TALK PACK (voice_talk.lua; the owner: "more idle talk, 100+ interactions for a player who is not the owner -
   it is an add-on"): a SECOND add-on file (VOICE_FILES in base_theme.lua = add-on + packs; inventory.lua loads
   them in order, `voice install|update` installs each on the data floppy with the most room, `voice remove`

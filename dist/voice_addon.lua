@@ -1661,7 +1661,7 @@ end
 return nil
 end
 
-function VOICE.converse(who, raw, direct)
+function VOICE.converse(who, raw, direct, noMenu)
 if direct == nil then direct = true end
 local k = tostring(who):lower()
 local word = tostring(VOICE.cfg("name", "base")):lower()
@@ -1768,6 +1768,7 @@ end
 
 
 if not direct then return VOICE.smallReact(ws, who) end
+if noMenu then return nil end
 VOICE.misses = (VOICE.misses or 0) + 1
 local c, sp = VOICE.showMenu(who, VOICE.menuItems(who), pick({ "Sorry, I did not get that.", "Hmm, I am not sure what you mean.",
 "I did not understand, sorry." }) .. " Type a number:")
@@ -1783,14 +1784,84 @@ local ASKWORDS = { please = true, tell = true, show = true, give = true, gimme =
 explain = true, help = true, call = true, pick = true, choose = true, forget = true, remember = true }
 
 local TELLS = { birthday = true, bday = true, favourite = true, favorite = true, fav = true, nickname = true, name = true }
+
+
+
+
+VOICE.CALL_LEAD = { hey = true, hi = true, hello = true, ok = true, okay = true, yo = true, oi = true, so = true, ["and"] = true,
+um = true, uh = true, uhh = true, umm = true, hmm = true, erm = true, ehh = true, well = true, dear = true, oh = true,
+thanks = true, thank = true, please = true, pls = true, yes = true, yeah = true, no = true, alright = true }
+VOICE.NOT_CALL = { my = true, your = true, ur = true, the = true, a = true, an = true, our = true, his = true, her = true, their = true,
+this = true, that = true, these = true, those = true, to = true, at = true, ["in"] = true, from = true, of = true,
+near = true, into = true, back = true, its = true, some = true, any = true, new = true, old = true, own = true,
+main = true, home = true, on = true, by = true, ["for"] = true, with = true }
+function VOICE.calledByName(ws, raw, word)
+word = word or tostring(VOICE.cfg("name", "base")):lower()
+local n = #ws
+local function is(w, fuzzy) return w == word or (fuzzy and #word >= 4 and w and VOICE.same(w, word)) end
+if n == 0 then return false end
+if is(ws[1], true) then return true end
+if n >= 2 and VOICE.CALL_LEAD[ws[1]] and is(ws[2], false) then return true end
+if is(ws[n], true) and not VOICE.NOT_CALL[ws[n - 1] or ""] then return true end
+
+local low = tostring(raw or ""):lower()
+local i = 1
+while true do
+local a, b = low:find(word, i, true)
+if not a then break end
+local before, after = low:sub(a - 1, a - 1), low:sub(b + 1, b + 1)
+local wordStart = a == 1 or not before:match("[%w_]")
+local wordEnd = b == #low or not after:match("[%w_]")
+if wordStart and wordEnd then
+local pre = low:sub(1, a - 1):match("([^%s])%s*$")
+local post = low:sub(b + 1):match("^%s*([^%s])")
+if (pre == "," and (post == "," or post == "!" or post == "?" or post == nil)) or post == "!" or post == ":" or
+(post == "," and (a == 1 or pre == "," or pre == "!")) then return true end
+end
+i = b + 1
+end
+return false
+end
+
+
+
+
+VOICE.OTHERS_S = 120
+VOICE.talkingTo, VOICE.chatAt = {}, {}
+function VOICE.namesOther(who, ws, raw)
+local on = state.online
+if type(on) ~= "table" then return nil end
+local me = tostring(who):lower()
+local low = " " .. tostring(raw or ""):lower():gsub("[^%w_]", " ") .. " "
+for n in pairs(on) do
+n = tostring(n):lower()
+if n ~= me and #n >= 3 and low:find(" " .. n .. " ", 1, true) then return n end
+
+local bare = n:gsub("[%d_]", "")
+if bare ~= n and #bare >= 4 and low:find(" " .. bare .. " ", 1, true) then return n end
+end
+return nil
+end
+function VOICE.withOthers(who, ws, raw)
+local k = tostring(who):lower()
+local now = os.clock()
+local other = VOICE.namesOther(who, ws, raw)
+if other then VOICE.talkingTo[k] = { name = other, till = now + VOICE.OTHERS_S } return other end
+local t = VOICE.talkingTo[k]
+if t and now < t.till then return t.name end
+for n, at in pairs(VOICE.chatAt) do
+if n ~= k and now - at < VOICE.OTHERS_S and (type(state.online) ~= "table" or state.online[n]) then return n end
+end
+return nil
+end
 function VOICE.addressed(who, raw, near)
 local k = tostring(who):lower()
 local ws = VOICE.norm(raw)
 local word = tostring(VOICE.cfg("name", "base")):lower()
 
-for i, w in ipairs(ws) do
-if w == word or ((i == 1 or i == #ws) and #word >= 4 and VOICE.same(w, word)) then return "direct" end
-end
+
+
+if VOICE.calledByName(ws, raw, word) then return "direct" end
 local P = VOICE.pend[k]
 if P and os.clock() < P.till then
 if P.kind == "msg" or P.kind == "react" then return "direct" end
@@ -1798,17 +1869,23 @@ if P.kind == "yesno" and ws[1] and #ws <= 3 and (YES[ws[1]] or NO[ws[1]]) then r
 if P.kind == "menu" and #ws == 1 and tonumber(ws[1]) then return "direct" end
 end
 local alone = near and othersNear(who) == 0
-local looks = tostring(raw):find("?", 1, true) or (ws[1] and QWORDS[ws[1]]) or (ws[2] and QWORDS[ws[2]])
+
+local looks = tostring(raw):find("?", 1, true) or (ws[1] and QWORDS[ws[1]]) or (ws[2] and QWORDS[ws[2]] and VOICE.CALL_LEAD[ws[1]])
 local callsIt = false
 for _, w in ipairs(ws) do if w == "computer" or w == "robot" or w == "bot" then callsIt = true end end
 if callsIt and near then return "direct" end
+if VOICE.withOthers(who, ws, raw) then return nil end
 if not looks then for _, b in ipairs(BOTWORDS) do if hasWord(ws, b) then looks = true end end end
 if not looks then for _, w in ipairs(ws) do if ASKWORDS[w] then looks = true end end end
 if not looks and ((ws[1] == "my" and TELLS[ws[2] or ""]) or (ws[1] == "i" and ws[2] == "wish")) then looks = true end
 if VOICE.convo[k] and os.clock() < VOICE.convo[k] then return looks and "direct" or "convo" end
 if not near or not alone then return nil end
 if VOICE.lonelyDays() then return "direct" end
-if looks then return "direct" end
+
+if type(state.online) == "table" then
+for n in pairs(state.online) do if tostring(n):lower() ~= k then return nil end end
+end
+if looks then return "guess" end
 return nil
 end
 function VOICE.chat(m)
@@ -1824,6 +1901,13 @@ end
 function VOICE.chatCore(m)
 if type(m) ~= "table" then return false end
 pcall(VOICE.listen, tostring(m.name or ""), tostring(m.msg or ""), nearName(tostring(m.name or "")))
+
+local prevChat = VOICE.chatAt
+VOICE.chatAt = {}
+for n, at in pairs(prevChat or {}) do if os.clock() - at < VOICE.OTHERS_S then VOICE.chatAt[n] = at end end
+local speaker = tostring(m.name or ""):lower()
+local mineBefore = VOICE.chatAt[speaker]
+VOICE.chatAt[speaker] = os.clock()
 if VOICE.cfg("chat", true) == false then return false end
 local text = tostring(m.msg or "")
 local who = tostring(m.name or "")
@@ -1842,6 +1926,7 @@ local okR, c2 = pcall(VOICE.restyle, who, c)
 if okR and type(c2) == "string" then c = c2 end
 if sp then local okS, s2 = pcall(VOICE.restyle, who, sp) if okS and type(s2) == "string" then sp = s2 end end
 end
+VOICE.chatAt[k] = mineBefore
 if chatTell then chatTell(who, c, true) end
 if near then
 local line = sp or c
@@ -1883,7 +1968,7 @@ end
 
 local how = VOICE.addressed(who, text, near)
 if how then
-local c, sp = VOICE.converse(who, text, how == "direct")
+local c, sp = VOICE.converse(who, text, how ~= "convo", how == "guess")
 if c then reply(c, sp) return true end
 if sp and near and not VOICE.isQuiet() then VOICE.say(sp, nil, true) return true end
 if how == "direct" then return true end
