@@ -1456,6 +1456,18 @@ PneumaticCraft drone rides, turtle mapping/surveys, and an AE2 ME network view.
   VOICE.saveMem: m["#saved"] = epoch; the floppy, else the computer (VOICE.MEM_HERE "voice_memory.dat"), else ONE
   WARNING (sysLog + note, VOICE.memSaveErr); a floppy save that works again deletes the computer's copy. VOICE.mem()
   reads both and takes the NEWEST "#saved" (a tie: the computer's copy). test_voice part 33.
+  50 WAYS FOR EVERY INTERACTION (the owner: "I have enough space - at least 50 variants for each interaction, each"; 300
+  intents, many with 1-3 answers): voice_vary.lua (VOICE_FILES[8], loaded LAST). Core: VOICE.converse = a wrapper
+  (VOICE.convDepth; the old body is VOICE.converseRaw, which sets VOICE.lastIntent) that hands the OUTERMOST answer to
+  VOICE.vary(id, chat, spoken, who, started) - never when the answer STARTED a game / menu / question (pend / games
+  changed). V.vary: the kind per intent (V.VARY_KIND: data = status / time / turtles ... the numbers stay exact, info =
+  guides / lore / glossary, no = rules / hack / free stuff, skip = the 100+ lists, games, menus, generators, everything
+  else = chat) -> an opener (10) and a closer (7; an answer ending in "?" gets V.VARY.ask) IN TURN per intent
+  (V.varyN, random start) - 10 and 7 share no factor: all 70 pairs before one comes back. Found + fixed while checking:
+  "what time is it" tied with remind (8 ball "Maybe.") - time keys "what time is it" / "what time"; "can i have free
+  stuff" went to "can i stay" (the 8 ball said "Yes.") - freestuff keys "can i have free stuff / items". test_voice
+  part 33: every intent reachable by its own keys (220 of 221 tried; the other starts a question) gives 50+ different
+  answers in 60 asks; a status answer keeps the status.
 - REMOVED AGAIN: remote access in a web browser (Cloud Catcher; base_remote.lua / remote.lua / pocket.lua
   in local mode on the base) - the owner: "taking space and seems useless". removeOldFiles (base_theme.lua,
   run by inventory.lua at start) deletes its files (remote.lua, base_remote.lua, cloud.lua on the computer
@@ -1567,6 +1579,7 @@ The old Block UI (stone buttons, bedrock theme) is gone.
 | voice_talk.lua | its TALK PACK (also on a data floppy): 140+ more chat interactions, games, idle talk |
 | voice_talk3.lua | TALK PACK 3: free drone TAXI for friends (base <-> their bed), visit streaks, mail between players, Minecraft glossary + recipes, jokes on a topic, spirit mob, ship, rematches, milestones |
 | voice_lines.lua / voice_idle.lua | LINES PACKS: 100+ ways to say each thing (asked for / idle, greetings, reactions) |
+| voice_vary.lua | VARIETY PACK: every other answer said 50+ ways (openers / closers by the kind of answer) |
 | voice_lore.lua | LORE PACK: why drones and not /tp and other questions about the base, modpack tips, mod glossary |
 | voice_talk2.lua | TALK PACK 2: friendship + titles, badges, player memory, daily secret word, more games, ideas, guides, styles, holidays, diary, FRIENDSHIP GIFTS by drone |
 

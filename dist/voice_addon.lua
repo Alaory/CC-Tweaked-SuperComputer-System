@@ -1553,7 +1553,7 @@ VOICE.INTENTS = {
 { id = "mining", canon = "mining", keys = { "mining", "mine", "miners", "ores", "ore" } },
 { id = "survey", canon = "survey", keys = { "map", "survey", "mapping", "explore", "exploring" } },
 { id = "realtime", canon = "real time", keys = { "real time", "irl", "real world" } },
-{ id = "time", canon = "time", keys = { "time", "clock", "what day", "day", "night", "late" } },
+{ id = "time", canon = "time", keys = { "what time is it", "what time", "time", "clock", "what day", "day", "night", "late" } },
 { id = "weather", canon = "weather", keys = { "weather", "rain", "raining", "storm", "sunny", "snow" } },
 { id = "online", canon = "who is online", keys = { "online", "who is on", "players", "people" } },
 { id = "whereami", canon = "where am i", keys = { "where am i", "my position", "coords", "coordinates", "lost", "where is home" } },
@@ -1708,7 +1708,25 @@ end
 return nil
 end
 
+
+
+
 function VOICE.converse(who, raw, direct, noMenu)
+VOICE.convDepth = (VOICE.convDepth or 0) + 1
+local k = tostring(who):lower()
+local p0, g0 = VOICE.pend[k], VOICE.games[k]
+if VOICE.convDepth == 1 then VOICE.lastIntent = nil end
+local ok, c, sp = pcall(VOICE.converseRaw, who, raw, direct, noMenu)
+VOICE.convDepth = VOICE.convDepth - 1
+if not ok then error(c, 0) end
+if VOICE.vary and VOICE.convDepth == 0 and type(c) == "string" then
+local started = (VOICE.pend[k] ~= nil and VOICE.pend[k] ~= p0) or (VOICE.games[k] ~= nil and VOICE.games[k] ~= g0)
+local okV, c2, sp2 = pcall(VOICE.vary, VOICE.lastIntent, c, sp, who, started)
+if okV and type(c2) == "string" then c, sp = c2, sp2 end
+end
+return c, sp
+end
+function VOICE.converseRaw(who, raw, direct, noMenu)
 if direct == nil then direct = true end
 local k = tostring(who):lower()
 local word = tostring(VOICE.cfg("name", "base")):lower()
@@ -1763,6 +1781,7 @@ local it, score = VOICE.intent(fixed)
 
 if not direct and it and #ws > 3 and score < 2 then it = nil end
 local id = it and it.id
+VOICE.lastIntent = id
 if raw == "#games" or id == "games" then return VOICE.showMenu(who, VOICE.GAMES, "Which game? Type a number:") end
 if raw == "#tour" or id == "tour" then
 local t = VOICE.tourText()

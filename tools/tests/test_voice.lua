@@ -8,7 +8,7 @@ CONFIG.drone.home = HOME
 -- (the repo's own copies "next to inventory.lua" are not on this computer: the voice files come from floppies)
 local realExists = fs.exists
 local HIDDEN = { ["voice_addon.lua"] = true, ["voice_talk.lua"] = true, ["voice_talk2.lua"] = true, ["voice_talk3.lua"] = true,
-                 ["voice_lines.lua"] = true, ["voice_idle.lua"] = true, ["voice_lore.lua"] = true }
+                 ["voice_lines.lua"] = true, ["voice_idle.lua"] = true, ["voice_lore.lua"] = true, ["voice_vary.lua"] = true }
 fs.exists = function(p) if HIDDEN[tostring(p):gsub("^/", "")] then return false end return realExists(p) end
 -- a data floppy with the add-on on it
 addDrive("drive_7", "disk7")
@@ -2158,7 +2158,7 @@ end)()
 -- (the owner: "questions like why the drones, why not /tp; read about Craftoria or other modpacks").
 ;(function()
   local k = 40
-  for _, f in ipairs({ "voice_lines.lua", "voice_idle.lua", "voice_lore.lua" }) do
+  for _, f in ipairs({ "voice_lines.lua", "voice_idle.lua", "voice_lore.lua", "voice_vary.lua" }) do
     k = k + 1
     addDrive("drive_" .. k, "disk" .. k)
     put("disk" .. k .. "/base_data", "data")
@@ -2166,7 +2166,8 @@ end)()
   end
   if dataPathReset then dataPathReset() end
   loadVoiceChain()
-  CHECK(VOICE.packs["voice_lines.lua"] and VOICE.packs["voice_idle.lua"] and VOICE.packs["voice_lore.lua"], "the lines + lore packs load from floppies")
+  CHECK(VOICE.packs["voice_lines.lua"] and VOICE.packs["voice_idle.lua"] and VOICE.packs["voice_lore.lua"] and VOICE.packs["voice_vary.lua"],
+        "the lines + lore + variety packs load from floppies")
   CHECK(#VOICE.dupIntents == 0, "no intent id twice: " .. table.concat(VOICE.dupIntents, ", "))
   local function distinct(list)
     local seen, n = {}, 0
@@ -2219,6 +2220,51 @@ end)()
                          "knock knock joke", "fortune cookie", "magic 8 ball will i find diamonds", "are you alive", "give me a mod tip" }) do
     local n = hundred(ask)
     CHECK(n >= (ask == "fun fact" and 88 or 95), "'" .. ask .. "' 100 times: " .. n .. " different answers")
+  end
+  -- EVERY INTERACTION 50+ WAYS (the owner: "at least 50 variants for each interaction, each"): every intent the base
+  -- understands, asked 60 times by one of its own keys -> 50+ different answers (games / menus / the big lists aside)
+  do
+    local reached, fewer, tried = 0, {}, 0
+    for _, it in ipairs(VOICE.INTENTS) do
+      local kind = VOICE.VARY_KIND[it.id]
+      if kind ~= "skip" then
+        local key
+        for _, kk in ipairs(it.keys or {}) do
+          VOICE.games, VOICE.pend, VOICE.convo = {}, {}, {}
+          local okC = pcall(VOICE.converse, owner, kk, true)
+          if okC and VOICE.lastIntent == it.id then key = kk break end
+        end
+        if key then
+          tried = tried + 1
+          local seen, n, started = {}, 0, false
+          for _ = 1, 60 do
+            VOICE.games, VOICE.pend, VOICE.convo = {}, {}, {}
+            local okC, c = pcall(VOICE.converse, owner, key, true)
+            if next(VOICE.pend) or next(VOICE.games) then started = true end
+            if okC and type(c) == "string" and not seen[c] then seen[c] = true n = n + 1 end
+          end
+          if started then
+            -- (it starts something - a question / game: its words stay as they are)
+          elseif n >= 50 then reached = reached + 1
+          else fewer[#fewer + 1] = it.id .. " " .. n end
+        end
+      end
+    end
+    CHECK(#fewer == 0 and reached >= 150, reached .. " of " .. tried .. " interactions answer 50+ different ways - fewer: " ..
+          table.concat(fewer, ", "))
+    -- (found while checking: "what time is it" went to the reminders and got an 8 ball answer, "can i have free stuff"
+    --  went to "can i stay" and the 8 ball said "Yes.")
+    VOICE.games, VOICE.pend = {}, {}
+    VOICE.converse(owner, "what time is it", true)
+    CHECK(VOICE.lastIntent == "time", "what time is it -> the time (" .. tostring(VOICE.lastIntent) .. ")")
+    VOICE.games, VOICE.pend = {}, {}
+    VOICE.converse(owner, "can i have free stuff", true)
+    CHECK(VOICE.lastIntent == "freestuff", "can i have free stuff -> the free stuff answer (" .. tostring(VOICE.lastIntent) .. ")")
+    -- the data stays exact: only before / after it
+    VOICE.games, VOICE.pend = {}, {}
+    local st = tostring(VOICE.converse(owner, "base status", true))
+    local plain = tostring(VOICE.statusText and VOICE.statusText() or "")
+    CHECK(plain == "" or st:find(plain:sub(1, 20), 1, true), "a status answer keeps the status itself: " .. st)
   end
   -- the lines from the base's own code (VOICE.more): mostly new ones
   local seen, n = {}, 0

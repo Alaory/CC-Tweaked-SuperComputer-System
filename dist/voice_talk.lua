@@ -728,7 +728,7 @@ lines("shutdown", { "shut down", "shutdown", "turn off", "self destruct", "power
 { "I am afraid I cannot do that, {name}.", "Self destruct in three, two, one... just kidding.", "Nope. I like being on." }),
 lines("openup", { "open the door", "let me in", "open door", "give me access" }, { "I am afraid I cannot do that, {name}. The doors are {owner}'s.",
 "Doors stay closed. But I can tell you a joke." }),
-lines("freestuff", { "free stuff", "free items", "give me items", "give me diamonds", "gimme" },
+lines("freestuff", { "can i have free stuff", "can i have free items", "free stuff", "free items", "give me items", "give me diamonds", "gimme" },
 { "Nothing for free... but friends of the base get gifts, brought by drone! Say: how do I get a gift.",
 "Be nice, visit often, play games with me. Friends get presents. Say friendship level to see yours." }),
 lines("teleport", { "teleport", "tp me", "tp" }, { "No teleports for visitors, sorry.", "I can not teleport you. The drones only fly friends." }),
