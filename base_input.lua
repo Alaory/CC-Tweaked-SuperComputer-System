@@ -120,6 +120,22 @@ function handleTouch(tx, ty)
               local ok, msg = DW.startBuild(a.name, x, y, z, DW.ui.rot or 0, DW.ui.clear)
               if ok then setPopup("DRONE BUILD", msg, C.good) else setToast(msg, C.warn, 8) end
             end
+          elseif a.kind == "giftsend" then             -- GIFTS page: an AE2 item for a player (a drone brings it)
+            local ok, msg = GIFTS.send(a.target, a.name, a.count)
+            setToast(msg, ok and C.good or C.warn, 8)
+          elseif a.kind == "giftadd" then              -- GIFTS page: the item becomes part of a reward
+            local ok, msg = GIFTS.addTo(a.target, a.name, a.count)
+            setToast(msg, ok and C.good or C.warn, 6)
+          elseif a.kind == "giftdel" then
+            local ok, msg = GIFTS.delFrom(a.target, a.name)
+            setToast(msg, ok and C.label or C.warn, 6)
+          elseif a.kind == "giftreset" then
+            local _, msg = GIFTS.reset(a.name)
+            setToast(msg, C.label, 5)
+          elseif a.kind == "giftcancel" then
+            local ok, msg = false, "the voice add-on is not loaded"
+            if VOICE and VOICE.giftCancel then ok, msg = VOICE.giftCancel(a.count, a.name) end
+            setToast(msg, ok and C.label or C.warn, 5)
           elseif a.kind == "supplyset" then
             -- AE2 tab KEEP A STORAGE FILLED
             local ok, msg = SUPPLY.add(a.target, a.skind, a.name, a.count)
@@ -398,6 +414,26 @@ function handleTouch(tx, ty)
         if st and TT.online(st) then TT.drive(h[6], "look") end        -- what is around it, at once
       elseif h[5] == "tcmd" then
         TT.send(h[6][1], h[6][2], h[6][3])
+      elseif h[5] == "giftletter" then                 -- GIFTS page
+        state.giftLetter, state.giftOff = h[6] or nil, 0
+      elseif h[5] == "giftitem" then
+        state.giftItem = (state.giftItem ~= h[6]) and h[6] or nil
+      elseif h[5] == "giftcount" then
+        local n, nxt = GIFTS.count(), GIFTS.COUNTS[1]
+        for i, c in ipairs(GIFTS.COUNTS) do if c == n then nxt = GIFTS.COUNTS[i % #GIFTS.COUNTS + 1] end end
+        state.giftCount = nxt
+      elseif h[5] == "giftto" then
+        local list, cur = GIFTS.players(), GIFTS.to()
+        local nxt = list[1]
+        for i, n in ipairs(list) do if n == cur then nxt = list[i % #list + 1] end end
+        state.giftTo = nxt
+      elseif h[5] == "giftwhy" then
+        state.giftReward = h[6]
+      elseif h[5] == "giftnow" then
+        if VOICE and VOICE.giftNow then
+          local okN, lines = pcall(VOICE.giftNow)
+          setPopup("GIFTS", okN and table.concat(lines, "  ") or tostring(lines), C.label)
+        end
       elseif h[5] == "dwnext" then                     -- DRONE WORK: the next empty chest on the cable
         local ok, msg = DW.nextChest()
         setToast(msg, ok and C.good or C.warn, 6)

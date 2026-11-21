@@ -2,9 +2,9 @@
 -- rows with a gap are OK: "item"), page descriptions fit the HOME buttons
 -- whole, a tap 1 row / 1 column off a button still hits it (snapTouch), the
 -- INVENTORY page has no OVERVIEW box and keeps a big DETAILS box.
-local PAGES = { "home", "inventory", "players", "env", "mesys", "storage", "curios", "me", "drone", "access",
+local PAGES = { "home", "inventory", "players", "env", "mesys", "storage", "curios", "me", "drone", "gifts", "access",
                 "turtles", "drive", "map", "mining", "system", "events", "settings" }
-local ROWS_OK = { item = true, meitem = true, dscroll = true, tsel = true, evitem = true, patsel = true }
+local ROWS_OK = { item = true, meitem = true, giftitem = true, dscroll = true, tsel = true, evitem = true, patsel = true }
 local was = state.page
 setTheme("teal")
 for _, p in ipairs(PAGES) do

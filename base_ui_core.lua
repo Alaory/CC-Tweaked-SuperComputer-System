@@ -429,6 +429,7 @@ PAGE_INFO = {                          -- (short: the HOME buttons show it whole
   access    = { "CHAT & RIDES", "Chat commands, ride requests" },
   drone     = { "DRONES", "Rides: passenger, place, air" },
   work      = { "DRONE WORK", "Builds, fuel runs, work chest" },
+  gifts     = { "GIFTS", "Give AE2 items to players" },
   turtles   = { "TURTLES", "What each turtle does, fuel" },
   drive     = { "DRIVE", "Steer one turtle by hand" },
   map       = { "MAP", "The mapped world, surveys" },
@@ -461,6 +462,10 @@ function pageTabs()
                         #droneOrder > 1 and tostring(#droneOrder) or nil }
     local busy = DW and (DW.job or DW.trip) and "\7" or nil
     tabs[#tabs + 1] = { "work", "DRONE WORK", busy, busy and C.good or nil }
+  end
+  if VOICE and VOICE.giftEarn then
+    local nq = VOICE.giftQueue and #VOICE.giftQueue() or 0
+    tabs[#tabs + 1] = { "gifts", "GIFTS", nq > 0 and tostring(nq) or nil }
   end
   if chatBox then
     local req = 0
@@ -506,7 +511,7 @@ local GROUPS = {
   { id = "home",    label = "HOME",    pages = { "home" } },
   { id = "you",     label = "YOU",     pages = { "inventory", "storage", "curios" } },
   { id = "me",      label = "AE2",     pages = { "me", "mesys" } },
-  { id = "people",  label = "PLAYERS", pages = { "players", "env", "access" } },
+  { id = "people",  label = "PLAYERS", pages = { "players", "env", "access", "gifts" } },
   { id = "drone",   label = nil,       pages = { "drone", "work" } },
   { id = "turtles", label = "TURTLES", pages = { "turtles", "drive", "map", "mining" } },
   { id = "system",  label = "SYSTEM",  pages = { "system", "events", "settings" } },
@@ -682,6 +687,7 @@ FOOT_HINT = {
   turtles = "Pick a turtle for its controls. Console:  turtle <id> goto x y z",
   drone   = "Pick a passenger and a place, then FERRY (two taps)",
   work    = "Far from the screen? Stand ON the chest and type  $drone workchest  in chat",
+  gifts   = "Pick an AE2 item, then SEND it to a player or ADD it to a reward (two taps). A drone brings it",
   events  = "Every message, newest first - tap a filter to see one kind",
   system  = "How the base is doing; the system log keeps system things only",
   settings = "Pick a group, then tap - / + or the value. RESET = back to base_config.lua",
@@ -799,6 +805,8 @@ function draw()
     drawDronePage(G)
   elseif state.page == "work" then
     drawWorkPage(G)
+  elseif state.page == "gifts" then
+    drawGiftsPage(G)
   elseif state.page == "access" then
     drawAccessPage(G)
   elseif state.page == "turtles" then

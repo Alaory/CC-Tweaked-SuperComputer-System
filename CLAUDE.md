@@ -1275,6 +1275,16 @@ PneumaticCraft drone rides, turtle mapping/surveys, and an AE2 ME network view.
   A failed giftRun start -> that gift waits 60 s (g.retryAt, g.lastErr) so the next one gets a turn. `voice gifts
   give <owner> ...` said "Queued" but giftEarn refused the owner silently: a MANUAL gift may go to the owner (a
   test), every refusal says why (giftEarn returns false, why). test_voice (gift block).
+  GIFTS PAGE (base_ui_gifts.lua GIFTS, page "gifts" in the PLAYERS group - only while the add-on with pack 2 is
+  loaded, badge = waiting; the owner: "a tab where I can add gifts to the list of possible gifts from AE2 and send
+  gifts to other players"): AE2 ITEMS (letters + state.me.items, 1-row "giftitem" rows) -> GIVE (x1..x1024 >,
+  TO: online player > = GIFTS.players, SEND two taps = GIFTS.send -> VOICE.giftEarn(who, "manual") + giftNext 0;
+  ADD xN TO THE <reward> GIFT two taps = GIFTS.addTo) | REWARDS (a button per VOICE.GIFT_ORDER reward, its items +
+  AE2 counts, REMOVE two taps, RESET TO THE DEFAULT; saved as settings.dat voice.gifts.<reward> - VOICE.giftList
+  reads CONFIG.voice.gifts[<reward>]; max 8 items) | WAITING + GIVEN (VOICE.giftQueue with VOICE.giftWait reasons,
+  CANCEL two taps = VOICE.giftCancel(i, item), TRY NOW = VOICE.giftNow popup, newest 4 given). Without the add-on
+  the page says `voice install`. Taps: base_input (giftletter / giftitem / giftcount / giftto / giftwhy / giftnow;
+  act giftsend / giftadd / giftdel / giftreset / giftcancel). test_gifts_page.lua (real voice files from floppies).
   REVIEW (the owner: "go over all the code you added"): voice announce all|summary|errors worked never (an
   earlier branch); a waiting yes / no / menu took EVERY message for 2-3 min as meant for it (now only answers);
   the voice cache dropped files alphabetically, not the oldest; "forget mentions" started "forget me"; hack
@@ -1466,7 +1476,7 @@ The old Block UI (stone buttons, bedrock theme) is gone.
    group's page chips + what the page is for. Body = rows 6 .. H-1 (geometry()); footer row H =
    FOOT_HINT[page] + LIVE; message boxes (drawNotes) framed in their colour, bottom-right.
 6. Navigation: GROUPS (base_ui_core.lua) = HOME | YOU (inventory, backpacks, curios) | AE2 (storage, system) |
-   PLAYERS (players, world, chat & rides) | DRONES (drones, drone work) | TURTLES (turtles, drive, map,
+   PLAYERS (players, world, chat & rides, gifts) | DRONES (drones, drone work) | TURTLES (turtles, drive, map,
    mining) | SYSTEM (status, messages, settings). New page -> PAGE_INFO entry + a group +
    pageTabs + draw() dispatch + PAGES in run_tests/test_ticks/test_ux.
 7. HOME (base_ui_home.lua; NEEDS YOU: the panel is sized for its problems - all fit = all shown, else rows for
@@ -1496,6 +1506,7 @@ The old Block UI (stone buttons, bedrock theme) is gone.
 | base_factory.lua | turtle factory: keeps the fleet size, AE2 parts, the builder turtle builds new ones |
 | base_supply.lua | `supply`: storages on the wired cable kept stocked from AE2 (items + fluids) |
 | base_schem.lua | schematics: Create .nbt files dropped on the screen, unpacked + read, materials list |
+| base_ui_gifts.lua | the GIFTS page: AE2 items -> send to a player / add to a friendship reward, the queue (needs the voice add-on's pack 2) |
 | base_dronework.lua / base_ui_work.lua | drone jobs: work chest, fuel runs to turtles, schematic builds (turtle keeps the site loaded) / the DRONE WORK page |
 | base_meplus.lua / base_ui_mesys.lua | more of the ME Bridge: CPUs, jobs (cancel), your craft requests followed, drives, patterns, storage buses / the AE2 SYSTEM page |
 | base_env.lua / base_ui_env.lua | the Environment Detector: time, weather, moon, light, mobs around the base / the WORLD page |

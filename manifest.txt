@@ -1,4 +1,4 @@
-base inventory.lua 4545 9088b31d
+base inventory.lua 4562 500ab891
 base startup.lua 1532 dcf086f6
 base store.lua 10804 0167b959
 base upgrade.lua 10858 725e2cf0
@@ -11,7 +11,7 @@ base base_drones.lua 80712 2f857c93
 base base_dronework.lua 44209 27c1acc0
 base base_env.lua 10269 b6081e20
 base base_factory.lua 29444 4933f33c
-base base_input.lua 28481 8fa4989e
+base base_input.lua 30478 02fa20fb
 base base_map.lua 89456 f0f6e930
 base base_me.lua 93300 b81b988b
 base base_meplus.lua 15773 3ac38582
@@ -26,11 +26,12 @@ base base_supply.lua 19688 1390bb7a
 base base_theme.lua 31881 acb6828a
 base base_turtles.lua 136588 65ddb4df
 base base_ui_chat.lua 5324 057af588
-base base_ui_core.lua 36846 0d3ff309
+base base_ui_core.lua 37253 975b9066
 base base_ui_drive.lua 16138 4de03b41
 base base_ui_drone.lua 10578 e71681bb
 base base_ui_env.lua 11053 2e164c54
 base base_ui_events.lua 3192 fead898d
+base base_ui_gifts.lua 13314 ee7ef631
 base base_ui_home.lua 14594 5ee5d617
 base base_ui_inventory.lua 6147 752b5390
 base base_ui_map.lua 15742 7f791ee4
@@ -50,9 +51,9 @@ pocket upgrade.lua 10858 725e2cf0
 miner miner.lua 119568 5955c787
 voice voice_addon.lua 153596 55c40a92
 voice voice_talk.lua 71646 5c897d8b
-voice voice_talk2.lua 101442 79a0ceb9
+voice voice_talk2.lua 101882 f8e09080
 voice voice_talk3.lua 40799 e5f8e99d
-slim:base inventory.lua 2529 927aa5f7 dist/inventory.lua
+slim:base inventory.lua 2546 356c8a8d dist/inventory.lua
 slim:base startup.lua 833 00f3544b dist/startup.lua
 slim:base store.lua 7737 3311f57d dist/store.lua
 slim:base upgrade.lua 7424 b8d25fcc dist/upgrade.lua
@@ -65,7 +66,7 @@ slim:base base_drones.lua 51586 f32a3d04 dist/base_drones.lua
 slim:base base_dronework.lua 33058 8502c442 dist/base_dronework.lua
 slim:base base_env.lua 7154 ae1b2584 dist/base_env.lua
 slim:base base_factory.lua 21629 0269dab1 dist/base_factory.lua
-slim:base base_input.lua 20108 1ecbe11c dist/base_input.lua
+slim:base base_input.lua 21607 1c89ea80 dist/base_input.lua
 slim:base base_map.lua 56492 d7578ad2 dist/base_map.lua
 slim:base base_me.lua 66834 d40a14d7 dist/base_me.lua
 slim:base base_meplus.lua 11765 8b3ef560 dist/base_meplus.lua
@@ -80,11 +81,12 @@ slim:base base_supply.lua 14825 3e655c85 dist/base_supply.lua
 slim:base base_theme.lua 19562 65314f76 dist/base_theme.lua
 slim:base base_turtles.lua 94402 fe5bdabc dist/base_turtles.lua
 slim:base base_ui_chat.lua 4262 56e2d3cf dist/base_ui_chat.lua
-slim:base base_ui_core.lua 27121 8bea5a69 dist/base_ui_core.lua
+slim:base base_ui_core.lua 27506 80fb885a dist/base_ui_core.lua
 slim:base base_ui_drive.lua 13196 c1739a3b dist/base_ui_drive.lua
 slim:base base_ui_drone.lua 9000 b88608b2 dist/base_ui_drone.lua
 slim:base base_ui_env.lua 8993 0700d4eb dist/base_ui_env.lua
 slim:base base_ui_events.lua 2398 625dcdc5 dist/base_ui_events.lua
+slim:base base_ui_gifts.lua 10649 919a9a4c dist/base_ui_gifts.lua
 slim:base base_ui_home.lua 12035 10209cb0 dist/base_ui_home.lua
 slim:base base_ui_inventory.lua 5120 94ca73c2 dist/base_ui_inventory.lua
 slim:base base_ui_map.lua 11944 ebfc5261 dist/base_ui_map.lua
@@ -104,5 +106,5 @@ slim:pocket upgrade.lua 7424 b8d25fcc dist/upgrade.lua
 slim:miner miner.lua 80631 4d0a0a8f dist/miner.lua
 slim:voice voice_addon.lua 116012 b71ff422 dist/voice_addon.lua
 slim:voice voice_talk.lua 66021 2d5736a8 dist/voice_talk.lua
-slim:voice voice_talk2.lua 88931 78d06c38 dist/voice_talk2.lua
+slim:voice voice_talk2.lua 89282 9fae9314 dist/voice_talk2.lua
 slim:voice voice_talk3.lua 35133 949f5949 dist/voice_talk3.lua

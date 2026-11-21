@@ -1172,6 +1172,34 @@ end
 end,
 })
 
+function V.giftNow()
+local out = {}
+local near = {}
+for _, p in ipairs(V.nearPlayers()) do near[p.name] = true end
+if V.giftBusy then
+out[#out + 1] = "Flying now: " .. V.giftBusy.n .. " " .. itemName(V.giftBusy.item) .. " to " .. V.giftBusy.who ..
+(DW and DW.trip and (" (" .. tostring(DW.trip.title) .. ")") or " - but no drone job runs: freed")
+if DW and DW.trip then return out end
+V.giftBusy = nil
+end
+for _, g in ipairs((gifts())) do g.retryAt = nil end
+local ok, err = pcall(V.giftTick, os.clock(), near)
+out[#out + 1] = ok and ("Gift check: " .. tostring(V.giftBusy and ("SENT - " .. V.giftBusy.n .. " " .. itemName(V.giftBusy.item) ..
+" to " .. V.giftBusy.who) or V.giftWhy or "nothing waiting")) or ("ERROR in the gift check: " .. tostring(err))
+return out
+end
+
+function V.giftQueue() return (gifts()) end
+function V.giftLogList() local _, log = gifts() return log end
+function V.giftCancel(i, item)
+local q = gifts()
+local g = q[tonumber(i) or 0]
+if not g or (item and g.item ~= item) then return false, "that gift is not waiting any more" end
+table.remove(q, tonumber(i))
+V.saveMem()
+return true, "Cancelled: " .. g.n .. " " .. itemName(g.item) .. " for " .. g.who
+end
+
 V.commands.gifts = function(words, say)
 local a = (words[3] or ""):lower()
 if a == "on" or a == "off" then
@@ -1201,22 +1229,7 @@ say("voice gifts now  = try it at once and say what happened")
 return
 end
 if a == "now" then
-
-local near = {}
-for _, p in ipairs(V.nearPlayers()) do near[p.name] = true end
-if V.giftBusy and os.clock() - V.giftBusy.at > 120 then
-say("A gift trip has been marked as flying for " .. math.floor(os.clock() - V.giftBusy.at) .. " s - checked again now.")
-end
-if V.giftBusy then
-say("Flying now: " .. V.giftBusy.n .. " " .. itemName(V.giftBusy.item) .. " to " .. V.giftBusy.who ..
-(DW and DW.trip and (" (" .. tostring(DW.trip.title) .. ")") or " - but no drone job runs: freed") )
-if DW and DW.trip then return end
-V.giftBusy = nil
-end
-for _, g in ipairs((gifts())) do g.retryAt = nil end
-local ok, err = pcall(V.giftTick, os.clock(), near)
-say(ok and ("Gift check: " .. tostring(V.giftBusy and ("SENT - " .. V.giftBusy.n .. " " .. itemName(V.giftBusy.item) ..
-" to " .. V.giftBusy.who) or V.giftWhy or "nothing waiting")) or ("ERROR in the gift check: " .. tostring(err)))
+for _, l in ipairs(V.giftNow()) do say(l) end
 return
 end
 if a == "clear" then

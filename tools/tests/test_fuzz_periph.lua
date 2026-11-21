@@ -56,7 +56,7 @@ local READS = { "refreshInventory", "refreshPlayers", "refreshStorage", "refresh
                 "TT.patrolTick", "TT.homeTick", "TT.avoidTick", "MAP.feedSurvey", "MAP.autoTick", "MINE.updTick",
                 "FACTORY.tick", "AWAY.tick", "DW.tick", "SUPPLY.tick", "CURIOS.autoTick", "POCKET.status", "MEX.jobTick",
                 "MAP.checkSpace", "MAP.floppySpace", "MAP.diskUse", "TT.prepareInstallFloppy" }
-local PAGES = { "home", "inventory", "storage", "curios", "players", "env", "access", "me", "mesys", "drone", "work",
+local PAGES = { "home", "inventory", "storage", "curios", "players", "env", "access", "me", "mesys", "drone", "work", "gifts",
                 "turtles", "drive", "map", "mining", "system", "events", "settings" }
 local function find(j)
   local f = _ENV

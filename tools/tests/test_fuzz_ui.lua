@@ -3,7 +3,7 @@
 -- lost miner, a survey, a drone build, AE2 offline ...): draw it, tap EVERY tap area (twice - a 2-tap button
 -- asks first) and run whatever the tap queued (runAction, as the action worker does). In the game the input /
 -- action workers pcall these: an error there = a button that silently does nothing. Every error counts here.
-local PAGES = { "home", "inventory", "storage", "curios", "players", "env", "access", "me", "mesys", "drone", "work",
+local PAGES = { "home", "inventory", "storage", "curios", "players", "env", "access", "me", "mesys", "drone", "work", "gifts",
                 "turtles", "drive", "map", "mining", "system", "events", "settings" }
 local SIZES = { { 121, 50 }, { 164, 81 }, { 200, 100 }, { 100, 40 } }
 local errors, seen = {}, {}

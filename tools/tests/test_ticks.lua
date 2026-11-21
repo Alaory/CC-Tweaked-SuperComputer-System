@@ -63,7 +63,7 @@ local JOBS = {
   { "MAP.floppySpace", function() MAP.floppySpace() end }, { "MAP.diskUse", function() MAP.diskUse() end },
   { "CURIOS.learnWorn", function() CURIOS.learnWorn() end }, { "TT.rescueQueueTick", function() if TT.rescueQueueTick then TT.rescueQueueTick() end end },
 }
-local PAGES = { "home", "inventory", "players", "env", "mesys", "drone", "work", "access", "turtles", "drive", "map", "mining", "system", "events", "settings", "me" }
+local PAGES = { "home", "inventory", "players", "env", "mesys", "drone", "work", "gifts", "access", "turtles", "drive", "map", "mining", "system", "events", "settings", "me" }
 local failed = {}
 for round = 1, 40 do
   CLOCK = CLOCK + 2
