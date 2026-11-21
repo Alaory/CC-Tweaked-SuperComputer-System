@@ -1238,7 +1238,13 @@ PneumaticCraft drone rides, turtle mapping/surveys, and an AE2 ME network view.
   stepUnload -> stepLoad (plain items via the work chest) -> fly above the player -> "pneumaticcraft:drop_item"
   at their feet (setDropStraight) -> stepUnload; still(name) false (left the base) / another dimension = no trip;
   tripDone kind "gift" -> cb(ok, carried - back, why). Delivered -> base.giftLog (60) + chat + pushNote INFO;
-  the owner hears "I gave N gifts to ..." after the welcome back. Console `voice gifts [on|off|block <n>|unblock
+  the owner hears "I gave N gifts to ..." after the welcome back. AWAY FROM THE BASE (the owner: "can gifts also
+  teleport to players away from base? overworld of course"; voice.giftAway, default on): V.giftAwayOK(who) = online
+  (state.online) + DW.playerAt (overworld, position known) -> the gift goes THERE: a player keeps their own area
+  loaded, so the drone's ONE teleport (stepGo loaded = true) is accepted at any distance, the way back is to the
+  loaded base; still = V.giftAwayOK (stops on offline / another dimension, not on "left the base" - DW.giftRun's
+  still may return false, why); not announced at the base; V.giftWhere() in the chat lines. test_voice (AWAY),
+  test_dronework (still's reason). Console `voice gifts [on|off|block <n>|unblock
   <n>|give <n> <item> [count]|clear]`. test_dronework (drone trip: 100 diamonds dropped next to the player, your
   enchanted one stays, left the base = nothing dropped, Nether = no trip), test_voice part 19.
   REVIEW (the owner: "go over all the code you added"): voice announce all|summary|errors worked never (an

@@ -904,6 +904,7 @@ local runs = {}
 DW.notReady, DW.trip = function() return nil end, nil
 DW.giftRun = function(who, item, n, cb, still) runs[#runs + 1] = { who = who, item = item, n = n, cb = cb, still = still } return true end
 local gtick = VOICE.tickHooks[1]
+setSetting("voice.giftAway", false)          -- (these checks: at the base only; AWAY below)
 VOICE.giftNext, VOICE.giftBusy = 0, nil
 gtick(CLOCK, {})
 CHECK(#runs == 0 and tostring(VOICE.giftWhy):find("waiting for the players", 1, true), "nobody at the base: no drone (" .. tostring(VOICE.giftWhy) .. ")")
@@ -962,6 +963,37 @@ VOICE.queue = {}
 B2.giftToldAt = 0
 for _, fn in ipairs(VOICE.greetExtra) do fn(owner) end
 CHECK(said():find("I gave", 1, true) and said():find("Kevin", 1, true), "the owner back: which gifts were given: " .. said())
+-- AWAY FROM THE BASE (the owner: "can gifts also teleport to players away from base? overworld of course";
+-- voice.giftAway, default on): online in the overworld anywhere = the drone goes there (the player keeps it loaded)
+do
+  local on0, pl0 = state.online, state.players
+  state.online = { kevin = true }
+  state.players = { { name = "Kevin", p = { x = 3000, y = 70, z = -2000 }, dim = DRONE_DIM } }
+  setSetting("voice.giftAway", false)
+  VOICE.giftNext, VOICE.giftBusy = 0, nil
+  local n0 = #runs
+  gtick(CLOCK, {})
+  CHECK(#runs == n0, "voice.giftAway off: gifts wait for the base")
+  resetSetting("voice.giftAway")
+  VOICE.giftNext, VOICE.giftBusy = 0, nil
+  told = {}
+  gtick(CLOCK, {})
+  CHECK(#runs == n0 + 1 and runs[#runs].who == "Kevin", "Kevin online 3,000 blocks away: a drone brings his gift THERE (" ..
+        tostring(VOICE.giftWhy) .. ", queued " .. queued("Kevin") .. ")")
+  CHECK(not said():find("bringing a gift for Kevin", 1, true), "... not announced at the base (he is not there)")
+  local st = runs[#runs].still
+  CHECK(st("Kevin") == true, "... the trip goes on while he is online in the overworld (not 'left the base')")
+  state.players[1].dim = "minecraft:the_nether"
+  CHECK(not st("Kevin"), "... it stops when he goes to the Nether")
+  state.players[1].dim = DRONE_DIM
+  state.online = {}
+  local okS, whyS = st("Kevin")
+  CHECK(not okS and tostring(whyS):find("offline", 1, true), "... and when he goes offline (" .. tostring(whyS) .. ")")
+  CHECK(say3("where is my gift"):find("wherever you are", 1, true), "where is my gift: anywhere in the overworld")
+  runs[#runs].cb(false, 0, "test")
+  VOICE.giftBusy = nil
+  state.online, state.players = on0, pl0
+end
 DW.giftRun, DW.notReady, DW.trip = realRun, realReady, realTrip
 -- REVIEW FIXES (the owner: "go over all the code you added, look for typos, issues and bugs")
 handleCommand("voice announce all")

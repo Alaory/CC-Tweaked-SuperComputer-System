@@ -367,8 +367,12 @@ function DW.giftRun(name, item, count, cb, still)
   if not p0 then return false, why end
   count = math.max(1, math.min(math.floor(tonumber(count) or 1), DW.slots(dr) * 64))
   local J = { kind = "gift" }
+  -- still(name) -> false[, why]: the trip stops (nothing dropped) - "left the base" / "went offline" ...
   local function here()
-    if still and not still(name) then return nil, tostring(name) .. " left the base" end
+    if still then
+      local okS, whyS = still(name)
+      if not okS then return nil, whyS or (tostring(name) .. " left the base") end
+    end
     return playerAt(name)
   end
   local steps = {

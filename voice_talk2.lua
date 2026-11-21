@@ -980,7 +980,12 @@ function V.giftOnce(who, key, why)
   V.saveMem()
   return V.giftEarn(who, why or key)
 end
--- a reward earned: its items are queued; a drone brings them while the player is at the base
+-- where a drone brings a gift (voice.giftAway: anywhere in the overworld while online)
+function V.giftWhere()
+  if V.cfg("giftAway", true) == false then return "while you are at the base" end
+  return "wherever you are in the overworld while you are online"
+end
+-- a reward earned: its items are queued; a drone brings them (at the base, or anywhere in the overworld)
 function V.giftEarn(who, why, list)
   if not V.giftsOn() or V.isOwner(who) or blocked(who) or who == "someone" then return false end
   list = list or V.giftList(why)
@@ -993,7 +998,7 @@ function V.giftEarn(who, why, list)
     end
   end
   V.saveMem()
-  local line = "You earned a gift " .. (V.GIFT_WHY[why] or why) .. ": " .. giftText(list) .. "! A drone brings it while you are at the base."
+  local line = "You earned a gift " .. (V.GIFT_WHY[why] or why) .. ": " .. giftText(list) .. "! A drone brings it to you - " .. V.giftWhere() .. "."
   tell(who, line)
   if isNear(who) then V.say(who .. ", you earned a gift! A drone will bring it.", "minecraft:entity.player.levelup") end
   return true
@@ -1013,7 +1018,20 @@ local function givenToday(who)
 end
 V.giftBusy = nil
 V.giftNext = 0
--- every 2 s (VOICE.tick): the next queued gift for someone AT the base, when a drone is free
+-- every 2 s (VOICE.tick): the next queued gift for someone AT the base, when a drone is free - or (the owner: "can
+-- gifts also teleport to players away from base? overworld of course"; voice.giftAway, default on) for a player
+-- ONLINE in the overworld anywhere: a player keeps their own area loaded, so the drone's ONE teleport to them is
+-- accepted at any distance (PneumaticCraft teleports into loaded chunks only) and the way back is to the loaded base.
+-- Away: the trip stops when they go offline / to another dimension (still), not when they are away from the base.
+function V.giftAwayOK(who)
+  if V.cfg("giftAway", true) == false then return false end
+  local on = state.online
+  if type(on) ~= "table" or not on[tostring(who):lower()] then return false, tostring(who) .. " went offline" end
+  if not (DW and DW.playerAt) then return false end
+  local p, why = DW.playerAt(who)
+  if not p then return false, why end
+  return true
+end
 add(V.tickHooks, {
   function(now, nearNow)
     if not V.giftsOn() or V.giftBusy or now < (V.giftNext or 0) then return end
@@ -1032,9 +1050,11 @@ add(V.tickHooks, {
       for n in pairs(nearNow or {}) do if n:lower() == g.who:lower() then near = true end end
       local mine, all = givenToday(g.who)
       if all >= dailyAll then V.giftWhy = "the daily limit for all players (" .. dailyAll .. ") is reached" return end
-      if near and mine < daily and now >= (g.retryAt or 0) and not blocked(g.who) then
+      local away = not near and V.giftAwayOK(g.who)
+      if (near or away) and mine < daily and now >= (g.retryAt or 0) and not blocked(g.who) then
         local item, n, who = g.item, g.n, g.who
         local still = function(name) return isNear(name) end
+        if away then still = function(name) return V.giftAwayOK(name) end end
         local ok, why = DW.giftRun(who, item, n, function(okD, delivered, err)
           V.giftBusy = nil
           local qq, log = gifts()
@@ -1065,14 +1085,15 @@ add(V.tickHooks, {
           V.giftBusy = { who = who, item = item, n = n, at = now }
           V.giftWhy = nil
           tell(who, "A drone is on its way with your gift: " .. n .. " " .. itemName(item) .. ". Stay where you are!")
-          V.say("A drone is bringing a gift for " .. who .. "!")
+          if not away then V.say("A drone is bringing a gift for " .. who .. "!") end
         else
           V.giftWhy = tostring(why)
         end
         return
       end
     end
-    V.giftWhy = "waiting for the players to come to the base"
+    V.giftWhy = (V.cfg("giftAway", true) == false) and "waiting for the players to come to the base"
+                or "waiting for the players to come online (overworld) or to the base"
   end,
   function(now)                                   -- (a drone trip that never reported back: free again after 15 min)
     if V.giftBusy and now - V.giftBusy.at > 900 then V.giftBusy = nil end
@@ -1122,7 +1143,7 @@ V.commands.gifts = function(words, say)
     local was = V.giftsOn()
     if not was then say("Gifts are OFF - voice gifts on first.") return end
     V.giftEarn(words[4], "manual", { { item, n } })
-    say("Queued: " .. n .. " " .. itemName(item) .. " for " .. words[4] .. " (a drone brings it while they are at the base).")
+    say("Queued: " .. n .. " " .. itemName(item) .. " for " .. words[4] .. " (a drone brings it " .. V.giftWhere() .. ").")
     return
   end
   if a == "clear" then
@@ -1196,7 +1217,7 @@ local T = {
       local mine = {}
       for _, g in ipairs(q) do if g.who:lower() == tostring(w):lower() then mine[#mine + 1] = g.n .. " " .. itemName(g.item) end end
       if #mine == 0 then return "No gifts waiting for you. Keep being nice!" end
-      return "Waiting for you: " .. table.concat(mine, ", ") .. ". A drone brings them while you are at the base" ..
+      return "Waiting for you: " .. table.concat(mine, ", ") .. ". A drone brings them " .. V.giftWhere() ..
              (V.giftWhy and (" (now: " .. V.giftWhy .. ")") or "") .. "."
     end),
   L("aboutme", { "what do you know about me", "tell me about me", "what do you remember about me", "my profile", "my stats" }, function(w) return aboutText(w) end),

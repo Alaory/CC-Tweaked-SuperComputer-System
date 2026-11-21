@@ -367,8 +367,12 @@ local p0, why = playerAt(name)
 if not p0 then return false, why end
 count = math.max(1, math.min(math.floor(tonumber(count) or 1), DW.slots(dr) * 64))
 local J = { kind = "gift" }
+
 local function here()
-if still and not still(name) then return nil, tostring(name) .. " left the base" end
+if still then
+local okS, whyS = still(name)
+if not okS then return nil, whyS or (tostring(name) .. " left the base") end
+end
 return playerAt(name)
 end
 local steps = {

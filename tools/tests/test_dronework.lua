@@ -338,6 +338,20 @@ run(dr)
 DW.tick()
 local inDrone = W.inv["minecraft:emerald"] or 0
 CHECK(W.stock["minecraft:emerald"] + inDrone == 50, "the emeralds are back in AE2 or still in the drone for the next first step (" .. W.stock["minecraft:emerald"] .. " + " .. inDrone .. ")")
+-- still() can say why (an away gift: "went offline") - the trip stops with that reason
+do
+  local pl0 = state.players
+  local dr2 = world()
+  W.stock["minecraft:emerald"] = 50
+  state.players = { { name = "Kevin", p = { x = 6.5, y = 70, z = 3.5 }, dim = DRONE_DIM } }
+  local why2
+  DW.giftRun("Kevin", "minecraft:emerald", 5, function(o, d, w) why2 = w end, function() return false, "Kevin went offline" end)
+  run(dr2)
+  CHECK(tostring(why2):find("went offline", 1, true), "the trip stops with still()'s reason (" .. tostring(why2) .. ")")
+  run(dr2)
+  DW.tick()
+  state.players = pl0
+end
 -- another dimension: no trip
 state.players[#state.players].dim = "minecraft:the_nether"
 local okD, whyD = DW.giftRun("Kevin", "minecraft:emerald", 5, nil)

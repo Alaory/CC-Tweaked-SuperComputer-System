@@ -8,7 +8,7 @@ base base_console.lua 72766 51575563
 base base_curios.lua 6649 027d0923
 base base_devices.lua 13387 a4215790
 base base_drones.lua 76622 27d824bd
-base base_dronework.lua 42889 c33109e8
+base base_dronework.lua 43051 9b4b0401
 base base_env.lua 10269 b6081e20
 base base_factory.lua 29444 4933f33c
 base base_input.lua 28481 8fa4989e
@@ -50,7 +50,7 @@ pocket upgrade.lua 10858 725e2cf0
 miner miner.lua 119568 5955c787
 voice voice_addon.lua 153397 9ef7ee0e
 voice voice_talk.lua 71646 5c897d8b
-voice voice_talk2.lua 95064 830a24e3
+voice voice_talk2.lua 96474 b092d3c5
 voice voice_talk3.lua 40799 e5f8e99d
 slim:base inventory.lua 2529 927aa5f7 dist/inventory.lua
 slim:base startup.lua 833 00f3544b dist/startup.lua
@@ -62,7 +62,7 @@ slim:base base_console.lua 60219 8017f890 dist/base_console.lua
 slim:base base_curios.lua 4074 bccf64fa dist/base_curios.lua
 slim:base base_devices.lua 9095 9419ae36 dist/base_devices.lua
 slim:base base_drones.lua 49552 0410f506 dist/base_drones.lua
-slim:base base_dronework.lua 32294 71718707 dist/base_dronework.lua
+slim:base base_dronework.lua 32335 91d8fcf3 dist/base_dronework.lua
 slim:base base_env.lua 7154 ae1b2584 dist/base_env.lua
 slim:base base_factory.lua 21629 0269dab1 dist/base_factory.lua
 slim:base base_input.lua 20108 1ecbe11c dist/base_input.lua
@@ -104,5 +104,5 @@ slim:pocket upgrade.lua 7424 b8d25fcc dist/upgrade.lua
 slim:miner miner.lua 80631 4d0a0a8f dist/miner.lua
 slim:voice voice_addon.lua 115941 accf6ef9 dist/voice_addon.lua
 slim:voice voice_talk.lua 66021 2d5736a8 dist/voice_talk.lua
-slim:voice voice_talk2.lua 84496 13b4e878 dist/voice_talk2.lua
+slim:voice voice_talk2.lua 85280 e26f08e0 dist/voice_talk2.lua
 slim:voice voice_talk3.lua 35133 949f5949 dist/voice_talk3.lua
