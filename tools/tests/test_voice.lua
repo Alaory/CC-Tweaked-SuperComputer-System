@@ -1930,3 +1930,40 @@ end)()
   for k, v in pairs(keep) do if v == nil then resetSetting("voice." .. k) else setSetting("voice." .. k, v) end end
   VOICE.queue, VOICE.said, VOICE.pre, VOICE.busyUntil, VOICE.keep = {}, {}, nil, nil, nil
 end)()
+
+-- ===== part 31: A SLOW SERVER (the owner's `voice timing` in game: the 1st answer 0.1 s, the 2nd "waited 4.0" - "I
+-- had to wait a couple of seconds for the second speech"). os.clock / timers count SERVER TICKS; with fewer than 20
+-- a second they run slower than the Speaker, which plays in real time - "when it has said it" counted in ticks =
+-- silence after every line. The model: the server at 20 / 10 / 5 ticks a second, two answers in a row.
+;(function()
+  dofile(SRC_DIR .. "/tools/tests/lib/voice_sim.lua")
+  local keep = {}
+  for _, k in ipairs({ "speed", "pitch", "clear" }) do keep[k] = CONFIG.voice and CONFIG.voice[k] end
+  setSetting("voice.on", true)
+  setSetting("voice.speed", 1) setSetting("voice.pitch", 1) setSetting("voice.clear", false)
+  VOICE.mute = nil
+  local rows = {}
+  for n, tps in ipairs({ 20, 10, 5 }) do
+    local a1 = "First " .. n .. ": 24 turtles working, 2 idle, 47 offline. 1 mining team running. Survey 0 percent done."
+    local a2 = "Second " .. n .. ": the map has 120 chunks, and the base is fine today."
+    VOICE.queue, VOICE.said, VOICE.pre, VOICE.busyUntil, VOICE.keep = {}, {}, nil, nil, nil
+    local r = VOICE_SIM.run({ latency = 0.1, work = 0.05, askAt = 1, answer = a1, answer2 = a2, ask2After = 2,
+                              tps = tps, cps = 14 })
+    local end1, start2
+    for name, t in pairs(r.last) do if a1:find(name, 1, true) and (not end1 or t > end1) then end1 = t end end
+    for name, t in pairs(r.first) do if a2:find(name, 1, true) and (not start2 or t < start2) then start2 = t end end
+    local gap = (end1 and start2) and (start2 - end1) or 99
+    rows[#rows + 1] = tps .. " ticks/s: silence between the answers " .. string.format("%.2f", gap) .. " s"
+    CHECK(gap <= VOICE.GAP + 0.5, "server at " .. tps .. " ticks a second: the 2nd answer follows the 1st after " ..
+          string.format("%.2f", gap) .. " s (a breath is " .. VOICE.GAP .. " s)\n      " .. table.concat(r.log, "\n      "))
+  end
+  -- the server's speed is shown in voice timing
+  local c0, e0 = os.clock(), VOICE.rt()
+  VOICE.tpsS = { { c = c0 - 30, e = e0 - 60 }, { c = c0, e = e0 } }     -- (30 game seconds in 60 real ones)
+  CHECK(math.abs((VOICE.tps() or 0) - 10) < 0.01, "server speed from the game clock vs the real clock: " .. tostring(VOICE.tps()))
+  local txt = table.concat(VOICE.command({ "voice", "timing" }), "\n")
+  CHECK(txt:find("Server speed: 10", 1, true), "voice timing shows the server speed:\n" .. txt)
+  VOICE.tpsS = {}
+  for k, v in pairs(keep) do if v == nil then resetSetting("voice." .. k) else setSetting("voice." .. k, v) end end
+  VOICE.queue, VOICE.said, VOICE.pre, VOICE.busyUntil, VOICE.keep = {}, {}, nil, nil, nil
+end)()

@@ -180,6 +180,30 @@ VOICE.MAX_OWN = 4          -- lines it says by itself waiting at once (more = le
 VOICE.MAX_QUEUE = 8        -- everything waiting
 VOICE.PIECE = 80           -- one request to the speech service (<= 80 characters are also cached)
 VOICE.GAP = 0.6            -- a breath between two lines (s)
+-- REAL seconds (the owner's `voice timing`: the 2nd answer "waited 4.0" and "I had to wait a couple of seconds"):
+-- os.clock() and timers / sleep count SERVER TICKS in CC:Tweaked (0.05 s each) - a busy server makes fewer than
+-- 20 a second, while the Speaker plays in REAL time. "When the speaker has said it" was counted in ticks: at 10
+-- ticks a second a 7-s line was followed by ~7 s of silence. Everything about the sound uses this clock now.
+function VOICE.rt()
+  if os.epoch then
+    local ok, ms = pcall(os.epoch, "utc")
+    if ok and type(ms) == "number" then return ms / 1000 end
+  end
+  return os.clock()
+end
+-- the server's speed (ticks a second, 20 = full) from os.clock vs the real clock over the last minute
+VOICE.tpsS = VOICE.tpsS or {}
+function VOICE.sampleTps()
+  local s, e = VOICE.tpsS, VOICE.rt()
+  if #s > 0 and e - s[#s].e < 5 then return end
+  s[#s + 1] = { c = os.clock(), e = e }
+  while #s > 13 do table.remove(s, 1) end
+end
+function VOICE.tps()
+  local s = VOICE.tpsS
+  if #s < 2 or s[#s].e - s[1].e < 4 then return nil end
+  return math.max(0, math.min(20, (s[#s].c - s[1].c) / (s[#s].e - s[1].e) * 20))
+end
 -- a long line -> pieces of at most `max` characters, cut at sentence ends first, then at commas / dashes,
 -- then between words (never inside a word)
 function VOICE.split(text, max)
@@ -259,8 +283,8 @@ function VOICE.say(text, sound, answer, style)
   if answer then
     for i, q in ipairs(VOICE.queue) do if not q.answer then at = i break end end
   end
-  local item = { text = text, sound = sound, answer = answer or nil, style = style, at = os.clock() }
-  if answer and VOICE.heardAt and os.clock() - VOICE.heardAt < 10 then item.heard = VOICE.heardAt end
+  local item = { text = text, sound = sound, answer = answer or nil, style = style, at = VOICE.rt() }
+  if answer and VOICE.heardAt and VOICE.rt() - VOICE.heardAt < 10 then item.heard = VOICE.heardAt end
   table.insert(VOICE.queue, at, item)
   os.queueEvent("voice_say")
   return true
@@ -604,7 +628,7 @@ function VOICE.prepare(item, giveWayFor)
     if a then pieces[1] = a table.insert(pieces, 2, b) end
   end
   local style = item.style
-  local t0 = os.clock()
+  local t0 = VOICE.rt()
   local data, err, nextData
   if item.answer and pieces[2] then
     -- (an answer's first piece is short - its 2nd piece is asked for AT THE SAME TIME, else it would come
@@ -614,11 +638,11 @@ function VOICE.prepare(item, giveWayFor)
   else
     data, err = VOICE.audio(pieces[1], style and style.accent)
   end
-  local t1 = os.clock()
+  local t1 = VOICE.rt()
   if not data then return { item = item, pieces = pieces, err = err } end
   local pcm, perr = VOICE.pcmOf(data, style, giveWayFor)
-  return { item = item, pieces = pieces, pcm = pcm, err = perr, nextData = nextData, fetchT = t1 - t0, workT = os.clock() - t1,
-           cached = VOICE.lastCached, readyAt = os.clock(), first = pieces[1] }
+  return { item = item, pieces = pieces, pcm = pcm, err = perr, nextData = nextData, fetchT = t1 - t0, workT = VOICE.rt() - t1,
+           cached = VOICE.lastCached, readyAt = VOICE.rt(), first = pieces[1] }
 end
 
 -- MEASURED, NOT GUESSED (the owner: "can you test the speed ... I can't just use assumptions each time"):
@@ -642,6 +666,10 @@ end
 local function sec(x) return string.format("%.1f", tonumber(x) or 0) end
 function VOICE.timingLines(n)
   local out = {}
+  VOICE.sampleTps()
+  local tps = VOICE.tps()
+  out[#out + 1] = "Server speed: " .. (tps and (string.format("%.1f", tps) .. " ticks a second (20 = full speed)") or
+                  "not measured yet (needs a few seconds)")
   for _, e in ipairs(VOICE.timing) do
     if #out >= (n or 8) then break end
     out[#out + 1] = (e.answer and "ANSWER " or "own    ") .. sec(e.total) .. " s to the first sound: '" .. e.text .. "'"
@@ -649,24 +677,27 @@ function VOICE.timingLines(n)
                     " | sound work " .. sec(e.work) .. " | waited " .. sec(e.wait) .. (e.cut and " (cut its own talk)" or "") ..
                     " | first piece " .. e.chars .. " chars = " .. sec(e.speech) .. " s of sound"
   end
-  if #out == 0 then out[1] = "Nothing spoken yet since the base started." end
+  if #out == 1 then out[2] = "Nothing spoken yet since the base started." end
   return out
 end
 -- one fresh phrase (never cached: a number in it), timed step by step
 function VOICE.bench()
   local out = {}
   local text = "Speed test number " .. math.random(1000, 9999) .. ", one two three."
-  local t0 = os.clock()
+  local t0 = VOICE.rt()
   local data, err = VOICE.audioOnce(text, nil)
-  local t1 = os.clock()
+  local t1 = VOICE.rt()
   if not data then return { "Speech service: FAILED after " .. sec(t1 - t0) .. " s - " .. tostring(err) } end
   local pcm, perr = VOICE.pcmOf(data)
-  local t2 = os.clock()
+  local t2 = VOICE.rt()
   if not pcm then return { "Sound work failed: " .. tostring(perr) } end
   local secs = #pcm / 48000
   out[#out + 1] = "Phrase: '" .. text .. "' (" .. #text .. " characters)"
   out[#out + 1] = "Speech service: " .. sec(t1 - t0) .. " s (" .. #data .. " bytes)" .. (VOICE.lastCached and " - from the cache?!" or "")
   out[#out + 1] = "Sound work (decode + speed " .. math.floor(VOICE.speed() * 100 + 0.5) .. "% + pitch + clearer): " .. sec(t2 - t1) .. " s"
+  VOICE.sampleTps()
+  local tps = VOICE.tps()
+  if tps then out[#out + 1] = "Server speed: " .. string.format("%.1f", tps) .. " ticks a second (20 = full speed)" end
   out[#out + 1] = "= first sound after " .. sec(t2 - t0) .. " s for " .. sec(secs) .. " s of speech" ..
                   "  (" .. string.format("%.2f", (t2 - t1) / math.max(0.1, secs)) .. " s of work per second of speech)"
   VOICE.say(text, nil, true)
@@ -733,8 +764,9 @@ function VOICE.play(item)
   -- the line before is still being said: wait for its end (+ a breath) only NOW, with this one ready.
   -- A question comes in meanwhile: the rest of that line is cut off, this own line waits behind the answer.
   local untilT = VOICE.busyUntil and (VOICE.busyUntil + VOICE.GAP) or 0
-  local steps = 0
-  while os.clock() < untilT and steps < 400 do
+  local waitFrom, steps = VOICE.rt(), 0
+  while VOICE.rt() < untilT and VOICE.rt() - waitFrom < 60 and steps < 1200 do
+    steps = steps + 1
     local q = VOICE.answerWaiting(item)
     if q then
       local okP, pr = pcall(VOICE.prepare, q)          -- (ready first: the line before goes on meanwhile)
@@ -742,26 +774,26 @@ function VOICE.play(item)
       VOICE.pre = okP and pr or nil
       VOICE.stopSpeakers(sps)
       VOICE.didCut = true
-      VOICE.busyUntil = os.clock() - VOICE.GAP + VOICE.CUT_GAP
+      VOICE.busyUntil = VOICE.rt() - VOICE.GAP + VOICE.CUT_GAP
       VOICE.behindAnswers(item)
       VOICE.keep = keepPre                              -- (this own line, ready, for when its turn comes)
       return false
     end
-    steps = steps + 1
-    sleep(math.min(0.25, untilT - os.clock()))
+    -- (sleep counts server ticks: short steps, the real time decides)
+    sleep(math.max(0.05, math.min(0.1, untilT - VOICE.rt())))
   end
   if item.sound then
     for _, sp in ipairs(sps) do pcall(sp.playSound, item.sound, vol, 1) end
     sleep(0.6)
   end
-  local total, endAt = 0, os.clock()
+  local total, endAt = 0, VOICE.rt()
   VOICE.lastPieces = #pieces
   VOICE.lastCut = nil
   VOICE.cutNow = nil
   for i = 1, #pieces do
-    if i == 1 then pcall(VOICE.noteTiming, item, prep, os.clock()) end
+    if i == 1 then pcall(VOICE.noteTiming, item, prep, VOICE.rt()) end
     total = total + #pcm
-    endAt = math.max(endAt, os.clock()) + #pcm / 48000          -- (when the speaker will have said it)
+    endAt = math.max(endAt, VOICE.rt()) + #pcm / 48000          -- (when the speaker will have said it)
     local nextPcm, nextErr
     local playing = true
     -- three at once: the speaker is fed (player), the next piece / line is fetched + decoded (fetcher), and a
@@ -814,7 +846,7 @@ function VOICE.play(item)
       VOICE.stopSpeakers(sps)
       VOICE.didCut = true
       VOICE.lastCut = i - 1
-      endAt = os.clock() - VOICE.GAP + VOICE.CUT_GAP
+      endAt = VOICE.rt() - VOICE.GAP + VOICE.CUT_GAP
       break
     end
     if i < #pieces then
@@ -826,7 +858,7 @@ function VOICE.play(item)
   end
   VOICE.lastSamples = total
   VOICE.err = nil
-  VOICE.lastSaid = { text = item.text, at = os.clock() }
+  VOICE.lastSaid = { text = item.text, at = os.clock() }      -- (game clock: the idle talk timer)
   VOICE.busyUntil = endAt
   return true
 end
@@ -1780,7 +1812,7 @@ function VOICE.addressed(who, raw, near)
   return nil
 end
 function VOICE.chat(m)
-  VOICE.heardAt = os.clock()          -- (the answer's timing starts here: voice timing)
+  VOICE.heardAt = VOICE.rt()          -- (the answer's timing starts here: voice timing)
   local r = VOICE.chatCore(m)
   if type(m) == "table" and #VOICE.chatHooks > 0 then
     local who = tostring(m.name or "")
@@ -2596,6 +2628,7 @@ end
 function VOICE.loop()
   while state.running do
     -- (an answer that just came in is said FIRST - the look around (detector scan, greetings) comes after)
+    pcall(VOICE.sampleTps)
     if not (VOICE.queue[1] and VOICE.queue[1].answer) then pcall(VOICE.tick) end
     while #VOICE.queue > 0 do
       local item = table.remove(VOICE.queue, 1)

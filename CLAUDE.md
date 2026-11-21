@@ -1288,6 +1288,15 @@ PneumaticCraft drone rides, turtle mapping/surveys, and an AE2 ME network view.
   runs the REAL VOICE.loop on a model: CraftOS parallel + events, http latency, blocking decode, a Speaker with one
   buffer waiting - test_voice part 30: 18 cases (latency 0.5 / 1.5 / 3, work 0.04 / 0.4, asked at 1 / 3 / 6 s) each
   within 0.8 s of the floor (latency + decoding the short first piece); the old code: up to 9.9 s, fails 13.
+  IN GAME (the owner's `voice timing`): 1st answer 0.1 s (service 0.1, sound work 0.1 - fast), the 2nd "waited
+  4.0" + "I had to wait a couple of seconds for the second speech". CAUSE: os.clock() and timers / sleep count
+  SERVER TICKS in CC:Tweaked (0.05 s each); the owner's busy server makes fewer than 20 a second while the Speaker
+  plays in REAL time - "when it has said it" (busyUntil / endAt) counted in ticks = silence after every line (at 10
+  ticks/s a 7-s line + ~7 s quiet). VOICE.rt() = os.epoch("utc") / 1000 for everything about the sound (busyUntil,
+  endAt, the wait before a line in 0.05-0.1 s sleeps, item.at / heardAt / timings); lastSaid.at stays os.clock (the
+  idle talk timer). VOICE.sampleTps / VOICE.tps (os.clock vs real over the last minute) -> "Server speed: N ticks a
+  second" in `voice timing` / `voice bench`. voice_sim opt.tps (clock + timers in ticks, speaker / service real) -
+  test_voice part 31: two answers in a row at 20 / 10 / 5 ticks/s, silence between them <= GAP + 0.5 s.
   UPDATES (the owner: "on each update I have to run disks"): the map fills the data floppies and installAddon
   wanted a floppy with room for the WHOLE new file + 16 KB beside the old copy -> "type disks data". Now: the
   same text = nothing written ("up to date"); room = free + the old copy + cached speech (voice/*.dfpwm, oldest

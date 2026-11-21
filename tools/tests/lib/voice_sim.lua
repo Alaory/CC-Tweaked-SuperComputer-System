@@ -28,12 +28,17 @@ function VOICE_SIM.run(opt)
   local function nameOfId(v) return names[v] end
   local fakeOs = {}
   for k, v in pairs(saved.os) do fakeOs[k] = v end
-  fakeOs.clock = function() return T0 + now end
-  fakeOs.startTimer = function(d)
+  -- opt.tps = the server's ticks a second: os.clock and timers count TICKS (as CC:Tweaked does), the real
+  -- clock (os.epoch), the speech service and the Speaker run in real time
+  local slow = 20 / (opt.tps or 20)
+  fakeOs.clock = function() return T0 + now / slow end
+  fakeOs.epoch = function() return (T0 + now) * 1000 end
+  local function realTimer(d)
     nextTimer = nextTimer + 1
     timers[nextTimer] = now + math.max(0, tonumber(d) or 0)
     return nextTimer
   end
+  fakeOs.startTimer = function(d) return realTimer((tonumber(d) or 0) * slow) end
   fakeOs.cancelTimer = function(id) timers[id] = nil end
   fakeOs.queueEvent = function(...) events[#events + 1] = table.pack(...) end
   fakeOs.pullEventRaw = function(filter) return coroutine.yield(filter) end
@@ -82,7 +87,7 @@ function VOICE_SIM.run(opt)
   local cache = {}
   local fakeHttp = { get = function(url)
     local text = (url:match("text=([^&]*)") or ""):gsub("+", " "):gsub("%%(%x%x)", function(h) return string.char(tonumber(h, 16)) end)
-    local id = fakeOs.startTimer(opt.latency or 1)
+    local id = realTimer(opt.latency or 1)
     repeat local ev, a = fakeOs.pullEventRaw() until ev == "timer" and a == id
     log[#log + 1] = string.format("%6.2f  fetched '%s'", now, text)
     local secs = math.max(0.3, #text / (opt.cps or 14))
@@ -106,9 +111,12 @@ function VOICE_SIM.run(opt)
   end
   -- the Speaker
   local spk = { playing = nil, playEnd = 0, waiting = nil, plays = 0, stops = 0 }
+  local last = {}
   local function startBuf(buf, at)
     spk.playing = buf
     spk.playEnd = at + #buf / 48000
+    local nm = nameOfId(buf[1])
+    if nm then last[nm] = spk.playEnd end
     local name = nameOfId(buf[1])
     if name and not first[name] then
       first[name] = at
@@ -141,9 +149,17 @@ function VOICE_SIM.run(opt)
         fakeSleep(opt.askAt or 3)
         log[#log + 1] = string.format("%6.2f  ASKED", now)
         askedAt = now
-        VOICE.heardAt = os.clock()
+        VOICE.heardAt = VOICE.rt and VOICE.rt() or os.clock()
         VOICE.say(opt.answer, nil, true)
         fakeOs.queueEvent("voice_say")
+        if opt.answer2 then
+          local id = realTimer(opt.ask2After or 1)
+          repeat local ev, a = fakeOs.pullEventRaw() until ev == "timer" and a == id
+          log[#log + 1] = string.format("%6.2f  ASKED AGAIN", now)
+          VOICE.heardAt = VOICE.rt and VOICE.rt() or os.clock()
+          VOICE.say(opt.answer2, nil, true)
+          fakeOs.queueEvent("voice_say")
+        end
         fakeSleep(opt.runFor or 40)
       end)
     done = true
@@ -188,5 +204,5 @@ function VOICE_SIM.run(opt)
   package.preload["cc.audio.dfpwm"], package.loaded["cc.audio.dfpwm"] = saved.pre, saved.loaded
   VOICE.tick, VOICE.speakers, state.running = saved.tick, saved.speakers, saved.running
   VOICE.queue, VOICE.pre, VOICE.busyUntil, VOICE.cutNow = {}, nil, nil, nil
-  return { first = first, log = log, stops = spk.stops, askedAt = askedAt }
+  return { first = first, last = last, log = log, stops = spk.stops, askedAt = askedAt }
 end
