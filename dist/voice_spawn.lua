@@ -38,6 +38,24 @@ end
 V.SPAWN = SP
 SP.PROTO = "basespawn"
 local pick, fill = V.pick, V.fill
+
+
+local cfg0 = V.cfg
+function V.cfg(k, d)
+if k == "name" and (V.ctx == "spawn" or SP.naming) then
+local n = cfg0("spawnName", nil)
+if type(n) == "string" and n:match("^%a[%w]*$") then return n end
+end
+return cfg0(k, d)
+end
+function SP.named(fn, ...)
+local was = SP.naming
+SP.naming = true
+local r = table.pack(pcall(fn, ...))
+SP.naming = was
+if not r[1] then error(r[2], 0) end
+return table.unpack(r, 2, r.n)
+end
 local function cfg(k, d) return V.cfg(k, d) end
 local function rt() return V.rt() end
 local function low(s) return tostring(s or ""):lower() end
@@ -735,7 +753,7 @@ end
 function SP.chatRoute(m)
 if type(m) == "table" and not V.ctx and SP.ready() and SP.isAt(tostring(m.name or "")) and not V.nearPlayers0Has(m.name) then
 V.heardAt = rt()
-local ok, r = pcall(SP.chat, m)
+local ok, r = pcall(SP.named, SP.chat, m)
 if not ok then SP.err = tostring(r) return false end
 return r
 end
@@ -987,7 +1005,7 @@ else line = pick(SP.IDLE) end
 return fill(line, name)
 end
 V.tickHooks[#V.tickHooks + 1] = function()
-local ok, err = pcall(SP.tick)
+local ok, err = pcall(SP.named, SP.tick)
 if not ok then SP.err = tostring(err) end
 end
 
@@ -1001,6 +1019,7 @@ out[#out + 1] = "SPAWN SPEAKER: " .. (cfg("spawn", true) == false and "OFF" or "
 or "not heard from (its area is not loaded, or it is not running)")
 out[#out + 1] = "Spot: " .. (a and (a.x .. " " .. (a.y or "?") .. " " .. a.z) or "NOT SET - stand there:  $drone spawn here") ..
 " | range " .. tostring(cfg("spawnRange", 24)) .. " | voice " .. tostring(cfg("spawnVoice", "bright")) ..
+" | call word: " .. tostring(SP.named(function() return V.cfg("name", "base") end)) ..
 " | idle talk every ~" .. tostring(cfg("spawnChatter", 5)) .. " min"
 local names = {}
 for _, p in ipairs(SP.players()) do names[#names + 1] = p.name end
@@ -1045,6 +1064,18 @@ setSetting("voice.spawnId", false)
 setSetting("voice.spawnKey", false)
 SP.seenAt = nil
 say("Unpaired. The spawn computer shows a new code.")
+elseif a == "name" then
+local w = tostring(words[4] or ""):lower()
+if w == "off" or w == "reset" then
+setSetting("voice.spawnName", false)
+say("The spawn speaker answers to the base's own word again: " .. tostring(cfg0("name", "base")))
+elseif w:match("^%a[%w]*$") and #w >= 3 and #w <= 16 then
+setSetting("voice.spawnName", w)
+say("At spawn players now call it: " .. w .. " (like: " .. w .. " tell me a joke). The base itself stays " .. tostring(cfg0("name", "base")) .. ".")
+else
+say("Use: voice spawn name <one word, 3-16 letters> | voice spawn name off   - now: " ..
+tostring(SP.named(function() return V.cfg("name", "base") end)))
+end
 elseif a == "on" or a == "off" then
 setSetting("voice.spawn", a == "on")
 say("Spawn speaker " .. (a == "on" and "ON" or "OFF"))
@@ -1093,6 +1124,6 @@ tostring(cfg("wishAll", 40)) .. " for everybody, up to " .. tostring(cfg("wishMa
 (cfg("wishBlock", "") ~= "" and tostring(cfg("wishBlock", "")) or "(only the built-in list)") ..
 "  (voice spawn wish on|off|daily <n>|all <n>|max <n>|block <item>|unblock <item>)")
 else
-say("voice spawn [status|here|at x y z|pair <code>|unpair|on|off|range <n>|voice <preset>|volume <0-3>|chatter <min>|greet on|off|say <text>|wish ...]")
+say("voice spawn [status|here|at x y z|pair <code>|unpair|name <word>|on|off|range <n>|voice <preset>|volume <0-3>|chatter <min>|greet on|off|say <text>|wish ...]")
 end
 end

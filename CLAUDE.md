@@ -1500,6 +1500,9 @@ PneumaticCraft drone rides, turtle mapping/surveys, and an AE2 ME network view.
   within 90 s of speaking. Its own loop (VOICE.loop runs the base's and SP.loop in parallel). Console / chat
   `voice spawn [here|at x y z|pair|unpair|on|off|range|voice|volume|chatter|greet|say|wish ...]`. test_spawn.lua
   (the REAL relay program on a fake computer + fake rednet).
+  ITS OWN CALL WORD (the owner: "I don't want to call the one in spawn base"): `voice spawn name <word>` / `off` =
+  voice.spawnName; V.cfg is wrapped: "name" gives that word while VOICE.ctx == "spawn" or SP.naming (SP.named(fn) around
+  SP.chat and SP.tick) - every voice file reads V.cfg("name") at call time, so calledByName / {botl} / help all follow.
   TELEPORT WISH (VOICE.patterns, inserted FIRST - a pack's "i wish ..." joke caught it; spawn + base): "i wish to teleport
   to Bob" / "take me to Bob" / "tp me to Bob" ... (SP.TP_RE; Bob = an ONLINE player, exact or a unique prefix; the /
   base / my / bed ... never) -> the asker or Bob outside the overworld, or no drones = SP.TPA ("*shrugs* ... /tpa Bob",

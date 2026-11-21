@@ -375,6 +375,30 @@ told = {}
 VOICE.chat({ name = "Steve", msg = "base who is cat" })
 CHECK(toldTo("Steve"):find("has not told me", 1, true), "Cat told nothing: says so + how: " .. toldTo("Steve"))
 
+-- 8b) ITS OWN CALL WORD at spawn (voice spawn name sparky); the base keeps "base"
+SP.spam = {}
+VOICE.command({ "voice", "spawn", "name", "sparky" })
+CHECK(CONFIG.voice.spawnName == "sparky", "voice spawn name sparky is saved")
+told = {}
+SP.queue = {}
+VOICE.chat({ name = "Steve", msg = "sparky tell me a joke" })
+CHECK(#told >= 1 and #SP.queue >= 1, "'sparky tell me a joke' at spawn is answered there")
+told = {}
+VOICE.convo = {}
+VOICE.chat({ name = "Steve", msg = "base tell me a joke" })
+CHECK(#told == 0, "'base ...' at spawn is not its name any more: " .. toldTo("Steve"))
+told = {}
+SP.helpAt = {}
+VOICE.chat({ name = "Steve", msg = "how do i use this speaker" })
+CHECK(toldTo("Steve"):find("sparky", 1, true) and not toldTo("Steve"):find("base tell", 1, true), "the help tells its spawn word: " .. toldTo("Steve"))
+CHECK(VOICE.cfg("name", "base") == "base", "outside spawn the base's word stays base")
+VOICE.queue = {}
+told = {}
+VOICE.chat({ name = "Alaory", msg = "base tell me a joke" })
+CHECK(#told >= 1, "the owner at the base still says base")
+VOICE.command({ "voice", "spawn", "name", "off" })
+CHECK(SP.named(function() return VOICE.cfg("name", "base") end) == "base", "voice spawn name off: base again")
+
 -- 9) NO SPAMMING: 8 answers in 30 s -> a minute of quiet for that player (told once); the same message 3 times: ignored
 resetSetting("voice.spamBurst")
 SP.spam = {}
