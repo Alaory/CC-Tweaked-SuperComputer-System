@@ -1169,6 +1169,9 @@ m[k] = m[k] or {}
 local day = os.date("!%Y-%m-%d")
 if m[k].qday ~= day then m[k].qday, m[k].qn = day, 0 end
 local cap = tonumber(VOICE.cfg("quizDaily", 15)) or 15
+if VOICE.noPoints then
+return VOICE.more("right", { "Correct!", "Right answer!", "Yes, well done!" })
+end
 if (m[k].qn or 0) >= cap then
 return VOICE.more("right", { "Correct!", "Right!" }) .. " But that was your " .. cap .. " points for today - come back tomorrow for more."
 end

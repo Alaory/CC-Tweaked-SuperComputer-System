@@ -2,6 +2,8 @@
 -- greets players coming near the base, says warnings only when someone can hear them, answers
 -- "base, status?" in chat, the alarm, speech cached on the floppy, nothing when it is off.
 local HOME = CONFIG.drone.home or { x = 0, y = 64, z = 0 }
+CONFIG.voice = CONFIG.voice or {}
+CONFIG.voice.spamBurst, CONFIG.voice.spamSame = 100000, 0      -- (the spam limit - voice_spawn.lua - is tested in test_spawn; this test chats fast)
 local realEnvDet = envDet
 envDet = nil                 -- (parts 1-9: no Environment Detector - the Player Detector within range)
 CONFIG.drone.home = HOME
@@ -954,6 +956,27 @@ gtick(CLOCK, { Kevin = true })
 CHECK(#runs == 2, "next gift")
 runs[2].cb(false, 0, "no plain minecraft:emerald in AE2")
 CHECK(VOICE.giftBusy == nil and table.concat(told, " "):find("could not bring", 1, true), "AE2 has none: the player is told, the gift dropped")
+-- (the owner: "a drone can only carry a max of 64 items") a gift of 100: 64 brought, the other 36 stay queued
+do
+  local q = B2.giftQ
+  local keep = {}
+  for i = #q, 1, -1 do keep[#keep + 1] = table.remove(q, i) end
+  VOICE.giftEarn("Kevin", "manual", { { "minecraft:diamond", 100 } })
+  VOICE.giftNext, VOICE.giftBusy = 0, nil
+  local nr = #runs
+  gtick(CLOCK, { Kevin = true })
+  CHECK(#runs == nr + 1 and runs[#runs].n == 100, "a gift of 100: a drone trip for it")
+  told = {}
+  runs[#runs].cb(true, 64, nil)
+  CHECK(#q == 1 and q[1].n == 36 and table.concat(told, " "):find("36", 1, true), "64 brought: the other 36 stay queued (" ..
+        tostring(q[1] and q[1].n) .. ") - " .. table.concat(told, " | "))
+  VOICE.giftNext = 0
+  gtick(CLOCK, { Kevin = true })
+  CHECK(#runs == nr + 2 and runs[#runs].n == 36, "... and go with the next trip")
+  runs[#runs].cb(true, 36, nil)
+  CHECK(#q == 0, "all 100 given: off the queue")
+  for i = #keep, 1, -1 do q[#q + 1] = keep[i] end
+end
 -- the birthday gift only for a birthday told 30+ days ago ("my birthday is today" = a wish, no gift)
 local rk = VOICE.mem().kevin
 local tn = os.date("!*t", math.floor(os.epoch("utc") / 1000))

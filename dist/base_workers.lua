@@ -568,6 +568,8 @@ if ev == "rednet_message" and c == CONFIG.turtles.protocol then
 pcall(TT.receive, a, b)
 elseif ev == "rednet_message" and c == POCKET.PROTO then
 pcall(POCKET.receive, a, b)
+elseif ev == "rednet_message" and c == "basespawn" then
+if VOICE and VOICE.spawnReceive then pcall(VOICE.spawnReceive, a, b) end
 elseif ev == "disk" and a == TT.installDrive() then
 pcall(TT.codeLoad)
 pcall(TT.prepareInstallFloppy)

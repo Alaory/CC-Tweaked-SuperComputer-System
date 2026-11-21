@@ -1102,6 +1102,18 @@ function V.giftTick(now, nearNow)
           local qq, log = gifts()
           local idx
           for j, e in ipairs(qq) do if e == g then idx = j end end
+          -- (a drone carries 64 a trip - fewer for items that stack to 16 / 1: what was not brought stays in the
+          --  queue for the next trip; before, the whole gift counted as given - a gift of 100 lost 36)
+          local left = n - (tonumber(delivered) or 0)
+          if okD and (tonumber(delivered) or 0) > 0 and left > 0 and idx then
+            g.n, g.tries, g.retryAt, g.lastErr = left, 0, nil, nil
+            log[#log + 1] = { who = who, item = item, n = delivered, why = g.why, at = os.epoch("utc") }
+            while #log > 60 do table.remove(log, 1) end
+            V.saveMem()
+            tell(who, "Gift delivered: " .. delivered .. " " .. itemName(item) .. " - the other " .. left .. " come with the next drone trip.")
+            V.giftNext = now + 2
+            return
+          end
           if okD then
             if idx then table.remove(qq, idx) end
             log[#log + 1] = { who = who, item = item, n = delivered, why = g.why, at = os.epoch("utc") }

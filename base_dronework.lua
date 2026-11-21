@@ -83,22 +83,13 @@ function DW.freeDrone()
   return nil, DW.noDroneWhy
 end
 
--- how many items one trip can carry: 1 slot + 1 per Inventory Upgrade (CONFIG.drone.slots wins)
+-- how many slots one trip can carry (64 items each)
+-- ONE SLOT = 64 items a trip (the owner: "a drone can only carry a max of 64 items"): Inventory Upgrades are NOT
+-- counted by themselves any more - CONFIG.drone.slots (settings) says how many slots the drones really have
 function DW.slots(dr)
   local s = tonumber(cfg("slots"))
   if s then return math.max(1, math.floor(s)) end
-  if dr.workSlots then return dr.workSlots end
-  local n = 0
-  local ok, up = pcall(dr.periph.getUpgrades)
-  if ok and type(up) == "table" then
-    for k, v in pairs(up) do
-      local name, cnt = k, v
-      if type(v) == "table" then name, cnt = v.name or v.id or k, v.count or v.amount or 1 end
-      if tostring(name):lower():find("inventory", 1, true) and tonumber(cnt) then n = n + tonumber(cnt) end
-    end
-  end
-  dr.workSlots = math.min(36, 1 + n)
-  return dr.workSlots
+  return 1
 end
 
 ------------------------------------------------------------------ the work chest

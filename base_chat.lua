@@ -150,7 +150,7 @@ function handleChat(m)
     reply("Use: " .. c .. " home | " .. c .. " to <place" ..
           ((owner or CONFIG.chat.othersToPlayers) and "|player" or "") .. "> | " .. c .. " back | " ..
           c .. " places | " .. c .. " status | " .. c .. " stop")
-    if owner then reply("Places: " .. c .. " mark <name> (stand ON the block) | " .. c .. " unmark <name> | " .. c .. " workchest [x y z] (stand ON the drones' work chest, or its spot) | " .. c .. " test (test it, standing near it)") end
+    if owner then reply("Places: " .. c .. " mark <name> (stand ON the block) | " .. c .. " unmark <name> | " .. c .. " workchest [x y z] (stand ON the drones' work chest, or its spot) | " .. c .. " test (test it, standing near it) | " .. c .. " spawn here / pair <code> (the spawn speaker)") end
     if owner then reply("Owner: " .. c .. " allow/deny <name> | " ..
                         c .. " allowed | " .. c .. " yes/no <name> | " .. c .. " notify on/all/off") end
 
@@ -208,6 +208,15 @@ function handleChat(m)
     else
       reply("Work chest spot saved: " .. fmtPos(x, y, z) .. ". Several empty chests are on the cable - pick this one with CHEST > on the DRONE WORK page.")
     end
+
+  elseif sub == "spawn" then
+    -- the SPAWN SPEAKER (voice_spawn.lua): set it up standing next to it - $drone spawn here / pair <code>
+    if not owner then reply("Only " .. tostring(state.owner) .. " can set up the spawn speaker.") return end
+    if not (VOICE and VOICE.commands and VOICE.commands.spawn) then reply("The talking add-on with its spawn part is not loaded (voice install / voice update).") return end
+    local w = { "voice", "spawn" }
+    for i = 3, #words do w[#w + 1] = words[i] end
+    local okS, errS = pcall(VOICE.commands.spawn, w, reply, name)
+    if not okS then reply("Spawn speaker: " .. cleanErr(errS)) end
 
   elseif sub == "test" then
     -- test the drones' WORK CHEST from where it is (the console may be far away): the base side

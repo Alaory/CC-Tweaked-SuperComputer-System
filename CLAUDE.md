@@ -733,8 +733,9 @@ PneumaticCraft drone rides, turtle mapping/surveys, and an AE2 ME network view.
   stepUnload (inventory_export into the chest -> DW.chestToAE2). One mission per trip: submitDrone
   kind "work" {title, steps} (runMission / buildMission accept it; failures go home as usual); DW.trip
   is read back when the drone is free (tripDone). goNear: within workFly (64) the drone FLIES (no air),
-  else travelTo. Carry = DW.slots (1 + Inventory Upgrades from getUpgrades, CONFIG.drone.slots wins)
-  x 64; one item type per trip, so no item filters are needed. FUEL RUNS (DW.fuelTick, `dw fuel <id>`,
+  else travelTo. Carry = DW.slots x 64 = ONE slot by default (the owner: "a drone can only carry a max of
+  64 items"; Inventory Upgrades are not counted - CONFIG.drone.slots if the drones really have more); a GIFT bigger
+  than one trip (or of an item stacking to 16 / 1) keeps the rest in the queue for the next trip (V.giftTick); one item type per trip, so no item filters are needed. FUEL RUNS (DW.fuelTick, `dw fuel <id>`,
   `dw auto on|off` = drone.fuelRuns, `dw fuel item <item> [n]` = drone.fuelItem / fuelCount, default
   the factory fuel or coal x32): an ONLINE turtle (= loaded by its own Chunky) with fuel < 20 for 30 s
   -> fuel into its inventory (node idleEmptyFuel burns it); max 3 tries 10 min apart; DW.fuelBusy holds
@@ -1468,6 +1469,49 @@ PneumaticCraft drone rides, turtle mapping/surveys, and an AE2 ME network view.
   stuff" went to "can i stay" (the 8 ball said "Yes.") - freestuff keys "can i have free stuff / items". test_voice
   part 33: every intent reachable by its own keys (220 of 221 tried; the other starts a question) gives 50+ different
   answers in 60 asks; a status answer keeps the status.
+- THE SPAWN SPEAKER (voice_spawn.lua = VOICE_FILES[9], loaded last; spawn_speaker.lua on a small computer at spawn,
+  manifest group "spawn" - never on the base; the owner: "an ender modem on a speaker at spawn - its own place, no
+  rewards, wishes sent by drone, games, players do not know how to ask it, lots of different sentences"). An ender
+  modem cannot share a Speaker, so the RELAY (spawn_speaker.lua as startup.lua, Speaker + ENDER modem) only plays what
+  the base sends; the BASE hears the chat (Chat Box = whole server), sees who is at spawn (state.players within
+  voice.spawnRange 24 of voice.spawnAt, voice.spawnDim), decides, makes the sound (VOICE.audio + pcmOf, its own preset
+  voice.spawnVoice "bright") and sends DFPWM (SP.encode, a fresh encoder per piece; "fresh" -> a fresh decoder on the
+  relay) in 16 KB "play" messages, protocol "basespawn", at most SP.SEND_AHEAD 2.5 s ahead (an answer cuts its own
+  talk: "cut"). SIGNED: TT.sign(key, t, n, line, {SP.dataHash(d), v}) both ways, n = epoch ms increasing, older than
+  60 s refused. PAIRING: the unpaired relay broadcasts "hello" + shows a 6-digit code; `$drone spawn pair <code>`
+  (chat, owner, standing there) / `voice spawn pair <code>` -> "pair" {proof = sign(code, "pair", id), k =
+  POCKET.scramble(key, code, id)} -> the relay answers "paired" signed -> settings voice.spawnId / spawnKey;
+  `$drone spawn here` = the owner's spot. Online = a signed hello (every 20 s) within 75 s (SP.ready: on + paired +
+  spot + online); the spawn area unloaded = spawn is nothing special. ROUTING: VOICE.chat from a player AT SPAWN (and
+  not at the base) -> SP.chat (chatHooks skipped): a wish's yes / no, HOW TO USE IT (SP.HELP_ALWAYS without its name -
+  "how do I use this speaker", "who is talking", "is that a bot" - 60 s per player; SP.HELP_LOOSE when it just spoke /
+  a conversation; SP.HELP_NAMED "help" / "how" only with the name) -> SP.helpText (opener + how + 3 random examples
+  from SP.EXAMPLES + ending), who are you / where is the base (secret) / shops, WISHES, else VOICE.chatCore under
+  SP.inCtx: VOICE.ctx = "spawn" -> VOICE.nearPlayers = spawn players, VOICE.say -> SP.say, VOICE.event / V.addRep /
+  V.badge / V.giftEarn (not "wish") do nothing, VOICE.noPoints (the core quiz: "Correct!" without points). Reactions
+  at spawn once a minute. WISHES (SP.wish: "i wish for / i want / can i have / give me ... " + amount - "a stack of" 64,
+  numbers, words - + an item in state.me.items (SP.findItem: display / id path, singular, the plain Minecraft id with a
+  partial AE2 view), never SP.NEVER / voice.wishBlock; SP.NOT_ITEM: "I want to play" is no wish; asks "yes?" (90 s)
+  -> V.giftEarn(who, "wish", {{id, n}}) = the drone gift queue (anywhere in the overworld). voice.wishDaily 3 /
+  wishAll 40 / wishMax 64 (and what AE2 has), one waiting wish per player, the owner none. mem["#spawn"] = met / gr
+  (greeted) / wish / wall / log (500 names max). SP.tick (a tick hook): a newcomer = how to talk in chat + a greeting;
+  others at most every voice.spawnGreetEvery 7200 s, half of the time; arrivals together = one SP.HELLO_GROUP line;
+  idle talk every ~voice.spawnChatter 5 min (SP.IDLE / TIPS / INVITES / NAMED combos, jokes, facts, mod tips) not
+  within 90 s of speaking. Its own loop (VOICE.loop runs the base's and SP.loop in parallel). Console / chat
+  `voice spawn [here|at x y z|pair|unpair|on|off|range|voice|volume|chatter|greet|say|wish ...]`. test_spawn.lua
+  (the REAL relay program on a fake computer + fake rednet).
+  TELEPORT WISH (VOICE.patterns, inserted FIRST - a pack's "i wish ..." joke caught it; spawn + base): "i wish to teleport
+  to Bob" / "take me to Bob" / "tp me to Bob" ... (SP.TP_RE; Bob = an ONLINE player, exact or a unique prefix; the /
+  base / my / bed ... never) -> the asker or Bob outside the overworld, or no drones = SP.TPA ("*shrugs* ... /tpa Bob",
+  lazy); else the base ROLLS (the owner: "not consent - if the base feels like it", voice.tpChance 0.5) and REMEMBERS
+  the answer voice.tpRemember 180 s per player (SP.tpMood; "the owner: so the player doesn't spam it"); yes =
+  startRide(who, {kind = "player", name = Bob}, true); voice.tpDaily 3 rides a day; the owner: always yes.
+  TELL ME ABOUT <player> (same pattern): only what that player said about THEMSELVES - "base, about me: ..." /
+  "my bio is ..." (r.bio, 120 chars), nickname, favourites, birthday; never notes / points / position; their text goes
+  to chat only (spoken: a short line). Nothing told -> how to do it.
+  NO SPAMMING (V.chat wrapper, spawn AND base; never the owner): voice.spamBurst 8 answers within voice.spamWindow 30 s
+  -> not answered for voice.spamMute 60 s, told once (SP.SLOW); the same message of 3+ words voice.spamSame 3rd time in
+  60 s = ignored; messages during a running game do not count. (test_voice sets spamBurst / spamSame off.)
 - REMOVED AGAIN: remote access in a web browser (Cloud Catcher; base_remote.lua / remote.lua / pocket.lua
   in local mode on the base) - the owner: "taking space and seems useless". removeOldFiles (base_theme.lua,
   run by inventory.lua at start) deletes its files (remote.lua, base_remote.lua, cloud.lua on the computer
@@ -1581,6 +1625,7 @@ The old Block UI (stone buttons, bedrock theme) is gone.
 | voice_lines.lua / voice_idle.lua | LINES PACKS: 100+ ways to say each thing (asked for / idle, greetings, reactions) |
 | voice_vary.lua | VARIETY PACK: every other answer said 50+ ways (openers / closers by the kind of answer) |
 | voice_lore.lua | LORE PACK: why drones and not /tp and other questions about the base, modpack tips, mod glossary |
+| voice_spawn.lua / spawn_speaker.lua | the SPAWN SPEAKER: the base talks at spawn through a relay computer (Speaker + ender modem) - own voice and lines, no rewards, item wishes by drone, how-to help |
 | voice_talk2.lua | TALK PACK 2: friendship + titles, badges, player memory, daily secret word, more games, ideas, guides, styles, holidays, diary, FRIENDSHIP GIFTS by drone |
 
 ## The owner's setup (found out the hard way)

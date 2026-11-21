@@ -615,7 +615,7 @@ end
 -- loads it at start when it finds it there (or next to inventory.lua), `voice remove` deletes it.
 -- the talking base = the add-on + its TALK PACKS (more things to say; each on a data floppy with room)
 -- (+ LINES PACKS voice_lines / voice_idle: 100+ ways to say each thing; LORE PACK voice_lore: why drones not /tp, modpack tips)
-VOICE_FILES = { "voice_addon.lua", "voice_talk.lua", "voice_talk2.lua", "voice_talk3.lua", "voice_lines.lua", "voice_idle.lua", "voice_lore.lua", "voice_vary.lua" }
+VOICE_FILES = { "voice_addon.lua", "voice_talk.lua", "voice_talk2.lua", "voice_talk3.lua", "voice_lines.lua", "voice_idle.lua", "voice_lore.lua", "voice_vary.lua", "voice_spawn.lua" }
 -- VOICE FILES ON STORAGE HELPERS (the owner's screen: "Voice add-on not installed: no DATA floppy with room (123 KB)"
 -- even after `disks data` - the add-on is ~120 KB of a 125 KB floppy and the map / data files fill the floppies).
 -- A storage helper has ~1 MB: installAddon puts a voice file on a HELPER first (CONFIG.voice.onHelpers, default on),
