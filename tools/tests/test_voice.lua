@@ -970,8 +970,44 @@ CHECK(queued("Kevin", "minecraft:cake") == q0 + 1, "... once a year")
 CHECK(say3("how do i get a gift"):find("gifts, brought by drone", 1, true), "how do i get a gift")
 CHECK(say3("where is my gift"):find("Waiting for you", 1, true), "where is my gift: " .. table.concat(told, " | "))
 -- console
-local gout = table.concat(handleCommand("voice gifts"), "\n")
-CHECK(gout:find("FRIENDSHIP GIFTS: ON", 1, true) and gout:find("best friend:", 1, true) and gout:find("Given", 1, true), "voice gifts shows the rules, the queue and the log")
+local gout = table.concat(handleCommand("voice gifts list"), "\n")
+CHECK(gout:find("FRIENDSHIP GIFTS: ON", 1, true) and gout:find("best friend:", 1, true) and gout:find("Given", 1, true), "voice gifts list shows the rules, the queue and the log")
+-- (the owner: "it still doesn't send them" - the reason was one line at the TOP, scrolled off the screen)
+do
+  local on0, pl0 = state.online, state.players
+  state.online, state.players = { [owner:lower()] = true }, { { name = owner, p = { x = HOME.x + 1, y = HOME.y, z = HOME.z }, dim = DRONE_DIM } }
+  local np0 = VOICE.nearPlayers
+  VOICE.nearPlayers = function() return { { name = owner } } end
+  gout = handleCommand("voice gifts")
+  local last = table.concat(gout, "\n", math.max(1, #gout - 6))
+  CHECK(last:find("Kevin: ", 1, true) and last:find("not at the base", 1, true), "each waiting gift says why it waits, at the END:\n" .. last)
+  CHECK(not table.concat(gout, "\n"):find("best friend:", 1, true), "... the reward list only with voice gifts list")
+  -- the owner's own test: "voice gifts give Alaory diamond 1" said "Queued" and dropped it (the owner gets no rewards)
+  local nq = #B2.giftQ
+  local gv = table.concat(handleCommand("voice gifts give " .. owner .. " diamond 1"), "\n")
+  CHECK(#B2.giftQ == nq + 1 and gv:find("Queued", 1, true), "a manual gift to the owner (a test) is really queued: " .. gv)
+  handleCommand("voice gifts block Kevin")
+  gv = table.concat(handleCommand("voice gifts give Kevin diamond 1"), "\n")
+  CHECK(gv:find("NOT queued", 1, true) and gv:find("blocked", 1, true), "a refused gift says so: " .. gv)
+  handleCommand("voice gifts unblock Kevin")
+  -- voice gifts now: tries at once and says what happened
+  local r0 = #runs
+  VOICE.giftBusy = nil
+  local nowOut = table.concat(handleCommand("voice gifts now"), "\n")
+  CHECK(#runs == r0 + 1 and nowOut:find("SENT", 1, true), "voice gifts now sends the owner's test gift at once: " .. nowOut)
+  runs[#runs].cb(true, 1, nil)
+  -- an error inside the check is shown (the core's pcall swallowed it)
+  local fd = DW.freeDrone
+  DW.freeDrone = function() error("boom") end
+  VOICE.giftNext, VOICE.giftBusy = 0, nil
+  B2.giftQ[#B2.giftQ + 1] = { who = owner, item = "minecraft:dirt", n = 1, why = "manual", at = os.epoch("utc"), tries = 0 }
+  VOICE.tickHooks[1](CLOCK, { [owner] = true })
+  DW.freeDrone = fd
+  CHECK(tostring(VOICE.giftWhy):find("ERROR", 1, true) and tostring(VOICE.giftWhy):find("boom", 1, true), "an error in the gift check is shown: " .. tostring(VOICE.giftWhy))
+  table.remove(B2.giftQ)
+  VOICE.nearPlayers = np0
+  state.online, state.players = on0, pl0
+end
 handleCommand("voice gifts give Kevin diamond 7")
 local manual = false
 for _, g in ipairs(B2.giftQ) do if g.why == "manual" and g.item == "minecraft:diamond" and g.n == 7 then manual = true end end
@@ -1010,6 +1046,10 @@ do
   state.online = {}
   local okS, whyS = st("Kevin")
   CHECK(not okS and tostring(whyS):find("offline", 1, true), "... and when he goes offline (" .. tostring(whyS) .. ")")
+  local kg
+  for _, g in ipairs(B2.giftQ) do if g.who == "Kevin" then kg = g end end
+  CHECK(kg and tostring(VOICE.giftWait(kg, {}, CLOCK)):find("offline - it goes when Kevin is online", 1, true),
+        "voice gifts says a gift waits because the player is offline (" .. tostring(kg and VOICE.giftWait(kg, {}, CLOCK)) .. ")")
   CHECK(say3("where is my gift"):find("wherever you are", 1, true), "where is my gift: anywhere in the overworld")
   -- a gift for someone AT the base: stepping out of the detector's 16 blocks no longer stops it (online, overworld)
   state.online = { kevin = true }

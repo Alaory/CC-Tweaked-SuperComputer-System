@@ -987,9 +987,13 @@ return "wherever you are in the overworld while you are online"
 end
 
 function V.giftEarn(who, why, list)
-if not V.giftsOn() or V.isOwner(who) or blocked(who) or who == "someone" then return false end
+if not V.giftsOn() then return false, "gifts are OFF (voice gifts on)" end
+if V.isOwner(who) and why ~= "manual" then return false, "the owner gets no rewards" end
+if blocked(who) then return false, who .. " is blocked (voice gifts unblock " .. who .. ")" end
+if who == "someone" then return false, "nobody named" end
 list = list or V.giftList(why)
-if type(list) ~= "table" or #list == 0 then return false end
+if type(list) ~= "table" or #list == 0 then return false, "nothing set for " .. tostring(why) end
+if #gifts() >= 80 then return false, "the queue is full (80) - voice gifts clear" end
 local q = gifts()
 local nowE = os.epoch("utc")
 for _, g in ipairs(list) do
@@ -1032,10 +1036,29 @@ local p, why = DW.playerAt(who)
 if not p then return false, why end
 return true
 end
-add(V.tickHooks, {
-function(now, nearNow)
-if not V.giftsOn() or V.giftBusy or now < (V.giftNext or 0) then return end
-V.giftNext = now + 10
+
+
+function V.giftWait(g, nearNow, now)
+local near = false
+for n in pairs(nearNow or {}) do if tostring(n):lower() == tostring(g.who):lower() then near = true end end
+if blocked(g.who) then return "blocked (voice gifts unblock " .. g.who .. ")" end
+local daily = tonumber(V.cfg("giftDaily", 10)) or 10
+local mine = givenToday(g.who)
+if mine >= daily then return "had " .. mine .. " today (max " .. daily .. " a day - voice.giftDaily)" end
+if g.retryAt and (now or os.clock()) < g.retryAt then
+return "the last try failed (" .. tostring(g.lastErr or "?") .. ") - again in " .. math.ceil(g.retryAt - (now or os.clock())) .. " s"
+end
+if near then return nil end
+local okA, whyA = V.giftAwayOK(g.who)
+if okA then return nil end
+if V.cfg("giftAway", true) == false then return "not at the base (voice.giftAway is off)" end
+local on = state.online
+if type(on) ~= "table" then return "the Player Detector has not said who is online" end
+if not on[tostring(g.who):lower()] then return "offline - it goes when " .. g.who .. " is online in the overworld" end
+return tostring(whyA or "cannot see where they are")
+end
+function V.giftTick(now, nearNow)
+V.giftCheckedAt = now
 local q = gifts()
 if #q == 0 then V.giftWhy = nil return end
 if not (DW and DW.giftRun) then V.giftWhy = "the base program is too old for drone gifts - type  upgrade" return end
@@ -1047,10 +1070,10 @@ local daily, dailyAll = tonumber(V.cfg("giftDaily", 10)) or 10, tonumber(V.cfg("
 for i, g in ipairs(q) do
 local near = false
 for n in pairs(nearNow or {}) do if n:lower() == g.who:lower() then near = true end end
-local mine, all = givenToday(g.who)
+local _, all = givenToday(g.who)
 if all >= dailyAll then V.giftWhy = "the daily limit for all players (" .. dailyAll .. ") is reached" return end
 local away = not near and V.giftAwayOK(g.who)
-if (near or away) and mine < daily and now >= (g.retryAt or 0) and not blocked(g.who) then
+if not V.giftWait(g, nearNow, now) then
 
 
 local busyWhy = DW.trip and ("a drone job is running (" .. tostring(DW.trip.title or DW.trip.kind) .. ")")
@@ -1092,6 +1115,7 @@ else
 local e = tostring(err or "?")
 g.tries = (g.tries or 0) + 1
 g.retryAt = os.clock() + 300
+g.lastErr = e
 if e:find("no plain", 1, true) or g.tries >= 5 then
 if idx then table.remove(qq, idx) end
 tell(who, "Sorry, I could not bring your " .. itemName(item) .. " (" .. e .. ").")
@@ -1107,12 +1131,21 @@ tell(who, "A drone is on its way with your gift: " .. n .. " " .. itemName(item)
 if not away then V.say("A drone is bringing a gift for " .. who .. "!") end
 else
 V.giftWhy = tostring(why)
+g.retryAt, g.lastErr = os.clock() + 60, tostring(why)
 end
 return
 end
 end
 V.giftWhy = (V.cfg("giftAway", true) == false) and "waiting for the players to come to the base"
 or "waiting for the players to come online (overworld) or to the base"
+end
+add(V.tickHooks, {
+function(now, nearNow)
+if not V.giftsOn() or V.giftBusy or now < (V.giftNext or 0) then return end
+V.giftNext = now + 10
+
+local ok, err = pcall(V.giftTick, now, nearNow)
+if not ok then V.giftWhy = "ERROR in the gift check: " .. tostring(err) end
 end,
 function(now)
 if V.giftBusy and now - V.giftBusy.at > 900 then V.giftBusy = nil end
@@ -1161,8 +1194,29 @@ local item = words[5]:find(":", 1, true) and words[5] or ("minecraft:" .. words[
 local n = math.max(1, math.min(64 * 36, math.floor(tonumber(words[6]) or 64)))
 local was = V.giftsOn()
 if not was then say("Gifts are OFF - voice gifts on first.") return end
-V.giftEarn(words[4], "manual", { { item, n } })
+local okE, whyE = V.giftEarn(words[4], "manual", { { item, n } })
+if not okE then say("NOT queued: " .. tostring(whyE)) return end
 say("Queued: " .. n .. " " .. itemName(item) .. " for " .. words[4] .. " (a drone brings it " .. V.giftWhere() .. ").")
+say("voice gifts now  = try it at once and say what happened")
+return
+end
+if a == "now" then
+
+local near = {}
+for _, p in ipairs(V.nearPlayers()) do near[p.name] = true end
+if V.giftBusy and os.clock() - V.giftBusy.at > 120 then
+say("A gift trip has been marked as flying for " .. math.floor(os.clock() - V.giftBusy.at) .. " s - checked again now.")
+end
+if V.giftBusy then
+say("Flying now: " .. V.giftBusy.n .. " " .. itemName(V.giftBusy.item) .. " to " .. V.giftBusy.who ..
+(DW and DW.trip and (" (" .. tostring(DW.trip.title) .. ")") or " - but no drone job runs: freed") )
+if DW and DW.trip then return end
+V.giftBusy = nil
+end
+for _, g in ipairs((gifts())) do g.retryAt = nil end
+local ok, err = pcall(V.giftTick, os.clock(), near)
+say(ok and ("Gift check: " .. tostring(V.giftBusy and ("SENT - " .. V.giftBusy.n .. " " .. itemName(V.giftBusy.item) ..
+" to " .. V.giftBusy.who) or V.giftWhy or "nothing waiting")) or ("ERROR in the gift check: " .. tostring(err)))
 return
 end
 if a == "clear" then
@@ -1174,20 +1228,33 @@ return
 end
 local q, log = gifts()
 local mine, all = givenToday(nil)
-say("FRIENDSHIP GIFTS: " .. (V.giftsOn() and "ON" or "OFF") .. ", " .. all .. " given today (max " .. (V.cfg("giftDailyAll", 80) or 80) ..
-", " .. (V.cfg("giftDaily", 10) or 10) .. " per player)" .. (V.giftWhy and ("  - " .. V.giftWhy) or ""))
-if V.giftBusy then say("  Flying now: " .. V.giftBusy.n .. " " .. itemName(V.giftBusy.item) .. " to " .. V.giftBusy.who) end
+
+if a == "list" or a == "rewards" then
 for _, why in ipairs(V.GIFT_ORDER) do
 local l = V.giftList(why)
 say("  " .. why .. ": " .. (#l > 0 and giftText(l) or "nothing"))
 end
-say("  Waiting (" .. #q .. "):" .. (#q == 0 and " none" or ""))
-for i = 1, math.min(10, #q) do say("    " .. q[i].who .. ": " .. q[i].n .. " " .. itemName(q[i].item) .. " (" .. tostring(q[i].why) .. ")") end
+end
+say("FRIENDSHIP GIFTS: " .. (V.giftsOn() and "ON" or "OFF") .. ", " .. all .. " given today (max " .. (V.cfg("giftDailyAll", 80) or 80) ..
+", " .. (V.cfg("giftDaily", 10) or 10) .. " per player)   rewards: voice gifts list")
 say("  Given (newest first):" .. (#log == 0 and " none yet" or ""))
-for i = #log, math.max(1, #log - 9), -1 do
+for i = #log, math.max(1, #log - 4), -1 do
 say("    " .. os.date("!%d %b %H:%M", math.floor(log[i].at / 1000)) .. " " .. log[i].who .. ": " .. log[i].n .. " " .. itemName(log[i].item))
 end
-say("  voice gifts on|off | block <name> | unblock <name> | give <name> <item> [count] | clear   (what: CONFIG.voice.gifts)")
+local near = {}
+for _, p in ipairs(V.nearPlayers()) do near[p.name] = true end
+say("  Waiting (" .. #q .. "):" .. (#q == 0 and " none" or ""))
+for i = 1, math.min(8, #q) do
+local w = V.giftWait(q[i], near, os.clock())
+say("    " .. q[i].who .. ": " .. q[i].n .. " " .. itemName(q[i].item) .. " - " .. (w or "can go now"))
+end
+if V.giftBusy then say("  Flying now: " .. V.giftBusy.n .. " " .. itemName(V.giftBusy.item) .. " to " .. V.giftBusy.who) end
+if #q > 0 then
+say("  NOW: " .. tostring(V.giftWhy or (V.giftCheckedAt and "-" or "not checked yet")) ..
+(V.giftCheckedAt and (" (checked " .. math.floor(os.clock() - V.giftCheckedAt) .. " s ago)") or ""))
+if VOICE.tickErr then say("  The voice's tick has an ERROR: " .. tostring(VOICE.tickErr)) end
+end
+say("  voice gifts now | list | on|off | block|unblock <name> | give <name> <item> [count] | clear")
 end
 
 

@@ -2629,7 +2629,11 @@ function VOICE.loop()
 while state.running do
 
 pcall(VOICE.sampleTps)
-if not (VOICE.queue[1] and VOICE.queue[1].answer) then pcall(VOICE.tick) end
+if not (VOICE.queue[1] and VOICE.queue[1].answer) then
+
+local okT, errT = pcall(VOICE.tick)
+VOICE.tickErr = (not okT) and tostring(errT) or nil
+end
 while #VOICE.queue > 0 do
 local item = table.remove(VOICE.queue, 1)
 local ok, err = pcall(VOICE.play, item)

@@ -2629,7 +2629,11 @@ function VOICE.loop()
   while state.running do
     -- (an answer that just came in is said FIRST - the look around (detector scan, greetings) comes after)
     pcall(VOICE.sampleTps)
-    if not (VOICE.queue[1] and VOICE.queue[1].answer) then pcall(VOICE.tick) end
+    if not (VOICE.queue[1] and VOICE.queue[1].answer) then
+      -- (an error here stopped greetings, gifts, the taxi ... without a word: kept for `voice gifts` / `voice`)
+      local okT, errT = pcall(VOICE.tick)
+      VOICE.tickErr = (not okT) and tostring(errT) or nil
+    end
     while #VOICE.queue > 0 do
       local item = table.remove(VOICE.queue, 1)
       local ok, err = pcall(VOICE.play, item)

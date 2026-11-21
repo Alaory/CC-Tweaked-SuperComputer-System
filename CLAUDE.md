@@ -1266,6 +1266,15 @@ PneumaticCraft drone rides, turtle mapping/surveys, and an AE2 ME network view.
   riderGoneNow) and frees it. (3) DW.freeDrone returns nil, why ("Drone 1 Alaory on board" / busy: <mission> / not
   connected; DW.noDroneWhy) - in giftWhy / giftRun's reason. (4) a gift AT the base stopped when the player stepped
   out of the detector's 16 blocks: still = near OR V.giftAwayOK. test_dronework + test_voice ("goes next").
+  STILL NOT SENT (the owner's screenshots of `voice gifts`: 2 waiting for mancelaz, no reason visible): the ONE
+  reason line was at the TOP of a long list - scrolled off. Now the rewards only with `voice gifts list`; the end
+  shows each waiting gift + V.giftWait(g) (blocked / daily max / last try failed + again in N s / offline - goes
+  when online / not at the base / cannot see where), NOW: giftWhy + "checked N s ago", VOICE.tickErr (VOICE.loop
+  keeps an error of VOICE.tick - it was swallowed). `voice gifts now` = V.giftTick at once (retries reset, a stale
+  giftBusy without a drone job freed) -> SENT / why. The hook = pcall(V.giftTick): an error -> giftWhy "ERROR ...".
+  A failed giftRun start -> that gift waits 60 s (g.retryAt, g.lastErr) so the next one gets a turn. `voice gifts
+  give <owner> ...` said "Queued" but giftEarn refused the owner silently: a MANUAL gift may go to the owner (a
+  test), every refusal says why (giftEarn returns false, why). test_voice (gift block).
   REVIEW (the owner: "go over all the code you added"): voice announce all|summary|errors worked never (an
   earlier branch); a waiting yes / no / menu took EVERY message for 2-3 min as meant for it (now only answers);
   the voice cache dropped files alphabetically, not the oldest; "forget mentions" started "forget me"; hack
