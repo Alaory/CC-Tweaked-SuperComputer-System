@@ -58,15 +58,29 @@ if #droneOrder == 0 then return "no Drone Interface" end
 end
 
 
+
+
+function DW.wantDrone(what) DW.wanted = { what = tostring(what or "?"), at = now() } end
+function DW.yielding() return DW.wanted ~= nil and now() - DW.wanted.at < 30 end
+
+
 function DW.freeDrone()
 local want = cfg("worker")
+local why = {}
 for _, k in ipairs(droneOrder) do
 local dr = drones[k]
-if dr and dr.conn ~= false and not dr.gone and not dr.busy and #(dr.queue or {}) == 0 and not dr.rider
-and (not want or want == k or want == dr.label) then
-return dr
+if dr and (not want or want == k or want == dr.label) then
+local w
+if dr.gone or dr.conn == false then w = "not connected"
+elseif dr.busy or #(dr.queue or {}) > 0 then w = "busy" .. (dr.mission and dr.mission.title and (": " .. tostring(dr.mission.title)) or "")
+elseif dr.rider then w = tostring(dr.rider) .. " on board" end
+if not w then return dr end
+why[#why + 1] = tostring(dr.label or k) .. " " .. w
 end
 end
+
+DW.noDroneWhy = #why > 0 and table.concat(why, ", ") or (want and ("no drone named " .. tostring(want))) or "no drones"
+return nil, DW.noDroneWhy
 end
 
 
@@ -320,7 +334,7 @@ elseif r.state == "failed" and now() - r.t > 600 then
 DW.runs[id] = nil
 end
 end
-if not DW.autoOn() or DW.trip or DW.notReady() then return end
+if not DW.autoOn() or DW.trip or DW.notReady() or DW.yielding() then return end
 for _, t in pairs(state.turtles) do
 local fuel = tonumber(t.fuel)
 if TT.online(t) and fuel and (fuel < 20 or t.fuelShort or t.dwWant) and not t.missing and not t.dups and t.pos and t.pos.x then
@@ -361,8 +375,8 @@ function DW.giftRun(name, item, count, cb, still)
 local bad = DW.notReady()
 if bad then return false, bad end
 if DW.trip then return false, "a drone job is running (" .. tostring(DW.trip.title) .. ")" end
-local dr = DW.freeDrone()
-if not dr then return false, "no free drone" end
+local dr, whyD = DW.freeDrone()
+if not dr then return false, "no free drone (" .. tostring(whyD) .. ")" end
 local p0, why = playerAt(name)
 if not p0 then return false, why end
 count = math.max(1, math.min(math.floor(tonumber(count) or 1), DW.slots(dr) * 64))
@@ -399,6 +413,7 @@ stepUnload(dr, J, "Bring back what is left"),
 }
 local ok, err = submit(dr, "Gift for " .. name, steps, { kind = "gift", who = name, item = item, J = J, cb = cb })
 if not ok then return false, err end
+DW.wanted = nil
 return true, dr.label .. " brings " .. count .. " " .. prettify(item) .. " to " .. name
 end
 
@@ -732,6 +747,7 @@ end
 pcall(DW.fuelTick)
 local J = DW.job
 if not J or DW.trip or J.paused then return end
+if DW.yielding() then J.why = "a " .. DW.wanted.what .. " goes first" return end
 if J.waitUntil and now() < J.waitUntil then return end
 local plan, why = planOf(J)
 if not plan then J.paused = tostring(why) return end

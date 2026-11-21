@@ -899,9 +899,10 @@ CHECK(not VOICE.giftEarn("Kevin", "secret"), "voice gifts block kevin: no gifts 
 handleCommand("voice gifts unblock kevin")
 CHECK(VOICE.giftEarn("Kevin", "secret"), "... unblock: gifts again")
 -- the drone part (DW.giftRun) is tested in test_dronework; here: who gets what, when
-local realRun, realReady, realTrip = DW.giftRun, DW.notReady, DW.trip
+local realRun, realReady, realTrip, realFree = DW.giftRun, DW.notReady, DW.trip, DW.freeDrone
 local runs = {}
 DW.notReady, DW.trip = function() return nil end, nil
+DW.freeDrone = function() return { key = "d1", label = "Drone 1" } end
 DW.giftRun = function(who, item, n, cb, still) runs[#runs + 1] = { who = who, item = item, n = n, cb = cb, still = still } return true end
 local gtick = VOICE.tickHooks[1]
 setSetting("voice.giftAway", false)          -- (these checks: at the base only; AWAY below)
@@ -912,6 +913,26 @@ VOICE.giftNext = 0
 told = {}
 gtick(CLOCK, { Kevin = true })
 CHECK(#runs == 1 and runs[1].who == "Kevin" and table.concat(told, " "):find("on its way", 1, true), "Kevin at the base: a drone brings the first gift")
+-- (the owner: "gifts get queued and never get sent") a drone job running: the gift keeps the NEXT free drone (no fuel
+-- run may take it first) and is checked again in 2 s - not 10
+do
+  local r1 = runs[1]
+  runs[1] = nil
+  local busy0 = VOICE.giftBusy
+  VOICE.giftNext, VOICE.giftBusy, DW.wanted = 0, nil, nil
+  DW.trip = { title = "Fuel for T41", kind = "fuel" }
+  gtick(CLOCK, { Kevin = true })
+  CHECK(#runs == 0 and DW.wanted and tostring(VOICE.giftWhy):find("goes next", 1, true) and VOICE.giftNext <= CLOCK + 2,
+        "a drone job runs: the gift waits as NEXT (" .. tostring(VOICE.giftWhy) .. ")")
+  DW.trip = nil
+  local fr = DW.freeDrone
+  DW.freeDrone = function() return nil, "Drone 1 Alaory on board" end
+  VOICE.giftNext = 0
+  gtick(CLOCK, { Kevin = true })
+  CHECK(#runs == 0 and tostring(VOICE.giftWhy):find("Alaory on board", 1, true), "no drone free: says why (" .. tostring(VOICE.giftWhy) .. ")")
+  DW.freeDrone, DW.wanted = fr, nil
+  runs[1], VOICE.giftBusy = r1, busy0
+end
 CHECK(runs[1].still("Kevin") == true, "... and stops if Kevin leaves (still = at the base)")
 VOICE.giftNext = 0
 gtick(CLOCK, { Kevin = true })
@@ -990,11 +1011,21 @@ do
   local okS, whyS = st("Kevin")
   CHECK(not okS and tostring(whyS):find("offline", 1, true), "... and when he goes offline (" .. tostring(whyS) .. ")")
   CHECK(say3("where is my gift"):find("wherever you are", 1, true), "where is my gift: anywhere in the overworld")
+  -- a gift for someone AT the base: stepping out of the detector's 16 blocks no longer stops it (online, overworld)
+  state.online = { kevin = true }
+  runs[#runs].cb(false, 0, "test")
+  VOICE.giftBusy, VOICE.giftNext = nil, 0
+  for _, g in ipairs(B2.giftQ) do g.retryAt = nil end
+  local n1 = #runs
+  gtick(CLOCK, { Kevin = true })
+  CHECK(#runs == n1 + 1, "a gift for Kevin at the base starts")
+  CHECK(runs[#runs].still("Kevin") == true, "... Kevin walks out of the detector's sight: the trip goes on")
+  state.online = {}
   runs[#runs].cb(false, 0, "test")
   VOICE.giftBusy = nil
   state.online, state.players = on0, pl0
 end
-DW.giftRun, DW.notReady, DW.trip = realRun, realReady, realTrip
+DW.giftRun, DW.notReady, DW.trip, DW.freeDrone = realRun, realReady, realTrip, realFree
 -- REVIEW FIXES (the owner: "go over all the code you added, look for typos, issues and bugs")
 handleCommand("voice announce all")
 CHECK(VOICE.cfg("announce") == "all", "voice announce all works (an earlier branch swallowed it)")

@@ -212,6 +212,8 @@ SETTING_GROUPS = {
         function(v) return v .. " bar" end),
     num("drone.hopLength", "Long trips: hops of", "far away and not loaded: teleport hops this long", 160, 32, 320, 16,
         function(v) return v .. " blocks" end),
+    num("drone.simChunks", "Server simulation distance", "chunks (server.properties) - hops stay inside it, or the drone " ..
+        "freezes with its rider", 6, 3, 32, 1, function(v) return v .. " chunks = hops of " .. math.max(32, (v - 2) * 16) end),
     num("drone.pickupTries", "Pickup tries", "tries to pick a player up before giving up", 4, 1, 10, 1, plain),
   } },
   { name = "CHAT", list = {

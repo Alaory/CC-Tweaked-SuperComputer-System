@@ -28,6 +28,20 @@ function DRONE_SIM.run(opt)
     return false
   end
   local function free(p) return p.y > GROUND end
+  -- opt.simR: the server RUNS (entity-ticks) only chunks within this many blocks of a player / the base; a teleport is
+  -- accepted anywhere LOADED (loadedR, the view distance) - landing beyond simR = the drone FREEZES there (the owner:
+  -- "when a drone hop-teleports I get stuck in an unloaded chunk, I never move even when I am on it"). The rider's
+  -- own area counts from where they were BEFORE the hop.
+  local SIMR = opt.simR
+  local function ticking(p, from)
+    if not SIMR then return true end
+    if math.abs(p.x - opt.home.x) <= SIMR and math.abs(p.z - opt.home.z) <= SIMR then return true end
+    for n, q in pairs(W.P) do
+      local qq = (n == W.carry and from) or q
+      if math.abs(p.x - qq.x) <= SIMR and math.abs(p.z - qq.z) <= SIMR then return true end
+    end
+    return false
+  end
   local function d3(a, b) return math.sqrt((a.x - b.x) ^ 2 + (a.y - b.y) ^ 2 + (a.z - b.z) ^ 2) end
   local function tick() return math.floor(CLOCK * 20 + 0.5) end
   local function note(s) W.log[#W.log + 1] = string.format("%6d  %s", tick() - W.t0, s) end
@@ -35,6 +49,11 @@ function DRONE_SIM.run(opt)
   local function start(a)
     local t = W.target
     W.act, W.kind = a, nil
+    if W.frozen then
+      if a:find("condition", 1, true) then W.act = nil end
+      W.kind = "frozen"                                  -- (its AI does not run: nothing ever completes)
+      return
+    end
     if a == "pneumaticcraft:teleport" or (a == "pneumaticcraft:goto" and t and (d3(W.pos, t) > PATH or not loaded(t))) then
       W.kind, W.doneAt = "tp", tick() + 121
       W.tp = W.tp + 1
@@ -61,9 +80,15 @@ function DRONE_SIM.run(opt)
       if W.kind == "tp" then
         W.air = W.air - 10000 / W.vol                      -- (DRONE_USAGE_TELEPORT, also when refused)
         if loaded(t) and free(t) then
+          local from = W.carry and { x = W.pos.x, y = W.pos.y, z = W.pos.z }
           W.pos = { x = t.x, y = t.y, z = t.z }
           note("teleported to " .. t.x .. " " .. t.y .. " " .. t.z)
           W.act = nil
+          if not ticking(t, from) then
+            W.frozen = true
+            W.freezes = (W.freezes or 0) + 1
+            note("FROZEN: landed beyond the simulation distance")
+          end
         else
           W.refused = W.refused + 1
           note("teleport REFUSED (not loaded / blocked) " .. t.x .. " " .. t.y .. " " .. t.z)
@@ -85,7 +110,7 @@ function DRONE_SIM.run(opt)
         W.act = nil
       end
     end
-    if W.carry then W.P[W.carry] = { x = W.pos.x, y = W.pos.y - 1, z = W.pos.z } end
+    if W.carry and not W.frozen then W.P[W.carry] = { x = W.pos.x, y = W.pos.y - 1, z = W.pos.z } end
     -- (what the base's Player Detector reads put in state.players)
     local pl = {}
     for n, p in pairs(W.P) do pl[#pl + 1] = { name = n, p = { x = p.x, y = p.y, z = p.z }, dim = DRONE_DIM } end
@@ -122,7 +147,7 @@ function DRONE_SIM.run(opt)
   dr.hopOK, dr.speedBT = opt.hopOK, nil
   W.t0 = tick()
   if opt.run then opt.run(dr) else runMission(dr, opt.mission) end
-  local res = { air = W.air, ticks = tick() - W.t0, teleports = W.tp, refused = W.refused, flights = W.flights, flown = W.flown,
+  local res = { frozen = W.frozen, freezes = W.freezes or 0, air = W.air, ticks = tick() - W.t0, teleports = W.tp, refused = W.refused, flights = W.flights, flown = W.flown,
                 log = W.log, state = dr.mission and dr.mission.state, err = dr.mission and dr.mission.err, P = W.P, pos = W.pos }
   det, playerDimNow, refreshDrone = det0, pdn, rd
   state.players, state.turtles = players0, turtles0

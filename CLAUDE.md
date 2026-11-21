@@ -1247,6 +1247,14 @@ PneumaticCraft drone rides, turtle mapping/surveys, and an AE2 ME network view.
   test_dronework (still's reason). Console `voice gifts [on|off|block <n>|unblock
   <n>|give <n> <item> [count]|clear]`. test_dronework (drone trip: 100 diamonds dropped next to the player, your
   enchanted one stays, left the base = nothing dropped, Nether = no trip), test_voice part 19.
+  NEVER SENT (the owner: "gifts via drones get queued and never get sent"): (1) DW.fuelTick started a fuel run in the
+  SAME tick a trip ended, the gift hook looked every 10 s - with NO FUEL turtles it never found a free drone: a ready
+  gift whose drone is busy calls DW.wantDrone (DW.yielding 30 s: no fuel run / build trip starts), checks again in 2 s,
+  giftWhy "... goes next"; DW.giftRun clears DW.wanted. (2) a rider who got off BY HIMSELF (sneaked off, logged off)
+  kept dr.rider for good - the drone never came home and was never free: parkCheck asks every 30 s (droneCarries /
+  riderGoneNow) and frees it. (3) DW.freeDrone returns nil, why ("Drone 1 Alaory on board" / busy: <mission> / not
+  connected; DW.noDroneWhy) - in giftWhy / giftRun's reason. (4) a gift AT the base stopped when the player stepped
+  out of the detector's 16 blocks: still = near OR V.giftAwayOK. test_dronework + test_voice ("goes next").
   REVIEW (the owner: "go over all the code you added"): voice announce all|summary|errors worked never (an
   earlier branch); a waiting yes / no / menu took EVERY message for 2-3 min as meant for it (now only answers);
   the voice cache dropped files alphabetically, not the oldest; "forget mentions" started "forget me"; hack
@@ -1563,6 +1571,15 @@ dr.hopOK = the hop length that worked (refused -> x0.7, was /2); a teleport's li
 travelTo flies short legs without a rider (12 blocks 242 -> 176) with flyLimit; DW goNear flew everything within
 64 with the 8-s teleport limit (= 24 blocks: stopped, then teleported - 281 ticks for 40 blocks) -> flies only when
 quicker or with too little air for 4 more teleports (canTeleport(dr, 4); a build's many legs), else teleports (121).
+SIMULATION DISTANCE (the owner: "a hop teleport gets me stuck in an unloaded chunk, I see the world unloading and never
+move even on it - teleports to loaded chunks work great"): a teleport is accepted into any LOADED chunk (view distance)
+but the server only RUNS chunks within its simulation distance - a 160-block hop froze the drone + rider there.
+CONFIG.drone.simChunks (SETTINGS > DRONES "Server simulation distance", default 6 = server.properties) -> safeHop() =
+(simChunks - 2) x 16 caps every hop (and knownLoaded's radius = (simChunks - 1) x 16). After each hop droneRuns (a 4-block
+goto up; a frozen drone never gets there) until 3 hops of that length worked (dr.hopTrust); frozen -> waits 20 s (only a
+real move counts - isActionDone is true after an abort), hops x0.6, the rider told in chat (+ SHIFT to get off) +
+WARNING, the mission fails "froze after a hop". drone_sim opt.simR (frozen = no action completes; the rider's area
+counts from before the hop). test_drone_speed.lua.
 **Drones (PneumaticCraft):** teleport costs ~10,000 mL (~0.85 bar) even when it
 fails; flying costs no air. Passenger watch: dr.rider (set after pickup) is checked BEFORE EVERY MOVE
 (riderGoneNow in droneMoveTo) and every 2 s while moving (riderLeft): logged off (not in

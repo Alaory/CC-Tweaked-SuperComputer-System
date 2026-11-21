@@ -728,7 +728,7 @@ function flyLimit(dr, dist) return dist / droneSpeed(dr) / 20 * 1.5 + 3 end
 
 
 function knownLoaded(x, z, r)
-r = r or CONFIG.drone.loadedRange or 128
+r = r or math.min(CONFIG.drone.loadedRange or 128, (simChunks() - 1) * 16)
 local h = CONFIG.drone.home
 if h and tonumber(h.x) and math.abs(x - h.x) <= r and math.abs(z - h.z) <= r then return "the base" end
 for _, e in ipairs(state.players or {}) do
@@ -745,9 +745,23 @@ end
 
 
 
+
+
+
+
+function simChunks() return math.max(3, math.floor(tonumber(CONFIG.drone.simChunks) or 6)) end
+function safeHop() return math.max(32, (simChunks() - 2) * 16) end
+
+
+local function droneRuns(dr, x, y, z)
+return (droneMoveTo(dr, "pneumaticcraft:goto", x, y + 4, z, 4))
+end
+
+
+
 local function hopTowards(dr, x, z, track)
-local L, hy = dr.hopOK or CONFIG.drone.hopLength or 160, CONFIG.drone.hopY or 200
-local minL = 48
+local L, hy = math.min(dr.hopOK or CONFIG.drone.hopLength or 160, safeHop()), CONFIG.drone.hopY or 200
+local minL = math.min(48, safeHop())
 local logged = false
 dr.flyNote = nil
 for _ = 1, 400 do
@@ -775,7 +789,42 @@ local err, retry
 if canTeleport(dr, 2) then
 ok, err = droneMoveTo(dr, "pneumaticcraft:teleport", hx, hy, hz, CONFIG.drone.travelTimeout)
 if not ok and err ~= "did not get there" then return false, err end
-if ok then dr.hopOK = L end
+if ok then
+dr.hopOK = L
+
+
+local trusted = dr.hopTrust and dr.hopTrust.L == L and dr.hopTrust.n >= 3
+local runs = trusted or droneRuns(dr, hx, hy, hz)
+if runs and not trusted then
+if not (dr.hopTrust and dr.hopTrust.L == L) then dr.hopTrust = { L = L, n = 0 } end
+dr.hopTrust.n = dr.hopTrust.n + 1
+end
+if not runs then
+dr.hopTrust = nil
+droneLog(dr, "The drone may have FROZEN after a " .. L .. "-block hop (a chunk the server does not run) - " ..
+"waiting for it")
+local woke = false
+local t0 = os.clock()
+while os.clock() - t0 < 20 and not woke do
+waitFor(1, "drone_abort")
+if dr.abort then return false, "stopped" end
+
+woke = droneRuns(dr, hx, hy, hz)
+end
+L = math.max(32, math.floor(L * 0.6))
+dr.hopOK = L
+if not woke then
+local msg = "The drone froze in a chunk the server does not run (beyond its simulation distance) - " ..
+"hops are " .. L .. " blocks from now on (set drone.simChunks to the server's " ..
+"simulation-distance). It goes on when the chunk runs again."
+droneLog(dr, msg)
+if dr.rider then pcall(chatTell, dr.rider, "The drone is stuck: " .. msg .. " Press SHIFT to get off if it does not.") end
+if pushNote then pcall(pushNote, "WARNING", "Drone frozen: " .. msg, C and C.warn) end
+return false, "the drone froze after a hop (simulation distance)"
+end
+droneLog(dr, "It runs again - shorter hops from now on: " .. L .. " blocks")
+end
+end
 
 if not ok and L > minL then
 L = math.max(minL, math.floor(L * 0.7))
@@ -1453,6 +1502,19 @@ if not x then x, y, z = homePos(dr) tol = 4 end
 
 
 local carrying = dr.rider and not dr.failedAt
+
+
+
+
+if carrying and os.clock() - (dr.riderAsk or -999) >= 30 then
+dr.riderAsk = os.clock()
+local gone
+if dr.rider == "passenger" then gone = droneCarries(dr, nil) == false else gone = riderGoneNow(dr) end
+if gone then
+droneLog(dr, "Nobody on board any more (" .. tostring(dr.rider) .. " got off) - free again")
+dr.rider, carrying = nil, false
+end
+end
 if carrying then
 dr.awaySince = nil
 elseif dr.conn and x and dr.pos and dr.pos.x then

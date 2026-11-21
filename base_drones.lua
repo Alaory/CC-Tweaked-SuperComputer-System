@@ -728,7 +728,7 @@ function flyLimit(dr, dist) return dist / droneSpeed(dr) / 20 * 1.5 + 3 end
 -- an area the base KNOWS is loaded (a teleport there can work): the base itself, a player there (the Player
 -- Detector), an online turtle (its Chunky). nil = nothing known - a straight teleport would most likely be refused.
 function knownLoaded(x, z, r)
-  r = r or CONFIG.drone.loadedRange or 128
+  r = r or math.min(CONFIG.drone.loadedRange or 128, (simChunks() - 1) * 16)
   local h = CONFIG.drone.home
   if h and tonumber(h.x) and math.abs(x - h.x) <= r and math.abs(z - h.z) <= r then return "the base" end
   for _, e in ipairs(state.players or {}) do
@@ -743,11 +743,25 @@ function knownLoaded(x, z, r)
   return nil
 end
 
+-- SIMULATION DISTANCE (the owner: "when a drone hop-teleports I get stuck in an unloaded chunk and see the world
+-- unloading, I never move even when I am on it - teleports to loaded chunks work great"): PneumaticCraft accepts a
+-- teleport into any LOADED chunk (level.isLoaded - the VIEW distance), but the server only RUNS (entity-ticks) chunks
+-- within its SIMULATION distance of a player - smaller. A 160-block hop landed in a chunk that is loaded but not run:
+-- the drone froze there with its rider. Hops stay inside the simulation distance: CONFIG.drone.simChunks (the
+-- server's simulation-distance, server.properties; default 6 - vanilla 10) -> hop <= (simChunks - 2) x 16 blocks.
+function simChunks() return math.max(3, math.floor(tonumber(CONFIG.drone.simChunks) or 6)) end
+function safeHop() return math.max(32, (simChunks() - 2) * 16) end
+-- after a hop: is the drone still RUNNING there? A 4-block flight up (~27 ticks; "there" = within 2.5, so a frozen
+-- drone can never pass it where it stands) - a frozen one does nothing. Returns true / false.
+local function droneRuns(dr, x, y, z)
+  return (droneMoveTo(dr, "pneumaticcraft:goto", x, y + 4, z, 4))
+end
+
 -- far + not loaded: teleport in hops high above the terrain until close. The hop length that worked last is
--- remembered (dr.hopOK) - it depends on the server's view distance; a refused hop -> 70 % (was: half)
+-- remembered (dr.hopOK); a refused hop -> 70 % (was: half); never longer than safeHop()
 local function hopTowards(dr, x, z, track)
-  local L, hy = dr.hopOK or CONFIG.drone.hopLength or 160, CONFIG.drone.hopY or 200
-  local minL = 48
+  local L, hy = math.min(dr.hopOK or CONFIG.drone.hopLength or 160, safeHop()), CONFIG.drone.hopY or 200
+  local minL = math.min(48, safeHop())
   local logged = false
   dr.flyNote = nil
   for _ = 1, 400 do
@@ -775,7 +789,42 @@ local function hopTowards(dr, x, z, track)
     if canTeleport(dr, 2) then
       ok, err = droneMoveTo(dr, "pneumaticcraft:teleport", hx, hy, hz, CONFIG.drone.travelTimeout)
       if not ok and err ~= "did not get there" then return false, err end   -- stopped / got off / gone
-      if ok then dr.hopOK = L end
+      if ok then
+        dr.hopOK = L
+        -- still running there? (a chunk the server loads but does not run = frozen, the rider with it). Checked
+        -- until 3 hops of this length passed (27 ticks each) - then the length is trusted (dr.hopTrust)
+        local trusted = dr.hopTrust and dr.hopTrust.L == L and dr.hopTrust.n >= 3
+        local runs = trusted or droneRuns(dr, hx, hy, hz)
+        if runs and not trusted then
+          if not (dr.hopTrust and dr.hopTrust.L == L) then dr.hopTrust = { L = L, n = 0 } end
+          dr.hopTrust.n = dr.hopTrust.n + 1
+        end
+        if not runs then
+          dr.hopTrust = nil
+          droneLog(dr, "The drone may have FROZEN after a " .. L .. "-block hop (a chunk the server does not run) - " ..
+                       "waiting for it")
+          local woke = false
+          local t0 = os.clock()
+          while os.clock() - t0 < 20 and not woke do
+            waitFor(1, "drone_abort")
+            if dr.abort then return false, "stopped" end
+            -- (only a real move counts: a stopped action reports "done" too - a frozen drone looked awake)
+            woke = droneRuns(dr, hx, hy, hz)
+          end
+          L = math.max(32, math.floor(L * 0.6))
+          dr.hopOK = L
+          if not woke then
+            local msg = "The drone froze in a chunk the server does not run (beyond its simulation distance) - " ..
+                        "hops are " .. L .. " blocks from now on (set drone.simChunks to the server's " ..
+                        "simulation-distance). It goes on when the chunk runs again."
+            droneLog(dr, msg)
+            if dr.rider then pcall(chatTell, dr.rider, "The drone is stuck: " .. msg .. " Press SHIFT to get off if it does not.") end
+            if pushNote then pcall(pushNote, "WARNING", "Drone frozen: " .. msg, C and C.warn) end
+            return false, "the drone froze after a hop (simulation distance)"
+          end
+          droneLog(dr, "It runs again - shorter hops from now on: " .. L .. " blocks")
+        end
+      end
       -- that far ahead is not loaded: try shorter hops before flying
       if not ok and L > minL then
         L = math.max(minL, math.floor(L * 0.7))
@@ -1453,6 +1502,19 @@ function parkCheck()
       -- someone on board ON PURPOSE (PICKUP done, waiting for you to DROP them):
       -- the drone stays where it is. Only after a FAILED mission it comes home.
       local carrying = dr.rider and not dr.failedAt
+      -- (the owner: "gifts via drones get queued and never get sent") a rider who got off BY HIMSELF (sneaked off
+      -- after "could not let you off", logged off) kept dr.rider for good: the drone never came home and was never
+      -- FREE again (DW.freeDrone) - no gifts, no fuel runs, no builds. Asked again every 30 s: nobody on board =
+      -- free (the drone answers; else the rider's position / online state)
+      if carrying and os.clock() - (dr.riderAsk or -999) >= 30 then
+        dr.riderAsk = os.clock()
+        local gone
+        if dr.rider == "passenger" then gone = droneCarries(dr, nil) == false else gone = riderGoneNow(dr) end
+        if gone then
+          droneLog(dr, "Nobody on board any more (" .. tostring(dr.rider) .. " got off) - free again")
+          dr.rider, carrying = nil, false
+        end
+      end
       if carrying then
         dr.awaySince = nil
       elseif dr.conn and x and dr.pos and dr.pos.x then

@@ -7,6 +7,9 @@
 dofile(SRC_DIR .. "/tools/tests/lib/drone_sim.lua")
 local HOME = { x = 0, y = 70, z = 0 }
 state.owner = "Alaory"
+-- (these first checks: a server that RUNS 160+ blocks around players - simulation distance 12; the simulation-distance
+--  checks are at the end)
+setSetting("drone.simChunks", 12)
 local function ride(d)
   return DRONE_SIM.run({ home = HOME, start = { x = 2, y = 70, z = 0 }, loadedR = 160,
     players = { Alaory = { x = 0, y = 70, z = 0 } }, dest = { kind = "coords", x = d, y = 80, z = 0 },
@@ -46,3 +49,32 @@ r = DRONE_SIM.run({ home = HOME, start = { x = 2, y = 70, z = 0 }, loadedR = 100
   players = { Alaory = { x = 0, y = 70, z = 0 } }, dest = { kind = "coords", x = 900, y = 80, z = 0 },
   mission = { kind = "ferry", passenger = "Alaory" } })
 CHECK(r.refused == 0, "the next ride: no refused hop (" .. r.refused .. ")")
+
+resetSetting("drone.simChunks")
+-- SIMULATION DISTANCE (the owner: "when a drone hop-teleports I get stuck in an unloaded chunk, I see the world
+-- unloading, I never move even when I am on it"): a teleport is accepted into any LOADED chunk, but the drone only
+-- RUNS within the server's simulation distance of a player. The model: runs within simR = 96 blocks; the old code
+-- hopped 160 and froze there with its rider for good.
+r = DRONE_SIM.run({ home = HOME, start = { x = 2, y = 70, z = 0 }, loadedR = 160, simR = 96,
+  players = { Alaory = { x = 0, y = 70, z = 0 } }, dest = { kind = "coords", x = 1000, y = 80, z = 0 },
+  mission = { kind = "ferry", passenger = "Alaory" } })
+CHECK(r.state == "done" and r.freezes == 0, "simulation distance 6 chunks: hops stay inside it - the ride gets there, " ..
+      "never frozen (" .. tostring(r.state) .. ", " .. r.freezes .. " freezes, " .. r.ticks .. " ticks)")
+CHECK(dr.hopOK and dr.hopOK <= safeHop(), "hops no longer than the simulation distance allows (" .. tostring(dr.hopOK) ..
+      " <= " .. safeHop() .. ")")
+-- set too high (10 chunks = hops of 128) on a server that runs only 96 blocks: the freeze is NOTICED - the rider is
+-- told, the next hops are shorter (not: silence for minutes, the base retrying into nothing)
+setSetting("drone.simChunks", 10)
+local told = {}
+local ct0 = chatTell
+chatTell = function(n, t) told[#told + 1] = tostring(n) .. ": " .. tostring(t) end
+r = DRONE_SIM.run({ home = HOME, start = { x = 2, y = 70, z = 0 }, loadedR = 160, simR = 96,
+  players = { Alaory = { x = 0, y = 70, z = 0 } }, dest = { kind = "coords", x = 1000, y = 80, z = 0 },
+  mission = { kind = "ferry", passenger = "Alaory" } })
+chatTell = ct0
+resetSetting("drone.simChunks")
+CHECK(r.freezes == 1 and tostring(r.err):find("froze", 1, true), "a hop beyond the simulation distance: the freeze is " ..
+      "noticed (" .. tostring(r.err) .. ")")
+CHECK(table.concat(told, " | "):find("Alaory: The drone is stuck", 1, true), "the rider is told what happened: " ..
+      table.concat(told, " | "))
+CHECK(dr.hopOK and dr.hopOK <= 80, "next time: shorter hops (" .. tostring(dr.hopOK) .. ")")

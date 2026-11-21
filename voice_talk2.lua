@@ -1041,7 +1041,6 @@ add(V.tickHooks, {
     if not (DW and DW.giftRun) then V.giftWhy = "the base program is too old for drone gifts - type  upgrade" return end
     local bad = DW.notReady and DW.notReady()
     if bad then V.giftWhy = bad return end
-    if DW.trip then V.giftWhy = "a drone job is running" return end
     local nowE = os.epoch("utc")
     for i = #q, 1, -1 do if nowE - (q[i].at or 0) > 30 * 86400000 then table.remove(q, i) end end   -- (30 days: dropped)
     local daily, dailyAll = tonumber(V.cfg("giftDaily", 10)) or 10, tonumber(V.cfg("giftDailyAll", 80)) or 80
@@ -1052,8 +1051,28 @@ add(V.tickHooks, {
       if all >= dailyAll then V.giftWhy = "the daily limit for all players (" .. dailyAll .. ") is reached" return end
       local away = not near and V.giftAwayOK(g.who)
       if (near or away) and mine < daily and now >= (g.retryAt or 0) and not blocked(g.who) then
+        -- (a drone job runs / no drone free: the next free drone is kept for this gift - fuel runs started the
+        --  moment a trip ended and the gift never got one; checked again in 2 s)
+        local busyWhy = DW.trip and ("a drone job is running (" .. tostring(DW.trip.title or DW.trip.kind) .. ")")
+        if not busyWhy and DW.freeDrone then
+          local fd, fw = DW.freeDrone()
+          if not fd then busyWhy = "no free drone (" .. tostring(fw or DW.noDroneWhy or "?") .. ")" end
+        end
+        if busyWhy then
+          if DW.wantDrone then DW.wantDrone("gift for " .. g.who) end
+          V.giftWhy = busyWhy .. " - the gift for " .. g.who .. " goes next"
+          V.giftNext = now + 2
+          return
+        end
         local item, n, who = g.item, g.n, g.who
-        local still = function(name) return isNear(name) end
+        -- (at the base: the Environment Detector sees only ~16 blocks - a step out of it stopped the trip; with
+        --  giftAway they may be anywhere online in the overworld)
+        local still = function(name)
+          if isNear(name) then return true end
+          local okA, whyA = V.giftAwayOK(name)
+          if okA then return true end
+          return false, whyA or (tostring(name) .. " left the base")
+        end
         if away then still = function(name) return V.giftAwayOK(name) end end
         local ok, why = DW.giftRun(who, item, n, function(okD, delivered, err)
           V.giftBusy = nil

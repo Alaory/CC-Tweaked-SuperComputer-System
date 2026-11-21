@@ -358,6 +358,47 @@ local okD, whyD = DW.giftRun("Kevin", "minecraft:emerald", 5, nil)
 CHECK(not okD and tostring(whyD):find("another dimension", 1, true), "a player in another dimension gets no drone (" .. tostring(whyD) .. ")")
 CONFIG.drone.slots = 1
 
+-- GIFTS NEVER SENT (the owner: "gifts via drones get queued and never get sent")
+-- 1) fuel runs started the moment a trip ended; a gift that waits keeps the next free drone (DW.wantDrone)
+do
+  local dr3 = world()
+  state.turtles = { [41] = { id = 41, label = "T41", fuel = 0, pos = { x = 30, y = 70, z = 0 }, lastSeen = CLOCK } }
+  local on0 = TT.online
+  TT.online = function() return true end
+  local runs0 = DW.fuelRun
+  local fuelStarts = 0
+  DW.fuelRun = function() fuelStarts = fuelStarts + 1 return true end
+  state.turtles[41].dwLowSince = CLOCK - 100
+  DW.wantDrone("gift for Kevin")
+  DW.fuelTick()
+  CHECK(fuelStarts == 0, "a gift waits for a drone: no fuel run takes it first (" .. fuelStarts .. ")")
+  CLOCK = CLOCK + 31
+  DW.fuelTick()
+  CHECK(fuelStarts == 1, "... 30 s later fuel runs go on (" .. fuelStarts .. ")")
+  DW.fuelRun, TT.online, DW.wanted = runs0, on0, nil
+  state.turtles = {}
+  -- 2) why no drone is free is said (it was only "no free drone")
+  dr3.rider = "Alaory"
+  local fd, fw = DW.freeDrone()
+  CHECK(not fd and tostring(fw):find("Alaory on board", 1, true), "no free drone: says why (" .. tostring(fw) .. ")")
+  -- 3) a rider who got off BY HIMSELF (sneaked off, logged off) is noticed: the drone is free again
+  dr3.failedAt = nil
+  dr3.riderAsk = nil
+  local carries0 = droneCarries
+  droneCarries = function() return false end
+  parkCheck()
+  droneCarries = carries0
+  CHECK(dr3.rider == nil and DW.freeDrone() == dr3, "the rider got off by himself: the drone is free again (rider " ..
+        tostring(dr3.rider) .. ")")
+  -- still on board on purpose: kept
+  dr3.rider, dr3.riderAsk = "Alaory", nil
+  droneCarries = function() return true end
+  parkCheck()
+  droneCarries = carries0
+  CHECK(dr3.rider == "Alaory", "someone really on board: kept")
+  dr3.rider = nil
+end
+
 ------------------------------------------------------------------ dw test (the owner: "how do I test the drone chest")
 dr = world()
 state.owner = "Alaory"
