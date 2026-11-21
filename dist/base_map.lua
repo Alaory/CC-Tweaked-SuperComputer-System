@@ -1869,9 +1869,10 @@ local free = t and TT.online(t) and t.pos and t.pos.x and (t.task == nil or t.ta
 and not (q.excluded and q.excluded[id])
 and not t.rescuerRole and not t.held
 and not TT.factoryRole(t)
+and not TT.copyStays(t)
 local fuel = t and tonumber(t.fuel)
 if free and t.queueAt and os.clock() - t.queueAt < 15 then free = false busy = true end
-if free and fuel and fuel < minFuel then free = false end
+if free and fuel and fuel < TT.surveyFuelNeed(t) then free = false end
 local refused = t and t.surveyFail and os.clock() - t.surveyFail.at < 120
 if free and refused then free = false end
 
@@ -1886,7 +1887,7 @@ if not TT.online(t) then w = "offline"
 elseif not (t.pos and t.pos.x) then w = "position unknown"
 elseif t.task and t.task ~= "idle" then w = "busy"
 elseif t.held or (q.excluded and q.excluded[id]) then w = "STOPPED - give it a command first"
-elseif fuel and fuel < minFuel then w = "fuel " .. fuel .. " (needs " .. minFuel .. ")"
+elseif fuel and fuel < TT.surveyFuelNeed(t) then w = "fuel " .. fuel .. " (needs " .. TT.surveyFuelNeed(t) .. ": the way home + a batch)"
 elseif t.anchor then w = "anchor" elseif t.rescuerRole then w = "rescuer"
 elseif TT.factoryRole(t) then w = "factory " .. TT.factoryRole(t)
 elseif refused then w = "refused its spots: " .. t.surveyFail.msg end

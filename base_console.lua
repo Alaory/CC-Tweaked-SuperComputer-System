@@ -28,6 +28,9 @@ HELP = {
   " turtle <id> log [n]  the turtle's last n log lines in full",
   " turtle <id> diag     its disk, files, saved job and gear (answer in its log)",
   " survey               the big survey: progress, what each turtle is waiting for",
+  " survey stats         scans an hour + where the turtles' time goes (surveying, trips, stuck ...)",
+  " lost                 every offline turtle: copy? fuel for the way home? last task, spot, log",
+  " turtle <id> newchunky   a COPY with a NEW Chunky upgrade on it may move again",
   " voice [install]      the base talks (an optional add-on on a data floppy + a Speaker)",
   " survey auto [on|off] auto-map: turtles keep surveying from the base outward",
   " theme [name|random]  the monitor's colours (random = a different one each start)",
@@ -1181,6 +1184,12 @@ function handleCommand(line)
         " - surveyed around the base: " .. math.floor(MAP.autoRadius()) .. " blocks")
     say("survey auto on | off")
 
+  elseif cmd == "survey" and words[2] == "stats" then
+    for _, l in ipairs(TT.statLines(tonumber(words[3]) or 12)) do say(l) end
+
+  elseif cmd == "lost" then
+    for _, l in ipairs(TT.lostLines()) do say(l) end
+
   elseif cmd == "survey" then
     -- the big survey: progress and what the base sees for every turtle
     local q = MAP.queue
@@ -1250,6 +1259,21 @@ function handleCommand(line)
         local label = t.label
         TT.forget(t.id)
         say(label .. " forgotten: off the list, its survey spots go to the other turtles.")
+      end
+    elseif tc == "newchunky" then
+      -- a COPY with a NEW Chunky upgrade on it (its own chunk loading): it may move again
+      if not TT.isCopy(t) then
+        say(t.label .. " is not a copy - its Chunky is its own already.")
+      elseif words[4] == "off" then
+        t.ownChunky = nil
+        TT.listDirty = true
+        say(t.label .. ": a copy again - it stays put (its Chunky shares turtle " .. TT.realId(t.id) .. "'s chunk loading).")
+      else
+        t.ownChunky = true
+        TT.listDirty = true
+        say(t.label .. " has its OWN Chunky now: it gets surveys and trips again.")
+        say("Only if you really put a NEW Chunky upgrade on it (a fresh one from crafting / AE2) - the old one")
+        say("shares turtle " .. TT.realId(t.id) .. "'s chunk loading: moving it unloads the other one.")
       end
     elseif tc == "log" then
       -- the turtle's log in full (the monitor cuts long lines), oldest first

@@ -254,6 +254,36 @@ PneumaticCraft drone rides, turtle mapping/surveys, and an AE2 ME network view.
   to % 100000; handle uses m.from as the sender). LOADER copies are always parked (one
   loader per dimension; opt.canUse). A promoted miner joins a team when no plan runs
   (the next NEW FIELD). test_dups.lua, node_dup.lua, miner_dup.lua.
+- SURVEY REBUILD, PHASE 1 (the owner: "3 days and only ~1000 chunks", "lanes behind each other", "the amount of
+  lost turtles", "copy turtles may stop loading chunks"; 47 of 73 offline, survey edge ~2,346 blocks out).
+  COPIES STAY PUT - from Advanced Peripherals' source (dev/1.21.1 ChunkyPeripheral + ChunkManager): a Chunky's loaded
+  chunk is kept under a UUID stored IN the upgrade (CHUNKY_ID), ONE loaded spot per UUID; a copy carries its twin's
+  upgrade data = the same UUID - when one of the pair moves into a new chunk the other's chunk is unloaded (frozen,
+  offline). TT.isCopy / TT.copyStays(t) (id >= 100000 and not t.ownChunky): not in TT.available / feedSurvey / party /
+  lostList / problemOf (no rescue), never sent home / for fuel (homeTick), a copy on a base trip (TT.COPY_MOVES words
+  in its task) gets STOP (no hold, 10 min apart); your DRIVE is left alone; idleWhy says so. `turtle <id> newchunky
+  [off]` = a NEW Chunky on it (a fresh upgrade has no UUID yet) -> t.ownChunky (turtles.dat) -> works again.
+  test_copies_stay.lua. FUEL FOR THE WAY HOME: spots were given down to 500 fuel and a turtle sent home below 2000 -
+  the way home from the edge costs ~3,000: every edge turtle ran dry on its way home. node homeFuel() (sky highway
+  up + across + down, x1.15 + 300; m.homeFuel -> t.homeFuel): surveyPoints stops before a spot when fuel < way home
+  from there + the hop + 60 (endless: topUp first) "fuel ... is only enough for the way home"; idleEmptyFuel burns
+  what it carries (a drone's delivery) when fuel < homeFuel, up to it + 500. Base TT.homeCost / TT.surveyFuelNeed
+  (way home + CONFIG.map.batchFuel 800; endless = surveyMinFuel) in feedSurvey + idleWhy; homeTick: fuel <
+  surveyFuelNeed = low (home while it can); fuel < homeCost (cannot make it) = t.fuelShort: NOT sent home, stays
+  (its chunk stays loaded), problemOf "fuel" after 2 min idle (rescuer), DW.fuelTick also for fuelShort.
+  "Cannot make it" uses the BARE way (TT.homeCost(t, true): no margin - 500 fuel 100 blocks out still goes to the
+  fuel chest); the margin decides when to stop taking spots. NODE SIZE: the shrunk node.lua must stay < 120000
+  (test_map_load; a floppy holds 125000 with the installer) - Phase 1 left 119980: Phase 2 must make room first.
+  test_fuel_home.lua, tools/tests/node_fuelhome.lua. MEASURED: TT.statAdd in TT.receive (time since the last report
+  -> the kind of the PREVIOUS task: survey / sky / way (finding a way) / home / fuel / idle / other; a gap >
+  offlineAfter = offline), scans counted -> `survey stats` (scans an hour, the fleet's time split, per turtle);
+  `lost` (TT.lostLines: every offline turtle - copy / fuel < way home / missing / at the base / unknown, silent
+  since, last task, fuel (saved in turtles.dat now), spot + distance, last log line). test_survey_stats.lua.
+  NEXT PHASES (planned with the owner): 2 = survey movement in the AIR (up and over, no ground walking / retracing;
+  scan from a hover height), chaos-terrain navsim scenarios old vs new; 3 = the edge split into ARCS per turtle
+  (no lanes), bigger batches, measured in the travel model; 4 = drone fuel to edge turtles, rescue order, idle
+  turtles parked; 5 = STORAGE: use the disk space CC:Tweaked gives each computer / turtle (the owner's words:
+  "make use of the given storage of cc tweaked").
 - node.lua never just ends: the main parallel.waitForAny is in a pcall; an
   error is written to `node_crash`, the turtle reboots (5 s, longer when it
   keeps crashing) and tells the base ("restarted after an ERROR: ..." in the

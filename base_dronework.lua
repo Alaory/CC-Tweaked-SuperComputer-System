@@ -281,7 +281,7 @@ function DW.fuelTick()
   for id, r in pairs(DW.runs) do
     local t = state.turtles[id]
     if r.state == "delivered" and t then
-      if (tonumber(t.fuel) or 0) >= 20 then
+      if (tonumber(t.fuel) or 0) >= 20 and not t.fuelShort then
         DW.runs[id] = nil
         t.dwTries = nil
         TT.log(t, "Fuel from the drone burned - " .. tostring(t.fuel) .. " fuel")
@@ -297,7 +297,7 @@ function DW.fuelTick()
   if not DW.autoOn() or DW.trip or DW.notReady() then return end
   for _, t in pairs(state.turtles) do
     local fuel = tonumber(t.fuel)
-    if TT.online(t) and fuel and fuel < 20 and not t.missing and not t.dups and t.pos and t.pos.x then
+    if TT.online(t) and fuel and (fuel < 20 or t.fuelShort) and not t.missing and not t.dups and t.pos and t.pos.x then
       t.dwLowSince = t.dwLowSince or now()
       if now() - t.dwLowSince > 30 and not DW.runs[t.id] and (t.dwTries or 0) < 3
          and now() - (t.dwTryAt or -9999) > 600 and DW.freeDrone() then

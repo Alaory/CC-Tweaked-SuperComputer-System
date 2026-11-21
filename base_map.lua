@@ -1869,9 +1869,10 @@ function MAP.feedSurvey()
                  and not (q.excluded and q.excluded[id])      -- stopped by the owner
                  and not t.rescuerRole and not t.held         -- the rescuer stays free; STOPPED stays stopped
                  and not TT.factoryRole(t)                    -- the factory builder / crafter stays at the factory
+                 and not TT.copyStays(t)                      -- a copy: moving it unloads its twin's chunk
     local fuel = t and tonumber(t.fuel)
     if free and t.queueAt and os.clock() - t.queueAt < 15 then free = false busy = true end
-    if free and fuel and fuel < minFuel then free = false end
+    if free and fuel and fuel < TT.surveyFuelNeed(t) then free = false end   -- (the way home + a batch)
     local refused = t and t.surveyFail and os.clock() - t.surveyFail.at < 120
     if free and refused then free = false end
     -- still holding a batch (idle without its result yet): not free - after 30 s
@@ -1886,7 +1887,7 @@ function MAP.feedSurvey()
       elseif not (t.pos and t.pos.x) then w = "position unknown"
       elseif t.task and t.task ~= "idle" then w = "busy"
       elseif t.held or (q.excluded and q.excluded[id]) then w = "STOPPED - give it a command first"
-      elseif fuel and fuel < minFuel then w = "fuel " .. fuel .. " (needs " .. minFuel .. ")"
+      elseif fuel and fuel < TT.surveyFuelNeed(t) then w = "fuel " .. fuel .. " (needs " .. TT.surveyFuelNeed(t) .. ": the way home + a batch)"
       elseif t.anchor then w = "anchor" elseif t.rescuerRole then w = "rescuer"
       elseif TT.factoryRole(t) then w = "factory " .. TT.factoryRole(t)
       elseif refused then w = "refused its spots: " .. t.surveyFail.msg end

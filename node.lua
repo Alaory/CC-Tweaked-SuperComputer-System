@@ -429,6 +429,7 @@ function send(t, extra)
   m.fuelMax = (fuel ~= "unlimited") and turtle.getFuelLimit() or nil
   m.items = itemCount()
   m.freeSlots = freeSlots and freeSlots() or nil
+  m.homeFuel = homeFuel and homeFuel() or nil      -- (fuel for the way home from here: the base deals spots with it)
   m.task = task
   if S.pos and S.pos.x then
     m.pos = { x = S.pos.x, y = S.pos.y, z = S.pos.z, f = S.pos.f and FNAME[S.pos.f] or nil }
@@ -683,6 +684,17 @@ function sidestep(f)
   return false
 end
 
+-- FUEL FOR THE WAY HOME (the owner: turtles lost far out; the survey edge is ~2,400 blocks from the base): the
+-- base gave spots down to 500 fuel and sent a turtle home only below 2000 - the way home costs more (up to the
+-- sky highway, across, down), so every turtle at the edge ran dry on its way home. homeFuel = that way + 15 %
+-- + 300; a survey stops while the turtle can still get home.
+function homeFuel()
+  local h, p = S.home, S.pos
+  if not (h and h.x and p and p.x) then return 0 end
+  local d = math.abs(p.x - h.x) + math.abs(p.z - h.z)
+  if d <= CONFIG.skyMinDist then return d + math.abs(p.y - h.y) end
+  return math.floor((d + math.max(0, CONFIG.skyY - p.y) + math.max(0, CONFIG.skyY - h.y)) * 1.15) + 300
+end
 function noFuel()
   ensureFuel()
   local f = turtle.getFuelLevel()
@@ -887,7 +899,7 @@ function gpsRaw(timeout)
                         or math.abs(z - round(z)) > 0.15) then
     gpsWarned = true
     send("result", { cmd = "gps", ok = false, msg = string.format(
-      "GPS gives uneven numbers (%.2f %.2f %.2f) - check the coordinates in the gps host computers' startup", x, y, z) })
+      "GPS gives uneven numbers (%.2f %.2f %.2f) - check the gps hosts' coordinates", x, y, z) })
   end
   return round(x), round(y), round(z)
 end
@@ -1935,8 +1947,7 @@ function coreCheck()
   send("result", { cmd = "core", ok = true, msg = "End Automata Core (" .. (carried and "carried" or "equipped") ..
                    ") functions: " .. table.concat(S.coreMethods or { "?" }, ", ") })
   if carried and keeps == false then
-    send("result", { cmd = "core", ok = false, msg = "the carried End Automata Core forgets its warp points when it " ..
-                     "is taken off - it cannot warp while carried (the Chunky upgrade always stays on)" })
+    send("result", { cmd = "core", ok = false, msg = "a carried Automata Core forgets its points when taken off - cannot warp carried" })
   elseif carried and keeps then
     send("result", { cmd = "core", ok = true, msg = "the carried End Automata Core keeps its warp points - it is " ..
                      "swapped in for every warp" })
@@ -1956,7 +1967,7 @@ function withCore(fn)
   slot = coreSlot() or slot
   local sel = turtle.getSelectedSlot()
   turtle.select(slot)
-  if not equipOn(modem) then turtle.select(sel) SLOT_LOCK = false return false, "could not equip the End Automata Core" end
+  if not equipOn(modem) then turtle.select(sel) SLOT_LOCK = false return false, "could not equip the Automata Core" end
   modemAttached = false
   for _ = 1, 10 do if warpCore() then break end sleep(0.1) end
   local res = { pcall(fn) }
@@ -1984,7 +1995,7 @@ end
 function warpSave(name)
   if not (S.pos and S.pos.x) then return false, "position unknown" end
   if not hasCore() then return false, "no End Automata Core" end
-  if not canWarp() then return false, "the carried End Automata Core forgets its points - it cannot warp (the Chunky stays on)" end
+  if not canWarp() then return false, "a carried Automata Core forgets its points - cannot warp" end
   return withCore(function() return warpSaveNow(name) end)
 end
 function warpSaveNow(name)
@@ -2279,6 +2290,15 @@ surveyPoints = function(points, r)
     end
     if f ~= "unlimited" and f < CONFIG.minFuel then
       return false, "low fuel (" .. f .. ") after " .. (i - 1) .. " of " .. #points .. " scans"
+    end
+    -- this spot and the way home from it must fit in the tank: else stop NOW, while it can still get home
+    local need = homeFuel() + math.abs(p[1] - S.pos.x) + math.abs(p[2] - S.pos.z) + 60
+    if f ~= "unlimited" and f < need and S.reuse and next(S.reuse) then
+      topUp(math.min(refuelTarget(), need + 2000), true)
+      f = turtle.getFuelLevel()
+    end
+    if f ~= "unlimited" and f < need then
+      return false, "fuel " .. f .. " only for the way home (" .. need .. ") after " .. (i - 1) .. "/" .. #points .. " scans"
     end
     task = "survey " .. i .. "/" .. #points
     send("status")
@@ -2748,7 +2768,7 @@ function learnRecipe()
   turtle.select(16)
   local ok, err = turtle.craft(1)
   turtle.select(1)
-  if not ok then return false, "these items in this layout make nothing" .. (err and (" (" .. tostring(err) .. ")") or "") end
+  if not ok then return false, "this layout makes nothing" .. (err and (" (" .. tostring(err) .. ")") or "") end
   local out = turtle.getItemDetail(16)
   if not out then
     for i = 1, 16 do
@@ -2912,8 +2932,8 @@ function build()
   turtle.select(1)
   local okId, newId = pcall(peripheral.call, "front", "getID")
   -- my Disk Drive above it, with the install floppy
-  if not up() then return false, "could not go up to place the Disk Drive (new turtle " .. tostring(newId) .. " is placed)" end
-  if turtle.detect() then down() return false, "the block above the new turtle is not free (it is placed, not started)" end
+  if not up() then return false, "cannot go up to place the drive (turtle " .. tostring(newId) .. " placed)" end
+  if turtle.detect() then down() return false, "the block above the new turtle is taken (placed, not started)" end
   turtle.select(slotOf(isDrive))
   if not turtle.place() then turtle.select(1) down() return false, "could not place the Disk Drive" end
   turtle.select(slotOf(isFloppy))
@@ -3597,9 +3617,18 @@ end
 EMPTY_TRY = nil
 function idleEmptyFuel()
   local f = turtle.getFuelLevel()
-  if f == "unlimited" or f >= 20 or job or SLOT_LOCK then return false end
+  if f == "unlimited" or job or SLOT_LOCK then return false end
+  -- too little to get home from here (far out): burn what it carries too (fuel a drone brought) - up to the
+  -- way home + 500, once a minute
+  local hf = homeFuel and homeFuel() or 0
+  if f >= 20 and f >= hf then return false end
   if EMPTY_TRY and os.clock() - EMPTY_TRY < 60 then return false end
   EMPTY_TRY = os.clock()
+  if f >= 20 then
+    pcall(topUp, math.min(refuelTarget(), hf + 500), false, 2000)
+    save()
+    return turtle.getFuelLevel() > f
+  end
   pcall(doRefuel, true)
   save()
   local now = turtle.getFuelLevel()
@@ -3824,7 +3853,7 @@ function worker()
       if not job and (not JUNK_TRY or os.clock() - JUNK_TRY > 60) and freeSlots() == 0 then
         JUNK_TRY = os.clock()
         local nJ = dropJunk()
-        if nJ > 0 then send("result", { cmd = "junk", ok = true, msg = "inventory was full - threw away " .. nJ .. " dug blocks (stone, dirt ...)" }) end
+        if nJ > 0 then send("result", { cmd = "junk", ok = true, msg = "inventory full - threw away " .. nJ .. " dug blocks" }) end
       end
       -- idle: fill up with reusable fuel, a little at a time (stays responsive)
       local f = turtle.getFuelLevel()
