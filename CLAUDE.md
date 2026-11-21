@@ -1450,6 +1450,12 @@ PneumaticCraft drone rides, turtle mapping/surveys, and an AE2 ME network view.
   (voiceRepair first); voiceUpdate / installAddon load with remoteOK; removeAddon deletes the helper copy. A quiet
   helper -> "the storage helper with <file> did not answer". The floppy path is unchanged (speech cache stays there).
   test_voice part 33 (fake helper, every floppy full).
+  MEMORY SAVED EVEN WITH FULL FLOPPIES (the owner: "what players said about me never gets deleted after I listen to
+  them"): READ = GONE worked in memory, but voice_memory.dat lives on a data floppy (dataFile) and the floppies were
+  full - saveMem failed silently and every restart read the OLD file back (mentions, waiting gifts, forget me ...).
+  VOICE.saveMem: m["#saved"] = epoch; the floppy, else the computer (VOICE.MEM_HERE "voice_memory.dat"), else ONE
+  WARNING (sysLog + note, VOICE.memSaveErr); a floppy save that works again deletes the computer's copy. VOICE.mem()
+  reads both and takes the NEWEST "#saved" (a tie: the computer's copy). test_voice part 33.
 - REMOVED AGAIN: remote access in a web browser (Cloud Catcher; base_remote.lua / remote.lua / pocket.lua
   in local mode on the base) - the owner: "taking space and seems useless". removeOldFiles (base_theme.lua,
   run by inventory.lua at start) deletes its files (remote.lua, base_remote.lua, cloud.lua on the computer

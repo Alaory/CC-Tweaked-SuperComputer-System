@@ -1053,15 +1053,44 @@ end
 
 -- what it remembers about people (on the data floppy): first seen, last seen, visits
 function VOICE.memPath() return dataFile and dataFile("voice_memory.dat") or "voice_memory.dat" end
+VOICE.MEM_HERE = "voice_memory.dat"          -- (the computer's copy: only when no data floppy had room)
 function VOICE.mem()
   if not VOICE.memory then
-    local t = readSafe and readSafe(VOICE.memPath())
-    VOICE.memory = type(t) == "table" and t or {}
+    -- the NEWEST copy ("#saved"): the floppy one, or the computer's one written when the floppies were full
+    local best
+    for _, p in ipairs({ VOICE.memPath(), VOICE.MEM_HERE }) do
+      local t = readSafe and readSafe(p)
+      -- (a tie: the computer's copy - it only exists when the floppy save failed)
+      if type(t) == "table" and (not best or (tonumber(t["#saved"]) or 0) >= (tonumber(best["#saved"]) or 0)) then best = t end
+    end
+    VOICE.memory = best or {}
   end
   return VOICE.memory
 end
+-- (the owner: "what players said about me never gets deleted after I listen to it" - READ = GONE worked in memory,
+--  but the data floppies were full: the save failed without a word and every restart read the OLD file back, with
+--  every mention, every waiting gift and every "forget me" undone. Now: the floppy, else the computer, else ONE
+--  warning in the SYSTEM log; mem() reads the newest of the two.)
 function VOICE.saveMem()
-  if saveFileSafe and VOICE.memory then pcall(saveFileSafe, VOICE.memPath(), serialSmall and serialSmall(VOICE.memory) or textutils.serialize(VOICE.memory)) end
+  if not (saveFileSafe and VOICE.memory) then return false end
+  VOICE.memory["#saved"] = os.epoch("utc")
+  local text = serialSmall and serialSmall(VOICE.memory) or textutils.serialize(VOICE.memory)
+  local p = VOICE.memPath()
+  local okS, ok = pcall(saveFileSafe, p, text)
+  if not (okS and ok) and p ~= VOICE.MEM_HERE then okS, ok = pcall(saveFileSafe, VOICE.MEM_HERE, text) p = VOICE.MEM_HERE end
+  if okS and ok then
+    if p ~= VOICE.MEM_HERE and fs.exists(VOICE.MEM_HERE) then pcall(fs.delete, VOICE.MEM_HERE) end   -- (the floppy has it again)
+    VOICE.memSaveErr = nil
+    return true
+  end
+  if not VOICE.memSaveErr then
+    VOICE.memSaveErr = true
+    local msg = "The talking base could not save its memory (voice_memory.dat, " .. math.ceil(#text / 1024) ..
+                " KB): no room on the data floppies or the computer. Type  disks  to see the room."
+    if sysLog then pcall(sysLog, msg, "WARNING") end
+    if pushNote then pcall(pushNote, "WARNING", msg, C and C.warn) end
+  end
+  return false
 end
 
 -- ===== games and other interactions =====

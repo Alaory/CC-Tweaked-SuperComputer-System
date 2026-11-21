@@ -2283,6 +2283,36 @@ end)()
   local src = io.open(SRC_DIR .. "/base_console.lua"):read("a")
   CHECK(src:find("VOICE_FLAG", 1, true), "upgrade leaves the flag for the new program")
   CHECK(io.open(SRC_DIR .. "/base_workers.lua"):read("a"):find("pcall(voiceRepair)", 1, true), "the add-on worker runs voiceRepair at start")
+  -- READ = GONE ALSO AFTER A RESTART (the owner: "what players said about me never gets deleted after I listen to them"):
+  -- the floppies were full, the save failed silently, every restart read the old file back
+  do
+    local b = VOICE.base()
+    b.talk = { { who = "Steve", text = "Alaory has a cool base", at = os.epoch("utc") - 5000 },
+               { who = "Alex", text = "where is Alaory", at = os.epoch("utc") - 4000 } }
+    VOICE.saveMem()
+    b.pad = string.rep("x", 30000)                     -- (a big memory: no floppy has room for a new copy)
+    local fill = {}
+    for _, d in ipairs(mountedDisks()) do
+      local fp = fs.combine(d.mount, "filler2.dat")
+      put(fp, "") put(fp, string.rep("m", math.max(0, fs.getFreeSpace(d.mount) - 200)))
+      fill[#fill + 1] = fp
+    end
+    if dataPathReset then dataPathReset() end
+    VOICE.games, VOICE.pend = {}, {}
+    local heardTxt = tostring(VOICE.converse(owner, "what did people say about me", true))
+    CHECK(heardTxt:find("mentioned you", 1, true) and #(VOICE.base().talk or {}) == 0, "the owner hears them: read = gone (" .. heardTxt .. ")")
+    VOICE.memory = nil                                 -- (a restart: read from the files again)
+    CHECK(#(VOICE.base().talk or {}) == 0, "after a restart they are STILL gone (the floppies were full: saved on the computer)")
+    CHECK(fs.exists(VOICE.MEM_HERE), "... the computer's copy holds it")
+    -- the floppy has room again: saved there, the computer's copy goes
+    for _, fp in ipairs(fill) do fs.delete(fp) end
+    VOICE.base().pad = nil
+    if dataPathReset then dataPathReset() end
+    VOICE.saveMem()
+    CHECK(not fs.exists(VOICE.MEM_HERE), "room on a floppy again: saved there, the computer's copy removed")
+    VOICE.memory = nil
+    CHECK(#(VOICE.base().talk or {}) == 0, "... still gone")
+  end
   -- VOICE FILES ON A STORAGE HELPER (the owner's screen: "Voice add-on not installed: no DATA floppy with room (123 KB)"
   -- even after  disks data  - the add-on is ~120 KB of a 125 KB floppy): a helper with room takes it, the floppy copy goes
   do
