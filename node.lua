@@ -34,6 +34,7 @@ local CONFIG = {
   -- long trips use the SKY HIGHWAY: up to skyY, across, down at the target
   skyY      = 150,
   skyMinDist = 48,           -- trips longer than this (blocks, sideways) use it
+  hopMax    = 256,           -- survey: spots up to this far are reached by an AIR HOP (hopTo), not the sky highway
   exitNear  = 24,            -- this close to the exit route's inside end = "inside the base"
   noProgress = 60,           -- moves without getting closer = going in circles: change strategy
   deadLife  = 3 * 3600000,   -- a remembered dead end is avoided this long (ms)
@@ -1785,6 +1786,25 @@ function moveToXZ(tx, tz)
   return false, "could not reach " .. tx .. " " .. tz .. " (at " .. fmt() .. ")"
 end
 
+-- AIR HOP for survey spots skyMinDist .. hopMax apart (tools/navsim/surveysim.lua, chaos terrain: spots 60
+-- apart took ~106 s each - every trip over skyMinDist went up to the sky highway at Y 150 and back down; with the
+-- hop ~40 s): straight on from here, UP and OVER whatever is in the way - no digging, no old path; blocked above
+-- too (a roof) or at the sky highway: the old way from there (moveToXZ). Spots closer than skyMinDist keep
+-- moveToXZ: measured faster there (it steps AROUND a tree trunk instead of over a 30-block modded tree).
+function hopTo(tx, tz)
+  task = "survey hop to " .. tx .. " " .. tz
+  for _, ax in ipairs({ "x", "z" }) do
+    local t = ax == "x" and tx or tz
+    while S.pos[ax] ~= t do
+      if stopFlag then return false, "stopped at " .. fmt() end
+      if noFuel() then return false, "out of fuel at " .. fmt() end
+      face(ax == "x" and (t > S.pos.x and 3 or 1) or (t > S.pos.z and 0 or 2))
+      if not fwd() and (S.pos.y >= CONFIG.skyY or not up()) then return moveToXZ(tx, tz) end
+    end
+  end
+  return true
+end
+
 -- the last part of a trip: sideways at about this height, then up/down
 function gotoLocal(tx, ty, tz)
   for attempt = 1, CONFIG.pathfind + 1 do
@@ -2302,7 +2322,8 @@ surveyPoints = function(points, r)
     end
     task = "survey " .. i .. "/" .. #points
     send("status")
-    local far = math.abs(p[1] - S.pos.x) + math.abs(p[2] - S.pos.z) > CONFIG.skyMinDist
+    local d = math.abs(p[1] - S.pos.x) + math.abs(p[2] - S.pos.z)
+    local far = d > CONFIG.hopMax
     local ok, err = withLadder("survey", function()
       if far then
         -- far away: exit route / sky highway, then come down to the ground
@@ -2311,15 +2332,16 @@ surveyPoints = function(points, r)
         if okT then pcall(warpRemember) end
         return okT, errT
       end
+      if d > CONFIG.skyMinDist then return hopTo(p[1], p[2]) end
       return moveToXZ(p[1], p[2])
     end)
     if not ok then return false, err .. " (scan " .. i .. "/" .. #points .. ")" end
-    -- after the sky highway: down until standing on something
-    for _ = 1, 400 do
+    -- down until standing on something (after a hop at most 24: never deep into a ravine / cave; a short walk:
+    -- settle() below, as before)
+    for _ = 1, far and 400 or (d > CONFIG.skyMinDist and 24 or 0) do
       if stopFlag or turtle.detectDown() then break end
       if not down() then break end
       if S.pos.y <= -60 then break end
-      if S.pos.y < CONFIG.skyY - 1 and not far then break end
     end
     settle()
     local okS, msg = scanHere(r)

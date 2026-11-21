@@ -58,7 +58,8 @@ while coroutine.status(co2) ~= "dead" do
 end
 CHECK(CODE and CODE.ver == plain, "same node.lua version with pauses")
 CHECK(yields > 3, "codeLoad pauses (" .. yields .. ")")
-CHECK(#CODE.text < 120000, "shrunk node.lua fits on the install floppy (" .. #CODE.text .. " bytes)")
+-- (a floppy holds 125000 bytes; the installer's startup.lua takes ~1.9 KB + the version file: 122500 leaves ~500 spare)
+CHECK(#CODE.text < 122500, "shrunk node.lua fits on the install floppy (" .. #CODE.text .. " bytes)")
 -- outside the map worker: never a pause (other workers must not lose events)
 TT.yieldCo, yields = nil, 0
 TT.codeLoad(true)

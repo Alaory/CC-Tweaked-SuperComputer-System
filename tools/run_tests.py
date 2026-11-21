@@ -183,6 +183,21 @@ def _():
     rc, out = run(["lua5.3", "tools/tests/node_firstfuel.lua", "node.lua"])
     return rc == 0, out.strip()
 
+@check("node", "survey in chaos terrain: air hops, every spot (navsim/surveysim.lua)")
+def _():
+    out_all = []
+    for seed in ("1", "2"):
+        for gap, spots, maxmoves in (("60", "16", 2000), ("17", "16", 1200)):
+            env = dict(os.environ, SEED=seed, SPOTS=spots, GAP=gap, CHANGE="0.05", WHO="test")
+            p = subprocess.run(["lua5.3", "tools/navsim/surveysim.lua", "node.lua"], capture_output=True, text=True,
+                               env=env, timeout=300)
+            line = (p.stdout.strip().splitlines() or [""])[0]
+            out_all.append(line)
+            m = re.search(r"scans\s+(\d+)/(\d+)\s+moves\s+(\d+)", line)
+            if not m or int(m.group(1)) < int(m.group(2)) or int(m.group(3)) > maxmoves or "true survey done" not in line:
+                return False, "gap %s seed %s (moves must be <= %d): %s %s" % (gap, seed, maxmoves, line, p.stderr[-300:])
+    return True, "\n".join(out_all)
+
 @check("node", "survey stops while the fuel covers the way home (node_fuelhome.lua)")
 def _():
     rc, out = run(["lua5.3", "tools/tests/node_fuelhome.lua", "node.lua"])

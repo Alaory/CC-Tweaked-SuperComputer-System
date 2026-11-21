@@ -34,6 +34,7 @@ outboxMax = 40,
 
 skyY      = 150,
 skyMinDist = 48,
+hopMax    = 256,
 exitNear  = 24,
 noProgress = 60,
 deadLife  = 3 * 3600000,
@@ -1786,6 +1787,25 @@ return false, "could not reach " .. tx .. " " .. tz .. " (at " .. fmt() .. ")"
 end
 
 
+
+
+
+
+function hopTo(tx, tz)
+task = "survey hop to " .. tx .. " " .. tz
+for _, ax in ipairs({ "x", "z" }) do
+local t = ax == "x" and tx or tz
+while S.pos[ax] ~= t do
+if stopFlag then return false, "stopped at " .. fmt() end
+if noFuel() then return false, "out of fuel at " .. fmt() end
+face(ax == "x" and (t > S.pos.x and 3 or 1) or (t > S.pos.z and 0 or 2))
+if not fwd() and (S.pos.y >= CONFIG.skyY or not up()) then return moveToXZ(tx, tz) end
+end
+end
+return true
+end
+
+
 function gotoLocal(tx, ty, tz)
 for attempt = 1, CONFIG.pathfind + 1 do
 local ok, err = moveToXZ(tx, tz)
@@ -2302,7 +2322,8 @@ return false, "fuel " .. f .. " only for the way home (" .. need .. ") after " .
 end
 task = "survey " .. i .. "/" .. #points
 send("status")
-local far = math.abs(p[1] - S.pos.x) + math.abs(p[2] - S.pos.z) > CONFIG.skyMinDist
+local d = math.abs(p[1] - S.pos.x) + math.abs(p[2] - S.pos.z)
+local far = d > CONFIG.hopMax
 local ok, err = withLadder("survey", function()
 if far then
 
@@ -2311,15 +2332,16 @@ if not okT and S.pos.x == p[1] and S.pos.z == p[2] then okT = true end
 if okT then pcall(warpRemember) end
 return okT, errT
 end
+if d > CONFIG.skyMinDist then return hopTo(p[1], p[2]) end
 return moveToXZ(p[1], p[2])
 end)
 if not ok then return false, err .. " (scan " .. i .. "/" .. #points .. ")" end
 
-for _ = 1, 400 do
+
+for _ = 1, far and 400 or (d > CONFIG.skyMinDist and 24 or 0) do
 if stopFlag or turtle.detectDown() then break end
 if not down() then break end
 if S.pos.y <= -60 then break end
-if S.pos.y < CONFIG.skyY - 1 and not far then break end
 end
 settle()
 local okS, msg = scanHere(r)

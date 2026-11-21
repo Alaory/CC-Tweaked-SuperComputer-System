@@ -279,8 +279,21 @@ PneumaticCraft drone rides, turtle mapping/surveys, and an AE2 ME network view.
   offlineAfter = offline), scans counted -> `survey stats` (scans an hour, the fleet's time split, per turtle);
   `lost` (TT.lostLines: every offline turtle - copy / fuel < way home / missing / at the base / unknown, silent
   since, last task, fuel (saved in turtles.dat now), spot + distance, last log line). test_survey_stats.lua.
-  NEXT PHASES (planned with the owner): 2 = survey movement in the AIR (up and over, no ground walking / retracing;
-  scan from a hover height), chaos-terrain navsim scenarios old vs new; 3 = the edge split into ARCS per turtle
+  PHASE 2, MEASURED (tools/navsim/surveysim.lua: node.lua's REAL "surveypts" job in a voxel world with hills,
+  forests incl. 20-30 high modded trees (leaves block), 25-45 high modded towers, ROOFS on pillars, a ravine, and the
+  world CHANGING behind the turtle - gravel / sand / cobble / amethyst put into cells it moved through (CHANGE per
+  move) - then "home"; SEED / SPOTS / GAP / CHANGE / MAP=known). FINDINGS: the old survey code finished every spot,
+  ~12 s a spot at 17 apart; the changed cells never got in its way (a survey never goes back over its own path; the
+  way home worked with ~200 changed cells). The REAL waste: every hop over skyMinDist (48) went up to the sky
+  highway (Y 150) and down - 60 apart ~106 s a spot. hopTo (survey spots skyMinDist .. CONFIG.hopMax 256 apart):
+  straight on, UP and OVER what is in the way (fwd fails -> up), a roof / the sky highway -> moveToXZ; then down at
+  most 24 (never deep into a ravine). Spots < 48 apart keep moveToXZ: an "always over" version was ~10 % SLOWER there
+  (over a 30-high modded tree instead of around its trunk) - tried and measured, not kept; pre-climbing to the
+  scanned top + 2 did not help either. Result (4 seeds): 17 apart the same, 60 apart 1685-1803 s -> 622-692 s,
+  120 apart 2233-2488 s -> 1155-1386 s, every spot done. run_tests "survey in chaos terrain" (seeds 1-2, gap 60
+  <= 2000 moves - the old code 3642, gap 17 <= 1200). The install floppy limit is now derived: 125000 - the
+  installer (~1.9 KB) - margin = 122500 (test_map_load).
+  NEXT PHASES (planned with the owner): 3 = the edge split into ARCS per turtle
   (no lanes), bigger batches, measured in the travel model; 4 = drone fuel to edge turtles, rescue order, idle
   turtles parked; 5 = STORAGE: use the disk space CC:Tweaked gives each computer / turtle (the owner's words:
   "make use of the given storage of cc tweaked").

@@ -20,7 +20,7 @@ CHECK(fn, "pieces load: " .. tostring(err))
 local FUEL = 4000
 turtle = { getFuelLevel = function() return FUEL end, detectDown = function() return true end }
 S = { home = { x = 0, y = 64, z = 0 }, pos = { x = 2400, y = 70, z = 0, f = 3 }, job = nil }
-CONFIG = { skyMinDist = 48, skyY = 150, maxSurveyPoints = 400, minFuel = 200 }
+CONFIG = { skyMinDist = 48, skyY = 150, maxSurveyPoints = 400, minFuel = 200, hopMax = 256 }
 stopFlag, job, SLOT_LOCK = false, nil, false
 local scans = 0
 function known() return true end
@@ -34,6 +34,7 @@ local function walk(x, z)
 end
 function travelOnce(x, _, z) return walk(x, z) end
 function moveToXZ(x, z) return walk(x, z) end
+function hopTo(x, z) return walk(x, z) end
 function warpRemember() end
 function scanHere() scans = scans + 1 FUEL = FUEL - 2 return true end
 local TOPS = {}
