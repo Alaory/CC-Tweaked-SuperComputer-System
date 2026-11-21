@@ -27,7 +27,7 @@ local function orderNearest(pts, x, z)
   return out
 end
 
-local function sim(packOn, patchy)
+local function sim(packOn, patchy, overhead)
   CONFIG.map.pack = packOn
   state.turtles = {}
   local W = {}
@@ -69,6 +69,7 @@ local function sim(packOn, patchy)
         for j = 2, #a, 2 do l[#l + 1] = { a[j], a[j + 1] } end
         local t = state.turtles[o.id]
         W[o.id].list, W[o.id].i = orderNearest(l, t.pos.x, t.pos.z), 0
+        W[o.id].time = -(overhead or 0)          -- (each hand-out: report idle, the base's tick, start, ask the base)
         t.task = "survey"
       end
     end
@@ -123,6 +124,17 @@ CHECK(packDone >= freeDone * 1.1, "rings are faster than free-running turtles ("
 CHECK(packTravel < 20, string.format("rings: short hops, %.1f blocks per spot (17 = next spot)", packTravel))
 CHECK(packSky < 0.05, string.format("rings: almost no sky-highway trips between spots (%.2f per spot)", packSky))
 CHECK(packOver < 0.05, string.format("rings: nobody flies over spots another turtle scanned (%.3f per spot)", packOver))
+-- SPOTS PER HAND-OUT (default 16, was 4): every hand-out costs the turtle 6-10 s in the game; with 6 s the
+-- old 4 managed 3086 spots, 16 manage 3674
+do
+  local k0 = CONFIG.map.packSpots
+  CONFIG.map.packSpots = 4
+  local d4 = sim(true, false, 6)
+  CONFIG.map.packSpots = k0
+  local dDef = sim(true, false, 6)
+  io.stderr:write("hand-outs cost 6 s: 4 a hand-out " .. d4 .. " spots, default " .. dDef .. "\n")
+  CHECK(dDef >= d4 * 1.1, "more spots per hand-out = less waiting (" .. dDef .. " vs " .. d4 .. " with 4)")
+end
 -- the same over land mapped in PATCHES (where the old rounds put two turtles on one ring line)
 local pDone, _, _, pTravel, _, pOver = sim(true, true)
 local fDone = sim(false, true)

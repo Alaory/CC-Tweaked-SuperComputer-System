@@ -199,7 +199,7 @@ SETTING_GROUPS = {
       end,
       next = function() resetSetting("map.areaA") resetSetting("map.areaB") end },
     bool("map.pack", "Turtles survey in rings", "each its own ring round the base - never one behind another", true),
-    num("map.packSpots", "Rings: spots per hand-out", "more = fewer messages, a little less even", 4, 1, 12, 1, plain),
+    num("map.packSpots", "Rings: spots per hand-out", "more = less waiting between batches", 16, 1, 32, 1, plain),
   } },
   { name = "DRONES", list = {
     place("drone.home", "Base (drop-off point)", "where riders are dropped off - stand there", "feet"),

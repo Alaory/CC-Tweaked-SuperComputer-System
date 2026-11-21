@@ -153,7 +153,7 @@ MAP.queue = nil
 MAP.queueSurvey(-9000, 7000, -1500, 15000, 8, nil)
 local q5 = MAP.queue
 q5.redo = {}
-for i = 1, 300 do q5.redo[#q5.redo + 1] = { HOME.x + (i % 30) * 17 + ((i > 150) and 3000 or 0), HOME.z + math.floor(i / 30) * 17 } end
+for i = 1, 800 do q5.redo[#q5.redo + 1] = { HOME.x + (i % 30) * 17 + ((i > 400) and 3000 or 0), HOME.z + math.floor(i / 30) * 17 } end
 local m5 = #state.tOut
 MAP.feedSurvey()
 local most5, far5, got5 = 0, 0, 0
@@ -162,10 +162,10 @@ for _, x in ipairs(batchesSent(m5)) do
   most5 = math.max(most5, #x.spots)
   for _, p in ipairs(x.spots) do if p[1] > HOME.x + 2000 then far5 = far5 + 1 end end
 end
-local K5 = tonumber(CONFIG.map.packSpots) or 4
-CHECK(got5 == 10 and most5 <= 2 * K5, "pack + 300 given-back spots: all 10 get some, at most " .. 2 * K5 .. " each (" .. got5 .. ", " .. most5 .. ")")
+local K5 = tonumber(CONFIG.map.packSpots) or 16
+CHECK(got5 == 10 and most5 <= 2 * K5, "pack + 800 given-back spots: all 10 get some, at most " .. 2 * K5 .. " each (" .. got5 .. ", " .. most5 .. ")")
 CHECK(far5 == 0, "the round takes the spots nearest the pack, not the far ones (" .. far5 .. " far)")
-CHECK(#q5.redo == 300 - 10 * 2 * K5, "the rest stay in the list for later (" .. #q5.redo .. ")")
+CHECK(#q5.redo == 800 - 10 * 2 * K5, "the rest stay in the list for later (" .. #q5.redo .. ")")
 CONFIG.map.pack = nil
 MAP.queue = nil
 
@@ -306,7 +306,8 @@ for _, x in ipairs(late8) do
   end
 end
 CHECK(#late8 == 10, "the 10 that came back join the running round at once (" .. #late8 .. ")")
-CHECK(most8 <= 6 and dup8 == 0, "with a short share, no spot twice (most " .. most8 .. ", twice " .. dup8 .. ")")
+CHECK(most8 <= (tonumber(CONFIG.map.packSpots) or 16) and dup8 == 0,
+      "one hand-out each, no spot twice (most " .. most8 .. ", twice " .. dup8 .. ")")
 local again = feed8()
 CHECK(#again == 0, "nobody gets more while it still holds spots (" .. #again .. ")")
 MAP.spotDone = function(x, z) return DONE[x .. "," .. z] end

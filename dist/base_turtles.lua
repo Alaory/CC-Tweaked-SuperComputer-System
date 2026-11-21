@@ -190,6 +190,9 @@ if t.surveyFail and os.clock() - t.surveyFail.at < 120 then
 return "REFUSED its survey spots: " .. tostring(t.surveyFail.msg) .. " (tried again in " ..
 math.ceil(120 - (os.clock() - t.surveyFail.at)) .. " s)", C.bad
 end
+if t.dwWant then
+return "fuel " .. tostring(fuel) .. " - a DRONE brings fuel out here (no trip home)", C.warn
+end
 if t.fuelShort then
 return "fuel " .. tostring(fuel) .. " is not enough to get home (" .. TT.homeCost(t, true) .. ") - waits there for a " ..
 "drone / the rescuer to bring fuel", C.bad
@@ -2141,6 +2144,19 @@ TT.log(t, "Fuel " .. fuel .. " is not enough for the way home (" .. cost .. ") -
 end
 elseif not (fuel and fuel < cost) or TT.copyStays(t) then
 t.fuelShort = nil
+end
+
+
+
+if t.dwWant and not (low and on and idle) then t.dwWant = nil end
+if low and low ~= "wait" and on and idle and not t.endless and not t.fuelShort and not TT.copyStays(t)
+and cost >= (tonumber(CONFIG.turtles.droneFuelFrom) or 600)
+and DW and DW.canFuel and DW.canFuel() and not (t.dwEdgeFail and now - t.dwEdgeFail < 1800) then
+if not t.dwWant then
+t.dwWant = true
+TT.log(t, "Low on fuel " .. "(" .. tostring(fuel) .. ") " .. cost .. " blocks out - a drone brings fuel (no trip home)")
+end
+low = false
 end
 
 

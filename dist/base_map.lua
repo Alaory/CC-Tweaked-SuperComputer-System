@@ -1937,7 +1937,10 @@ end
 end
 
 if pack and #packFree > 0 and (q.cursor < total or (q.redo and #q.redo > 0)) then
-local k = math.max(1, tonumber(CONFIG.map.packSpots) or 4)
+
+
+
+local k = math.max(1, tonumber(CONFIG.map.packSpots) or 16)
 table.sort(packFree)
 local lists, solo = {}, {}
 if q.spiral then

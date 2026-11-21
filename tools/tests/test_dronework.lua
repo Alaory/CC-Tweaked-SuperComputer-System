@@ -257,6 +257,50 @@ state.turtles[9].lastSeen = os.clock() - 9999
 local okF, whyF = DW.fuelRun(9)
 CHECK(not okF and tostring(whyF):find("offline", 1, true), "an offline turtle gets no drone (" .. tostring(whyF) .. ")")
 
+------------------------------------------------------------------ fuel FAR OUT: a drone instead of a trip home
+-- (the owner's survey edge is ~2,400 blocks out: a low turtle flew home and back, ~5,000 blocks, for fuel)
+dr = world()
+CONFIG.drone.slots = 2
+W.tinv[key(TP.x, TP.y, TP.z)] = {}
+local sentT = {}
+local send1 = TT.send
+TT.send = function(id, cmd, a, ...) sentT[#sentT + 1] = id .. ":" .. cmd return send1(id, cmd, a, ...) end
+state.turtles = { [9] = { id = 9, label = "T9", lastSeen = os.clock(), pos = { x = TP.x, y = TP.y, z = TP.z }, fuel = 3600,
+                          task = "idle", log = {}, home = { x = TP.x - 2400, y = 64, z = TP.z } } }
+local tf = state.turtles[9]
+for _ = 1, 4 do CLOCK = CLOCK + 6 tf.lastSeen = CLOCK TT.homeTick() end
+local s1 = table.concat(sentT, " ")
+CHECK(tf.dwWant and not s1:find("9:home", 1, true), "low on fuel 2,400 blocks out: waits for a drone, NOT sent home (" .. s1 .. ")")
+CHECK(tostring(TT.idleWhy(tf)):find("DRONE", 1, true), "the card says a drone brings fuel")
+for _ = 1, 10 do tf.lastSeen = os.clock() CLOCK = CLOCK + 2 DW.tick() if #dr.queue > 0 then break end end
+CHECK(#dr.queue == 1, "a drone fuel run starts within seconds")
+runMission(dr, table.remove(dr.queue, 1)) dr.busy = false
+CHECK((W.tinv[key(TP.x, TP.y, TP.z)]["minecraft:coal"] or 0) == 128, "a FULL load (2 slots x 64), not 32 (" ..
+      tostring(W.tinv[key(TP.x, TP.y, TP.z)]["minecraft:coal"]) .. ")")
+DW.tick()
+CHECK(table.concat(sentT, " "):find("9:refuel", 1, true), "the turtle is told to burn it (it could still get home: it would not by itself)")
+tf.fuel = 13000
+tf.lastSeen = os.clock()
+DW.tick()
+CHECK(DW.runs[9] == nil and not tf.dwWant, "fuel burned: done, it works again")
+-- no drones set up: the trip home as before
+tf.fuel, tf.dwTries, tf.dwTryAt, tf.idleHomeAt, tf.idleSince = 3600, nil, nil, nil, nil
+local cf = DW.canFuel
+DW.canFuel = function() return false end
+sentT = {}
+for _ = 1, 4 do CLOCK = CLOCK + 6 tf.lastSeen = CLOCK TT.homeTick() end
+CHECK(not tf.dwWant and table.concat(sentT, " "):find("9:home", 1, true), "no drones: sent home as before")
+DW.canFuel = cf
+-- the drone failed: home next time (not waiting for ever)
+tf.idleHomeAt, tf.idleSince = nil, nil
+tf.dwEdgeFail = os.clock()
+sentT = {}
+for _ = 1, 4 do CLOCK = CLOCK + 6 tf.lastSeen = CLOCK TT.homeTick() end
+CHECK(not tf.dwWant and table.concat(sentT, " "):find("9:home", 1, true), "a failed drone run: the trip home")
+TT.send = send1
+CONFIG.drone.slots = nil
+state.turtles = {}
+
 ------------------------------------------------------------------ gifts (the talking base: friendship rewards)
 dr = world()
 CONFIG.drone.slots = 2

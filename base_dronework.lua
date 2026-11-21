@@ -239,7 +239,11 @@ function DW.fuelBusy(t)
   return r.state == "delivered" and now() - (r.doneAt or 0) < 180
 end
 
-function DW.fuelRun(id, why)
+-- a drone can take fuel to a turtle now? (the drones are set up and fuel runs are on)
+function DW.canFuel()
+  return DW.autoOn() and not DW.notReady() and #droneOrder > 0
+end
+function DW.fuelRun(id, why, edge)
   local t = state.turtles[tonumber(id) or id]
   if not t then return false, "no turtle " .. tostring(id) end
   local bad = DW.notReady()
@@ -250,6 +254,8 @@ function DW.fuelRun(id, why)
   local dr = DW.freeDrone()
   if not dr then return false, "no free drone" end
   local item, count = DW.fuelItem()
+  -- a turtle at the survey edge gets a full load (instead of a trip home and back - ~5,000 blocks)
+  if edge then count = DW.slots(dr) * 64 end
   local J = { kind = "fuel", id = t.id }
   local tid = t.id
   local function where()
@@ -281,15 +287,26 @@ function DW.fuelTick()
   for id, r in pairs(DW.runs) do
     local t = state.turtles[id]
     if r.state == "delivered" and t then
-      if (tonumber(t.fuel) or 0) >= 20 and not t.fuelShort then
+      if not r.burnAsked then
+        -- (a turtle that can still get home does not burn carried fuel by itself: tell it to)
+        r.burnAsked = true
+        TT.send(id, "refuel", {}, true)
+      end
+      local need = t.dwWant and TT.surveyFuelNeed(t) or 20
+      if (tonumber(t.fuel) or 0) >= need and not t.fuelShort then
         DW.runs[id] = nil
+        t.dwWant = nil
         t.dwTries = nil
         TT.log(t, "Fuel from the drone burned - " .. tostring(t.fuel) .. " fuel")
         pushNote("DONE", "A drone brought fuel to " .. t.label .. " - it has " .. tostring(t.fuel) .. " now", C.good)
       elseif now() - r.doneAt > 180 then
         DW.runs[id] = nil
+        if t.dwWant then t.dwWant, t.dwEdgeFail = nil, now() end     -- (next time: the trip home)
         pushNote("WARNING", "A drone brought fuel to " .. t.label .. " but it did not burn it (full inventory? old program?)", C.warn)
       end
+    elseif r.state == "failed" and t and t.dwWant then
+      t.dwWant, t.dwEdgeFail = nil, now()                              -- the trip home instead
+      DW.runs[id] = nil
     elseif r.state == "failed" and now() - r.t > 600 then
       DW.runs[id] = nil
     end
@@ -297,13 +314,17 @@ function DW.fuelTick()
   if not DW.autoOn() or DW.trip or DW.notReady() then return end
   for _, t in pairs(state.turtles) do
     local fuel = tonumber(t.fuel)
-    if TT.online(t) and fuel and (fuel < 20 or t.fuelShort) and not t.missing and not t.dups and t.pos and t.pos.x then
+    if TT.online(t) and fuel and (fuel < 20 or t.fuelShort or t.dwWant) and not t.missing and not t.dups and t.pos and t.pos.x then
       t.dwLowSince = t.dwLowSince or now()
-      if now() - t.dwLowSince > 30 and not DW.runs[t.id] and (t.dwTries or 0) < 3
-         and now() - (t.dwTryAt or -9999) > 600 and DW.freeDrone() then
+      local wait = t.dwWant and 10 or 30
+      if now() - t.dwLowSince > wait and not DW.runs[t.id] and (t.dwTries or 0) < 3
+         and now() - (t.dwTryAt or -9999) > (t.dwWant and 60 or 600) and DW.freeDrone() then
         t.dwTries, t.dwTryAt = (t.dwTries or 0) + 1, now()
-        local ok, why = DW.fuelRun(t.id, "auto")
-        if not ok then TT.log(t, "No drone fuel run: " .. tostring(why)) end
+        local ok, why = DW.fuelRun(t.id, "auto", t.dwWant or t.fuelShort)
+        if not ok then
+          TT.log(t, "No drone fuel run: " .. tostring(why))
+          if t.dwWant then t.dwWant, t.dwEdgeFail = nil, now() end   -- the trip home instead
+        end
         return
       end
     else

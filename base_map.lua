@@ -1937,7 +1937,10 @@ function MAP.feedSurvey()
   end
   -- the pack: every free turtle the next spots of its OWN ring (see ringDeal) - nobody waits
   if pack and #packFree > 0 and (q.cursor < total or (q.redo and #q.redo > 0)) then
-    local k = math.max(1, tonumber(CONFIG.map.packSpots) or 4)
+    -- 16 a hand-out (was 4): every hand-out costs the turtle 6-10 s (report idle, the base's 2-s tick, start,
+    -- ask what is known there); the travel model with that delay: 4 = 3086 spots, 8 = 3540, 16 = 3674 - the
+    -- same blocks per spot and overflights
+    local k = math.max(1, tonumber(CONFIG.map.packSpots) or 16)
     table.sort(packFree)
     local lists, solo = {}, {}
     if q.spiral then

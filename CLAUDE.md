@@ -293,10 +293,19 @@ PneumaticCraft drone rides, turtle mapping/surveys, and an AE2 ME network view.
   120 apart 2233-2488 s -> 1155-1386 s, every spot done. run_tests "survey in chaos terrain" (seeds 1-2, gap 60
   <= 2000 moves - the old code 3642, gap 17 <= 1200). The install floppy limit is now derived: 125000 - the
   installer (~1.9 KB) - margin = 122500 (test_map_load).
-  NEXT PHASES (planned with the owner): 3 = the edge split into ARCS per turtle
-  (no lanes), bigger batches, measured in the travel model; 4 = drone fuel to edge turtles, rescue order, idle
-  turtles parked; 5 = STORAGE: use the disk space CC:Tweaked gives each computer / turtle (the owner's words:
-  "make use of the given storage of cc tweaked").
+  PHASE 3 (dealing), MEASURED in test_survey_pack's travel model: RINGS KEPT - 3765 spots, 17.9 blocks a spot
+  (17 = the next spot), 0.01 sky trips and 0.008 overflights a spot; the owner's "lanes" are neighbouring rings 17
+  apart (one map cell at 64 blocks a cell). SPOTS PER HAND-OUT 4 -> 16 (CONFIG.map.packSpots default, SETTINGS 1-32):
+  every hand-out costs a turtle 6-10 s in the game (report idle, the base's 2-s tick, start, requestKnowledge waits up
+  to 3 s) - sim(.., overhead 6): 4 = 3086 spots, 8 = 3540, 16 = 3674 (10 s: 3026 / 3370 / 3580), same travel and
+  overflights; the test checks default >= 1.1 x the old 4.
+  PHASE 4 (fuel far out): a LOW turtle (fuel < surveyFuelNeed) whose way home costs >= CONFIG.turtles.droneFuelFrom
+  (600) gets a DRONE instead of the trip home and back (~5,000 blocks from the edge): homeTick sets t.dwWant (not
+  sent home; idleWhy "a DRONE brings fuel"), DW.fuelTick starts a run after 10 s (DW.fuelRun(id, why, edge): a FULL
+  load = DW.slots x 64), then sends "refuel" (a turtle that can still get home does not burn carried fuel by itself),
+  done when fuel >= surveyFuelNeed. No drones (DW.canFuel: fuel runs on + DW.notReady nil) / the run failed / the
+  fuel did not burn in 3 min -> t.dwEdgeFail -> the trip home (30 min). test_dronework.lua "fuel FAR OUT".
+  The owner's storage idea was dropped ("ignore what I said about storage").
 - node.lua never just ends: the main parallel.waitForAny is in a pcall; an
   error is written to `node_crash`, the turtle reboots (5 s, longer when it
   keeps crashing) and tells the base ("restarted after an ERROR: ..." in the
