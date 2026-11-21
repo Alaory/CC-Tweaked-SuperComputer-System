@@ -1247,13 +1247,16 @@ CHECK(io.open(SRC_DIR .. "/base_console.lua"):read("a"):find("pcall(voiceUpdate,
 -- never into a floppy's reserved room.
 http = { get = function(u) return { readAll = function() return string.rep("s", 12000) end, close = function() end } end }
 for _, f in ipairs(voiceCacheFiles()) do fs.delete(f.path) end
+local freeBefore = {}
+for _, d in ipairs(mountedDisks()) do freeBefore[d.mount] = d.free end
 for i = 1, 80 do VOICE.audio("cache spread phrase number " .. i) end
 local totalC = voiceCacheBytes()
 CHECK(totalC > 0 and totalC <= 200 * 1024, "the speech cache on ALL floppies together stays under cacheKB (" ..
       math.floor(totalC / 1024) .. " KB)")
 for _, d in ipairs(mountedDisks()) do
   if d.data then
-    CHECK(d.free >= floppyReserve(), "the cache never takes " .. d.mount .. "'s reserved room (" ..
+    -- (a floppy already under its reserve - the add-on itself fills most of one - gets no speech at all)
+    CHECK(d.free >= math.min(floppyReserve(), freeBefore[d.mount] or 0), "the cache never takes " .. d.mount .. "'s reserved room (" ..
           math.floor(d.free / 1024) .. " KB free)")
   end
 end
@@ -1849,4 +1852,81 @@ end)()
         state.chatOut[5].text == "a later note", "chat: answers first, in order; other lines keep theirs")
   state.chatOut = {}
   VOICE.queue, VOICE.said, VOICE.pre, VOICE.busyUntil = {}, {}, nil, nil
+end)()
+
+-- ===== part 30: QUICK ANSWERS, MEASURED (the owner: "still I have to wait like 15 seconds" and "can you test the
+-- speed ... with latency and other things? I can't just use assumptions") =====
+-- tools/tests/lib/voice_sim.lua runs the REAL VOICE.loop / VOICE.play on a model of the game: CraftOS events and
+-- parallel, a speech service that takes `latency` s, decoding that BLOCKS the computer `work` s per second of
+-- speech, a Speaker with one buffer waiting. The base talks by itself (a long line), the owner asks something.
+-- Before: the answer waited for the sentence being said, then was fetched, then decoded (latency 3 s: 6 - 11 s).
+;(function()
+  dofile(SRC_DIR .. "/tools/tests/lib/voice_sim.lua")
+  local keep = {}
+  for _, k in ipairs({ "speed", "pitch", "clear" }) do keep[k] = CONFIG.voice and CONFIG.voice[k] end
+  setSetting("voice.on", true)
+  setSetting("voice.speed", 1) setSetting("voice.pitch", 1) setSetting("voice.clear", false)  -- (samples stay = which line)
+  VOICE.mute = nil
+  local run = 0
+  local worst, rows = 0, {}
+  local lastR, lastAns
+  local stops = 0
+  for _, lat in ipairs({ 0.5, 1.5, 3 }) do
+    for _, work in ipairs({ 0.04, 0.4 }) do
+      for _, askAt in ipairs({ 1, 3, 6 }) do
+        run = run + 1
+        local own = "Test " .. run .. ": twelve turtles are working, three are idle and two need a look at the farm. " ..
+                    "The survey is forty five percent done and the map grew by two hundred chunks today. " ..
+                    "Both mining teams are running and the factory built one new turtle this morning."
+        local ans = "Test " .. run .. ", it is heads, and that is my final answer for you today."
+        VOICE.queue, VOICE.said, VOICE.pre, VOICE.busyUntil, VOICE.keep = {}, {}, nil, nil, nil
+        local r = VOICE_SIM.run({ latency = lat, work = work, own = own, askAt = askAt, answer = ans, cps = 14 })
+        local p1, p2
+        for name, at in pairs(r.first) do
+          if name:find("it is heads", 1, true) then p1 = { name, at } end
+          if name:find("final answer", 1, true) then p2 = { name, at } end
+        end
+        local wait = p1 and r.askedAt and (p1[2] - r.askedAt) or 99
+        -- the floor: the speech service + decoding the short first piece (+ the short pause after a cut)
+        local floor = lat + work * (#(p1 and p1[1] or "") / 14) + 0.25
+        worst = math.max(worst, wait - floor)
+        rows[#rows + 1] = string.format("latency %.1f work %.2f asked at %d: %.1f s (floor %.1f)", lat, work, askAt, wait, floor)
+        CHECK(p1 and wait <= floor + 0.8, "answer's first sound " .. string.format("%.1f", wait) .. " s after the question" ..
+              " (latency " .. lat .. " s, work " .. work .. " s/s, asked at " .. askAt .. " s; at best " ..
+              string.format("%.1f", floor) .. " s)\n      " .. table.concat(r.log, "\n      "))
+        -- no gap in the middle of the answer: its 2nd piece follows the 1st (fetched together)
+        if p1 and p2 then
+          local gap = p2[2] - (p1[2] + math.max(0.3, #p1[1] / 14))
+          CHECK(gap < 0.6, "the answer's 2nd piece follows without a gap: " .. string.format("%.2f", gap) .. " s")
+        end
+        lastR, lastAns = r, ans
+        stops = stops + r.stops
+      end
+    end
+  end
+  CHECK(worst < 0.8, "every case close to the floor (worst " .. string.format("%.2f", worst) .. " s over it):\n  " ..
+        table.concat(rows, "\n  "))
+  CHECK(stops >= 3, "the base's own talk is cut off (speaker.stop) when the answer is ready (" .. stops .. " of 18 runs)")
+  -- the answer's first piece is SHORT (up to the first comma / sentence end) - ready sooner
+  local pr = VOICE.prepare({ text = "It is heads, and that is my final answer for you today, my friend.", answer = true })
+  CHECK(pr.pieces[1] == "It is heads," and pr.pieces[2], "an answer starts with a short piece: '" .. tostring(pr.pieces[1]) .. "'")
+  local own = VOICE.prepare({ text = "It is heads, and that is my final answer for you today, my friend." })
+  CHECK(#own.pieces == 1, "its own lines keep whole pieces (fewer requests)")
+  -- MEASURED IN THE GAME: every line keeps where its time went; `voice timing` shows it, `voice bench` measures
+  local e
+  for _, t in ipairs(VOICE.timing) do if t.answer and lastAns:find(t.text:sub(1, 12), 1, true) then e = t break end end
+  CHECK(e and e.fetch >= 2.9 and e.total >= e.fetch and e.wait >= 0, "the answer's timing was noted (service " ..
+        tostring(e and e.fetch) .. " s, total " .. tostring(e and e.total) .. " s)")
+  local out = VOICE.command({ "voice", "timing" })
+  local txt = table.concat(out, "\n")
+  CHECK(txt:find("ANSWER", 1, true) and txt:find("speech service", 1, true) and txt:find("sound work", 1, true),
+        "voice timing lists where the time went:\n" .. txt)
+  local http0 = http
+  http = { get = function() return { readAll = function() return string.rep("\85", 6000) end, close = function() end } end }
+  out = VOICE.command({ "voice", "bench" })
+  http = http0
+  txt = table.concat(out, "\n")
+  CHECK(txt:find("Speech service:", 1, true) and txt:find("first sound after", 1, true), "voice bench measures a phrase:\n" .. txt)
+  for k, v in pairs(keep) do if v == nil then resetSetting("voice." .. k) else setSetting("voice." .. k, v) end end
+  VOICE.queue, VOICE.said, VOICE.pre, VOICE.busyUntil, VOICE.keep = {}, {}, nil, nil, nil
 end)()

@@ -1271,6 +1271,23 @@ PneumaticCraft drone rides, turtle mapping/surveys, and an AE2 ME network view.
   next piece (sentence) when an answer waits (VOICE.lastCut; the rest is not even fetched); chatTell(name,
   text, urgent) - the voice reply() sends urgent: before waiting chat lines (notes, menus), answers in order.
   test_voice part 29.
+  QUICK ANSWERS, MEASURED (the owner: "still 15 seconds" + "test the speed with latency - I can't just use
+  assumptions"): an answer waited for the sentence being said, THEN was fetched, THEN decoded. Now (VOICE.play):
+  VOICE.prepare(item) = pieces + the first one fetched AND decoded (an answer: first piece cut at the first comma /
+  sentence end within VOICE.FIRST 50 - VOICE.firstCut - and its 2nd piece fetched at the same time, prep.nextData);
+  each piece plays in waitForAny(waitForAll(player, fetcher), watcher): the WATCHER makes a question's answer
+  ready at once (VOICE.pre), then VOICE.cutNow -> playPcm stops, speaker.stop (VOICE.stopSpeakers), CUT_GAP 0.25 s;
+  the fetcher's request is left behind. Its own line still being fetched (prepare in waitForAny) or waiting for the
+  line before (sleep loop) gives way too: VOICE.behindAnswers puts it back after the answers (VOICE.keep = its ready
+  sound). Decoding for an OWN line stops when a question waits (pcmOf giveWayFor -> error VOICE.GAVE_WAY at every
+  pause; decode in 4 KB chunks) - decoding blocks the computer. VOICE.loop says a waiting answer before VOICE.tick.
+  TIMING: every line keeps think / speech service / sound work / waited / first-piece length (VOICE.noteTiming ->
+  VOICE.timing, newest 12; VOICE.heardAt from VOICE.chat, item.heard); console `voice timing`, `voice bench` (one
+  fresh phrase timed step by step). Measured here (standard Lua; Cobalt is slower and could not be built here, the
+  speech service is blocked from this container): sound work 0.04 s per s of speech. tools/tests/lib/voice_sim.lua
+  runs the REAL VOICE.loop on a model: CraftOS parallel + events, http latency, blocking decode, a Speaker with one
+  buffer waiting - test_voice part 30: 18 cases (latency 0.5 / 1.5 / 3, work 0.04 / 0.4, asked at 1 / 3 / 6 s) each
+  within 0.8 s of the floor (latency + decoding the short first piece); the old code: up to 9.9 s, fails 13.
   UPDATES (the owner: "on each update I have to run disks"): the map fills the data floppies and installAddon
   wanted a floppy with room for the WHOLE new file + 16 KB beside the old copy -> "type disks data". Now: the
   same text = nothing written ("up to date"); room = free + the old copy + cached speech (voice/*.dfpwm, oldest
