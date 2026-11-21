@@ -1434,6 +1434,12 @@ PneumaticCraft drone rides, turtle mapping/surveys, and an AE2 ME network view.
   there?". test_voice part 33: every list (69) has 100+ different lines, asking the same thing 100 times (roast,
   compliment, joke, story, fact, riddle, wyr, knock knock, fortune, 8 ball, alive, mod tip) gives 95+ different
   answers, the lore questions answered.
+  AFTER AN UPGRADE (the owner: "base, fun fact" still opened the games menu after `upgrade`): `upgrade` runs with the
+  OLD program in memory - its VOICE_FILES did not know the new files, nothing installed them later, and a voice file
+  that did not fit stayed old (the message scrolled off). voiceRepair (base_theme; addonWorker 15 s after start): a
+  VOICE_FILES file missing from the floppies, or voice_update.flag (VOICE_FLAG, written by baseUpgrade when it
+  restarts) -> voiceUpdate once with THIS program's list; result in the SYSTEM log, "not installed" -> WARNING with
+  "type disks ... then voice update". test_voice part 33.
 - REMOVED AGAIN: remote access in a web browser (Cloud Catcher; base_remote.lua / remote.lua / pocket.lua
   in local mode on the base) - the owner: "taking space and seems useless". removeOldFiles (base_theme.lua,
   run by inventory.lua at start) deletes its files (remote.lua, base_remote.lua, cloud.lua on the computer

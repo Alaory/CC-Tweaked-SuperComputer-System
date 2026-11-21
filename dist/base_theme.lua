@@ -745,6 +745,31 @@ local okL, errL = loadVoiceChain()
 if ok and not okL then say("Voice add-on did not start: " .. tostring(errL)) end
 return ok and okL, msg
 end
+
+
+
+
+
+VOICE_FLAG = "voice_update.flag"
+function voiceRepair()
+if not (VOICE_FILES and addonPath and addonPath(VOICE_FILES[1])) then return false, "the voice add-on is not installed" end
+local missing = {}
+for _, f in ipairs(VOICE_FILES) do if not addonPath(f) then missing[#missing + 1] = f end end
+local flag = fs.combine(BASE_DIR or "", VOICE_FLAG)
+local flagged = fs.exists(flag)
+if #missing == 0 and not flagged then return false, "nothing to do" end
+local lines = {}
+local okU = pcall(voiceUpdate, function(l) lines[#lines + 1] = tostring(l) end)
+pcall(fs.delete, flag)
+local bad = {}
+for _, l in ipairs(lines) do if l:find("not installed", 1, true) or l:find("did not start", 1, true) then bad[#bad + 1] = l end end
+local why = flagged and "after the upgrade" or ("missing: " .. table.concat(missing, ", "))
+if sysLog then pcall(sysLog, "Voice files updated (" .. why .. "): " .. table.concat(lines, "; "), #bad > 0 and "WARNING" or "INFO") end
+if #bad > 0 and pushNote then
+pcall(pushNote, "WARNING", "Voice update: " .. table.concat(bad, "; ") .. " - type  disks  to see where there is room, then  voice update", C and C.warn)
+end
+return okU and #bad == 0, table.concat(lines, "; ")
+end
 function removeAddon(file)
 local n = 0
 while true do

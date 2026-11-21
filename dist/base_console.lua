@@ -104,6 +104,8 @@ end
 
 if a1 ~= "check" and a1 ~= "branch" and voiceUpdate and addonPath and VOICE_FILES and addonPath(VOICE_FILES[1]) then
 pcall(voiceUpdate, log)
+
+if done then pcall(function() local h = fs.open(fs.combine(BASE_DIR or "", VOICE_FLAG or "voice_update.flag"), "w") h.write("1") h.close() end) end
 end
 if done then
 if sysLog then sysLog("Program upgraded from GitHub (" .. tostring(n) .. " files) - restarting", "INFO") end

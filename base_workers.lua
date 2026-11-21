@@ -810,6 +810,11 @@ end
 -- optional add-ons with their own loop (voice_addon.lua: VOICE.loop - it waits for the speaker,
 -- so not in the comms worker). Nothing installed: it just waits for one ("addon_loaded").
 function addonWorker()
+  -- (after an upgrade / a voice file missing: the voice files are brought up to date once, by THIS program)
+  if voiceRepair and VOICE_FILES and addonPath and addonPath(VOICE_FILES[1]) then
+    waitFor(15, "voice_repair_never")
+    pcall(voiceRepair)
+  end
   while state.running do
     if VOICE and VOICE.loop then
       local ok, err = pcall(VOICE.loop)

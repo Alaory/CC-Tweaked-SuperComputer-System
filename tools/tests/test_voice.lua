@@ -2249,5 +2249,39 @@ end)()
     for _, it in ipairs(VOICE.queue) do if tostring(it.text):find("Mod tip", 1, true) then hasTip = true end end
   end
   CHECK(hasTip, "idle talk includes mod tips")
+  -- AFTER AN UPGRADE (the owner: "base, fun fact" still gave the games menu - `upgrade` ran with the OLD program,
+  -- whose list did not know the new voice files): a missing voice file / the flag -> the voice update runs once
+  local fe0 = fs.exists
+  fs.exists = function(p2) if HIDDEN[tostring(p2):gsub("^/", "")] then return false end return fe0(p2) end   -- (the repo's own copies)
+  local vu0 = voiceUpdate
+  local calls = 0
+  voiceUpdate = function(say) calls = calls + 1 say("Talk pack voice_lore.lua on disk43") return true end
+  local lorePath = addonPath("voice_lore.lua")
+  local keep = io.open(SRC_DIR .. "/dist/voice_lore.lua"):read("a")
+  fs.delete(lorePath)
+  CHECK(not addonPath("voice_lore.lua"), "(voice_lore.lua taken away)")
+  voiceRepair()
+  CHECK(calls == 1, "a voice file missing from the floppies: the voice update runs by itself (" .. calls .. ")")
+  put(lorePath, keep)
+  voiceRepair()
+  CHECK(calls == 1, "nothing missing, no flag: nothing downloaded")
+  put(fs.combine(BASE_DIR or "", VOICE_FLAG), "1")
+  voiceRepair()
+  CHECK(calls == 2 and not fs.exists(fs.combine(BASE_DIR or "", VOICE_FLAG)), "after an upgrade (the flag): updated once, flag gone")
+  voiceRepair()
+  CHECK(calls == 2, "... and only once")
+  local warned
+  local pn0 = pushNote
+  pushNote = function(kind, msg) if kind == "WARNING" then warned = msg end end
+  voiceUpdate = function(say) calls = calls + 1 say("Talk pack voice_lore.lua not installed: no data floppy has room (the old copy stays)") return true end
+  put(fs.combine(BASE_DIR or "", VOICE_FLAG), "1")
+  voiceRepair()
+  pushNote = pn0
+  CHECK(warned and warned:find("disks", 1, true), "no room: a WARNING says what to do (" .. tostring(warned) .. ")")
+  voiceUpdate = vu0
+  fs.exists = fe0
+  local src = io.open(SRC_DIR .. "/base_console.lua"):read("a")
+  CHECK(src:find("VOICE_FLAG", 1, true), "upgrade leaves the flag for the new program")
+  CHECK(io.open(SRC_DIR .. "/base_workers.lua"):read("a"):find("pcall(voiceRepair)", 1, true), "the add-on worker runs voiceRepair at start")
   VOICE.queue, VOICE.games, VOICE.pend, VOICE.convo = {}, {}, {}, {}
 end)()

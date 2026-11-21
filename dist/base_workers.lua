@@ -810,6 +810,11 @@ end
 
 
 function addonWorker()
+
+if voiceRepair and VOICE_FILES and addonPath and addonPath(VOICE_FILES[1]) then
+waitFor(15, "voice_repair_never")
+pcall(voiceRepair)
+end
 while state.running do
 if VOICE and VOICE.loop then
 local ok, err = pcall(VOICE.loop)
