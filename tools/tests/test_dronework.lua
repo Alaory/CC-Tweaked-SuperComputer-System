@@ -176,7 +176,16 @@ CHECK(next(W.chest) == nil and next(W.inv) == nil, "work chest and drone empty a
 CHECK(not W.tookOwn and W.own["minecraft:stone"] == 1, "your own (enchanted) stone was never taken")
 CHECK(W.blocks[key(OX + 1, OY + 1, OZ + 1)] == "minecraft:dirt", "without clear nothing is dug")
 CHECK(DW.job == nil, "the build is finished")
-CHECK(W.teleports == 0, "a build next to the base: the drone FLIES (no air used for teleports: " .. tostring(W.teleports) .. ")")
+CHECK(W.teleports > 0, "a build next to the base with air to spare: legs over ~18 blocks TELEPORT (120 ticks vs " ..
+      "flying 0.15 blocks a tick): " .. tostring(W.teleports))
+-- low on air: the same build FLIES (no air used)
+do
+  local dr2 = world()
+  dr2.periph.getDronePressure = function() return 3 end
+  DW.startBuild("hut", OX + 40, OY, OZ, 0, false)
+  run(dr2)
+  CHECK(W.teleports == 0, "low on air: the build legs FLY (teleports: " .. tostring(W.teleports) .. ")")
+end
 
 ------------------------------------------------------------------ a taken spot, a restart, clear
 dr = world()

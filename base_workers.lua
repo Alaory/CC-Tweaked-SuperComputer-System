@@ -3,7 +3,7 @@
 --
 --   The background workers (all slow game calls happen here) and the screen
 --   loop. inventory.lua runs these together: uiLoop, invWorker, pageWorker,
---   actionWorker, droneWorker, terminalWorker, chatWorker, commsWorker, mapWorker, supplyWorker.
+--   actionWorker, droneWorker, terminalWorker, chatWorker, commsWorker, mapWorker, supplyWorker, playerWorker.
 
 -- ===== the SYSTEM log =====
 -- Only system things (the base was off / crashed, new turtle program, map
@@ -335,6 +335,18 @@ end
 -- KEEP A STORAGE FILLED (base_supply.lua): its own worker, so pumping a lot never holds
 -- up the turtles' messages; straight on while a storage still takes it, else
 -- (every SUPPLY.every() s, default 1: drained in a second = refilled in a second)
+-- PLAYERS EVERY TICK (the owner: "make the player list update each tick - it does not cause lag"): its own worker
+-- reads the Player Detector again right after each reading (CONFIG.ttl.playersLive s, default 0.05 = one tick).
+-- Before: every 10-30 s from the page worker (2 s on a few pages) - the drones (rides, moving targets, the known-
+-- loaded check), turtles avoiding players, away mode, the voice all read state.players.
+function playerWorker()
+  while state.running do
+    if det then safe({ "players", "owner" }, refreshPlayers, true) end
+    local e = tonumber(CONFIG.ttl and CONFIG.ttl.playersLive) or 0.05
+    waitFor(det and math.max(0.05, e) or 5, "players_wake")
+  end
+end
+
 function supplyWorker()
   while state.running do
     local ok, busy = pcall(SUPPLY.tick)

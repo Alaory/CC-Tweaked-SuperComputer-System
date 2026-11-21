@@ -335,6 +335,18 @@ end
 
 
 
+
+
+
+
+function playerWorker()
+while state.running do
+if det then safe({ "players", "owner" }, refreshPlayers, true) end
+local e = tonumber(CONFIG.ttl and CONFIG.ttl.playersLive) or 0.05
+waitFor(det and math.max(0.05, e) or 5, "players_wake")
+end
+end
+
 function supplyWorker()
 while state.running do
 local ok, busy = pcall(SUPPLY.tick)

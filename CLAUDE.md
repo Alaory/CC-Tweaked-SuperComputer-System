@@ -20,7 +20,11 @@ PneumaticCraft drone rides, turtle mapping/surveys, and an AE2 ME network view.
   at load time (inside functions, anything goes).
 - Workers run together via `parallel.waitForAny`: uiLoop, invWorker,
   pageWorker, actionWorker, droneWorker, terminalWorker, chatWorker, commsWorker, mapWorker,
-  supplyWorker.
+  supplyWorker, addonWorker, playerWorker.
+  PLAYERS EVERY TICK (the owner: "make the player list update each tick - it does not cause lag"): playerWorker
+  reads the Player Detector (refreshPlayers(true)) again CONFIG.ttl.playersLive s (0.05 = a tick) after each
+  reading; never asks for a redraw (the screen has its own timer). Before: every 10-30 s from the page worker -
+  drones (rides, moving targets, knownLoaded), avoid, away, voice read state.players. test_player_live.lua.
   LOST TIMERS: CraftOS drops events (timers too) that arrive while a coroutine waits
   for a peripheral answer. So the commsWorker 2-s jobs run by the CLOCK (nextTick; a
   new timer each tick replaces a lost one), uiLoop re-arms clockTimer / drawTimer,
@@ -1538,6 +1542,21 @@ re-reads the target before every hop; a refused first teleport + the target move
 teleport to where it is now before the "air above / hops" logic; after the hops fresh(); after
 arriving it looks again and goes on if the target is > 12 away (max 4 times).
 
+**Drones - SPEED, MEASURED IN TICKS (the owner: "the drones are slow" + "a server will have a low TPS"):**
+PneumaticCraft source (1.21: EntityPathNavigateDrone, DroneEntity, PneumaticValues): a TELEPORT always waits
+TELEPORT_TICKS 120 first, then happens only into a LOADED, free spot - refused = the same 120 ticks AND its air
+(DRONE_USAGE_TELEPORT 10,000 mL of DRONE_VOLUME 12,000 at max 10 bar = 0.83 bar; 12 from full); goto FLIES 0.15
+blocks a tick + 0.015 per Speed Upgrade (0.3 max) and teleports when it finds no path (PathFinder 1000 nodes); the
+Drone Interface's calls run on the computer thread (no tick each). All in TICKS: a slow server stretches it all
+alike - save ticks. tools/tests/lib/drone_sim.lua runs the REAL missions on such a drone (ticks, teleports, refused,
+air; state.players from its players) - test_drone_speed.lua. Changes: knownLoaded(x, z) (the base / a player in
+state.players / an online turtle within 24) - a far target nothing known loads -> no straight teleport and no
+"air above" probe (both refused: ride 300 out 726 -> 405 ticks, 800 1086 -> 767, 1500 1691 -> 1371 with air left);
+dr.hopOK = the hop length that worked (refused -> x0.7, was /2); a teleport's limit min(travelTimeout, tpLimit 7 s
+= 140 ticks; it happens at 121); droneSpeed(dr) from getUpgrades, flyQuicker (dist / speed < 110 ticks) ->
+travelTo flies short legs without a rider (12 blocks 242 -> 176) with flyLimit; DW goNear flew everything within
+64 with the 8-s teleport limit (= 24 blocks: stopped, then teleported - 281 ticks for 40 blocks) -> flies only when
+quicker or with too little air for 4 more teleports (canTeleport(dr, 4); a build's many legs), else teleports (121).
 **Drones (PneumaticCraft):** teleport costs ~10,000 mL (~0.85 bar) even when it
 fails; flying costs no air. Passenger watch: dr.rider (set after pickup) is checked BEFORE EVERY MOVE
 (riderGoneNow in droneMoveTo) and every 2 s while moving (riderLeft): logged off (not in

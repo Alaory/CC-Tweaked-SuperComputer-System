@@ -623,6 +623,10 @@ local d = dr.periph
 if not d or dr.gone then return false, "Drone Interface disconnected" end
 local isTp = action == "pneumaticcraft:teleport"
 
+
+
+if isTp then limit = math.min(limit or 7, CONFIG.drone.tpLimit or 7) end
+
 if dr.rider and riderGoneNow(dr) then return false, "passenger got off" end
 if isTp and not canTeleport(dr) then return false, "low on air" end
 local pBefore = isTp and dronePressure(dr) or nil
@@ -697,8 +701,52 @@ if not okP then return nil end
 return parsePos((type(a) == "number") and { a, b, c } or a)
 end
 
+
+
+
+
+
+
+function droneSpeed(dr)
+if dr.speedBT then return dr.speedBT end
+local n = 0
+local ok, up = pcall(dr.periph and dr.periph.getUpgrades)
+if ok and type(up) == "table" then
+for k, v in pairs(up) do
+local name, cnt = k, v
+if type(v) == "table" then name, cnt = v.name or v.id or k, v.count or v.amount or 1 end
+if tostring(name):lower():find("speed", 1, true) and tonumber(cnt) then n = n + tonumber(cnt) end
+end
+end
+dr.speedBT = 0.15 + math.min(10, n) * 0.015
+return dr.speedBT
+end
+
+function flyQuicker(dr, dist) return dist / droneSpeed(dr) < 110 end
+
+function flyLimit(dr, dist) return dist / droneSpeed(dr) / 20 * 1.5 + 3 end
+
+
+function knownLoaded(x, z, r)
+r = r or CONFIG.drone.loadedRange or 128
+local h = CONFIG.drone.home
+if h and tonumber(h.x) and math.abs(x - h.x) <= r and math.abs(z - h.z) <= r then return "the base" end
+for _, e in ipairs(state.players or {}) do
+local p = type(e) == "table" and e.p
+if type(p) == "table" and tonumber(p.x) and tonumber(p.z) and (e.dim == nil or e.dim == DRONE_DIM) and not e.dimOther
+and math.abs(p.x - x) <= r and math.abs(p.z - z) <= r then return tostring(e.name) end
+end
+for _, t in pairs(state.turtles or {}) do
+if type(t) == "table" and t.pos and tonumber(t.pos.x) and TT and TT.online and TT.online(t)
+and math.abs(t.pos.x - x) <= 24 and math.abs(t.pos.z - z) <= 24 then return tostring(t.label) end
+end
+return nil
+end
+
+
+
 local function hopTowards(dr, x, z, track)
-local L, hy = CONFIG.drone.hopLength or 160, CONFIG.drone.hopY or 200
+local L, hy = dr.hopOK or CONFIG.drone.hopLength or 160, CONFIG.drone.hopY or 200
 local minL = 48
 local logged = false
 dr.flyNote = nil
@@ -727,9 +775,11 @@ local err, retry
 if canTeleport(dr, 2) then
 ok, err = droneMoveTo(dr, "pneumaticcraft:teleport", hx, hy, hz, CONFIG.drone.travelTimeout)
 if not ok and err ~= "did not get there" then return false, err end
+if ok then dr.hopOK = L end
 
 if not ok and L > minL then
-L = math.max(minL, math.floor(L / 2))
+L = math.max(minL, math.floor(L * 0.7))
+dr.hopOK = L
 droneLog(dr, "Hop not possible (not loaded that far ahead) - trying hops of " .. L .. " blocks")
 retry = true
 end
@@ -797,7 +847,15 @@ end
 
 if act ~= "pneumaticcraft:goto" and not loaded then
 local px, _, pz = droneXYZ(dr)
-if px and math.abs(x - px) + math.abs(z - pz) > (CONFIG.drone.hopLength or 160) * 1.5 then
+local who = px and knownLoaded(x, z)
+if px and not who and math.abs(x - px) + math.abs(z - pz) > (CONFIG.drone.hopLength or 160) * 1.5 then
+
+
+droneLog(dr, "Nobody the base knows of is near " .. fmtPos(x, y, z) .. " (not loaded) - hopping there")
+local okH, errH = hopTowards(dr, x, z, track)
+if not okH then return false, errH end
+fresh()
+elseif px and math.abs(x - px) + math.abs(z - pz) > (CONFIG.drone.hopLength or 160) * 1.5 then
 local f = SPOTS[1]
 local ok, err = droneMoveTo(dr, act, x + f[1], y + f[2], z + f[3], CONFIG.drone.travelTimeout)
 if ok then
@@ -836,6 +894,16 @@ local okH, errH = hopTowards(dr, x, z, track)
 if not okH then return false, errH end
 fresh()
 end
+end
+end
+
+if act ~= "pneumaticcraft:goto" and not noFly and not dr.rider then
+local px, py, pz = droneXYZ(dr)
+local d = px and math.sqrt((x - px) ^ 2 + (y - py) ^ 2 + (z - pz) ^ 2)
+if d and flyQuicker(dr, d) then
+local okF, errF = droneMoveTo(dr, "pneumaticcraft:goto", x, y, z, flyLimit(dr, d) + 7)
+if okF then dr.lastSpot = { x = x, y = y, z = z } return true end
+if errF ~= "did not get there" then return false, errF end
 end
 end
 local limit = (act == "pneumaticcraft:goto") and CONFIG.drone.stepTimeout or CONFIG.drone.travelTimeout

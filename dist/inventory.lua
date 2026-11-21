@@ -72,7 +72,8 @@ if loadVoiceChain then pcall(loadVoiceChain)
 elseif loadAddon then pcall(loadAddon, "voice_addon.lua") end
 
 local okRun, errRun = pcall(parallel.waitForAny, uiLoop, invWorker, pageWorker, actionWorker,
-droneWorker, terminalWorker, chatWorker, commsWorker, mapWorker, supplyWorker, addonWorker)
+droneWorker, terminalWorker, chatWorker, commsWorker, mapWorker, supplyWorker, addonWorker,
+playerWorker)
 
 pcall(MAP.save)
 if baseExit then

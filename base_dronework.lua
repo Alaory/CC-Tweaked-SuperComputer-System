@@ -157,13 +157,22 @@ local function act(dr, action, pts, limit)
 end
 -- close by (CONFIG.drone.workFly, 64 blocks): FLY there - flying costs no air, a teleport ~0.85 bar
 -- (a build trip goes chest -> site -> chest); further: the normal travel (teleport / hops)
+-- (measured, tools/tests/lib/drone_sim.lua: within 64 it FLEW with the teleport's 8-s limit - 160 ticks = 24 blocks
+--  at 0.15 a tick: every leg over 24 blocks flew 160 ticks, was stopped, then teleported anyway = 281 ticks for a
+--  121-tick teleport). Now: fly when that is quicker than a teleport (flyQuicker) or the air is low, with a limit
+--  that fits the distance; else teleport.
 local function goNear(dr, x, y, z, loaded)
   local px, py, pz = droneXYZ(dr)
   local r = tonumber(cfg("workFly", 64)) or 64
   if px and math.abs(px - x) <= r and math.abs(pz - z) <= r and math.abs(py - y) <= r then
-    local ok, why = droneMoveTo(dr, "pneumaticcraft:goto", x, y, z, CONFIG.drone.travelTimeout)
-    if ok then return true end
-    if why == "stopped" or why == "the drone disconnected" then return false, why end
+    local d = math.sqrt((px - x) ^ 2 + (py - y) ^ 2 + (pz - z) ^ 2)
+    -- (a build makes many trips: teleporting every leg empties a 12-teleport drone - it then has to recharge.
+    --  Teleport only with air to spare for 4 more; else fly - slower, but no air)
+    if flyQuicker(dr, d) or not canTeleport(dr, 4) then
+      local ok, why = droneMoveTo(dr, "pneumaticcraft:goto", x, y, z, flyLimit(dr, d) + 7)
+      if ok then return true end
+      if why == "stopped" or why == "the drone disconnected" then return false, why end
+    end
   end
   return travelTo(dr, x, y, z, nil, nil, loaded)
 end

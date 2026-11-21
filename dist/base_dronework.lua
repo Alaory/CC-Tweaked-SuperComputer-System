@@ -157,13 +157,22 @@ end, 1, limit)
 end
 
 
+
+
+
+
 local function goNear(dr, x, y, z, loaded)
 local px, py, pz = droneXYZ(dr)
 local r = tonumber(cfg("workFly", 64)) or 64
 if px and math.abs(px - x) <= r and math.abs(pz - z) <= r and math.abs(py - y) <= r then
-local ok, why = droneMoveTo(dr, "pneumaticcraft:goto", x, y, z, CONFIG.drone.travelTimeout)
+local d = math.sqrt((px - x) ^ 2 + (py - y) ^ 2 + (pz - z) ^ 2)
+
+
+if flyQuicker(dr, d) or not canTeleport(dr, 4) then
+local ok, why = droneMoveTo(dr, "pneumaticcraft:goto", x, y, z, flyLimit(dr, d) + 7)
 if ok then return true end
 if why == "stopped" or why == "the drone disconnected" then return false, why end
+end
 end
 return travelTo(dr, x, y, z, nil, nil, loaded)
 end
