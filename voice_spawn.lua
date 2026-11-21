@@ -32,7 +32,7 @@ V.packs = V.packs or {}
 V.packs["voice_spawn.lua"] = { version = 1 }
 local SP = { queue = {}, cands = {}, lastN = 0, busyUntil = 0, sent = 0 }
 if V.SPAWN then                                              -- (voice update: what the pairing / relay said stays)
-  for _, k in ipairs({ "seenAt", "relay", "cands", "lastN", "pending", "spokeAt" }) do SP[k] = V.SPAWN[k] end
+  for _, k in ipairs({ "seenAt", "relay", "cands", "lastN", "pending", "spokeAt", "sendN", "busyUntil", "spam", "tpMood" }) do SP[k] = V.SPAWN[k] end
   SP.cands = SP.cands or {}
 end
 V.SPAWN = SP
@@ -174,11 +174,11 @@ function SP.say(text, answer)
   os.queueEvent("spawn_say")
   return true
 end
-local lastN = 0
+-- (kept in SP.sendN across voice update: a new count from 0 was refused by the relay as an old message)
 local function nextN()
   local n = os.epoch("utc")
-  if n <= lastN then n = lastN + 1 end
-  lastN = n
+  if n <= (SP.sendN or 0) then n = SP.sendN + 1 end
+  SP.sendN = n
   return n
 end
 function SP.send(t, fields)
@@ -254,15 +254,23 @@ function SP.play(item)
   SP.spokeAt = os.clock()
   return true
 end
+-- (always the CURRENT spawn table - V.SPAWN: after a reload an old loop still running would read the old queue)
+function SP.drain()
+  local S = V.SPAWN or SP
+  S.loopAt = os.clock()
+  while #S.queue > 0 do
+    local item = table.remove(S.queue, 1)
+    if S.ready() then
+      local ok, err = pcall(S.play, item)
+      if not ok then S.err = tostring(err) end
+    end
+    S.loopAt = os.clock()
+  end
+end
 function SP.loop()
   while state.running do
-    while #SP.queue > 0 do
-      local item = table.remove(SP.queue, 1)
-      if SP.ready() then
-        local ok, err = pcall(SP.play, item)
-        if not ok then SP.err = tostring(err) end
-      end
-    end
+    local S = V.SPAWN or SP
+    S.drain()
     waitFor(2, "spawn_say")
   end
 end
@@ -270,8 +278,9 @@ local loop0 = V.loop
 function V.loop()
   parallel.waitForAny(loop0, function()
     while state.running do
-      local ok, err = pcall(SP.loop)
-      if not ok then SP.err = tostring(err) end
+      local S = V.SPAWN or SP
+      local ok, err = pcall(S.loop)
+      if not ok then S.err = tostring(err) end
       sleep(2)
     end
   end)
@@ -1033,6 +1042,8 @@ function SP.status()
     local e = s.log[i]
     if e then out[#out + 1] = "  wished: " .. tostring(e.who) .. " - " .. tostring(e.n) .. " " .. tostring(e.item) end
   end
+  out[#out + 1] = "Sound sender: " .. ((SP.loopAt and os.clock() - SP.loopAt < 60) and "running" or
+    "NOT RUNNING - restart the base (exit, then it starts again)")
   if SP.err then out[#out + 1] = "Last problem: " .. tostring(SP.err) end
   if not SP.paired() then
     local c = 0

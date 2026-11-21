@@ -1500,6 +1500,11 @@ PneumaticCraft drone rides, turtle mapping/surveys, and an AE2 ME network view.
   within 90 s of speaking. Its own loop (VOICE.loop runs the base's and SP.loop in parallel). Console / chat
   `voice spawn [here|at x y z|pair|unpair|on|off|range|voice|volume|chatter|greet|say|wish ...]`. test_spawn.lua
   (the REAL relay program on a fake computer + fake rednet).
+  AFTER voice update (the owner: "it sends messages but doesn't make sound now"): the OLD loop kept running and its
+  sender read the OLD SP.queue for ever. Now SP.drain / SP.loop always take V.SPAWN (the current table), SP.sendN (the
+  message number - a fresh count was refused by the relay as a replay) + busyUntil / spam / tpMood carry over, and
+  addonWorker ends the running VOICE.loop on "addon_loaded" when VOICE.loop changed (2 s quiet first) and starts the new
+  one. `voice spawn` says "Sound sender: running" / NOT RUNNING.
   ITS OWN CALL WORD (the owner: "I don't want to call the one in spawn base"): `voice spawn name <word>` / `off` =
   voice.spawnName; V.cfg is wrapped: "name" gives that word while VOICE.ctx == "spawn" or SP.naming (SP.named(fn) around
   SP.chat and SP.tick) - every voice file reads V.cfg("name") at call time, so calledByName / {botl} / help all follow.

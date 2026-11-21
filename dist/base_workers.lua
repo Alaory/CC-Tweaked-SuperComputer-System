@@ -826,9 +826,29 @@ end
 end
 while state.running do
 if VOICE and VOICE.loop then
-local ok, err = pcall(VOICE.loop)
-if not ok then VOICE.err = tostring(err) end
-sleep(5)
+
+
+
+local loopFn, tbl = VOICE.loop, VOICE
+local reloaded = false
+parallel.waitForAny(function()
+local ok, err = pcall(loopFn)
+if not ok and VOICE then VOICE.err = tostring(err) end
+end, function()
+while true do
+os.pullEvent("addon_loaded")
+if VOICE ~= tbl or not VOICE or VOICE.loop ~= loopFn then
+repeat
+local t = os.startTimer(2)
+local ev, a
+repeat ev, a = os.pullEvent() until ev == "addon_loaded" or (ev == "timer" and a == t)
+until ev ~= "addon_loaded"
+reloaded = true
+return
+end
+end
+end)
+if not reloaded then sleep(5) end
 else
 waitFor(30, "addon_loaded")
 end

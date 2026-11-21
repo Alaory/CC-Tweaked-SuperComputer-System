@@ -421,6 +421,26 @@ for i = 1, 12 do VOICE.chat({ name = "Alaory", msg = "base tell me a joke " .. i
 CHECK(#told >= 12, "the owner is never limited (" .. #told .. ")")
 SP.spam = {}
 
+-- 10) RELOADED (voice update) while the old loop runs: the owner - "it sends messages but doesn't make sound now".
+-- The old sender read the OLD queue for ever; now every sender drains the CURRENT one (V.SPAWN), and the add-on
+-- worker restarts the loop after a reload.
+do
+  local oldDrain = SP.drain
+  CHECK(type(oldDrain) == "function", "the spawn sender drains one queue at a time (SP.drain)")
+  local okR = pcall(loadVoiceChain)
+  local SP2 = VOICE.SPAWN
+  CHECK(okR and SP2 and SP2 ~= SP, "voice update: a new spawn table")
+  CHECK(SP2.ready(), "... still paired + online after the reload (" .. tostring(SP2.seenAt) .. ")")
+  R.S.queue = {}
+  SP2.busyUntil = 0
+  SP2.queue = { { text = "Hello after the update.", answer = true } }
+  if oldDrain then oldDrain() end
+  CHECK(#SP2.queue == 0 and #R.S.queue >= 1, "the OLD sender still running sends the NEW queue (" .. #R.S.queue .. " pieces at the relay)")
+  local st = table.concat(VOICE.command({ "voice", "spawn" }), "\n")
+  CHECK(st:find("Sound sender: running", 1, true), "voice spawn shows the sender is running")
+  SP = SP2
+end
+
 -- console
 local lines = VOICE.command({ "voice", "spawn" })
 CHECK(table.concat(lines, "\n"):find("paired with #" .. RELAY, 1, true), "voice spawn shows the pairing: " .. tostring(lines[1]))
