@@ -590,6 +590,7 @@ function commsWorker()
       pcall(TT.homeTick)                 -- homes for new turtles; idle turtles go home
       pcall(TT.avoidTick)                -- turtles keep away from other players
       pcall(TT.stallTick)                -- a turtle hung in its job is stopped
+      pcall(TT.chunkTick)                -- copies alone: pinged - do they load their own chunk?
       pcall(MAP.autoTick)                -- auto-map: a survey always running (from the base outward)
       pcall(AWAY.tick)                   -- you are offline: use the time / report when you are back
       pcall(FACTORY.tick)                -- fewer turtles than you want: build one (AE2 parts)

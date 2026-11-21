@@ -31,6 +31,7 @@ HELP = {
 " survey stats         scans an hour + where the turtles' time goes (surveying, trips, stuck ...)",
 " lost                 every offline turtle: copy? fuel for the way home? last task, spot, log",
 " turtle <id> newchunky   a COPY with a NEW Chunky upgrade on it may move again",
+" turtle <id> chunktest   does it load its own chunk? (pinged while alone)",
 " voice [install]      the base talks (an optional add-on on a data floppy + a Speaker)",
 " survey auto [on|off] auto-map: turtles keep surveying from the base outward",
 " theme [name|random]  the monitor's colours (random = a different one each start)",
@@ -1260,6 +1261,24 @@ local label = t.label
 TT.forget(t.id)
 say(label .. " forgotten: off the list, its survey spots go to the other turtles.")
 end
+elseif tc == "chunktest" then
+
+if words[4] == "stop" then
+t.chunkTestUntil = nil
+say(t.label .. ": chunk test stopped.")
+else
+t.chunkTestUntil = os.clock() + 600
+t.chunkPingAt = nil
+say(t.label .. ": CHUNK TEST - pinged every 20 s for 10 min. It counts while NOTHING else keeps its chunk")
+say("running: no player within " .. (((simChunks and simChunks() or 10) + 2) * 16) .. " blocks (simulation distance + 2 chunks),")
+say("not within " .. (tonumber(CONFIG.turtles.baseLoadR) or 128) .. " of the base (turtles.baseLoadR), no online turtle within 64,")
+say("not in CONFIG.turtles.loadedAreas. Answers for " .. TT.PROVE_S .. " s alone = its own Chunky works.")
+end
+say("Now: " .. TT.chunkText(t))
+if TT.isCopy(t) then
+say("A copy of turtle " .. TT.realId(t.id) .. (t.ownChunky and " - it may move (own Chunky)" or " - it stays put until proven"))
+end
+if t.chunkyLent then say("It stays put: turtle " .. t.chunkyLent .. " (its copy) holds the shared Chunky.") end
 elseif tc == "newchunky" then
 
 if not TT.isCopy(t) then

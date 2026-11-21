@@ -103,6 +103,8 @@ SETTING_GROUPS = {
       next = function() TT.setDig(not CONFIG.turtles.dig) end },
     num("turtles.atBaseRange", "Ignore lost turtles near the base", "lost within this many blocks of the base: no rescue, no search (0 = off)",
         1024, 0, 4096, 64, plain),
+    num("turtles.baseLoadR", "Chunks loaded around the base", "blocks (x and z) - the chunk test (copies) counts nothing there",
+        128, 0, 2048, 32, plain),
     num("turtles.noDigBase", "No digging around the base", "blocks from the base (x and z): NOTHING is dug there, not even by the rescuer",
         96, 0, 512, 16, plain),
   } },

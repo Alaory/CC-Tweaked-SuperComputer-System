@@ -95,7 +95,141 @@ local _, n = TT.realId(t.id)
 return n > 0
 end
 function TT.copyStays(t)
+if not t then return false end
+if t.chunkyLent then return true end
 return TT.isCopy(t) and not t.ownChunky
+end
+
+function TT.stayTwin(t)
+if t.chunkyLent then return t.chunkyLent end
+return (TT.realId(t.id))
+end
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+TT.PROVE_S, TT.PROVE_N = 180, 3
+function TT.notAloneWhy(t)
+local p = t.pos
+if not (p and tonumber(p.x) and tonumber(p.z)) then return "its position is not known" end
+local sim = ((simChunks and simChunks() or 10) + 2) * 16
+local on = state.online
+for _, e in ipairs(state.players or {}) do
+local online = (not on) or on[tostring(e.name):lower()]
+if online then
+local dimOk = not e.dim or not DRONE_DIM or e.dim == DRONE_DIM
+if dimOk then
+if not (e.p and tonumber(e.p.x) and tonumber(e.p.z)) then
+if e.dim then return "player " .. tostring(e.name) .. "'s position is not known" end
+else
+local d = math.max(math.abs(e.p.x - p.x), math.abs(e.p.z - p.z))
+if d <= sim then return "player " .. tostring(e.name) .. " is " .. math.floor(d) .. " blocks away" end
+end
+end
+end
+end
+local h = CONFIG.drone and CONFIG.drone.home
+local br = tonumber(CONFIG.turtles.baseLoadR) or 128
+if h and tonumber(h.x) and math.max(math.abs(h.x - p.x), math.abs(h.z - p.z)) <= br then
+return "it is " .. math.floor(math.max(math.abs(h.x - p.x), math.abs(h.z - p.z))) .. " blocks from the base"
+end
+for _, a in ipairs(type(CONFIG.turtles.loadedAreas) == "table" and CONFIG.turtles.loadedAreas or {}) do
+local ax, az = tonumber(a.x or a[1]), tonumber(a.z or a[2])
+local ar = tonumber(a.r or a[3]) or 32
+if ax and az and math.max(math.abs(ax - p.x), math.abs(az - p.z)) <= ar then return "it is in a force-loaded area" end
+end
+for oid, o in pairs(state.turtles) do
+if oid ~= t.id and TT.online(o) and o.pos and tonumber(o.pos.x) and tonumber(o.pos.z) then
+local d = math.max(math.abs(o.pos.x - p.x), math.abs(o.pos.z - p.z))
+if d <= 64 then return (o.label or ("turtle " .. oid)) .. " is " .. math.floor(d) .. " blocks away" end
+end
+end
+return nil
+end
+
+function TT.chunkCheck(t)
+local why = TT.notAloneWhy(t)
+t.chunkWhy = why
+if why then t.alone = nil return end
+local now = os.clock()
+if not t.alone or now - (t.alone.last or now) > (CONFIG.turtles.offlineAfter or 60) then t.alone = { from = now, n = 0 } end
+t.alone.n, t.alone.last = t.alone.n + 1, now
+if now - t.alone.from >= TT.PROVE_S and t.alone.n >= TT.PROVE_N then
+t.loadsSelf = now
+pcall(TT.chunkProve, t)
+end
+end
+local function provenNow(t) return t and t.loadsSelf and os.clock() - t.loadsSelf < 600 and TT.online(t) end
+function TT.chunkProve(t)
+local real = TT.realId(t.id)
+local function tell(msg)
+TT.log(t, msg)
+if sysLog then sysLog(t.label .. ": " .. msg) end
+if pushNote then pcall(pushNote, "INFO", t.label .. ": " .. msg, C and C.info) end
+TT.listDirty = true
+end
+if TT.isCopy(t) and not t.ownChunky then
+local twin = state.turtles[real]
+if provenNow(twin) then
+t.ownChunky, t.chunkyProof = true, "its own Chunky: it answered alone while turtle " .. real .. " did too"
+tell("CHUNK TEST: loads its own chunk while turtle " .. real .. " does too - two Chunkies, it may move again")
+elseif not (twin and TT.online(twin)) then
+t.ownChunky, t.chunkyProof = true, "holds the shared Chunky: it answered alone while turtle " .. real .. " was offline"
+if twin then twin.chunkyLent = t.id end
+tell("CHUNK TEST: loads its own chunk while turtle " .. real .. " is OFFLINE - it holds the Chunky: it moves, " ..
+"turtle " .. real .. " stays put from now on")
+end
+end
+
+
+local other = t.chunkyLent and t
+if not other then
+local tw = state.turtles[real]
+if tw and tw.chunkyLent == t.id and provenNow(tw) then other = tw end
+end
+if other then
+local holder = state.turtles[other.chunkyLent]
+if other ~= t or provenNow(holder) or not holder then
+t = other
+TT.log(t, "CHUNK TEST: loads its own chunk while " .. (holder and holder.label or ("turtle " .. t.chunkyLent)) ..
+" does too - two Chunkies, it may move again")
+if sysLog then sysLog(t.label .. ": CHUNK TEST - two Chunkies, it may move again") end
+TT.listDirty = true
+t.chunkyLent = nil
+end
+end
+end
+
+function TT.chunkTick()
+local now = os.clock()
+for id, t in pairs(state.turtles) do
+local want = TT.copyStays(t) or (t.chunkTestUntil and now < t.chunkTestUntil)
+if want and TT.online(t) and not t.chunkWhy and now - (t.chunkPingAt or -999) >= 20 then
+t.chunkPingAt = now
+TT.send(id, "ping", {}, true)
+end
+end
+end
+
+function TT.chunkText(t)
+if t.chunkyProof then return "proven: " .. t.chunkyProof end
+if not TT.online(t) then return "offline - cannot be tested now" end
+if t.chunkWhy then return "cannot tell here: " .. t.chunkWhy end
+if t.alone then
+return "alone - answered " .. t.alone.n .. " times in " .. math.floor(os.clock() - t.alone.from) .. " s (needs " ..
+TT.PROVE_N .. " in " .. TT.PROVE_S .. " s)"
+end
+return "waiting for its next answer"
 end
 
 TT.copyRes = {}
@@ -178,8 +312,11 @@ local q = MAP and MAP.queue
 if not (t.pos and t.pos.x) then return "position unknown - press GPS LOCATE", C.warn end
 if t.anchor then return "anchor - keeps the base loaded", C.purple end
 if TT.copyStays(t) then
+if t.chunkyLent then
+return "stays put - turtle " .. t.chunkyLent .. " (its copy) holds the shared Chunky (CHUNK TEST)", C.purple
+end
 return "a COPY - its Chunky shares turtle " .. TT.realId(t.id) .. "'s chunk loading: it stays put " ..
-"(new Chunky on it, then: turtle " .. t.id .. " newchunky)", C.purple
+"(chunk test: " .. TT.chunkText(t) .. "; new Chunky on it, then: turtle " .. t.id .. " newchunky)", C.purple
 end
 if t.rescuerRole then return "rescuer - waits for a turtle in trouble", C.warn end
 if t.party then return "in the SEARCH PARTY - waits for the others", C.label end
@@ -558,6 +695,7 @@ end
 if m.task ~= t.task then t.taskAt = os.clock() end
 pcall(TT.statAdd, t, prevSeen)
 t.pos, t.task, t.home = m.pos, m.task, m.home
+pcall(TT.chunkCheck, t)
 
 if m.stuck and not t.stuck and type(np) == "table" and np.x then t.stuckPos = { x = np.x, y = np.y, z = np.z } end
 if not m.stuck then t.stuckPos = nil end
@@ -1593,7 +1731,7 @@ for id, t in pairs(state.turtles) do
 out[#out + 1] = { id = id, label = t.label, pos = t.pos, home = t.home, seen = t.seenEpoch,
 task = t.task, ver = t.ver, gear = t.gear, anchor = t.anchor, rescuerRole = t.rescuerRole,
 held = t.held, recall = t.recall, missing = t.missing, ownChunky = t.ownChunky,
-fuel = tonumber(t.fuel) }
+fuel = tonumber(t.fuel), chunkyLent = t.chunkyLent, chunkyProof = t.chunkyProof }
 end
 saveFileSafe(dataPath(CONFIG.turtles.listFile), serialSmall(out))
 TT.listDirty = false
@@ -1618,6 +1756,8 @@ t.held = e.held
 t.recall = e.recall
 t.missing = e.missing
 t.ownChunky = e.ownChunky == true or nil
+t.chunkyLent = tonumber(e.chunkyLent)
+t.chunkyProof = type(e.chunkyProof) == "string" and e.chunkyProof or nil
 t.fuel = t.fuel or tonumber(e.fuel)
 end
 end
@@ -2168,7 +2308,7 @@ if on and not idle and t.task and TT.copyMoveTask(t.task) and (not t.copyStopAt 
 t.copyStopAt = now
 TT.send(id, "stop", {}, true, true)
 TT.log(t, "A COPY on a trip ('" .. tostring(t.task) .. "') - stopped: moving it unloads turtle " ..
-TT.realId(id) .. "'s chunk")
+TT.stayTwin(t) .. "'s chunk")
 end
 end
 if low and fc and fc.x and idle and on and t.pos and t.pos.x and not t.held and not t.anchor and not t.stuck

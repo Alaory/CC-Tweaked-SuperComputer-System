@@ -267,7 +267,18 @@ PneumaticCraft drone rides, turtle mapping/surveys, and an AE2 ME network view.
   lostList / problemOf (no rescue), never sent home / for fuel (homeTick), a copy on a base trip (TT.COPY_MOVES words
   in its task) gets STOP (no hold, 10 min apart); your DRIVE is left alone; idleWhy says so. `turtle <id> newchunky
   [off]` = a NEW Chunky on it (a fresh upgrade has no UUID yet) -> t.ownChunky (turtles.dat) -> works again.
-  test_copies_stay.lua. FUEL FOR THE WAY HOME: spots were given down to 500 fuel and a turtle sent home below 2000 -
+  test_copies_stay.lua. CHUNK TEST (the owner: "some copy turtles can still load their chunks - mistaken for the
+  copies instead of the originals; test it when they ping-pong with no turtles / players / force-loaded chunks near"):
+  a turtle only answers from a chunk the server RUNS. TT.chunkCheck (every report, TT.receive): TT.notAloneWhy = an
+  online overworld player within (simChunks + 2) x 16 (unknown position = maybe near; another dimension = not), the
+  base within CONFIG.turtles.baseLoadR (128, SETTINGS > TURTLES), CONFIG.turtles.loadedAreas {x, z, r}, another online
+  turtle within 64; alone for TT.PROVE_S 180 s with 3+ answers (a silence > offlineAfter restarts) = t.loadsSelf ->
+  TT.chunkProve: a copy proven while its twin is proven too = two Chunkies (ownChunky); proven while the twin is
+  OFFLINE = the copy HOLDS the shared Chunky: ownChunky + twin.chunkyLent = copy id (copyStays(twin): the twin stays
+  put, TT.stayTwin for the texts); the twin proven later while the holder is too -> chunkyLent cleared. Saved in
+  turtles.dat (chunkyLent, chunkyProof). TT.chunkTick (comms): undecided copies (copyStays) + `turtle <id> chunktest`
+  (10 min, any turtle) are PINGED every 20 s while alone. TT.chunkText on the card / console. test_chunk_test.lua.
+  FUEL FOR THE WAY HOME: spots were given down to 500 fuel and a turtle sent home below 2000 -
   the way home from the edge costs ~3,000: every edge turtle ran dry on its way home. node homeFuel() (sky highway
   up + across + down, x1.15 + 300; m.homeFuel -> t.homeFuel): surveyPoints stops before a spot when fuel < way home
   from there + the hop + 60 (endless: topUp first) "fuel ... is only enough for the way home"; idleEmptyFuel burns
