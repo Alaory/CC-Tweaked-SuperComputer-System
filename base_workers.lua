@@ -811,9 +811,16 @@ end
 -- so not in the comms worker). Nothing installed: it just waits for one ("addon_loaded").
 function addonWorker()
   -- (after an upgrade / a voice file missing: the voice files are brought up to date once, by THIS program)
-  if voiceRepair and VOICE_FILES and addonPath and addonPath(VOICE_FILES[1]) then
+  if voiceRepair and VOICE_FILES and addonInstalled and addonInstalled(VOICE_FILES[1]) then
     waitFor(15, "voice_repair_never")
-    pcall(voiceRepair)
+    local okR, did = pcall(voiceRepair)
+    -- voice files on a STORAGE HELPER are read over the cable now (not at start: the base would wait for it)
+    local needs = not VOICE
+    for f in pairs(VOICE_WHERE or {}) do if f ~= VOICE_FILES[1] and not (VOICE and VOICE.packs and VOICE.packs[f]) then needs = true end end
+    if needs and next(VOICE_WHERE or {}) and not (okR and did) then
+      local okL, errL = pcall(loadVoiceChain, nil, true)
+      if sysLog and not okL then pcall(sysLog, "Voice files on the storage helper did not load: " .. tostring(errL), "WARNING") end
+    end
   end
   while state.running do
     if VOICE and VOICE.loop then

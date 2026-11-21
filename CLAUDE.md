@@ -1440,6 +1440,16 @@ PneumaticCraft drone rides, turtle mapping/surveys, and an AE2 ME network view.
   VOICE_FILES file missing from the floppies, or voice_update.flag (VOICE_FLAG, written by baseUpgrade when it
   restarts) -> voiceUpdate once with THIS program's list; result in the SYSTEM log, "not installed" -> WARNING with
   "type disks ... then voice update". test_voice part 33.
+  VOICE FILES ON STORAGE HELPERS (the owner's screen: "Voice add-on not installed: no DATA floppy with room (123 KB)" even
+  after `disks data` - it then moved the map / data files onto that floppy; the add-on is ~120 KB of a 125 KB floppy):
+  installAddon (group voice) tries a STORAGE HELPER FIRST (voiceToHelper: usable, free >= size + 16 KB, the one with the
+  old copy first; written, read back) unless CONFIG.voice.onHelpers = false; the old floppy copy is deleted (room for
+  data). VOICE_WHERE (voice_where.dat on the computer) = { [file] = "store:<id>/voice/<file>" }; addonInstalled(file) =
+  floppy or helper. loadOne(file, remoteOK) reads a helper copy with STORE.read; loadVoiceChain(file, remoteOK): the
+  START (inventory.lua) never waits for the cable - the add-on worker loads the chain with remoteOK ~15 s later
+  (voiceRepair first); voiceUpdate / installAddon load with remoteOK; removeAddon deletes the helper copy. A quiet
+  helper -> "the storage helper with <file> did not answer". The floppy path is unchanged (speech cache stays there).
+  test_voice part 33 (fake helper, every floppy full).
 - REMOVED AGAIN: remote access in a web browser (Cloud Catcher; base_remote.lua / remote.lua / pocket.lua
   in local mode on the base) - the owner: "taking space and seems useless". removeOldFiles (base_theme.lua,
   run by inventory.lua at start) deletes its files (remote.lua, base_remote.lua, cloud.lua on the computer

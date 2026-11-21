@@ -616,6 +616,45 @@ end
 -- the talking base = the add-on + its TALK PACKS (more things to say; each on a data floppy with room)
 -- (+ LINES PACKS voice_lines / voice_idle: 100+ ways to say each thing; LORE PACK voice_lore: why drones not /tp, modpack tips)
 VOICE_FILES = { "voice_addon.lua", "voice_talk.lua", "voice_talk2.lua", "voice_talk3.lua", "voice_lines.lua", "voice_idle.lua", "voice_lore.lua" }
+-- VOICE FILES ON STORAGE HELPERS (the owner's screen: "Voice add-on not installed: no DATA floppy with room (123 KB)"
+-- even after `disks data` - the add-on is ~120 KB of a 125 KB floppy and the map / data files fill the floppies).
+-- A storage helper has ~1 MB: installAddon puts a voice file on a HELPER first (CONFIG.voice.onHelpers, default on),
+-- on a data floppy only when no helper has room. VOICE_WHERE (voice_where.dat, tiny, on the computer):
+-- { [file] = "store:<id>/voice/<file>" }. A file there is read over the cable (STORE.read) - only where a short wait
+-- is fine: the add-on worker ~15 s after start (loadVoiceChain(nil, true)), `voice update`, installs.
+VOICE_WHERE_FILE = "voice_where.dat"
+VOICE_WHERE = {}
+do
+  local t = readSafe and readSafe(VOICE_WHERE_FILE)
+  if type(t) == "table" then
+    for k, v in pairs(t) do
+      if type(k) == "string" and type(v) == "string" and v:match("^store:%d+/") then VOICE_WHERE[k] = v end
+    end
+  end
+end
+local function saveVoiceWhere() saveFileSafe(VOICE_WHERE_FILE, textutils.serialize(VOICE_WHERE)) end
+-- installed anywhere: a floppy / next to inventory.lua, or a storage helper
+function addonInstalled(file) return addonPath(file) ~= nil or (VOICE_WHERE[file] ~= nil) end
+-- a helper with room for `body` (the one holding the old copy first); writes it, reads it back: path or nil, why
+local function voiceToHelper(file, body)
+  if not STORE then return nil, "no storage helpers" end
+  if not next(STORE.helpers or {}) then pcall(STORE.find, true) end
+  local oldId = VOICE_WHERE[file] and STORE.parse(VOICE_WHERE[file])
+  local list = {}
+  for id, h in pairs(STORE.helpers or {}) do
+    local room = (h.free or 0) + (id == oldId and #body or 0)
+    if STORE.usable(h) and room >= #body + 16 * 1024 then list[#list + 1] = { id = id, room = room } end
+  end
+  table.sort(list, function(a, b) if (a.id == oldId) ~= (b.id == oldId) then return a.id == oldId end return a.room > b.room end)
+  for _, c in ipairs(list) do
+    local path = "store:" .. c.id .. "/voice/" .. file
+    local okW = STORE.write(path, body)
+    local back = okW and STORE.read(path)
+    if back == body then return path end
+    pcall(STORE.delete, path)
+  end
+  return nil, #list == 0 and "no storage helper with room" or "the storage helper did not keep it"
+end
 function addonPath(file)
   for _, d in ipairs(mountedDisks()) do
     local p = fs.combine(d.mount, file)
@@ -626,13 +665,23 @@ function addonPath(file)
   return nil
 end
 -- load ONE file (no chain)
-local function loadOne(file)
+local function loadOne(file, remoteOK)
   local p = addonPath(file)
-  if not p then return false, "not installed" end
-  local h = fs.open(p, "r")
-  if not h then return false, "cannot read " .. p end
-  local text = h.readAll() or ""
-  h.close()
+  local text
+  if p then
+    local h = fs.open(p, "r")
+    if not h then return false, "cannot read " .. p end
+    text = h.readAll() or ""
+    h.close()
+  elseif VOICE_WHERE[file] and remoteOK and STORE then
+    p = VOICE_WHERE[file]
+    if not next(STORE.helpers or {}) then pcall(STORE.find, true) end
+    local okR, t = pcall(STORE.read, p)
+    if not (okR and type(t) == "string" and #t > 0) then return false, "the storage helper with " .. file .. " did not answer" end
+    text = t
+  else
+    return false, VOICE_WHERE[file] and "on a storage helper - loaded a little after start" or "not installed"
+  end
   local fn, err = load(text, "@" .. p, "t", _ENV)
   if not fn then return false, tostring(err) end
   local ok, e = pcall(fn)
@@ -643,11 +692,11 @@ end
 -- the talking base = a CHAIN (VOICE_FILES): the add-on empties every hook list when it loads, then each talk
 -- pack adds its own. A pack loaded ALONE added its hooks a second time (every chat counted twice) - so any
 -- voice file loads the whole chain, in order, once. Returns the result for `file` (nil = for the add-on).
-function loadVoiceChain(file)
+function loadVoiceChain(file, remoteOK)
   local res = {}
   for i, f in ipairs(VOICE_FILES or {}) do
-    if addonPath(f) then
-      if i == 1 or (VOICE and VOICE.addIntents) then res[f] = { loadOne(f) } end
+    if addonPath(f) or (remoteOK and VOICE_WHERE[f]) then
+      if i == 1 or (VOICE and VOICE.addIntents) then res[f] = { loadOne(f, remoteOK) } end
     elseif i == 1 then
       res[f] = { false, "not installed" }
       break
@@ -656,11 +705,11 @@ function loadVoiceChain(file)
   local r = res[file or VOICE_FILES[1]] or { false, "not installed" }
   return r[1], r[2]
 end
-function loadAddon(file)
+function loadAddon(file, remoteOK)
   for _, f in ipairs(VOICE_FILES or {}) do
-    if f == file then return loadVoiceChain(file) end
+    if f == file then return loadVoiceChain(file, remoteOK) end
   end
-  return loadOne(file)
+  return loadOne(file, remoteOK)
 end
 -- download an add-on (upgrade.lua fetch mode: checked + compiles) onto a data floppy
 function installAddon(file, group, log, noLoad)
@@ -671,7 +720,29 @@ function installAddon(file, group, log, noLoad)
   local okR, done, body = pcall(fn, { fetch = file, group = group, dir = BASE_DIR or "", log = log })
   if not (okR and done and type(body) == "string") then return false, "the download did not work (see above)" end
   local old = addonPath(file)
+  local oldRemote = VOICE_WHERE[file]
   -- the same as the copy already there: nothing to write
+  if not old and oldRemote and STORE then
+    local okC, cur = pcall(STORE.read, oldRemote)
+    if okC and cur == body then
+      if noLoad then return true, oldRemote, "same" end
+      local okL, where = loadAddon(file, true)
+      return okL, where, "same"
+    end
+  end
+  -- a STORAGE HELPER first (a floppy is 125 KB, the add-on alone ~120 KB): the old floppy copy goes - room for data
+  if group == "voice" and (type(CONFIG.voice) ~= "table" or CONFIG.voice.onHelpers ~= false) and STORE and not (old and (function()
+        local h = fs.open(old, "rb") local cur = h and h.readAll() if h then h.close() end return cur == body end)()) then
+    local hp = voiceToHelper(file, body)
+    if hp then
+      if old then pcall(fs.delete, old) end
+      if oldRemote and oldRemote ~= hp then pcall(STORE.delete, oldRemote) end
+      VOICE_WHERE[file] = hp
+      saveVoiceWhere()
+      if noLoad then return true, hp end
+      return loadAddon(file, true)
+    end
+  end
   if old then
     local h = fs.open(old, "rb")
     local cur = h and h.readAll()
@@ -703,7 +774,7 @@ function installAddon(file, group, log, noLoad)
     end
   end
   if not best then
-    return false, "no DATA floppy with room (" .. math.ceil(need / 1024) .. " KB, counting old speech that can go) - add-ons are kept off the computer. Put an empty floppy in a drive and type  disks data"
+    return false, "no storage helper and no DATA floppy with room (" .. math.ceil(need / 1024) .. " KB, counting old speech that can go) - add-ons are kept off the computer. Type  store  to check the helpers, or put an empty floppy in a drive and type  disks data"
   end
   local p = fs.combine(best.mount, file)
   -- make room: the old copy here (the new one is in memory), then the oldest cached speech
@@ -724,8 +795,9 @@ function installAddon(file, group, log, noLoad)
   end
   if not saveFileSafe(p, body) then return false, "could not save it on " .. best.mount end
   if old and old ~= p then pcall(fs.delete, old) end
+  if oldRemote then pcall(STORE.delete, oldRemote) VOICE_WHERE[file] = nil saveVoiceWhere() end
   if noLoad then return true, p end
-  return loadAddon(file)
+  return loadAddon(file, true)
 end
 -- every voice file (the add-on + its talk packs): download, save, load. say(line) tells what happened.
 function voiceUpdate(say)
@@ -741,7 +813,7 @@ function voiceUpdate(say)
     end
   end
   -- everything written: the whole chain loads once (a pack that could not be updated: its old copy)
-  local okL, errL = loadVoiceChain()
+  local okL, errL = loadVoiceChain(nil, true)
   if ok and not okL then say("Voice add-on did not start: " .. tostring(errL)) end
   return ok and okL, msg
 end
@@ -752,9 +824,9 @@ end
 -- to the SYSTEM log; a file that could not be installed (no room) = a WARNING.
 VOICE_FLAG = "voice_update.flag"
 function voiceRepair()
-  if not (VOICE_FILES and addonPath and addonPath(VOICE_FILES[1])) then return false, "the voice add-on is not installed" end
+  if not (VOICE_FILES and addonInstalled and addonInstalled(VOICE_FILES[1])) then return false, "the voice add-on is not installed" end
   local missing = {}
-  for _, f in ipairs(VOICE_FILES) do if not addonPath(f) then missing[#missing + 1] = f end end
+  for _, f in ipairs(VOICE_FILES) do if not addonInstalled(f) then missing[#missing + 1] = f end end
   local flag = fs.combine(BASE_DIR or "", VOICE_FLAG)
   local flagged = fs.exists(flag)
   if #missing == 0 and not flagged then return false, "nothing to do" end
@@ -772,6 +844,12 @@ function voiceRepair()
 end
 function removeAddon(file)
   local n = 0
+  if VOICE_WHERE[file] then
+    if STORE then pcall(STORE.delete, VOICE_WHERE[file]) end
+    VOICE_WHERE[file] = nil
+    saveVoiceWhere()
+    n = n + 1
+  end
   while true do
     local p = addonPath(file)
     if not p then break end

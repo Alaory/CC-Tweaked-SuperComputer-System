@@ -2283,5 +2283,71 @@ end)()
   local src = io.open(SRC_DIR .. "/base_console.lua"):read("a")
   CHECK(src:find("VOICE_FLAG", 1, true), "upgrade leaves the flag for the new program")
   CHECK(io.open(SRC_DIR .. "/base_workers.lua"):read("a"):find("pcall(voiceRepair)", 1, true), "the add-on worker runs voiceRepair at start")
+  -- VOICE FILES ON A STORAGE HELPER (the owner's screen: "Voice add-on not installed: no DATA floppy with room (123 KB)"
+  -- even after  disks data  - the add-on is ~120 KB of a 125 KB floppy): a helper with room takes it, the floppy copy goes
+  do
+    local fe1 = fs.exists
+    fs.exists = function(p2) if HIDDEN[tostring(p2):gsub("^/", "")] then return false end return fe1(p2) end
+    local S0 = { helpers = STORE.helpers, find = STORE.find, write = STORE.write, read = STORE.read, delete = STORE.delete, usable = STORE.usable }
+    local MEM = {}
+    STORE.helpers = { [7] = { id = 7, free = 900000 } }
+    STORE.find = function() return STORE.helpers end
+    STORE.usable = function(h) return h and not h.down end
+    STORE.write = function(path, text) if STORE.helpers[7].down then return false, "no answer" end MEM[path] = text return true end
+    STORE.read = function(path) if STORE.helpers[7].down then return nil end return MEM[path] end
+    STORE.delete = function(path) MEM[path] = nil return true end
+    local lf0 = loadfile
+    local core = io.open(SRC_DIR .. "/dist/voice_addon.lua"):read("a")
+    loadfile = function(path, ...)
+      if tostring(path):find("upgrade.lua", 1, true) then return function() return true, core end end
+      return lf0(path, ...)
+    end
+    local floppyCore = addonPath("voice_addon.lua")
+    local keepCore = core
+    -- every floppy nearly full
+    local fill = {}
+    for _, d in ipairs(mountedDisks()) do
+      if d.data then
+        local fp = fs.combine(d.mount, "filler.dat")
+        put(fp, "") put(fp, string.rep("m", math.max(0, fs.getFreeSpace(d.mount) - 3000)))
+        fill[#fill + 1] = fp
+      end
+    end
+    core = keepCore .. "\n-- a newer version\n"
+    local okI, whereI = installAddon("voice_addon.lua", "voice", function() end, true)
+    CHECK(okI and whereI == "store:7/voice/voice_addon.lua" and MEM[whereI] == core,
+          "no floppy with room: the add-on goes onto the storage helper (" .. tostring(whereI) .. ")")
+    CHECK(not addonPath("voice_addon.lua"), "... the old floppy copy is gone (room for data files)")
+    CHECK(VOICE_WHERE["voice_addon.lua"] == whereI and fs.exists(VOICE_WHERE_FILE), "... remembered in voice_where.dat")
+    CHECK(addonInstalled("voice_addon.lua"), "it counts as installed")
+    -- start: not read at once (no waiting for the cable) - the add-on worker reads it a little later
+    VOICE = nil
+    local okS = loadVoiceChain()
+    CHECK(not okS and VOICE == nil, "at start a helper file is not read yet")
+    local okLate = loadVoiceChain(nil, true)
+    CHECK(okLate and VOICE and VOICE.loop and VOICE.packs["voice_lore.lua"], "... read from the helper: the whole chain runs")
+    CHECK(tostring(VOICE.converse(owner, "fun fact", true)):find("act", 1, true), "... and answers (fun fact)")
+    -- the same version again: nothing written
+    local okSame, _, same = installAddon("voice_addon.lua", "voice", function() end, true)
+    CHECK(okSame and same == "same", "the same version on the helper: up to date")
+    -- the helper quiet at load: a clear reason, nothing breaks
+    STORE.helpers[7].down = os.clock()
+    VOICE = nil
+    local okQ, whyQ = loadVoiceChain(nil, true)
+    CHECK(not okQ and tostring(whyQ):find("did not answer", 1, true), "helper not answering: says so (" .. tostring(whyQ) .. ")")
+    STORE.helpers[7].down = nil
+    -- voice remove: also on the helper
+    removeAddon("voice_addon.lua")
+    CHECK(not MEM["store:7/voice/voice_addon.lua"] and not VOICE_WHERE["voice_addon.lua"], "voice remove deletes the helper copy")
+    -- back as it was: the core on its floppy, everything loaded
+    for _, fp in ipairs(fill) do fs.delete(fp) end
+    put(floppyCore, keepCore)
+    for k2, v2 in pairs(S0) do STORE[k2] = v2 end
+    loadfile = lf0
+    fs.exists = fe1
+    VOICE = nil
+    loadVoiceChain()
+    CHECK(VOICE and VOICE.loop, "(back on the floppy)")
+  end
   VOICE.queue, VOICE.games, VOICE.pend, VOICE.convo = {}, {}, {}, {}
 end)()

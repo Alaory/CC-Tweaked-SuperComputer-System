@@ -811,9 +811,16 @@ end
 
 function addonWorker()
 
-if voiceRepair and VOICE_FILES and addonPath and addonPath(VOICE_FILES[1]) then
+if voiceRepair and VOICE_FILES and addonInstalled and addonInstalled(VOICE_FILES[1]) then
 waitFor(15, "voice_repair_never")
-pcall(voiceRepair)
+local okR, did = pcall(voiceRepair)
+
+local needs = not VOICE
+for f in pairs(VOICE_WHERE or {}) do if f ~= VOICE_FILES[1] and not (VOICE and VOICE.packs and VOICE.packs[f]) then needs = true end end
+if needs and next(VOICE_WHERE or {}) and not (okR and did) then
+local okL, errL = pcall(loadVoiceChain, nil, true)
+if sysLog and not okL then pcall(sysLog, "Voice files on the storage helper did not load: " .. tostring(errL), "WARNING") end
+end
 end
 while state.running do
 if VOICE and VOICE.loop then

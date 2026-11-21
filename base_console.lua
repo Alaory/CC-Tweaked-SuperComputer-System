@@ -102,7 +102,7 @@ function baseUpgrade(args, log)
     log(okN and msgN and ("Turtles: " .. tostring(msgN)) or ("Turtle program not updated: " .. tostring(msgN)))
   end
   -- the talking add-on is on data floppies: updated here too (only when it is installed)
-  if a1 ~= "check" and a1 ~= "branch" and voiceUpdate and addonPath and VOICE_FILES and addonPath(VOICE_FILES[1]) then
+  if a1 ~= "check" and a1 ~= "branch" and voiceUpdate and addonInstalled and VOICE_FILES and addonInstalled(VOICE_FILES[1]) then
     pcall(voiceUpdate, log)
     -- (this is still the OLD program: the new one updates the voice files again at its start - it may list new ones)
     if done then pcall(function() local h = fs.open(fs.combine(BASE_DIR or "", VOICE_FLAG or "voice_update.flag"), "w") h.write("1") h.close() end) end
