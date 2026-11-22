@@ -198,8 +198,12 @@ local function serve()
       else
         local h = fs.open("startup.tmp", "w")
         local okW = h and pcall(function() h.write(code) h.close() end)
+        -- (the whole program must be there: a full disk can cut it off - then the old one keeps running)
+        okW = okW and fs.exists("startup.tmp") and fs.getSize("startup.tmp") >= #code
         if okW then
-          if fs.exists("startup.lua") then fs.delete("startup.lua") end
+          -- (moves need no room: the old one is kept as startup.old until the new one is in place)
+          if fs.exists("startup.old") then fs.delete("startup.old") end
+          if fs.exists("startup.lua") then fs.move("startup.lua", "startup.old") end
           fs.move("startup.tmp", "startup.lua")
           answer(id, req, { ok = true })
           sleep(0.5)

@@ -11,7 +11,7 @@
 -- The spawn area does not have to stay loaded: when nobody is near, nobody needs to hear it.
 
 local PROTO = "basespawn"
-local VER = 3
+local VER = 4
 local KEYFILE = "spawn_key.dat"
 
 -- the same keyed checksum the base uses (TT.sign)
@@ -226,6 +226,36 @@ local function receive(id, m)
     drawSign()
   elseif m.t == "ping" then
     sendBase("pong")
+  elseif m.t == "upd" then
+    -- (v4) a new spawn_speaker.lua from the base, in signed pieces (line = "i/n/checksum"): checked (checksum +
+    -- compiles), written beside the old one, size checked, swapped, restarted - never left without a program
+    local i, n, ver = tostring(m.line or ""):match("^(%d+)/(%d+)/(%w+)$")
+    i, n = tonumber(i), tonumber(n)
+    if not (i and n and n <= 40 and i >= 1 and i <= n) then return end
+    if not S.upd or S.upd.ver ~= ver or S.upd.n ~= n then S.upd = { ver = ver, n = n, parts = {}, got = 0 } end
+    if not S.upd.parts[i] then S.upd.parts[i], S.upd.got = d, S.upd.got + 1 end
+    if S.upd.got < n then return end
+    local code = table.concat(S.upd.parts)
+    S.upd = nil
+    if dataHash(code) ~= ver then sendBase("updres", { e = "arrived damaged" }) return end
+    if not _G.load(code, "=spawn_speaker", "t", {}) then sendBase("updres", { e = "does not compile" }) return end
+    local prog = (shell and shell.getRunningProgram and shell.getRunningProgram()) or "startup.lua"
+    local h = fs.open("startup.new", "w")
+    local okW = h and pcall(h.write, code)
+    if h then pcall(h.close) end
+    if not (okW and fs.exists("startup.new") and fs.getSize("startup.new") >= #code) then
+      pcall(fs.delete, "startup.new")
+      sendBase("updres", { e = "the disk is full" })
+      return
+    end
+    if fs.exists(prog .. ".old") then fs.delete(prog .. ".old") end
+    if fs.exists(prog) then fs.move(prog, prog .. ".old") end
+    fs.move("startup.new", prog)
+    sendBase("updres", { ok = true })
+    S.note = "Updated - restarting"
+    draw()
+    sleep(0.5)
+    os.reboot()
   elseif m.t == "unpair" then
     S.key, S.base = nil, nil
     fs.delete(KEYFILE)

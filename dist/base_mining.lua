@@ -515,11 +515,19 @@ local team = teams[d]
 local members = team and { team.loader } or {}
 for _, m in ipairs(team and team.miners or {}) do members[#members + 1] = m end
 local todo = 0
+
+
+local busyTwin = {}
+for _, u in ipairs(members) do
+if u and u.code ~= U.ver and u.updSentAt and os.clock() - u.updSentAt <= 60 then busyTwin[(tonumber(u.id) or 0) % 100000] = u.id end
+end
 for _, u in ipairs(members) do
 if u and MINE.online(u) and u.code ~= nil and u.code ~= U.ver then
 todo = todo + 1
+local twin = busyTwin[(tonumber(u.id) or 0) % 100000]
 
-if u.updReady ~= U.ver and os.clock() - (u.updSentAt or -999) > 60 then
+if u.updReady ~= U.ver and os.clock() - (u.updSentAt or -999) > 60 and not (twin and twin ~= u.id) then
+busyTwin[(tonumber(u.id) or 0) % 100000] = u.id
 MINE.sendCode(u)
 U.sent = U.sent + 1
 MINE.log(u, "> update " .. tostring(c.myver) .. " sent")

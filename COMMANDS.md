@@ -399,6 +399,7 @@ date set it counts down to the new world.
 | `voice spawn here` | its spot = where you stand (same as `$drone spawn here`) |
 | `voice spawn at <x> <y> <z>` | its spot = those coordinates |
 | `voice spawn pair <code>` | pairs the relay computer (the code is on its screen) |
+| `voice spawn update [force]` | the newest spawn_speaker.lua from GitHub to the relay (v4+ installs it itself and restarts; `voice update` does it too) |
 | `voice spawn unpair` | forgets the relay computer |
 | `voice spawn on\|off` | talks at spawn or not |
 | `voice spawn name <word>\|off` | its own call word at spawn / the base's word again |

@@ -321,6 +321,13 @@ if type(m.n) ~= "number" or m.n <= (SP.lastN or 0) then return end
 if m.sig ~= sign(key, m.t, m.n, "", { tostring(m.sp), tostring(m.q) }) then return end
 SP.lastN, SP.seenAt = m.n, rt()
 SP.relay = { sp = tonumber(m.sp), q = tonumber(m.q), ver = m.ver }
+if m.t == "updres" then
+local msg = m.ok and ("Spawn speaker #" .. id .. " installed the new program - it restarts") or
+("Spawn speaker #" .. id .. " did NOT install the new program: " .. tostring(m.e))
+SP.updMsg = msg
+if sysLog then pcall(sysLog, msg, m.ok and "DONE" or "WARNING") end
+if pushNote then pcall(pushNote, m.ok and "DONE" or "WARNING", msg, C and (m.ok and C.good or C.warn)) end
+end
 
 local info = SP.signText()
 if m.inf ~= nil and m.inf ~= SP.dataHash(info) then SP.send("info", { d = info }) end
@@ -1437,6 +1444,10 @@ end
 out[#out + 1] = "Sound sender: " .. ((SP.loopAt and os.clock() - SP.loopAt < 60) and "running" or
 "NOT RUNNING - restart the base (exit, then it starts again)")
 if SP.err then out[#out + 1] = "Last problem: " .. tostring(SP.err) end
+if SP.relay and SP.relay.ver then
+out[#out + 1] = "Spawn speaker program: v" .. tostring(SP.relay.ver) .. " (voice spawn update = the newest from GitHub)" ..
+(SP.updMsg and (" - " .. SP.updMsg) or "")
+end
 if not SP.paired() then
 local c = 0
 for _, x in pairs(SP.cands) do if os.clock() - x.at < 90 then c = c + 1 end end
@@ -1444,6 +1455,36 @@ out[#out + 1] = c > 0 and ("An unpaired spawn speaker is waiting: type the code 
 or "Set it up: a computer at spawn + Speaker + ENDER modem, spawn_speaker.lua on it as startup.lua"
 end
 return out
+end
+
+
+
+
+function SP.updateRelay(say, force)
+say = say or function() end
+if not SP.paired() then say("No spawn speaker is paired.") return false end
+if not SP.online() then say("The spawn speaker is not heard from (its area is not loaded) - try when it is.") return false end
+if not http then say("No http on this computer - cannot download it.") return false end
+local path = fs.combine(BASE_DIR or "", "upgrade.lua")
+local fn = fs.exists(path) and loadfile(path, "t", _ENV)
+if not fn then say("upgrade.lua is missing next to inventory.lua.") return false end
+local okR, done, body = pcall(fn, { fetch = "spawn_speaker.lua", group = "spawn", dir = BASE_DIR or "", log = function() end })
+if not (okR and done and type(body) == "string") then say("Download did not work: " .. tostring(okR and body or done)) return false end
+local newV = tonumber(body:match("local VER = (%d+)")) or 0
+local relV = tonumber(SP.relay and SP.relay.ver) or 0
+if relV >= newV and not force then say("The spawn speaker runs v" .. relV .. " - up to date.") return true end
+if relV < 4 and relV > 0 then
+say("The spawn speaker runs v" .. relV .. ", which cannot install updates itself: copy spawn_speaker.lua onto it by hand as " ..
+"startup.lua once (from GitHub). From v4 on this command does it.")
+return false
+end
+local hash = SP.dataHash(body)
+local pieces = {}
+for i = 1, #body, 8000 do pieces[#pieces + 1] = body:sub(i, i + 7999) end
+for i, p in ipairs(pieces) do SP.send("upd", { d = p, line = i .. "/" .. #pieces .. "/" .. hash }) end
+SP.updMsg = nil
+say("Sent spawn_speaker.lua v" .. newV .. " (" .. math.ceil(#body / 1024) .. " KB) to the spawn speaker - it installs it and restarts.")
+return true
 end
 V.commands.spawn = function(words, say, who)
 local a, b = low(words[3]), low(words[4])
@@ -1461,6 +1502,7 @@ elseif a == "at" and tonumber(words[4]) and tonumber(words[5]) and tonumber(word
 setSetting("voice.spawnAt", { x = tonumber(words[4]), y = tonumber(words[5]), z = tonumber(words[6]) })
 say("Spawn speaker spot: " .. words[4] .. " " .. words[5] .. " " .. words[6])
 elseif a == "pair" then say(SP.pair(words[4], say))
+elseif a == "update" then SP.updateRelay(say, b == "force")
 elseif a == "unpair" then
 SP.send("unpair", {})
 setSetting("voice.spawnId", false)

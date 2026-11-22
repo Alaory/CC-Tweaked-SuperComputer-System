@@ -1470,10 +1470,16 @@ function TT.updateTick()
       busy = busy + 1
     end
   end
+  -- (a COPY and its twin - one id, ONE shared disk: never both at once, they would write the same program file at the
+  --  same moment)
+  local sharing = {}
+  for id in pairs(TT.sending) do sharing[(TT.realId(id))] = true end
   for _, t in ipairs(TT.list()) do
     if busy >= 3 then break end
     if TT.online(t) and TT.outdated(t) and t.updReady ~= CODE.ver and not TT.sending[t.id]
+       and not sharing[(TT.realId(t.id))]
        and (not t.updRetry or now > t.updRetry) and (not only or t.id == only) then
+      sharing[(TT.realId(t.id))] = true
       TT.pushCode(t.id)
       TT.sending[t.id], t.updState = now, "sending"
       busy = busy + 1

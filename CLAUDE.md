@@ -231,6 +231,16 @@ PneumaticCraft drone rides, turtle mapping/surveys, and an AE2 ME network view.
   program for writing empties it: on a full disk the old code left a cut-off program = a dead
   turtle); no room -> startup.old dropped, once more; still none -> error, old program untouched,
   "upd" result ok=false. node_update_safe.lua.
+- UPDATE REVIEW (the owner: "check the update programs that update the turtles and other stuff"): COPIES SHARE ONE DISK -
+  TT.updateTick never sends the update to a copy and its twin at once (same TT.realId: `sharing`), MINE.updTick the
+  same (busyTwin, 60 s) - both installing at the same moment wrote the same program file. store.lua "upd": the size of
+  startup.tmp is checked, the old program is MOVED to startup.old (it was deleted before the new one was in place -
+  a stop right there = a helper with no program). THE SPAWN RELAY UPDATES ITSELF (spawn_speaker.lua VER 4): signed "upd"
+  pieces (line "i/n/<dataHash>"), checksum + compiles (_G.load - the file has its own local load), startup.new, size
+  checked, old -> <prog>.old, restart, "updres" {ok | e} -> SP.updMsg + a note. Base SP.updateRelay(say, force) =
+  `voice spawn update [force]` + voiceUpdate (a paired, online relay): upgrade.lua fetch group "spawn", sent when its
+  VER is newer than the relay's (hello m.ver; v3 or older: copy it by hand once). test_updates.lua, test_spawn,
+  store_helper.lua. Turtle (node installUpdate) and miner (installMinerUpdate) installs were already safe.
 - NODE.LUA OFF THE COMPUTER (the owner: "move node.lua to external storage - it is just an update"; 117 KB of
   a 1 MB computer): manifest group "node" (+ slim:node) - `upgrade` never puts it on the computer. CODE (memory)
   + ONE stored copy, SHRUNK: TT.codeStore -> a usable storage helper (store:<id>/node.lua, read back to verify),

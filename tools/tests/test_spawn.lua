@@ -607,6 +607,46 @@ do
   SP = SP2
 end
 
+-- THE RELAY UPDATES ITSELF (the owner: "check the update programs"): voice spawn update -> signed pieces -> checked,
+-- swapped, restarted; an old relay (v3) is told to be copied by hand once
+do
+  local SPn = VOICE.SPAWN
+  local rebooted = false
+  renv.os.reboot = function() rebooted = true end
+  renv.sleep = function() end
+  local newer = src:gsub("local VER = %d+", "local VER = 9", 1)
+  relayFiles["startup.lua"] = "-- the old relay program"
+  local realLoadfile, realHttp = loadfile, http
+  loadfile = function(p, ...) if tostring(p):find("upgrade.lua", 1, true) then return function() return true, newer, "test" end end return realLoadfile(p, ...) end
+  http = http or {}
+  R.sendBase("hello")
+  deliver()
+  CHECK(SPn.relay and tonumber(SPn.relay.ver) == 4, "the relay reports its program version (v" .. tostring(SPn.relay and SPn.relay.ver) .. ")")
+  local said = {}
+  VOICE.command({ "voice", "spawn", "update" }, function(t) said[#said + 1] = t end)
+  CHECK(relayFiles["startup.lua"] == newer and relayFiles["startup.lua.old"] == "-- the old relay program" and rebooted,
+        "voice spawn update: the relay installs the new program (the old one kept) and restarts: " .. table.concat(said, " | "))
+  deliver()
+  CHECK(tostring(SPn.updMsg):find("installed", 1, true), "the base hears it worked: " .. tostring(SPn.updMsg))
+  -- the same version again: nothing sent
+  SPn.relay.ver = 9
+  said = VOICE.command({ "voice", "spawn", "update" }) or {}
+  CHECK(table.concat(said, " "):find("up to date", 1, true), "the same version: up to date: " .. table.concat(said, " | "))
+  -- damaged on the way: not installed, the base is told
+  rebooted = false
+  relayFiles["startup.lua"] = "-- keep me"
+  local hash = SPn.dataHash(newer)
+  SPn.send("upd", { d = newer:sub(1, 100), line = "1/1/" .. hash })
+  deliver()
+  CHECK(relayFiles["startup.lua"] == "-- keep me" and not rebooted and tostring(SPn.updMsg):find("damaged", 1, true),
+        "a damaged update is not installed: " .. tostring(SPn.updMsg))
+  -- an old relay cannot install it: copy it by hand once
+  SPn.relay.ver = 3
+  said = VOICE.command({ "voice", "spawn", "update" }) or {}
+  CHECK(table.concat(said, " "):find("by hand", 1, true), "a v3 relay: copy it by hand once: " .. table.concat(said, " | "))
+  loadfile, http = realLoadfile, realHttp
+end
+
 -- console
 local lines = VOICE.command({ "voice", "spawn" })
 CHECK(table.concat(lines, "\n"):find("paired with #" .. RELAY, 1, true), "voice spawn shows the pairing: " .. tostring(lines[1]))

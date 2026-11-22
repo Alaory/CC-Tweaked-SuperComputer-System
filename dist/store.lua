@@ -198,8 +198,12 @@ answer(id, req, { ok = false, err = "update does not compile - not installed" })
 else
 local h = fs.open("startup.tmp", "w")
 local okW = h and pcall(function() h.write(code) h.close() end)
+
+okW = okW and fs.exists("startup.tmp") and fs.getSize("startup.tmp") >= #code
 if okW then
-if fs.exists("startup.lua") then fs.delete("startup.lua") end
+
+if fs.exists("startup.old") then fs.delete("startup.old") end
+if fs.exists("startup.lua") then fs.move("startup.lua", "startup.old") end
 fs.move("startup.tmp", "startup.lua")
 answer(id, req, { ok = true })
 sleep(0.5)

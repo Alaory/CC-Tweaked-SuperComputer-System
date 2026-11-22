@@ -822,6 +822,11 @@ end
 
 local okL, errL = loadVoiceChain(nil, true)
 if ok and not okL then say("Voice add-on did not start: " .. tostring(errL)) end
+
+local SPk = VOICE and VOICE.SPAWN
+if okL and SPk and SPk.updateRelay and SPk.paired and SPk.paired() and SPk.online and SPk.online() then
+pcall(SPk.updateRelay, function(l) say("Spawn speaker: " .. tostring(l)) end)
+end
 return ok and okL, msg
 end
 

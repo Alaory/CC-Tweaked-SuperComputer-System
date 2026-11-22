@@ -163,6 +163,7 @@ r = W3.ask(5, { op = "upd", data = "this is not lua (", ver = hash("this is not 
 CHECK(r and not r.ok and W3.files["startup.lua"] == SRC, "an update that does not compile is refused")
 W3.ask(5, { op = "upd", data = code, ver = hash(code) })
 CHECK(W3.files["startup.lua"] == code and W3.reboots >= 1, "a good update is installed and it restarts")
+CHECK(W3.files["startup.old"] == SRC, "the old program is kept as startup.old (it was deleted before the new one was in)")
 
 if FAILS > 0 then os.exit(1) end
 print("store.lua: all checks passed")
