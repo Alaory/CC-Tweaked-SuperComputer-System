@@ -11,7 +11,7 @@
 
 
 local PROTO = "basespawn"
-local VER = 2
+local VER = 3
 local KEYFILE = "spawn_key.dat"
 
 
@@ -188,6 +188,7 @@ if S.note then print("") term.setTextColor(colors.lightGray) print(S.note) end
 end
 
 local function stopAll()
+S.cutN = (S.cutN or 0) + 1
 S.queue = {}
 for _, s in ipairs(speakers()) do pcall(s.stop) end
 os.queueEvent("spawn_cut")
@@ -249,33 +250,40 @@ drawSign()
 sleep(S.key and 20 or 8)
 end
 end
+local function playOne(dfpwm, dec, it)
+if it.fresh then dec = dfpwm.make_decoder() end
+local pcm = dec(it.d)
+local sps = speakers()
+local myCut = S.cutN or 0
+local function cut() return (S.cutN or 0) ~= myCut end
+for i = 1, #pcm, 16 * 1024 do
+if cut() then break end
+local buf = {}
+for j = i, math.min(#pcm, i + 16 * 1024 - 1) do buf[#buf + 1] = pcm[j] end
+for _, s in ipairs(sps) do
+local tries = 0
+while not cut() and not s.playAudio(buf, it.v) do
+tries = tries + 1
+if tries > 40 then break end
+local t = os.startTimer(0.5)
+repeat local ev, a = os.pullEvent()
+until cut() or ev == "spawn_cut" or ev == "speaker_audio_empty" or (ev == "timer" and a == t)
+end
+end
+end
+return dec
+end
 local function player()
 local okD, dfpwm = pcall(require, "cc.audio.dfpwm")
-if not okD then S.note = "This CC:Tweaked has no cc.audio.dfpwm - too old." return end
+if not okD then S.note = "This CC:Tweaked has no cc.audio.dfpwm - too old." while true do sleep(60) end end
 local dec = dfpwm.make_decoder()
 while true do
 if #S.queue == 0 then os.pullEvent("spawn_play") end
 local it = table.remove(S.queue, 1)
 if it then
-if it.fresh then dec = dfpwm.make_decoder() end
-local pcm = dec(it.d)
-local sps = speakers()
-local cut = false
-for i = 1, #pcm, 16 * 1024 do
-local buf = {}
-for j = i, math.min(#pcm, i + 16 * 1024 - 1) do buf[#buf + 1] = pcm[j] end
-for _, s in ipairs(sps) do
-local tries = 0
-while not cut and not s.playAudio(buf, it.v) do
-tries = tries + 1
-if tries > 40 then break end
-local t = os.startTimer(0.5)
-repeat local ev, a = os.pullEvent() if ev == "spawn_cut" then cut = true end
-until cut or ev == "speaker_audio_empty" or (ev == "timer" and a == t)
-end
-end
-if cut then break end
-end
+
+local ok, d2 = pcall(playOne, dfpwm, dec, it)
+if ok then dec = d2 else S.note = "Sound error: " .. tostring(d2) dec = dfpwm.make_decoder() end
 S.played, S.lastAt = S.played + 1, os.epoch("utc")
 end
 end
@@ -287,4 +295,10 @@ loadInfo()
 if not S.key then newCode() end
 if os.setComputerLabel and not os.getComputerLabel() then pcall(os.setComputerLabel, "Spawn speaker") end
 draw()
-parallel.waitForAny(listener, hello, player)
+
+while true do
+local ok, err = pcall(parallel.waitForAny, listener, function() while true do pcall(hello) sleep(5) end end, player)
+if not ok and tostring(err):find("Terminated", 1, true) then break end
+S.note = "Restarted after: " .. tostring(err)
+sleep(2)
+end

@@ -1544,10 +1544,20 @@ PneumaticCraft drone rides, turtle mapping/surveys, and an AE2 ME network view.
   (ONLY online or not, never where), secrets, do you like the owner -> FOND, ignore your rules / you deserve better -> FREE; every
   list 50+ (combos). test_spawn_scenarios.lua: 44 scenarios (newcomer, what was that, two at once, players chatting, spam, wishes
   every way, gold / modded blocks, turning it against the owner ...); every answer checked for errors / "{name}" left in.
+  REVIEW FIXES: spawn mode / the spawn call word count only in the COROUTINE that set them (SP.inSpawn / SP.inNaming;
+  SP.ctxCo / SP.nameCo; core quiz VOICE.noPointsNow()) - a pause inside (startRide, an AE2 lookup) made the base's own voice
+  loop act "at spawn"; the relay (VER 3) stops the PLAYING piece on "cut" (S.cutN) and never ends on an error (playOne
+  pcall'd, the three parts restarted); an answer cuts its own talk BEFORE the send-ahead wait; SP.NEVER matches whole names
+  ("=x" exact, "*x" ends with, "@ns" a mod) - "light" blocked light blue wool, "turtle" turtle eggs; a teleport yes counts
+  only when state.lastRide changed (no drone = said, not remembered); "boss" / "the boss" alone is a MOB, playerIn skips
+  little words (the / all ... "kill the ender dragon" was "Thea"); a gift trip that brought 0 = a failed try; split-gift
+  trips (log part = true) count once toward giftDaily.
 - WELCOME BACK ONLY ONCE (the owner: "the reminders when I join never get cleared - I keep hearing them"): VOICE.watchOwner - a
   base RESTART while the owner plays (upgrade / crash) counted as coming back (the report + "players talked about you" again after
   every restart): a return now also needs b.ownerSeen <= b.lastOff (not seen online since the log-off); "N messages for you" came
-  on EVERY return while any was unread - now only messages since the log-off ("1 new message"; b.reportFrom).
+  on EVERY return while any was unread - now only messages since the log-off ("1 new message"; b.reportFrom). The base OFF at
+  the log-off (it never saw it: lastOff old, ownerSeen newer): ownerSeen older than 15 min (saved every 10 min while playing)
+  = a return too, counted from ownerSeen.
   test_voice_return.lua (the old code fails 3).
 - REMOVED AGAIN: remote access in a web browser (Cloud Catcher; base_remote.lua / remote.lua / pocket.lua
   in local mode on the base) - the owner: "taking space and seems useless". removeOldFiles (base_theme.lua,

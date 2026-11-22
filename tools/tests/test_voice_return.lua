@@ -71,4 +71,13 @@ b.msgs[#b.msgs + 1] = { from = "Kim", text = "hi", at = os.epoch("utc") - 360000
 V.ownerWasOn = nil
 V.watchOwner()
 CHECK(b.report, "a real return found after a restart (not seen online since the log-off): reported")
+-- 5) THE BASE WAS OFF when the owner logged off (unloaded with them): it never saw the log-off - lastOff old, ownerSeen
+-- newer. Coming back a day later is still a return (review: the restart fix lost this report)
+b.lastOff = os.epoch("utc") - 5 * DAY
+b.ownerSeen = os.epoch("utc") - DAY
+b.report = nil
+b.msgs[#b.msgs + 1] = { from = "Zed", text = "hey", at = os.epoch("utc") - 3600000 }
+V.ownerWasOn = nil
+V.watchOwner()
+CHECK(b.report and b.reportFrom and b.reportFrom >= os.epoch("utc") - DAY - 1000, "base off at log-off: still a return, counted from the last time seen")
 V.say = say0

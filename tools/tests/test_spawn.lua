@@ -63,7 +63,7 @@ end
 -- ===== the relay: spawn_speaker.lua on its own computer =====
 local RELAY, BASE = 77, os.getComputerID()
 local src = io.open(SRC_DIR .. "/spawn_speaker.lua"):read("a")
-src = src:gsub("parallel%.waitForAny%(listener, hello, player%)%s*$",
+src = src:gsub("%-%- %(one part stopping never ends the program.*$",
   "return { receive = receive, S = S, sendBase = sendBase, sign = sign, dataHash = dataHash }")
 local relayFiles = {}
 local renv = setmetatable({}, { __index = _G })
@@ -218,6 +218,12 @@ a = wish("no")
 CHECK(#VOICE.giftQueue() == 0, "no -> nothing queued: " .. a)
 a = wish("base i want a spawner")
 CHECK(not a:lower():find("yes", 1, true) and #VOICE.giftQueue() == 0, "a spawner is never wished for: " .. a)
+CHECK(not SP.never("minecraft:light_blue_wool") and not SP.never("minecraft:lightning_rod") and not SP.never("minecraft:daylight_detector")
+      and not SP.never("minecraft:turtle_egg") and not SP.never("minecraft:turtle_helmet") and not SP.never("minecraft:light_weighted_pressure_plate"),
+      "the never-list does not catch light blue wool / lightning rods / turtle eggs (whole names now)")
+CHECK(SP.never("minecraft:light") and SP.never("minecraft:zombie_spawn_egg") and SP.never("minecraft:chain_command_block") and
+      SP.never("computercraft:turtle_advanced") and SP.never("minecraft:spawner") and SP.never("pneumaticcraft:drone"),
+      "... and still catches the light block, spawn eggs, command blocks, turtles, spawners, drones")
 a = wish("base i want unobtainium")
 CHECK(a:lower():find("unobtainium", 1, true) and not SP.wpend.steve, "an item AE2 does not have: " .. a)
 a = wish("base i want to play a game")
@@ -290,12 +296,43 @@ VOICE.audio = function(...)
   return audio0(...)
 end
 local own = { text = "This is a long line it says by itself. It has a second sentence. And a third one here too, to be sure it is long." }
+local cutBefore = R.S.cutN or 0
 local okO, whyO = SP.play(own)
 VOICE.audio = audio0
 local cut1 = 0
 for _, mm in ipairs(sentToRelay) do if mm.t == "cut" then cut1 = cut1 + 1 end end
 CHECK(not okO and whyO == "gave way" and cut1 == cut0 + 1, "a question while it talks by itself: cut at once (" .. tostring(whyO) .. ")")
 R.receive(BASE, sentToRelay[#sentToRelay])
+CHECK((R.S.cutN or 0) == cutBefore + 1, "the relay counts the cut (the piece playing now stops too, not only the queue)")
+-- an ANSWER while its own talk plays: cut BEFORE waiting (review: it waited up to a whole piece first)
+do
+  SP.ownPlaying, SP.busyUntil = true, VOICE.rt() + 30
+  local n0 = #sentToRelay
+  local t0 = VOICE.rt()
+  SP.play({ text = "Quick answer.", answer = true })
+  local firstCut, firstPlay
+  for i = n0 + 1, #sentToRelay do
+    if sentToRelay[i].t == "cut" and not firstCut then firstCut = i end
+    if sentToRelay[i].t == "play" and not firstPlay then firstPlay = i end
+  end
+  CHECK(firstCut and firstPlay and firstCut < firstPlay and VOICE.rt() - t0 < 2, "an answer cuts its own talk at once (" ..
+        string.format("%.1f", VOICE.rt() - t0) .. " s)")
+  SP.ownPlaying, SP.busyUntil = false, 0
+end
+-- the spawn context stays in ITS coroutine (review: a pause inside leaked "spawn" into the base's voice loop)
+do
+  local seenCfg, seenNear
+  SP.inCtx(function()
+    local co = coroutine.create(function() seenCfg = SP.inSpawn() seenNear = VOICE.nearPlayers() end)
+    coroutine.resume(co)
+  end)
+  local spawnList = SP.players()
+  CHECK(seenCfg == false and seenNear ~= nil and #seenNear ~= #spawnList or (seenCfg == false and #spawnList == 0),
+        "another coroutine is not in spawn mode while a spawn chat is handled")
+  local inside
+  SP.inCtx(function() inside = SP.inSpawn() end)
+  CHECK(inside == true, "... the spawn chat itself is")
+end
 SP.queue = {}
 
 -- 6) greetings: a newcomer gets how-to (once); a crowd = one line; passers-by not every time
@@ -355,7 +392,13 @@ CHECK(#SP.queue == 0, "the owner at the base is answered at the base")
 -- another dimension = /tpa (with a shrug)
 local rides = {}
 local startRide0, order0 = startRide, droneOrder
-startRide = function(name, dest, owner) rides[#rides + 1] = { name = name, dest = dest } end
+local rideN = 0
+startRide = function(name, dest, owner)
+  rides[#rides + 1] = { name = name, dest = dest }
+  rideN = rideN + 1
+  state.lastRide = state.lastRide or {}
+  state.lastRide[name:lower()] = rideN                  -- (as the real startRide does when a drone goes)
+end
 droneOrder = { "d1" }
 SP.seenAt = VOICE.rt()
 SP.tpMood = {}
@@ -386,6 +429,19 @@ state.players[bobI].dim = DRONE_DIM
 told = {}
 VOICE.chat({ name = "Steve", msg = "base take me to the base" })
 CHECK(#rides == 1, "'take me to the base' is no player ride")
+-- a yes but NO drone can go (startRide tells why, nothing starts): not counted, not remembered (review)
+do
+  local sr = startRide
+  startRide = function() end
+  SP.tpMood = {}
+  setSetting("voice.tpChance", 1)
+  local m0 = VOICE.mem().steve and VOICE.mem().steve.tpw and VOICE.mem().steve.tpw.n or 0
+  told = {}
+  VOICE.chat({ name = "Steve", msg = "base tp me to bob" })
+  CHECK(toldTo("Steve"):lower():find("no drone", 1, true) and not SP.tpMood.steve and
+        ((VOICE.mem().steve.tpw and VOICE.mem().steve.tpw.n) or 0) == m0, "no drone: says so, no ride counted, may ask again: " .. toldTo("Steve"))
+  startRide = sr
+end
 resetSetting("voice.tpChance")
 SP.spam = {}
 startRide, droneOrder = startRide0, order0

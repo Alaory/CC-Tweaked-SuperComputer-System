@@ -973,8 +973,18 @@ do
   VOICE.giftNext = 0
   gtick(CLOCK, { Kevin = true })
   CHECK(#runs == nr + 2 and runs[#runs].n == 36, "... and go with the next trip")
+  CHECK(B2.giftLog[#B2.giftLog].part == true, "the first trip is logged as PART of a gift (counts once a day - review)")
   runs[#runs].cb(true, 36, nil)
   CHECK(#q == 0, "all 100 given: off the queue")
+  -- a trip that brought NOTHING is a failed try, not a delivery (review)
+  VOICE.giftEarn("Kevin", "manual", { { "minecraft:diamond", 5 } })
+  VOICE.giftNext, VOICE.giftBusy = 0, nil
+  gtick(CLOCK, { Kevin = true })
+  told = {}
+  runs[#runs].cb(true, 0, nil)
+  CHECK(#q == 1 and q[1].tries == 1 and not table.concat(told, " "):find("Gift delivered", 1, true),
+        "0 brought: still queued, a failed try (" .. tostring(q[1] and q[1].lastErr) .. ")")
+  table.remove(q, 1)
   for i = #keep, 1, -1 do q[#q + 1] = keep[i] end
 end
 -- the birthday gift only for a birthday told 30+ days ago ("my birthday is today" = a wish, no gift)

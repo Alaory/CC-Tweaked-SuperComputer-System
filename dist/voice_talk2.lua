@@ -1013,7 +1013,7 @@ local _, log = gifts()
 local d0 = dayNum() * 86400000
 local mine, all = 0, 0
 for _, e in ipairs(log) do
-if (e.at or 0) >= d0 then
+if (e.at or 0) >= d0 and not e.part then
 all = all + 1
 if who and tostring(e.who):lower() == tostring(who):lower() then mine = mine + 1 end
 end
@@ -1104,10 +1104,12 @@ local idx
 for j, e in ipairs(qq) do if e == g then idx = j end end
 
 
+
+if okD and (tonumber(delivered) or 0) <= 0 then okD, err = false, "the drone brought nothing (the work chest gave it none)" end
 local left = n - (tonumber(delivered) or 0)
 if okD and (tonumber(delivered) or 0) > 0 and left > 0 and idx then
 g.n, g.tries, g.retryAt, g.lastErr = left, 0, nil, nil
-log[#log + 1] = { who = who, item = item, n = delivered, why = g.why, at = os.epoch("utc") }
+log[#log + 1] = { who = who, item = item, n = delivered, why = g.why, at = os.epoch("utc"), part = true }
 while #log > 60 do table.remove(log, 1) end
 V.saveMem()
 tell(who, "Gift delivered: " .. delivered .. " " .. itemName(item) .. " - the other " .. left .. " come with the next drone trip.")

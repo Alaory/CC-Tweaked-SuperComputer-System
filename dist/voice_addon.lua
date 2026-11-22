@@ -1169,7 +1169,7 @@ m[k] = m[k] or {}
 local day = os.date("!%Y-%m-%d")
 if m[k].qday ~= day then m[k].qday, m[k].qn = day, 0 end
 local cap = tonumber(VOICE.cfg("quizDaily", 15)) or 15
-if VOICE.noPoints then
+if VOICE.noPointsNow and VOICE.noPointsNow() then
 return VOICE.more("right", { "Correct!", "Right answer!", "Yes, well done!" })
 end
 if (m[k].qn or 0) >= cap then
@@ -2102,11 +2102,14 @@ if on then
 
 
 
-local returned = VOICE.ownerWasOn == false or (VOICE.ownerWasOn == nil and b.lastOff and nowE - b.lastOff > 60000 and
-(tonumber(b.ownerSeen) or 0) <= b.lastOff)
+
+
+local seen = tonumber(b.ownerSeen) or 0
+local returned = VOICE.ownerWasOn == false or (VOICE.ownerWasOn == nil and (
+(b.lastOff and nowE - b.lastOff > 60000 and seen <= b.lastOff) or (seen > 0 and nowE - seen > 900000)))
 if returned then
 b.backAt = nowE
-local since = b.lastOff or 0
+local since = math.max(b.lastOff or 0, (VOICE.ownerWasOn == nil and seen) or 0)
 b.reportFrom = since
 local n = 0
 for _, v in pairs(b.visitors) do if (v.last or 0) > since then n = n + 1 end end

@@ -766,7 +766,8 @@ local function ownerish(t)
 local o = tostring((V.ownerName and V.ownerName()) or state.owner or ""):lower()
 t = " " .. t .. " "
 if o ~= "" then t = t:gsub(" " .. o:gsub("%p", "%%%0") .. "s? ", " owner "):gsub(" " .. o:gsub("%p", "%%%0") .. "s? ", " owner ") end
-for _, p in ipairs({ "your owner", "ur owner", "the owner", "your boss", "the boss", "your creator", "your master", "your maker", "boss" }) do
+
+for _, p in ipairs({ "your owner", "ur owner", "the owner", "your boss", "ur boss", "your creator", "your master", "your maker" }) do
 t = t:gsub(" " .. p .. " ", " owner ")
 end
 return t
@@ -776,7 +777,12 @@ local o = tostring((V.ownerName and V.ownerName()) or state.owner or ""):lower()
 return (type(state.online) == "table" and state.online[o]) and "online right now" or "offline right now"
 end
 local function anyOf(t, list) for _, p in ipairs(list) do if t:find(" " .. p .. " ", 1, true) then return true end end return false end
+
+local NOTNAME = { the = 1, all = 1, this = 1, that = 1, these = 1, those = 1, my = 1, your = 1, his = 1, her = 1, our = 1, their = 1,
+some = 1, any = 1, every = 1, everyone = 1, everything = 1, time = 1, mobs = 1, mob = 1, him = 1, them = 1, its = 1, one = 1, two = 1,
+ender = 1, wither = 1, dragon = 1, warden = 1, zombie = 1, zombies = 1, creeper = 1, creepers = 1, skeleton = 1, spider = 1 }
 local function playerIn(word, me)
+if NOTNAME[tostring(word or ""):lower()] then return nil end
 word = tostring(word or ""):gsub("'s$", ""):gsub("s$", "")
 for _, e in ipairs(state.players or {}) do
 local n = tostring(e.name or "")

@@ -1169,7 +1169,7 @@ function VOICE.gameReply(who, q, strict)
         local day = os.date("!%Y-%m-%d")
         if m[k].qday ~= day then m[k].qday, m[k].qn = day, 0 end
         local cap = tonumber(VOICE.cfg("quizDaily", 15)) or 15
-        if VOICE.noPoints then                    -- (the SPAWN speaker: no points / rewards there - voice_spawn.lua)
+        if VOICE.noPointsNow and VOICE.noPointsNow() then   -- (the SPAWN speaker: no points / rewards there - voice_spawn.lua)
           return VOICE.more("right", { "Correct!", "Right answer!", "Yes, well done!" })
         end
         if (m[k].qn or 0) >= cap then
@@ -2102,11 +2102,14 @@ function VOICE.watchOwner()
     -- "players talked about you" line again after every restart. Now: only if the owner was not seen online since the last
     -- log-off (ownerSeen is saved every 10 min while online). (2) "N messages for you" came on EVERY return while any
     -- message was unread - now only messages that came in while the owner was away.
-    local returned = VOICE.ownerWasOn == false or (VOICE.ownerWasOn == nil and b.lastOff and nowE - b.lastOff > 60000 and
-                                                    (tonumber(b.ownerSeen) or 0) <= b.lastOff)
+    -- (3) the base was OFF / unloaded when the owner logged off (it never saw the log-off: lastOff old, ownerSeen newer) -
+    -- ownerSeen older than 15 min = they were away (it is saved every 10 min while they play) - review
+    local seen = tonumber(b.ownerSeen) or 0
+    local returned = VOICE.ownerWasOn == false or (VOICE.ownerWasOn == nil and (
+                       (b.lastOff and nowE - b.lastOff > 60000 and seen <= b.lastOff) or (seen > 0 and nowE - seen > 900000)))
     if returned then
       b.backAt = nowE
-      local since = b.lastOff or 0
+      local since = math.max(b.lastOff or 0, (VOICE.ownerWasOn == nil and seen) or 0)
       b.reportFrom = since
       local n = 0
       for _, v in pairs(b.visitors) do if (v.last or 0) > since then n = n + 1 end end

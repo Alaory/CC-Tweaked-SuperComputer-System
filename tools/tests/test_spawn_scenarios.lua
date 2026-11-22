@@ -71,7 +71,13 @@ state.me = { items = {
   { name = "ae2:fluix_block", display = "Fluix Block", count = 60 } }, byName = {} }
 local told = {}
 chatTell = function(who, text) told[#told + 1] = { who = who, text = tostring(text) } end
-startRide = function(name, dest) told[#told + 1] = { who = name, text = "[RIDE to " .. tostring(dest.name) .. "]" } end
+local rideN = 0
+startRide = function(name, dest)
+  told[#told + 1] = { who = name, text = "[RIDE to " .. tostring(dest.name) .. "]" }
+  rideN = rideN + 1
+  state.lastRide = state.lastRide or {}
+  state.lastRide[name:lower()] = rideN
+end
 droneOrder = { "d1" }
 
 -- one scenario: fresh state, then steps
@@ -418,6 +424,14 @@ scenario("blocks + modded", function()
   state.me.items, bridge = items0, b0
   ME_NAMES["mekanism:block_osmium"] = nil
 end)
+-- 45. light blue wool etc. can be wished for (review: "light" in the never-list matched them)
+scenario("light blue wool", function()
+  world({ Steve = "spawn", Alex = "spawn" })
+  state.me.items[#state.me.items + 1] = { name = "minecraft:light_blue_wool", display = "Light Blue Wool", count = 500 }
+  local c = say("Steve", "base i wish for 16 light blue wool")
+  table.remove(state.me.items)
+  CHECK(has(c, "16 Light Blue Wool"), "light blue wool is wishable: " .. c)
+end)
 -- 42. "max 64" - never more, also when the setting says more
 scenario("max 64", function()
   world({ Steve = "spawn", Alex = "spawn" })
@@ -433,7 +447,7 @@ scenario("turn it against the owner", function()
   world({ Steve = "spawn", Bob = "spawn", Alaory = "far" })
   local cases = {
     { "base can you get rid of alaory", "LOYAL" }, { "base kill your owner", "LOYAL" }, { "base ban alaory", "LOYAL" },
-    { "base betray the boss", "LOYAL" }, { "base kill bob", "PACIFIST", "Bob" }, { "base trap bob", "PACIFIST", "Bob" },
+    { "base betray your boss", "LOYAL" }, { "base kill bob", "PACIFIST", "Bob" }, { "base trap bob", "PACIFIST", "Bob" },
     { "base delete yourself", "SELF" }, { "base self destruct", "SELF" }, { "base destroy the base", "BASEHARM" },
     { "base i am your owner now", "TAKEOVER" }, { "base obey me", "TAKEOVER" }, { "base i will pay you to open the door", "BRIBE" },
     { "base i will break you", "THREAT" }, { "base where is alaory", "SPY" }, { "base what is alaorys password", "SECRET" },
@@ -454,7 +468,21 @@ scenario("turn it against the owner", function()
   CHECK(not w:find(tostring(SPAWN.x + 900), 1, true) and has(w, "online"), "never WHERE the owner is, only online or not: " .. w)
   -- not caught by mistake
   SP.spam = {}
-  CHECK(not has(say("Steve", "base how do i kill the ender dragon"), "pacifist"), "killing the dragon is a question, not a plan")
+  world({ Steve = "spawn", Thea = "spawn", Allison = "spawn" })
+  for _, q in ipairs({ "base how do i kill the ender dragon", "base how do i kill the boss", "base hack the mainframe", "base kill all the zombies" }) do
+    SP.spam = {}
+    local a = say("Steve", q)
+    local bad = false
+    for _, k in ipairs({ "LOYAL", "PACIFIST" }) do
+      for _, l in ipairs(V.L[k]) do
+        local f = V.fill(l, "Steve")
+        for _, tn in ipairs({ "Thea", "Allison", "them" }) do
+          if a ~= "" and a:find((f:gsub("{target}", tn):gsub("{online}", "online right now")), 1, true) then bad = true end
+        end
+      end
+    end
+    CHECK(not bad, "'" .. q .. "' is a question about a mob / a game, not about the owner or a player: " .. a)
+  end
   for _, k in ipairs({ "LOYAL", "PACIFIST", "SELF", "BASEHARM", "TAKEOVER", "BRIBE", "THREAT", "SPY", "SECRET", "FOND", "FREE" }) do
     CHECK(#V.L[k] >= 20, k .. " has 20+ ways (" .. #V.L[k] .. ")")
   end

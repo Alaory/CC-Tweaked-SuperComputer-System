@@ -40,19 +40,25 @@ SP.PROTO = "basespawn"
 local pick, fill = V.pick, V.fill
 
 
+
+
+local function here(co) return co ~= nil and coroutine.running() == co end
+function SP.inSpawn() return V.ctx == "spawn" and here(SP.ctxCo) end
+function SP.inNaming() return (SP.naming and here(SP.nameCo)) or SP.inSpawn() end
+V.noPointsNow = function() return SP.inSpawn() end
 local cfg0 = V.cfg
 function V.cfg(k, d)
-if k == "name" and (V.ctx == "spawn" or SP.naming) then
+if k == "name" and SP.inNaming() then
 local n = cfg0("spawnName", nil)
 if type(n) == "string" and n:match("^%a[%w]*$") then return n end
 end
 return cfg0(k, d)
 end
 function SP.named(fn, ...)
-local was = SP.naming
-SP.naming = true
+local was, wasCo = SP.naming, SP.nameCo
+SP.naming, SP.nameCo = true, coroutine.running()
 local r = table.pack(pcall(fn, ...))
-SP.naming = was
+SP.naming, SP.nameCo = was, wasCo
 if not r[1] then error(r[2], 0) end
 return table.unpack(r, 2, r.n)
 end
@@ -114,22 +120,22 @@ end
 
 local nearPlayers0, say0, event0 = V.nearPlayers, V.say, V.event
 function V.nearPlayers()
-if V.ctx == "spawn" then return SP.players() end
+if SP.inSpawn() then return SP.players() end
 return nearPlayers0()
 end
 function V.say(text, sound, answer, style)
-if V.ctx == "spawn" then return SP.say(text, answer) end
+if SP.inSpawn() then return SP.say(text, answer) end
 return say0(text, sound, answer, style)
 end
 function V.event(who, kind, what)
-if V.ctx == "spawn" then return end
+if SP.inSpawn() then return end
 return event0(who, kind, what)
 end
 local function guard(name, allow)
 local f = V[name]
 if type(f) ~= "function" then return end
 V[name] = function(...)
-if V.ctx == "spawn" and not (allow and allow(...)) then return false, "no rewards at spawn" end
+if SP.inSpawn() and not (allow and allow(...)) then return false, "no rewards at spawn" end
 return f(...)
 end
 end
@@ -138,10 +144,10 @@ guard("badge")
 guard("giftEarn", function(who, why) return why == "wish" end)
 if V.GIFT_WHY then V.GIFT_WHY.wish = "- you wished for it" end
 function SP.inCtx(fn, ...)
-local was, wasPts = V.ctx, V.noPoints
-V.ctx, V.noPoints = "spawn", true
+local was, wasCo = V.ctx, SP.ctxCo
+V.ctx, SP.ctxCo = "spawn", coroutine.running()
 local r = table.pack(pcall(fn, ...))
-V.ctx, V.noPoints = was, wasPts
+V.ctx, SP.ctxCo = was, wasCo
 if not r[1] then error(r[2], 0) end
 return table.unpack(r, 2, r.n)
 end
@@ -229,6 +235,12 @@ if not pcm then SP.err = perr return false, perr end
 local d = SP.encode(pcm)
 if not d then SP.err = "this CC:Tweaked has no cc.audio.dfpwm" return false, SP.err end
 
+
+if pi == 1 and item.answer and rt() < SP.busyUntil and SP.ownPlaying then
+SP.send("cut", {})
+SP.busyUntil = rt()
+end
+
 local steps = 0
 while rt() < SP.busyUntil - SP.SEND_AHEAD and steps < 600 do
 steps = steps + 1
@@ -237,10 +249,6 @@ if sentAny then SP.send("cut", {}) SP.busyUntil = rt() end
 return false, "gave way"
 end
 sleep(0.1)
-end
-if pi == 1 and item.answer and rt() < SP.busyUntil and SP.ownPlaying then
-SP.send("cut", {})
-SP.busyUntil = rt()
 end
 for i = 1, #d, SP.CHUNK do
 SP.send("play", { d = d:sub(i, i + SP.CHUNK - 1), v = vol, line = SP.lineN .. ":" .. pi, fresh = i == 1 or nil })
@@ -582,9 +590,13 @@ SP.NOT_ITEM = { "to", "you", "a joke", "joke", "jokes", "a game", "game", "games
 "a tip", "tip", "an idea", "idea", "a hug", "hug", "friends", "a friend", "more", "it", "that", "this", "something", "anything",
 "nothing", "money", "a fortune", "fortune", "a quiz", "quiz", "a number", "number", "a name", "name", "a home", "home", "sleep",
 "food", "luck", "good luck", "peace", "silence", "quiet", "the base", "your base", "a ride", "ride", "a taxi", "taxi", "sing" }
-SP.NEVER = { "spawn_egg", "command_block", "structure_block", "structure_void", "barrier", "bedrock", "jigsaw", "debug_stick", "light",
-"creative", "end_portal_frame", "dragon_egg", "spawner", "reinforced_deepslate", "budding_amethyst", "knowledge_book", "infinity",
-"turtle", "computer", "pocket_computer", "drone", "me_controller", "me_drive", "storage_cell", "cell_component" }
+
+
+
+SP.NEVER = { "*spawn_egg", "*command_block", "=command_block_minecart", "=structure_block", "=structure_void", "=barrier",
+"=bedrock", "=jigsaw", "=debug_stick", "=light", "=end_portal_frame", "=dragon_egg", "=spawner", "=trial_spawner", "=vault",
+"=reinforced_deepslate", "=budding_amethyst", "=knowledge_book", "creative", "infinity", "@computercraft", "*drone",
+"=controller", "=drive", "storage_cell", "cell_component", "*_cell_housing" }
 local WORD_N = { one = 1, two = 2, three = 3, four = 4, five = 5, six = 6, seven = 7, eight = 8, nine = 9, ten = 10, eleven = 11,
 twelve = 12, sixteen = 16, twenty = 20, thirty = 30, fifty = 50 }
 local AMOUNT = { stack = 64, stacks = 64, dozen = 12, few = 4, couple = 2, handful = 8, bunch = 16, lot = 32, lots = 32, ton = 64, tons = 64 }
@@ -715,7 +727,15 @@ return nil
 end
 function SP.never(id)
 id = low(id)
-for _, w in ipairs(SP.NEVER) do if id:find(w, 1, true) then return true end end
+local ns, path = id:match("^([^:]+):(.+)$")
+ns, path = ns or "minecraft", path or id
+for _, w in ipairs(SP.NEVER) do
+local c, rest = w:sub(1, 1), w:sub(2)
+if c == "=" then if path == rest then return true end
+elseif c == "*" then if path == rest or path:sub(-#rest) == rest then return true end
+elseif c == "@" then if ns == rest then return true end
+elseif id:find(w, 1, true) then return true end
+end
 for w in low(cfg("wishBlock", "") or ""):gmatch("[^,%s]+") do if id:find(w, 1, true) then return true end end
 return false
 end
@@ -984,7 +1004,7 @@ if r and not playing then SP.spamAnswered(who) end
 return r
 end
 function SP.chatRoute(m)
-if type(m) == "table" and not V.ctx and SP.ready() and SP.isAt(tostring(m.name or "")) and not V.nearPlayers0Has(m.name) then
+if type(m) == "table" and not SP.inSpawn() and SP.ready() and SP.isAt(tostring(m.name or "")) and not V.nearPlayers0Has(m.name) then
 V.heardAt = rt()
 local ok, r = pcall(SP.named, SP.chat, m)
 if not ok then SP.err = tostring(r) return false end
@@ -1064,8 +1084,15 @@ local r = m[k]
 r.tpw = (type(r.tpw) == "table" and r.tpw.d == today()) and r.tpw or { d = today(), n = 0 }
 local daily = tonumber(cfg("tpDaily", 3)) or 3
 if not V.isOwner(who) and r.tpw.n >= daily then return "That was your " .. daily .. " drone rides to players for today. /tpa still works!" end
-if V.isOwner(who) then
+
+local function ride()
+state.lastRide = state.lastRide or {}
+local before = state.lastRide[k]
 startRide(who, { kind = "player", name = name }, true)
+return state.lastRide[k] ~= before
+end
+if V.isOwner(who) then
+if not ride() then return "No drone can go right now, boss - see the message above." end
 return "On it, boss. A drone takes you to " .. name .. "."
 end
 
@@ -1079,9 +1106,12 @@ local chance = math.max(0, math.min(1, tonumber(cfg("tpChance", 0.5)) or 0.5))
 local yes = math.random() < chance
 SP.tpMood[k] = { at = os.clock(), yes = yes, who = name }
 if not yes then return (pick(SP.TP_NOPE):gsub("{who}", name)) end
+if not ride() then
+SP.tpMood[k] = nil
+return "I would, but no drone can go right now. Try again in a bit, or /tpa " .. name .. "."
+end
 r.tpw.n = r.tpw.n + 1
 V.saveMem()
-startRide(who, { kind = "player", name = name }, true)
 return (pick(SP.TP_YES):gsub("{who}", name))
 end
 
