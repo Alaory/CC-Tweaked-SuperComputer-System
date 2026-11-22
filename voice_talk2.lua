@@ -266,6 +266,11 @@ local function aboutText(who)
   for k, v in pairs(type(r.fav) == "table" and r.fav or {}) do favs[#favs + 1] = "favourite " .. k .. ": " .. v end
   if #favs > 0 then table.sort(favs) parts[#parts + 1] = table.concat(favs, ", ") .. "." end
   if r.bday then parts[#parts + 1] = "Birthday: " .. r.bday .. "." end
+  -- (the conversation pack: likes, dislikes, mods, what they told it)
+  if V.CONVO and V.CONVO.likesText then
+    local okL, lt = pcall(V.CONVO.likesText, who, false)
+    if okL and type(lt) == "string" then parts[#parts + 1] = lt end
+  end
   parts[#parts + 1] = "Say forget me and I delete all of it."
   return table.concat(parts, " ")
 end

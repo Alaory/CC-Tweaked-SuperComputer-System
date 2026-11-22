@@ -254,7 +254,7 @@ end
 
 function VOICE.say(text, sound, answer, style)
 if VOICE.cfg("on", true) == false or VOICE.mute then return false end
-text = tostring(text or ""):gsub("%s+", " ")
+text = VOICE.cleanNames(tostring(text or ""):gsub("%s+", " "))
 if text == "" then return false end
 
 
@@ -939,11 +939,40 @@ if math.random(1, #list + #e) <= #list then return pick(list) end
 return pick(e)
 end
 VOICE.pick = pick
+
+
+
+function VOICE.cleanName(n)
+local s = tostring(n or ""):gsub("[%d_]+", " "):gsub("%s+", " "):gsub("^%s+", ""):gsub("%s+$", "")
+if s == "" then return "friend" end
+return s
+end
+
+local function nocase(s) return (s:gsub("%a", function(c) return "[" .. c:lower() .. c:upper() .. "]" end)) end
+function VOICE.cleanNames(text)
+text = tostring(text or "")
+if not text:find("[%d_]") then return text end
+local seen = {}
+local function one(n)
+n = tostring(n or "")
+if n == "" or seen[n:lower()] or not n:find("[%d_]") or not n:find("%a") then return end
+seen[n:lower()] = true
+local pat = "%f[%w_]" .. nocase(n:gsub("[%^%$%(%)%%%.%[%]%*%+%-%?]", "%%%0")) .. "%f[^%w_]"
+local clean = VOICE.cleanName(n)
+text = text:gsub(pat, function() return clean end)
+end
+for _, e in ipairs(state.players or {}) do one(e.name) end
+if type(state.online) == "table" then for n in pairs(state.online) do one(n) end end
+for n in pairs(VOICE.near or {}) do one(n) end
+return text
+end
 local function fill(line, name)
-if name and VOICE.callName then local okN, n = pcall(VOICE.callName, name) if okN and n then name = n end end
-line = tostring(line):gsub("{name}", tostring(name or "friend"))
+local nick
+if name and VOICE.callName then local okN, n = pcall(VOICE.callName, name) if okN and n then nick = n end end
+name = nick or (name and VOICE.cleanName(name))
+line = tostring(line):gsub("{name}", function() return tostring(name or "friend") end)
 if line:find("{", 1, true) then
-line = line:gsub("{owner}", tostring((knownOwner and knownOwner()) or state.owner or "my owner"))
+line = line:gsub("{owner}", function() return VOICE.cleanName((knownOwner and knownOwner()) or state.owner or "my owner") end)
 line = line:gsub("{botl}", VOICE.botName and VOICE.botName():lower() or "base")
 line = line:gsub("{bot}", VOICE.botName and VOICE.botName() or "the base")
 end
@@ -1652,6 +1681,7 @@ VOICE.chatHooks = {}
 VOICE.tickHooks = {}
 VOICE.hash = {}
 VOICE.patterns = {}
+VOICE.nameOnly = nil
 VOICE.idleExtra = {}
 VOICE.commands = {}
 VOICE.farHooks = {}
@@ -1767,6 +1797,11 @@ end
 
 if #ws == 0 then
 if not direct then return nil end
+
+if VOICE.nameOnly then
+local okN, c, sp = pcall(VOICE.nameOnly, who, raw)
+if okN and c then return c, sp end
+end
 return VOICE.showMenu(who, VOICE.menuItems(who))
 end
 
@@ -1996,11 +2031,14 @@ if okR and type(c2) == "string" then c = c2 end
 if sp then local okS, s2 = pcall(VOICE.restyle, who, sp) if okS and type(s2) == "string" then sp = s2 end end
 end
 VOICE.chatAt[k] = mineBefore
+c = VOICE.cleanNames(c)
 if chatTell then chatTell(who, c, true) end
 if near then
 local line = sp or c
 
-if othersNear(who) > 0 and not line:lower():find(who:lower(), 1, true) then line = who .. ", " .. line end
+if othersNear(who) > 0 and not line:lower():find(who:lower(), 1, true) and not line:lower():find(VOICE.cleanName(who):lower(), 1, true) then
+line = VOICE.cleanName(who) .. ", " .. line
+end
 VOICE.say(line, nil, true)
 end
 VOICE.openConvo(who)

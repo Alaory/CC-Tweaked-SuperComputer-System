@@ -506,4 +506,40 @@ scenario("turn it against the owner", function()
   end
   CHECK(#V.L.LOYAL >= 100, "100+ loyal answers (" .. #V.L.LOYAL .. ")")
 end)
+-- CONVERSATIONS (voice_convo.lua; the owner: "players just say hi or hello and don't know what to say"): at spawn too
+scenario("says hi and keeps chatting", function()
+  world({ Steve = "spawn" })
+  local c = say("Steve", "hi speaker")
+  CHECK(c:find("?", 1, true) and V.pend.steve and V.pend.steve.convo, "'hi speaker' -> a chat with a question: " .. c)
+  CHECK(not has(c, MENU), "no menu: " .. c)
+  for i, a in ipairs({ "good", "nothing much", "a house", "yes", "creepers", "no", "pizza", "the nether", "create", "bye" }) do
+    SP.spam = {}
+    local r = say("Steve", a)
+    CHECK(r ~= "" and not has(r, MENU), "answer " .. i .. " '" .. a .. "' gets a reply: " .. r)
+    if a ~= "bye" then CHECK(r:find("?", 1, true), "answer " .. i .. " -> the next question: " .. r) end
+  end
+  CHECK(not (V.pend.steve and V.pend.steve.convo), "bye ends the chat")
+end)
+scenario("a long chat at spawn gives no friendship", function()
+  world({ Steve = "spawn" })
+  V.mem().steve = V.mem().steve or {}
+  local rep0, badges0 = V.repOf("Steve"), V.mem().steve.badges and #V.mem().steve.badges or 0
+  say("Steve", "hi speaker")
+  for _, a in ipairs({ "good", "thanks you are great", "a castle", "yes", "creepers", "you are awesome", "pizza", "the nether", "create",
+                       "tech", "i love it", "thank you", "good bot", "ok", "yes", "steak", "cookies", "far" }) do
+    SP.spam = {}
+    say("Steve", a)
+  end
+  CHECK(V.repOf("Steve") == rep0, "friendship at spawn stays the same: " .. rep0 .. " -> " .. V.repOf("Steve"))
+  CHECK((V.mem().steve.badges and #V.mem().steve.badges or 0) == badges0, "no badges at spawn")
+end)
+scenario("just says its name twice", function()
+  world({ Newbie = "spawn" })
+  local c1 = say("Newbie", "speaker")
+  CHECK(has(c1, "chat"), "the first time: how to talk to it: " .. c1)
+  SP.spam = {}
+  local c2 = say("Newbie", "speaker?")
+  CHECK(c2:find("?", 1, true) and V.pend.newbie and V.pend.newbie.convo, "the second time: like a person + a question: " .. c2)
+  CHECK(not V.mem().newbie or not V.mem().newbie.cn, "a passer-by at spawn gets no saved record")
+end)
 CHECK(#results >= 30, #results .. " scenarios")

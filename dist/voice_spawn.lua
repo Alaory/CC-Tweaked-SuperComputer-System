@@ -163,6 +163,7 @@ SP.said = {}
 function SP.say(text, answer)
 if not SP.ready() then return false end
 text = tostring(text or ""):gsub("%s+", " ")
+if V.cleanNames then text = V.cleanNames(text) end
 if text == "" then return false end
 if #text > 600 then text = text:sub(1, 597) .. "..." end
 if not answer and SP.said[text] and rt() - SP.said[text] < 120 then return false end
@@ -861,10 +862,12 @@ end
 local function answer(who, c, sp)
 if not c then return end
 SP.talked(who)
+if V.cleanNames then c = V.cleanNames(c) end
 if chatTell then chatTell(who, c, true) end
 local line = sp or c
 local others = #SP.players() - 1
-if others > 0 and not low(line):find(low(who), 1, true) then line = who .. ", " .. line end
+local cn = V.cleanName and V.cleanName(who) or who
+if others > 0 and not low(line):find(low(who), 1, true) and not low(line):find(low(cn), 1, true) then line = cn .. ", " .. line end
 SP.say(line, true)
 V.openConvo(who)
 end
@@ -911,8 +914,18 @@ if wa then answer(who, wa) return true end
 
 if named then
 local rest = 0
-for _, w in ipairs(ws) do if w ~= word and not SP.LEADS[w] then rest = rest + 1 end end
-if rest == 0 and not SP.wpend[k] and not V.games[k] then answer(who, SP.helpText(who)) return true end
+local greet = false
+for _, w in ipairs(ws) do
+if w ~= word and not SP.LEADS[w] then rest = rest + 1 end
+if w == "hi" or w == "hello" or w == "hey" then greet = true end
+end
+
+
+if rest == 0 and (greet or SP.helpAt[k]) and V.CONVO and not SP.wpend[k] and not V.games[k] then
+local c, sp = SP.inCtx(function() return V.converse(who, text, true) end)
+if c then answer(who, c, sp) return true end
+end
+if rest == 0 and not SP.wpend[k] and not V.games[k] then SP.helpAt[k] = os.clock() answer(who, SP.helpText(who)) return true end
 end
 
 local strong = hasAny(t, SP.HELP_ALWAYS)

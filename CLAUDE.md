@@ -1554,6 +1554,45 @@ PneumaticCraft drone rides, turtle mapping/surveys, and an AE2 ME network view.
   only when state.lastRide changed (no drone = said, not remembered); "boss" / "the boss" alone is a MOB, playerIn skips
   little words (the / all ... "kill the ender dragon" was "Thea"); a gift trip that brought 0 = a failed try; split-gift
   trips (log part = true) count once toward giftDaily.
+- CONVERSATIONS + WHAT PLAYERS LIKE (voice_convo.lua = VOICE_FILES before voice_vary; the owner: "players just say hi or hello and
+  don't know what to say - make it have long conversations", "an information system where it remembers what a player likes -
+  players do talk about mods", "players sometimes just mention the name: sparky", "friendship at spawn shouldn't work"). V.CONVO = C.
+  STARTERS (C.starter, a pattern inserted first): a plain greeting (hi / hello there / heyyy / good morning, C.GREETW + C.FILLW),
+  how are you (C.HOWARE: its mood + "and you?"), let's talk / I'm bored / ask me something (C.TALK; clears shh), "let's talk about
+  mobs" (C.TOPIC_WORDS). V.addressed is wrapped: alone with it (nobody else near or online) a starter is for it ("heyyy", "I'm
+  bored" were not). JUST ITS NAME (core hook VOICE.nameOnly in converseRaw's #ws == 0, before the menu): "You called?" (C.CALLED
+  combos) + a question; mid-chat = the same question again; spawn: the first time the how-to (SP.helpAt), then the same.
+  ENGINE: C.state[player] = {topic, steps, i, done, asked, askAt, lazy, bad, n}; every question = pend "react" {convo = true,
+  fn = C.reply, 150 s}. C.TOPICS (howyou day building mining mobs food adventure server games pets music redstone dreams aboutbot
+  mods + thisthat built from C.PAIRS + recall built from the record): steps {q, me, w = {{words}, lines, go}, yes / no / good / bad
+  / idk / any = lines or {lines, go}, fav / info / hate = save {said}, only = reached by go, people = naming a player is the
+  answer, dyn = modq (a follow-up about the mod they named)}. C.reply: another player chatted after the question / names another
+  player -> ends quietly; stop words (C.STOP anywhere in a short message, C.STOP_WEAK only as the whole answer - "busy with my farm"
+  is an answer); rude words (C.isBad) never said back, 3 = it stops; "what?" = the question again; skip / new topic; "what about
+  you" (C.ME_ASK; weak ones only in a question) = its own answer (step.me) + the question back; a COMMAND (C.CMDW: say, remind,
+  tell, play ...) = the base's own answer, chat stops; a question = the base's answer (C.inner, noMenu) + the next question (a game
+  / menu it started ends the chat); else classify (yes / no / good / bad / idk; phrases only in short answers) -> a reaction
+  ({said} = C.said: fillers off, <= 5 words; "yes, a big castle" = the castle), sometimes its own answer (30 %), the next step /
+  a new topic with a transition (C.TRANS). 3 lazy answers -> "keep chatting? yes / no" (#convo:go). Every 4 answers +1 friendship
+  at the base (V.addRep "talk", daily cap) - NEVER at spawn (and spawn's guard). MEMORY (the player's record; saved at most every
+  60 s via a tick hook; at spawn only players it already knows, others C.temp): r.fav (pack 2's table - favourite mob / food /
+  block / mod / game / biome ...), r.info (building, dream, machine, today ...), r.likes / r.hates (C.likeOf: "I like / love /
+  enjoy X", "I hate / do not like X" - in a chat AND overheard at the base by a chat hook; not it / you / a player), r.mods[name] =
+  {c, l}, r.cn chats. Recall: 40 % of hellos start with something it remembers ("Last time you told me your favourite mob is the
+  axolotl - still true?"; no = asks the new one). "what do I like" / "what do you remember about me" = C.likesText; pack 2's
+  "what do you know about me" includes it. MODS (C.MODS, 40+: names, aliases, reactions, follow-up questions, a tip; C.findMod -
+  strict = single-word names of amb mods (create, thermal, quark, backpacks ...) and short ones only with "mod" or a capital):
+  "do you like create", "I love mekanism", "thoughts on botania", "my favourite mod is X", "what is your favourite mod" = its
+  opinion + a chat about that mod (lore questions - "create tips", "what is create" - stay the lore pack's); mod talk between
+  players near the base = a spoken comment now and then (C.CHIME; voice.modChat, `voice modchat on|off`; 4 min apart, 15 min per
+  mod, 40 %). `voice likes <player>`. test_voice_convo.lua (1240+ checks: 30 answers in a row, every starter, variety, memory,
+  mods, the name alone, a command mid-chat, 300 random answers), test_spawn_scenarios (a chat at spawn, the name twice, no
+  friendship at spawn).
+- NAMES WITHOUT NUMBERS (the owner: "stop it from mentioning numbers in players' names - deadman213, 125steve1, 1alex2steve"):
+  VOICE.cleanName (digits and _ out, parts kept: "1alex2steve" -> "alex steve"; only digits -> "friend") in fill() ({name},
+  {owner}; a nickname chosen with "call me ..." stays as it is), VOICE.cleanNames(text) (every known player name with digits,
+  any case, whole words) in VOICE.say / SP.say and on chat answers (chatCore reply(), spawn answer()); the "<name>, ..."
+  prefix uses the clean name. test_voice_convo part 20.
 - WELCOME BACK ONLY ONCE (the owner: "the reminders when I join never get cleared - I keep hearing them"): VOICE.watchOwner - a
   base RESTART while the owner plays (upgrade / crash) counted as coming back (the report + "players talked about you" again after
   every restart): a return now also needs b.ownerSeen <= b.lastOff (not seen online since the log-off); "N messages for you" came
@@ -1672,6 +1711,7 @@ The old Block UI (stone buttons, bedrock theme) is gone.
 | voice_talk.lua | its TALK PACK (also on a data floppy): 140+ more chat interactions, games, idle talk |
 | voice_talk3.lua | TALK PACK 3: free drone TAXI for friends (base <-> their bed), visit streaks, mail between players, Minecraft glossary + recipes, jokes on a topic, spirit mob, ship, rematches, milestones |
 | voice_lines.lua / voice_idle.lua | LINES PACKS: 100+ ways to say each thing (asked for / idle, greetings, reactions) |
+| voice_convo.lua | CONVERSATIONS: hi / how are you / just its name start a long chat (topics, reactions, its own answers), remembers what each player likes and the mods they talk about |
 | voice_vary.lua | VARIETY PACK: every other answer said 50+ ways (openers / closers by the kind of answer) |
 | voice_lore.lua | LORE PACK: why drones and not /tp and other questions about the base, modpack tips, mod glossary |
 | voice_spawn.lua / spawn_speaker.lua | the SPAWN SPEAKER: the base talks at spawn through a relay computer (Speaker + ender modem) - own voice and lines, no rewards, item wishes by drone, how-to help |
