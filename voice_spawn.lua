@@ -1254,6 +1254,7 @@ function SP.tick()
                          "{botl} I wish for 16 apples - then say yes and a drone brings it.", n))
       end
     elseif V.isOwner(n) and nowE - last > 600000 then greet[#greet + 1] = { name = n, owner = true }
+    elseif V.CONVO and V.CONVO.roleOf and V.CONVO.roleOf(n) and nowE - last > 1800000 then greet[#greet + 1] = { name = n, staff = true }
     elseif nowE - last > every * 1000 and math.random() < 0.5 then greet[#greet + 1] = { name = n } end
   end
   if cfg("spawnGreet", true) ~= false and #greet > 0 and (not SP.greetAt or now - SP.greetAt > 20) then
@@ -1264,7 +1265,9 @@ function SP.tick()
     if #greet == 1 then
       local g = greet[1]
       local list_ = g.owner and SP.HELLO_OWNER or (g.new and SP.HELLO_NEW or SP.HELLO_AGAIN)
-      SP.say(fill(pick(list_), g.name))
+      -- (staff - voice staff add <name> admin|mod ...: their own greeting)
+      local staffLine = not g.owner and V.CONVO and V.CONVO.staffHello and V.CONVO.staffHello(g.name)
+      SP.say(staffLine or fill(pick(list_), g.name))
     else
       local names = {}
       for _, g in ipairs(greet) do names[#names + 1] = g.name end

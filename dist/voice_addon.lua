@@ -1492,7 +1492,10 @@ okay = "yes", ok = "yes", nah = "no", nope = "no", naw = "no" }
 
 function VOICE.norm(text)
 local t = tostring(text or ""):lower():gsub("'", ""):gsub("[%p]", " ")
-t = t:gsub("(%a)%1%1+", "%1%1")
+
+
+local n
+repeat t, n = t:gsub("(%a)%1%1", "%1%1") until n == 0
 local out = {}
 for w in t:gmatch("%S+") do
 local e = SHORT[w]

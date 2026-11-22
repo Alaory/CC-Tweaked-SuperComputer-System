@@ -67,10 +67,17 @@ end
 function C.rec(who, make)
 local m, k = V.mem(), low(who)
 if type(m[k]) == "table" then return m[k] end
+
+if C.temp[k] and make and not inSpawn() then m[k], C.temp[k] = C.temp[k], nil return m[k] end
 if C.temp[k] then return C.temp[k] end
 if not make then return nil end
 
-if inSpawn() then C.temp[k] = {} return C.temp[k] end
+if inSpawn() then
+C.tempN = (C.tempN or 0) + 1
+if C.tempN > 300 then C.temp, C.tempN = {}, 1 end
+C.temp[k] = {}
+return C.temp[k]
+end
 m[k] = {}
 return m[k]
 end
@@ -139,14 +146,20 @@ C.STOP = { "bye", "goodbye", "gtg", "got to go", "gotta go", "i have to go", "le
 C.STOP_WEAK = { "stop", "nvm", "nevermind", "never mind", "enough", "not now", "busy", "later", "gn", "quiet", "shh", "shush", "brb", "afk",
 "i am busy", "see you", "leave", "no thanks", "no thank you" }
 C.STOPW = set(C.STOP_WEAK)
-C.BADW = { "fuck", "shit", "bitch", "cunt", "dick", "cock", "pussy", "nigg", "fag", "retard", "whore", "slut", "porn", "rape", "nazi",
-"hitler", "penis", "vagina", "boob", "tits", "asshole", "bastard", "wank", "kys", "dumbass", "motherf", "twat", "bollock", "sex" }
-C.BADX = set({ "ass", "arse", "hoe", "cum", "piss", "crap" })
+
+C.BADW = { "fuck", "fuk", "shit", "bitch", "cunt", "dick", "pussy", "nigg", "fag", "retard", "whore", "slut", "porn", "nazi",
+"hitler", "penis", "vagina", "boob", "tits", "asshole", "bastard", "wank", "kys", "dumbass", "motherf", "twat", "bollock", "sexy" }
+C.BADX = set({ "ass", "arse", "cum", "piss", "rape", "raped", "raping", "rapist", "cock", "cocks", "sex", "nigga", "hoes" })
 function C.isBad(ws, t)
 if t:find(" kill yourself ", 1, true) or t:find(" kill urself ", 1, true) then return true end
-for _, w in ipairs(ws) do
+for _, w0 in ipairs(ws) do
+
+local w1, n = w0, 0
+repeat w1, n = w1:gsub("(%a)%1", "%1") until n == 0
+for _, w in ipairs({ w0, w1 }) do
 if C.BADX[w] then return true end
 for _, b in ipairs(C.BADW) do if w:sub(1, #b) == b then return true end end
+end
 end
 return false
 end
@@ -165,7 +178,7 @@ C.GOOD = set({ "good", "great", "fine", "awesome", "amazing", "nice", "cool", "f
 "relaxed", "splendid", "gud", "goood", "best", "incredible", "productive", "busy", "excited", "glad", "okay", "fab", "stellar", "neat" })
 C.BAD = set({ "bad", "terrible", "awful", "sad", "tired", "bored", "meh", "boring", "rough", "horrible", "sick", "stressed", "annoyed",
 "angry", "mad", "upset", "lonely", "exhausted", "sleepy", "worse", "worst", "sucks", "sucked", "trash", "ill", "hurt", "depressed",
-"lame", "frustrated", "grumpy", "miserable", "unhappy", "awful", "stuck", "lost", "died", "dying", "hungry", "cold" })
+"lame", "frustrated", "grumpy", "miserable", "unhappy", "stuck", "lost", "died", "dying", "hungry", "cold", "crap", "crappy" })
 C.NOT_GOOD = { "not good", "not great", "not fun", "not well", "not happy", "not so good", "not the best", "could be better", "not ok",
 "not okay", "not fine", "not that good", "not too good", "not nice", "not amazing" }
 C.NOT_BAD = { "not bad", "not terrible", "not too bad", "can not complain", "could be worse", "pretty good", "not awful", "not boring",
@@ -220,9 +233,18 @@ C.ME_ASK = { "what about you", "how about you", "and you", "wbu", "hbu", "and yo
 "you tell me", "same question", "same to you", "and what about you", "you too", "and how about you", "what about yourself" }
 C.ME_WEAK = { "what do you think", "what would you", "would you", "do you", "what do you like", "your favourite", "your favorite",
 "your fav", "you like", "what is your", "how are you", "and how are you", "what is yours", "you prefer", "have you" }
-C.CMDW = set({ "say", "leave", "remind", "remember", "tell", "give", "show", "send", "forget", "call", "teach", "explain", "list", "find",
-"bring", "roll", "flip", "spell", "count", "quiz", "play", "start", "open", "take", "sing", "rate", "roast", "compliment", "help",
-"write", "translate", "ship", "pick", "choose", "guess", "talk" })
+
+C.CMDW = set({ "say", "remind", "remember", "roll", "flip", "spell", "quiz", "roast", "compliment", "rate", "translate", "sing" })
+C.CMD2 = { tell = set({ "me", "us", "a" }), give = set({ "me", "us" }), show = set({ "me", "us" }), leave = set({ "a", "message" }),
+forget = set({ "me", "my", "what", "everything" }), pick = set({ "a", "for", "me" }), lets = set({ "play" }), play = set({ "a", "rock", "hangman", "trivia" }),
+help = set({ "me" }), teach = set({ "me" }), explain = set({ "how", "what", "the" }) }
+function C.isCommand(ws)
+if #ws < 2 then return false end
+local a, b = ws[1], ws[2]
+if a == "can" and b == "you" then a, b = ws[3] or "", ws[4] or "" end
+if C.CMDW[a] then return true end
+return C.CMD2[a] ~= nil and C.CMD2[a][b] ~= nil
+end
 C.QSTRONG = set({ "what", "how", "why", "who", "where", "when", "which", "can", "could", "should", "will", "would", "does" })
 C.QWORDS = set({ "what", "how", "why", "who", "where", "when", "can", "could", "do", "does", "is", "are", "will", "would", "should",
 "which", "did", "have", "has", "was", "were" })
@@ -296,7 +318,7 @@ good = { "Glad to hear it!", "That makes me happy too.", "Great! Good moods are 
 bad = { { "Oh no. I am sorry to hear that.", "Aww. Bad days happen to everyone, even turtles.", "That is no fun. I hope it gets better.",
 "Oh. Sending you some virtual cake." }, go = "cheer" },
 any = { "I see. Well, I am glad you are here.", "Okay! Either way, nice to have you here." } },
-{ id = "cheer", only = true, q = { "Want a joke to cheer you up?", "Should I tell you a joke? It might help.", "Can I cheer you up with a joke?" },
+{ id = "cheer", only = true, q = { "Want a joke to cheer you up?", "It might help - should I tell you a joke?", "Can I cheer you up with a joke?" },
 yes = { { fn = "joke" } }, no = { "Okay. I am here if you want to talk.", "That is fine. Talking helps too." },
 any = { "Okay. I am here if you want to talk." } },
 }
@@ -514,7 +536,7 @@ any = { "{said}? Nice!", "{said}! Automation saves your evenings." },
 yes = { "Nice! Automation is the way." }, no = { "By hand is honest work." } },
 }
 TP.dreams = {
-{ q = { "If you could have any superpower, what would it be?", "Pick a superpower - any one.", "What superpower would you want?" },
+{ q = { "If you could have any superpower, what would it be?", "Pick a superpower - any one. Which?", "What superpower would you want?" },
 me = { "Infinite fuel for my turtles. That is a superpower, trust me." },
 w = { { { "fly", "flying", "flight" }, { "Flying! Like an elytra but without the walls." } },
 { { "teleport", "teleporting", "teleportation" }, { "Teleporting! My drones would be jealous." } },
@@ -715,6 +737,12 @@ end
 
 
 local function S(who) return C.state[low(who)] end
+
+
+function C.near(who)
+for _, p in ipairs(V.nearPlayers()) do if low(p.name) == low(who) then return true end end
+return false
+end
 function C.ask(who, st, prefix, same)
 local step = C.stepOf(st)
 if not step then return prefix end
@@ -754,8 +782,14 @@ function C.recallSteps(who)
 local r = C.rec(who)
 if not r then return nil end
 local opts = {}
+local function ok(v)
+if type(v) ~= "string" then return false end
+local w = {}
+for x in v:lower():gmatch("%S+") do w[#w + 1] = x end
+return not C.isBad(w, " " .. table.concat(w, " ") .. " ")
+end
 for k, v in pairs(type(r.fav) == "table" and r.fav or {}) do
-if type(v) == "string" then
+if ok(v) and ok(k) then
 opts[#opts + 1] = { q = { "Last time you told me your favourite " .. k .. " is " .. v .. ". Is that still true?",
 "I remember your favourite " .. k .. ": " .. v .. ". Still the same?",
 "Is " .. v .. " still your favourite " .. k .. "?" },
@@ -766,14 +800,14 @@ end
 local INFO_Q = { building = "Last time you were building {v}. Is it finished yet?", dream = "You told me your dream build is {v}. Have you started it?",
 machine = "How is your {v} machine doing?", today = "Last time you were busy with {v}. How did that go?" }
 for k, v in pairs(type(r.info) == "table" and r.info or {}) do
-if INFO_Q[k] and type(v) == "string" then
+if INFO_Q[k] and ok(v) then
 opts[#opts + 1] = { q = { (INFO_Q[k]:gsub("{v}", function() return v end)) },
 yes = { "Amazing! I want to see it.", "Great! Well done." }, no = { "Big things take time. Keep going!", "No rush." },
 good = { "Great to hear!" }, bad = { "Oh no. Next time it will go better." }, any = { "Nice!", "I see!" } }
 end
 end
 for _, v in ipairs(type(r.likes) == "table" and r.likes or {}) do
-if type(v) == "string" then
+if ok(v) then
 opts[#opts + 1] = { q = { "You told me you like " .. v .. ". Is that still true?", "Still into " .. v .. "?" },
 yes = { "I knew it!", "Good. I like that about you." }, no = { "Oh! Okay, I will forget that one." },
 any = { "Okay!" }, rl = v }
@@ -953,9 +987,15 @@ if okO and other then st.topic = nil return nil end
 end
 
 if not step.people and st.askAt then
+local nearN = {}
+for _, p in ipairs(V.nearPlayers()) do nearN[low(p.name)] = true end
 for n, at in pairs(V.chatAt or {}) do
-if n ~= k and at > st.askAt and (type(state.online) ~= "table" or state.online[n]) then st.topic = nil return nil end
+if n ~= k and at > st.askAt and nearN[n] then st.topic = nil return nil end
 end
+end
+
+if C.starter(ws, t) == "hello" then
+return C.ask(who, st, V.fill(pick({ "Hi again, {name}!", "Hello hello! Still chatting:", "Hey! Where were we... ah:", "Hi! My question was:" }), who), true)
 end
 
 local j = table.concat(ws, " ")
@@ -982,7 +1022,8 @@ for key, words in pairs(C.TOPIC_WORDS) do
 if has(" " .. tw .. " ", words) and C.begin(who, st, key) then return C.ask(who, st, pick({ "Sure!", "Okay, let's talk about that.", "Good idea!" })) end
 end
 end
-if has(t, { "skip", "next", "next question", "something else", "another question", "change the subject", "new topic", "different question", "pass" }) and #ws <= 5 then
+if (#ws <= 2 and has(t, { "skip", "next", "pass", "next one", "skip it", "i pass" })) or
+(#ws <= 5 and has(t, { "next question", "something else", "another question", "change the subject", "new topic", "different question", "skip this" })) then
 if has(t, { "something else", "change the subject", "new topic", "different question" }) then C.nextTopic(who, st)
 else C.advance(who, st) end
 return C.ask(who, st, pick(C.SKIP))
@@ -998,7 +1039,7 @@ local restW = 0
 for _, w in ipairs(ws) do if not ME_W[w] then restW = restW + 1 end end
 if meAsk and restW >= 1 and #ws <= 7 and not isQ and (has(t, C.ME_ASK) or #ws <= 3) then st.forceMe = true meAsk = false end
 if meAsk and not (V.intent and select(2, V.intent(V.fix and V.fix(ws) or ws)) >= 3) then
-local m = C.findMod(t, raw, false)
+local m = C.findMod(t, raw, true) or C.findModAfter(t)
 local mine
 if m then mine = pick(m.r)
 elseif has(t, { "how are you", "how are u", "and how are you" }) then mine = V.moodText and V.moodText() or "I am fine, thanks."
@@ -1014,7 +1055,7 @@ end
 st.meTurn = nil
 
 
-if #ws >= 2 and (C.CMDW[ws[1]] or (ws[1] == "lets" and ws[2] == "play") or (ws[1] == "can" and ws[2] == "you" and C.CMDW[ws[3] or ""])) then
+if C.isCommand(ws) then
 C.inner = true
 local okA, c, sp = pcall(V.converse, who, raw, true, true)
 C.inner = nil
@@ -1034,8 +1075,9 @@ end
 return C.ask(who, st, pick(C.NOANS) .. " " .. pick(C.QUESTION_BACK))
 end
 
-if st.topic ~= "mods" then
-local cm, csp = C.modTalk(who, t, raw)
+
+if step.fn ~= "modpick" and step.fn ~= "modhelp" then
+local cm, csp = C.modTalk(who, t, raw, st.mod)
 if cm then return cm, csp end
 end
 
@@ -1057,8 +1099,13 @@ if step.info then C.setInfo(who, step.info, said) end
 if step.hate then C.like(who, said, true) end
 end
 if step.rl and cls.no then local r = C.rec(who) if r and type(r.likes) == "table" then listDel(r.likes, step.rl) C.dirty() end end
-local m = C.findMod(t, raw, true)
+local m = step.fn ~= "modpick" and C.findMod(t, raw, true)
 if m then C.modSeen(who, m, nil, true) end
+do
+local x, hate = C.likeOf(t)
+local s2 = x and C.thing(x)
+if s2 and not has(t, { "i like you", "i love you", "i hate you" }) then C.like(who, s2, hate) end
+end
 
 if st.forceMe then
 st.forceMe = nil
@@ -1139,12 +1186,14 @@ if not m then return nil end
 C.setFav(who, "mod", m.n)
 C.modSeen(who, m, true, true)
 C.modLead = pick(C.MOD_LIKE)
+if not C.near(who) then C.modLead = nil return pick(C.MOD_LIKE) .. pick(m.r) end
 local c, sp = C.start(who, "mod", m)
 C.modLead = nil
 return c, sp
 end
 if not t:find(" my fav", 1, true) and has(t, { "favourite mod", "favorite mod", "fav mod", "best mod", "what mods do you like",
 "which mod do you like", "what mod do you like", "which mods do you like" }) then
+if not C.near(who) then return pick(C.MOD_ME) end
 return C.start(who, "mod")
 end
 local cm, csp = C.modTalk(who, t, raw)
@@ -1157,7 +1206,7 @@ if s then
 C.like(who, s, hate)
 local ack = C.line(hate and C.HATE_ACK or C.LIKE_ACK, who, s)
 local st = S(who)
-if not hate and not (st and st.topic) then
+if not hate and not (st and st.topic) and C.near(who) then
 for key, words in pairs(C.LIKE_TOPIC) do
 if has(" " .. s .. " ", words) then
 local st2, _, first = C.fresh(who)
@@ -1171,6 +1220,7 @@ return ack
 end
 end
 
+if not C.near(who) then return nil end
 local tw = t:match(" talk about (.+) $") or t:match(" chat about (.+) $") or t:match(" ask me about (.+) $")
 if tw and has(t, { "lets", "can we", "i want to", "wanna", "want to", "ask me", "we", "talk" }) then
 for key, words in pairs(C.TOPIC_WORDS) do
@@ -1182,12 +1232,25 @@ if kind then return C.start(who, kind) end
 return nil
 end)
 
-function C.modTalk(who, t, raw)
+
+
+C.AFTER = { "like", "love", "enjoy", "hate", "tried", "try", "playing", "play", "about", "of", "on", "know", "into", "with", "using", "use", "adore" }
+function C.findModAfter(t)
+for _, m in ipairs(C.MODS) do
+for _, a in ipairs(m.k) do
+if t:find("^ " .. a:gsub("%p", "%%%0") .. " is ") then return m end
+for _, w in ipairs(C.AFTER) do if t:find(" " .. w .. " " .. a .. " ", 1, true) then return m end end
+end
+end
+return nil
+end
+function C.modTalk(who, t, raw, except)
 local cue = has(t, { "do you like", "do you know", "have you heard of", "have you tried", "what do you think of", "what do you think about",
 "thoughts on", "opinion on", "your opinion of", "is", "i like", "i love", "i enjoy", "i hate", "i do not like", "i am playing",
 "playing with", "i play", "how about", "what about", "you like", "love", "like" })
 if cue then
-local m = C.findMod(t, raw, false)
+local m = C.findMod(t, raw, true) or C.findModAfter(t)
+if m == except then m = nil end
 if m and not (t:find(" what is ", 1, true) and not t:find(" think ", 1, true)) and not t:find(" how do ", 1, true) and not t:find(" tips ", 1, true) and not t:find(" help ", 1, true) then
 local _, hate = C.likeOf(t)
 local you = has(t, { "do you", "you like", "your opinion", "what do you think", "thoughts on", "opinion on", "have you", "how about", "what about" })
@@ -1199,6 +1262,7 @@ C.modSeen(who, m, liked, true)
 local r = C.rec(who, true)
 if liked and not (type(r.fav) == "table" and r.fav.mod) then C.setFav(who, "mod", m.n) end
 C.modLead = (liked == true and pick(C.MOD_LIKE)) or (liked == false and pick(C.MOD_HATE)) or ""
+if not C.near(who) then local lead = C.modLead C.modLead = nil return lead .. pick(m.r) end
 local c, sp = C.start(who, "mod", m)
 C.modLead = nil
 return c, sp
@@ -1292,7 +1356,7 @@ if V.justForgot == k then return end
 local ws = V.norm(text)
 local t = T(ws)
 local x, hate = C.likeOf(t)
-if x and not answered then
+if x then
 local s = C.thing(x)
 if s and not has(t, { "i like you", "i love you", "i hate you" }) then C.like(who, s, hate) end
 end
@@ -1307,7 +1371,7 @@ C.chimeAt = C.chimeAt or {}
 if (C.chimeAll and now - C.chimeAll < 240) or (C.chimeAt[m.n] and now - C.chimeAt[m.n] < 900) then return end
 if math.random() > (C.chimeChance or 0.4) then return end
 C.chimeAll, C.chimeAt[m.n] = now, now
-V.say((pick(C.CHIME):gsub("{mod}", m.n)) .. pick(m.r))
+V.say((pick(C.CHIME):gsub("{mod}", function() return m.n end)) .. pick(m.r))
 end
 
 
@@ -1340,6 +1404,7 @@ C.CALL_HELP = { " (Just answer in chat. Or ask me for a joke, a game, or help.)"
 V.nameOnly = function(who, raw)
 local word = low(V.cfg("name", "base"))
 if not low(raw):find(word, 1, true) then return nil end
+if not C.near(who) then return nil end
 local k = low(who)
 local st = S(who)
 local P = V.pend[k]
@@ -1353,4 +1418,206 @@ else C.nextTopic(who, st2) end
 local c = C.ask(who, st2, V.fill(pick(C.CALLED), who) .. " " .. pick(C.CALL_ASK))
 if first or (inSpawn() and st2.n == 1) then return c .. pick(C.CALL_HELP), c end
 return c
+end
+
+
+
+
+
+
+
+
+C.ROLE_WORDS = { admin = "admin", administrator = "admin", admins = "admin", op = "admin", mod = "mod", moderator = "mod",
+mods = "mod", moderators = "mod", helper = "helper", helpers = "helper", support = "helper", builder = "builder", builders = "builder",
+staff = "staff", dev = "admin", developer = "admin" }
+C.ROLE_NAME = { admin = "admin", mod = "moderator", helper = "helper", builder = "builder", staff = "staff member" }
+function C.staff()
+local s = V.cfg("staff", nil)
+return type(s) == "table" and s or {}
+end
+function C.roleOf(who)
+local r = C.staff()[low(who)]
+if r == true then return "staff" end
+return type(r) == "string" and C.ROLE_NAME[r] and r or nil
+end
+function C.setRole(name, role)
+local s = {}
+for k, v in pairs(C.staff()) do s[k] = v end
+s[low(name)] = role
+if setSetting then setSetting("voice.staff", s) end
+end
+local function art(w) return (w:match("^[aeiou]") and "an " or "a ") .. w end
+C.STAFF_A = {
+admin = { "Oh! An admin! ", "Admin {name} has arrived. ", "Look who it is - admin {name}! ", "Hello, admin {name}. ", "The admin is here! ",
+"{name}, my favourite admin! ", "All rise for admin {name}! ", "Welcome, admin {name}. ", "Admin on site! Hi {name}. ", "Ooh, admin {name}. ",
+"Greetings, admin {name}. ", "Hi {name}! The boss of the server. " },
+mod = { "Moderator {name} on duty! ", "Hey, mod {name}! ", "A moderator! Hi {name}. ", "{name}, keeper of the peace! ", "Hello, moderator {name}. ",
+"The mod squad has arrived! Hi {name}. ", "Look, it is mod {name}! ", "Welcome, {name}. The chat is safe now. ", "Hi {name}, sheriff of the server! ",
+"Oh hi, mod {name}. ", "Moderator {name}! Good to see you. " },
+helper = { "Helper {name}! ", "Hi {name}, our helper! ", "The helper is here! ", "Hello, helper {name}. ", "{name} the helpful! ",
+"Oh, it is {name} - here to help! ", "Hi {name}! The friendliest staff member. ", "Welcome, helper {name}. ", "Helper on duty - hi {name}! " },
+builder = { "Builder {name}! ", "Hi {name}, master builder! ", "The builder is here! ", "Hello, builder {name}. ", "{name}, architect of the server! ",
+"Oh, it is builder {name}! ", "Welcome, {name} - the blocks missed you. ", "Master builder {name} on site! " },
+staff = { "Staff member {name}! ", "Hi {name}, one of the staff! ", "Oh, staff! Hello {name}. ", "Welcome, {name}. ", "Hello, {name} from the team. ",
+"Staff on site - hi {name}! " },
+}
+C.STAFF_B = {
+admin = { "I promise I have been good.", "Everything is in order. Mostly.", "No griefers here today, I checked.", "Did you bring the ban hammer?",
+"The server is lucky to have you.", "I tidied up my turtles for you.", "Please do not wipe my memory.", "My logs are clean. Probably.",
+"Want a status report?", "I saluted. You could not see it, but I did.", "The server runs because of you. Thank you." },
+mod = { "All quiet here so far.", "Nobody broke the rules near me. Yet.", "Keeping the server nice - thank you for that.", "I report nothing suspicious.",
+"I keep an eye on the chat too.", "Coffee break, or patrol?", "Thanks for keeping things fair.", "I will tell you if anyone is rude.",
+"Long shift today?", "The players are behaving. Mostly." },
+helper = { "Answered lots of questions today?", "Thanks for helping the new players.", "I help too, in my own way.", "Need a hand? I have none, but I try.",
+"The new players love you.", "Helping is the best job.", "I send the confused ones your way. Just kidding. Mostly." },
+builder = { "Building something big today?", "The server looks better every day thanks to you.", "I love your work.", "Need a turtle to carry blocks?",
+"What are you building next?", "Every block in the right place. Respect." },
+staff = { "Thanks for keeping the server running.", "Good to have you here.", "All is well at the base.", "Need anything from me?",
+"The team is lucky to have you." },
+}
+C.STAFF_HELLO = {}
+for role, A in pairs(C.STAFF_A) do C.STAFF_HELLO[role] = combos(A, C.STAFF_B[role]) end
+function C.staffHello(who)
+local role = C.roleOf(who)
+if not role then return nil end
+return V.fill(pick(C.STAFF_HELLO[role]), who)
+end
+C.NOT_STAFF = { "Hmm, you are not on my staff list, {name}. Nice try!", "Really? My staff list says otherwise. Good try, {name}.",
+"An admin? Then you know {owner} has to tell me first. Nice try!", "I only believe the list {owner} gave me. You are not on it, {name}.",
+"If you were staff, I would know. I know everything. Almost.", "Sure, and I am a diamond block. Nice try, {name}!",
+"Ha! Show me the ban hammer first.", "My staff list does not have your name, {name}. Ask {owner}.",
+"Bold claim! But no. You are not on my list.", "Nope. But I like your confidence, {name}." }
+C.IS_STAFF = { "I know, {name}! You are {role} here.", "Of course - you are {role} on my list.", "Yes you are! {role}, and a good one.",
+"Confirmed: {name}, {role}. I salute you." }
+TP.staff = {
+{ q = { "How is the server today, {name}? Any trouble?", "Busy day keeping the server running?", "Any troublemakers today?",
+"How is your shift going, {name}?", "Is the server behaving today?" },
+me = { "My day? No griefers near the base, and the turtles behaved. A good day." },
+good = { "Great! A calm server is a happy server.", "Love to hear it.", "Nice and peaceful!" },
+bad = { "Oh no. Hang in there - you are doing great.", "That sounds rough. Thank you for dealing with it.", "Ugh. I hope it calms down." },
+yes = { "Oh no. I hope it gets sorted.", "Busy busy. Thank you for your work." }, no = { "Great! A calm day.", "Peaceful. Perfect." },
+any = { "{said}? Thanks for handling it.", "I see. Thanks for keeping things fair.", "Being staff is a lot of work." } },
+{ q = { "What is the best part of being staff here?", "What is the hardest part of your job on this server?", "Do players ask you a lot of questions?",
+"How long have you been staff here?" },
+any = { "{said}? I can imagine.", "{said}! Interesting.", "Thank you for doing it.", "That makes sense. The server needs people like you." },
+yes = { "I bet. I get a lot of questions too." }, no = { "Lucky you!" } },
+{ q = { "I watch the chat at the base - can I help you with anything?", "Want me to keep an eye on anything around the base?",
+"Is there anything I should tell players when they come here?" },
+yes = { "Okay! Tell {owner} and I will learn it. For now I keep listening.", "Got it - I will keep my eyes open. Well, my speakers." },
+no = { "Okay! Call me if you need me.", "Alright. I am here if you need anything." },
+any = { "{said}? I will keep that in mind.", "Noted. I will listen out for it." } },
+}
+
+local start0 = C.start
+function C.start(who, kind, arg)
+local role = C.roleOf(who)
+if not role or V.isOwner(who) or kind == "mod" or kind == "topic" then return start0(who, kind, arg) end
+local st, _, first = C.fresh(who)
+local open = C.staffHello(who)
+if kind == "howare" then open = (V.moodText and V.moodText() or "I am fine, thanks.") .. " " .. open end
+if kind == "talk" then V.quietUntil = nil end
+if st.done.staff or not C.begin(who, st, "staff") then C.nextTopic(who, st) end
+return C.hinted(who, st, first, C.ask(who, st, open))
+end
+local nameOnly0 = V.nameOnly
+V.nameOnly = function(who, raw)
+local st = S(who)
+if not C.roleOf(who) or V.isOwner(who) or (st and st.topic and st.asked and os.clock() - (st.at or 0) < 150) then return nameOnly0(who, raw) end
+if not low(raw):find(low(V.cfg("name", "base")), 1, true) or not C.near(who) then return nil end
+return C.start(who, "hello")
+end
+
+local greet0 = V.greet
+V.greet = function(name, quiet)
+if quiet or not C.roleOf(name) or V.isOwner(name) or V.cfg("fun", true) == false then return greet0(name, quiet) end
+local al = V.alarmAt and V.alarmAt.stranger
+if V.alarmAt then V.alarmAt.stranger = os.clock() end
+greet0(name, true)
+if V.alarmAt then V.alarmAt.stranger = al end
+if V.newcomer then V.newcomer[low(name)] = nil end
+return V.say(C.staffHello(name), "minecraft:block.note_block.chime")
+end
+
+table.insert(V.patterns, 1, function(who, raw, ws)
+ws = ws or V.norm(raw)
+local t = T(ws)
+local function roleIn(text) for w in text:gmatch("%S+") do if C.ROLE_WORDS[w] then return C.ROLE_WORDS[w] end end return nil end
+
+
+local n1, r1 = t:match(" make (%S+) an? (%S+) $")
+if not n1 then n1, r1 = t:match(" add (%S+) as an? (%S+) $") end
+local loose = false
+if not n1 then loose = true n1, r1 = t:match(" (%S+) is an? (%S+) now $") end
+if not n1 then n1, r1 = t:match(" (%S+) is an? (%S+) $") end
+if not n1 then n1, r1 = t:match(" (%S+) is our (%S+) $") end
+local gone = t:match(" (%S+) is not staff $") or t:match(" (%S+) is no longer staff $") or t:match(" remove (%S+) from staff $") or
+t:match(" (%S+) is not an? %S+ anymore $")
+local function realName(n)
+for _, e in ipairs(state.players or {}) do if low(e.name) == n then return e.name end end
+if type(state.online) == "table" then for o in pairs(state.online) do if low(o) == n then return o end end end
+return nil
+end
+if n1 and C.ROLE_WORDS[r1] and n1 ~= "i" and n1 ~= "he" and n1 ~= "she" and n1 ~= "who" and n1 ~= "what" then
+local real = realName(n1) or (not loose and V.isOwner(who) and n1)
+if real then
+if not V.isOwner(who) then return V.fill("Only {owner} can tell me who the staff are.", who) end
+C.setRole(real, C.ROLE_WORDS[r1])
+return "Got it: " .. real .. " is " .. art(C.ROLE_NAME[C.ROLE_WORDS[r1]]) .. " now. I will greet them that way."
+end
+end
+if gone and C.staff()[gone] then
+if not V.isOwner(who) then return V.fill("Only {owner} can tell me who the staff are.", who) end
+C.setRole(gone, nil)
+return "Okay, " .. gone .. " is off my staff list."
+end
+
+if has(t, { "who is staff", "who are the staff", "who is an admin", "who are the admins", "who are the mods", "who is a mod", "who is a moderator",
+"who are the moderators", "list staff", "staff list", "who runs the server", "who is the admin", "who are admins", "who are mods",
+"any admins", "any mods", "is there an admin", "is there a mod", "are there admins", "are there mods" }) then
+local by = {}
+for n, r in pairs(C.staff()) do
+local role = (r == true and "staff") or r
+if C.ROLE_NAME[role] then by[role] = by[role] or {} by[role][#by[role] + 1] = n end
+end
+local parts = {}
+for _, role in ipairs({ "admin", "mod", "helper", "builder", "staff" }) do
+if by[role] then table.sort(by[role]) parts[#parts + 1] = cap(C.ROLE_NAME[role]) .. (#by[role] > 1 and "s" or "") .. ": " .. table.concat(by[role], ", ") end
+end
+if #parts == 0 then return V.fill("I do not know the staff here yet. {owner} can tell me.", who) end
+return table.concat(parts, ". ") .. "."
+end
+
+if has(t, { "am i staff", "am i an admin", "am i a mod", "am i a moderator", "am i on the staff list" }) then
+local role = C.roleOf(who)
+if role then return (V.fill(pick(C.IS_STAFF), who):gsub("{role}", art(C.ROLE_NAME[role]))) end
+return V.fill("No, you are not on my staff list, {name}.", who)
+end
+local claim = t:match(" i am an? (%S+) $") or t:match(" i am the (%S+) $") or t:match(" i am an? (%S+) here $") or t:match(" i am (staff) $") or
+t:match(" i am an? server (%S+) $") or t:match(" i am (op) $")
+if claim and C.ROLE_WORDS[claim] and C.ROLE_WORDS[claim] ~= "builder" then
+local role = C.roleOf(who)
+if V.isOwner(who) then return V.fill("You are the owner, {name}. Even better.", who) end
+if role then return (V.fill(pick(C.IS_STAFF), who):gsub("{role}", art(C.ROLE_NAME[role]))) end
+return V.fill(pick(C.NOT_STAFF), who)
+end
+return nil
+end)
+V.commands.staff = function(words, say)
+local a = low(words[3])
+if (a == "add" or a == "set") and words[4] then
+local role = C.ROLE_WORDS[low(words[5] or "staff")]
+if not role then say("Roles: admin, mod, helper, builder, staff") return end
+C.setRole(words[4], role)
+say(words[4] .. " is " .. art(C.ROLE_NAME[role]) .. " now - the base greets them that way.")
+return
+end
+if (a == "remove" or a == "del" or a == "delete") and words[4] then
+C.setRole(words[4], nil)
+say(words[4] .. " is off the staff list.")
+return
+end
+local n = 0
+say("Staff the base knows (voice staff add <name> admin|mod|helper|builder, voice staff remove <name>):")
+for name, r in pairs(C.staff()) do n = n + 1 say("  " .. name .. " - " .. tostring(C.ROLE_NAME[(r == true and "staff") or r] or r)) end
+if n == 0 then say("  nobody yet") end
 end

@@ -1588,6 +1588,21 @@ PneumaticCraft drone rides, turtle mapping/surveys, and an AE2 ME network view.
   mod, 40 %). `voice likes <player>`. test_voice_convo.lua (1240+ checks: 30 answers in a row, every starter, variety, memory,
   mods, the name alone, a command mid-chat, 300 random answers), test_spawn_scenarios (a chat at spawn, the name twice, no
   friendship at spawn).
+  REVIEW (the owner: "go over the code again"): a chat only with a player NEAR (C.near - far away only name-first messages reach
+  it: the chat could never go on); "another player chatted" = only players near (a busy server ended every chat); commands =
+  C.isCommand (first word say / remind / roll ... or tell me / give me / lets play ... - "play with my friends", "find diamonds" are
+  answers); skip words only as the whole answer; mods in chat: C.findMod strict or C.findModAfter (right after like / love / tried
+  ... or "<mod> is ...": "i like to create stuff", "my backpack" are not mods); rude: "hoe" (a tool), "rapeseed", "cocktail" fine,
+  "fuuuck" caught; spawn temp records move to the saved memory at the base (300 max in memory); "hi" mid-chat = hello + the same
+  question; likes said mid-chat saved; recall never says a rude saved word. FOUND IN THE CORE: VOICE.norm's "hellooooo" squash
+  "(%a)%1%1+" never worked (Lua cannot repeat a back-reference - it wanted a literal "+"): now a repeat-until loop.
+  STAFF (the owner: "variant speeches for admins / moderators"): the game does not tell a computer who is staff, so a list -
+  voice.staff {[name] = admin|mod|helper|builder|staff}; `voice staff [add <name> <role>|remove <name>]`; the owner in chat
+  "base, Steve is a moderator" (a player it knows) / "make Bob an admin" / "Steve is not staff" (others: "only <owner> can").
+  C.STAFF_HELLO[role] (combos, 100+ for admin / mod) when they arrive at the base (V.greet wrapped: visit counted, never the
+  stranger alarm), at spawn (SP greeting, every 30 min), starting a chat or calling its name; the STAFF topic first in a chat
+  ("any troublemakers today?"); "who are the admins?" for anyone; "am I a mod?"; "I am an admin" from someone not on it = a
+  friendly no (C.NOT_STAFF). test_voice_convo 23, test_spawn_scenarios "a moderator walks up to spawn".
 - NAMES WITHOUT NUMBERS (the owner: "stop it from mentioning numbers in players' names - deadman213, 125steve1, 1alex2steve"):
   VOICE.cleanName (digits and _ out, parts kept: "1alex2steve" -> "alex steve"; only digits -> "friend") in fill() ({name},
   {owner}; a nickname chosen with "call me ..." stays as it is), VOICE.cleanNames(text) (every known player name with digits,

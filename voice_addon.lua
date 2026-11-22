@@ -1492,7 +1492,10 @@ local SHORT = { u = "you", ur = "your", r = "are", y = "why", wat = "what", wut 
 -- words of a chat message, cleaned up
 function VOICE.norm(text)
   local t = tostring(text or ""):lower():gsub("'", ""):gsub("[%p]", " ")
-  t = t:gsub("(%a)%1%1+", "%1%1")                -- ("hellooooo" -> "helloo")
+  -- ("hellooooo" -> "helloo"; Lua patterns cannot repeat a back-reference - "(%a)%1%1+" matched a literal "+", so this never
+  --  worked: the 3-in-a-row is taken out again and again until there is none)
+  local n
+  repeat t, n = t:gsub("(%a)%1%1", "%1%1") until n == 0
   local out = {}
   for w in t:gmatch("%S+") do
     local e = SHORT[w]

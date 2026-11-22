@@ -542,4 +542,22 @@ scenario("just says its name twice", function()
   CHECK(c2:find("?", 1, true) and V.pend.newbie and V.pend.newbie.convo, "the second time: like a person + a question: " .. c2)
   CHECK(not V.mem().newbie or not V.mem().newbie.cn, "a passer-by at spawn gets no saved record")
 end)
+scenario("a moderator walks up to spawn", function()
+  setSetting("voice.staff", { modmax = "mod" })
+  world({ ModMax = "spawn" })
+  SP.queue = {}
+  SP.mem().met = SP.mem().met or {}
+  SP.mem().met.modmax = os.epoch("utc") - 99999999
+  SP.mem().gr = SP.mem().gr or {}
+  SP.mem().gr.modmax = 0
+  SP.greetAt, SP.spokeAt, SP.firstSeen = nil, nil, nil
+  for _ = 1, 3 do pcall(SP.tick) end
+  local all = {}
+  for _, q in ipairs(SP.queue) do all[#all + 1] = tostring(q.text) end
+  local js = table.concat(all, " | ")
+  CHECK(js:lower():find("mod", 1, true), "a moderator arriving at spawn: the moderator greeting: " .. js)
+  local c = say("ModMax", "hi speaker")
+  CHECK(c:find("?", 1, true) and c:lower():find("mod", 1, true), "'hi speaker' from a moderator: their greeting + a question: " .. c)
+  setSetting("voice.staff", {})
+end)
 CHECK(#results >= 30, #results .. " scenarios")

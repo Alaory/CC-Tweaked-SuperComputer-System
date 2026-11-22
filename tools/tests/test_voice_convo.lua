@@ -341,3 +341,113 @@ CHECK(V.cleanNames("x 100, y 64") == "x 100, y 64", "other numbers stay")
 V.mem()["deadman213"] = { nick = "R2D2" }
 CHECK(V.fill("Hi {name}!", "deadman213") == "Hi R2D2!", "a chosen nickname stays: " .. V.fill("Hi {name}!", "deadman213"))
 V.say = say0
+-- 21) REVIEW: answers that start with a verb are answers ("play with my friends" opened the games menu)
+fresh("Steve")
+say("Steve", "hi")
+C.begin("Steve", C.state.steve, "day")
+C.state.steve.i = 3
+local cv = say("Steve", "play with my friends")
+CHECK(asks(cv) and V.pend.steve and V.pend.steve.convo and not lowc(cv):find(MENU, 1, true), "'play with my friends' is an answer: " .. cv)
+fresh("Steve")
+say("Steve", "hi")
+C.begin("Steve", C.state.steve, "day")
+local cv2 = say("Steve", "find diamonds and build a house")
+CHECK(asks(cv2) and V.pend.steve and V.pend.steve.convo, "'find diamonds and build a house' is an answer: " .. cv2)
+local cv3 = say("Steve", "next to my house in the forest")
+CHECK(asks(cv3) and not lowc(cv3):find("skipping", 1, true) and not lowc(cv3):find("skip that", 1, true), "'next to my house ...' is an answer, not a skip: " .. cv3)
+-- "create" as a word, "my backpack": no mod talk
+fresh("Steve")
+say("Steve", "hi")
+C.begin("Steve", C.state.steve, "building")
+say("Steve", "i like to create stuff")
+CHECK(C.state.steve.topic ~= "mods", "'i like to create stuff' is not the Create mod")
+fresh("Steve")
+local cb2 = say("Steve", "base do you like my backpack")
+CHECK(not lowc(cb2):find("sophisticated", 1, true) and not (C.state.steve and C.state.steve.topic == "mods"), "'do you like my backpack' is not the mod: " .. cb2)
+-- rude: "hoe" is a tool; "fuuuck" is rude
+CHECK(not C.isBad({ "a", "diamond", "hoe" }, " a diamond hoe "), "a diamond hoe is not rude")
+CHECK(not C.isBad({ "rapeseed" }, " rapeseed ") and not C.isBad({ "cocktail" }, " cocktail "), "rapeseed / cocktail are not rude")
+CHECK(C.isBad(V.norm("fuuuuck"), " " .. table.concat(V.norm("fuuuuck"), " ") .. " "), "fuuuuck is rude")
+-- "hi" mid-chat: hello back + the same question
+fresh("Steve")
+say("Steve", "hi")
+local qh = C.state.steve.asked
+local ch2 = say("Steve", "hello")
+CHECK(ch2:find(qh, 1, true) and not ch2:find("Hello?", 1, true), "'hello' mid-chat: hello back + the same question: " .. ch2)
+-- a far player: no chat started (it could never answer), the old answers instead
+fresh("Alaory")
+state.players = { { name = "Alaory", p = { x = HOME.x + 5000, y = HOME.y, z = HOME.z }, dim = DRONE_DIM } }
+local cfar = say("Alaory", "base hi")
+CHECK(not (V.pend.alaory and V.pend.alaory.convo), "far away: 'base hi' starts no chat: " .. cfar)
+local cfar2 = say("Alaory", "base")
+CHECK(not (V.pend.alaory and V.pend.alaory.convo), "far away: just the name starts no chat: " .. cfar2)
+-- other players chatting FAR away do not end the chat
+fresh("Steve", "Alex")
+state.players[2].p = { x = HOME.x + 5000, y = HOME.y, z = HOME.z }
+say("Steve", "base hi")
+CLOCK = (CLOCK or 0) + 1
+pcall(V.chat, { name = "Alex", msg = "anyone want to trade" })
+local cfa = say("Steve", "pretty good")
+CHECK(asks(cfa) and V.pend.steve and V.pend.steve.convo, "someone far away chatting does not end the chat: " .. cfa)
+-- likes said mid-chat are remembered
+fresh("Steve")
+say("Steve", "hi")
+say("Steve", "i love sunflowers")
+local hasSun = false
+for _, v in ipairs(V.mem().steve.likes or {}) do if v == "sunflowers" then hasSun = true end end
+CHECK(hasSun, "a like said mid-chat is remembered")
+-- 22) every question is a question; the text cleaner squashes stretched words (it never did: "(%a)%1%1+" is not a Lua repeat)
+local notQ = {}
+for key, steps in pairs(C.TOPICS) do
+  for _, st in ipairs(steps) do for _, q in ipairs(st.q or {}) do if not q:find("%?%s*$") then notQ[#notQ + 1] = key .. ": " .. q end end end
+end
+for _, p in ipairs(C.PAIRS) do if not p[1]:find("%?%s*$") then notQ[#notQ + 1] = "pair: " .. p[1] end end
+CHECK(#notQ == 0, "every question ends in '?': " .. table.concat(notQ, " | "))
+CHECK(table.concat(V.norm("hellooooo yesssss hiiiii"), " ") == "helloo yess hi", "stretched words squashed: " .. table.concat(V.norm("hellooooo yesssss hiiiii"), " "))
+-- 23) STAFF (the owner: "variant speeches for admins / moderators"): a list the owner keeps
+local slog = {}
+V.commands.staff({ "voice", "staff", "add", "ModMax", "mod" }, function(x) slog[#slog + 1] = x end)
+V.commands.staff({ "voice", "staff", "add", "AdminAnna", "admin" }, function(x) slog[#slog + 1] = x end)
+CHECK(C.roleOf("modmax") == "mod" and C.roleOf("AdminAnna") == "admin" and not C.roleOf("Steve"), "voice staff add: roles kept")
+-- a staff member saying hi: their own greeting + the staff topic
+fresh("ModMax")
+local cs1 = say("ModMax", "hi")
+CHECK(asks(cs1) and (lowc(cs1):find("mod", 1, true)) and C.state.modmax.topic == "staff", "a moderator saying hi: a moderator greeting + the staff topic: " .. cs1)
+fresh("AdminAnna")
+local cs2 = say("AdminAnna", "base")
+CHECK(asks(cs2) and lowc(cs2):find("admin", 1, true), "an admin calling its name: an admin greeting: " .. cs2)
+-- 50 greetings for a moderator: many different ones
+local sv, nsv = {}, 0
+for _ = 1, 50 do fresh("ModMax") local g = say("ModMax", "hello") if not sv[g] then sv[g] = true nsv = nsv + 1 end end
+CHECK(nsv >= 40, "50 moderator greetings: " .. nsv .. " different")
+CHECK(#C.STAFF_HELLO.admin >= 100 and #C.STAFF_HELLO.mod >= 100, "100+ admin / moderator greetings")
+-- arriving at the base: the staff greeting, never the stranger alarm
+fresh("ModMax")
+spoken = {}
+V.say = function(text) spoken[#spoken + 1] = tostring(text) return true end
+V.greet("ModMax")
+CHECK(#spoken == 1 and lowc(spoken[1]):find("mod", 1, true) and not lowc(spoken[1]):find("intruder", 1, true), "arriving: the moderator greeting: " .. table.concat(spoken, " | "))
+-- who are the staff / am I staff / I am an admin
+fresh("Steve")
+local cw1 = say("Steve", "base who are the admins?")
+CHECK(cw1:find("AdminAnna", 1, true) or cw1:find("adminanna", 1, true), "who are the admins: " .. cw1)
+fresh("Steve")
+local cw2 = say("Steve", "base i am an admin")
+CHECK(not lowc(cw2):find("i know", 1, true) and (lowc(cw2):find("list", 1, true) or lowc(cw2):find("try", 1, true) or lowc(cw2):find("no", 1, true)), "a stranger claiming admin: nice try: " .. cw2)
+fresh("ModMax")
+local cw3 = say("ModMax", "base am i a mod")
+CHECK(lowc(cw3):find("moderator", 1, true), "am I a mod: " .. cw3)
+-- the owner in chat: "Steve is a moderator" (a known player), "make Bob an admin", "Steve is not staff"; others cannot
+fresh("Alaory", "Steve")
+local co1 = say("Alaory", "base steve is a moderator")
+CHECK(C.roleOf("Steve") == "mod" and co1:find("Steve", 1, true), "the owner: 'steve is a moderator': " .. co1)
+local co2 = say("Alaory", "base this is a mod")
+CHECK(not C.roleOf("this"), "'this is a mod' adds nobody: " .. co2)
+local co3 = say("Alaory", "base steve is not staff")
+CHECK(not C.roleOf("Steve"), "the owner: 'steve is not staff': " .. co3)
+fresh("Steve", "Alex")
+local co4 = say("Steve", "base alex is an admin")
+CHECK(not C.roleOf("Alex") and lowc(co4):find("only", 1, true), "a player cannot add staff: " .. co4)
+V.commands.staff({ "voice", "staff", "remove", "ModMax" }, function() end)
+CHECK(not C.roleOf("ModMax"), "voice staff remove")
+V.say = say0
