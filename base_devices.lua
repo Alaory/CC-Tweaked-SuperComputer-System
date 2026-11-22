@@ -257,7 +257,8 @@ do
         local files = {}
         for _, f in ipairs(type(e.files) == "table" and e.files or {}) do if type(f) == "string" then files[#files + 1] = f end end
         NET.gone[k] = { kind = e.kind == "floppy" and "floppy" or "block", t = tostring(e.t or "?"), since = tonumber(e.since),
-                        id = tonumber(e.id), drive = e.drive and tostring(e.drive) or nil, files = files }
+                        id = tonumber(e.id), drive = e.drive and tostring(e.drive) or nil, files = files,
+                        told = e.told and true or nil }
       end
     end
   end
@@ -285,7 +286,10 @@ function netMissing()
   table.sort(names)
   for _, n in ipairs(names) do
     local e = NET.p[n]
-    if e.at >= since and not peripheral.isPresent(n) then out[#out + 1] = { kind = "block", name = n, what = e.t } end
+    -- (a block already reported MISSING in an earlier run - broken while the chunks were unloaded - is not waited
+    -- for at every start again; data floppies always are: their files must never be saved over from nothing)
+    local told = NET.gone[n] and NET.gone[n].told
+    if e.at >= since and not told and not peripheral.isPresent(n) then out[#out + 1] = { kind = "block", name = n, what = e.t } end
   end
   for id, e in pairs(NET.f) do
     if e.at >= since and #e.files > 0 and not floppyHere(id) then
@@ -440,18 +444,23 @@ function partsForget(which)
 end
 -- (netTick) a WARNING for parts missing goneAfter s in this run (one note for all that are new)
 PARTS_WARNED = {}
+PARTS_CABLE = "Several missing at once: is a networking cable or a wired modem broken? A new wired modem must be " ..
+              "RIGHT-CLICKED before the block next to it joins the network (it says \"Peripheral ... connected\")"
 function partsTick()
   local after = tonumber(startCfg("goneAfter", 600)) or 600
   local new = {}
   for _, g in ipairs(partsGone()) do
     if g.run >= after and not PARTS_WARNED[g.key] then
       PARTS_WARNED[g.key] = true
+      if NET.gone[g.key] then NET.gone[g.key].told = true end
       new[#new + 1] = partText(g)
     end
   end
   if #new == 0 then return 0 end
   local msg = "PART" .. (#new > 1 and "S" or "") .. " MISSING (broken, moved or the chunk is not loaded): " ..
-              table.concat(new, "; ") .. ". Type  parts  - `parts forget <n>` if it was taken away on purpose"
+              table.concat(new, "; ") .. ". Type  parts  - `parts forget <n>` if it was taken away on purpose" ..
+              (#new >= 3 and (". " .. PARTS_CABLE) or "")
+  pcall(writeSafe, NET_FILE, textutils.serialize({ p = NET.p, f = NET.f, g = NET.gone }))
   if sysLog then pcall(sysLog, msg, "WARNING") end
   if pushNote then pcall(pushNote, "WARNING", msg, C and C.warn) end
   return #new

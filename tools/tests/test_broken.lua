@@ -24,6 +24,11 @@ CHECK(partsTick() == 0 and warns == 0, "no warning in the first minutes")
 CLOCK = CLOCK + 620
 CHECK(partsTick() == 4 and warns == 1, "after 10 min: ONE warning for all four (" .. warns .. ")")
 CHECK(partsTick() == 0 and warns == 1, "... not again")
+CHECK(NET.gone.me_bridge_4.told, "reported parts are marked (saved) ...")
+local waitFor = {}
+for _, e in ipairs(netMissing()) do waitFor[e.name] = true end
+CHECK(not waitFor.me_bridge_4 and waitFor["floppy #55"], "... so the next start does not wait for them again - a data floppy it still waits for")
+CHECK(table.concat(handleCommand("parts"), " "):find("RIGHT-CLICKED", 1, true), "several at once: the cable / wired modem hint")
 -- the monitor is put back: used at the next check
 PERIPHS.right = SAVED_MON
 netTick()

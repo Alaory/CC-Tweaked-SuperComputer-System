@@ -84,7 +84,10 @@ PneumaticCraft drone rides, turtle mapping/surveys, and an AE2 ME network view.
   report's needs, console `parts` (+ the screen) / `parts forget <n|name|all>` (a floppy: NET.f + DATA_AWAY cleared ->
   its files are saved elsewhere again). ANOTHER PLAYER'S CARD (refreshInventory): getOwner() ~= CONFIG.owner / the
   saved owner -> inv nil, PERIPH_SKIP[name] 60 s (candidates / locate skip it), INV_FOREIGN, one WARNING an hour;
-  `owner new` accepts the next card. test_broken.lua + pre_broken.lua.
+  `owner new` accepts the next card. BROKEN WHILE UNLOADED (the owner meant this: the base is not running then - it can
+  only notice at the next start): a warned part gets g.told (saved) - netMissing does not wait 60 s for it at every
+  start again (data floppies are always waited for: their files must never be saved over from nothing); 3+ at once ->
+  PARTS_CABLE hint (a broken cable / wired modem; a new wired modem must be RIGHT-CLICKED). test_broken.lua + pre_broken.lua.
 - **Peripheral calls belong in workers or fetch functions, never in drawing
   code.** Drawing reads `state.*` only.
 - Drawing: everything is drawn into an off-screen window `win` (text / fill CLIPPED to the

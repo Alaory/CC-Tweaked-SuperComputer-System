@@ -1179,6 +1179,9 @@ function handleCommand(line)
       for i, g in ipairs(list) do say(i .. ". " .. partText(g)) end
       if #list > 0 then
         say("Broken, moved or its chunk is not loaded. Taken away on purpose:  parts forget <n|all>")
+        local blocks = 0
+        for _, g in ipairs(list) do if g.kind == "block" then blocks = blocks + 1 end end
+        if blocks >= 3 then say(PARTS_CABLE) end
       end
     end
 
