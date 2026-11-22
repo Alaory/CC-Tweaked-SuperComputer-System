@@ -28,6 +28,8 @@ SYSTEM > Status and with the console command `version`.
 - [Schematics (builder turtles)](#schematics-builder-turtles)
 - [Mining dimension teams](#mining-dimension-teams)
 - [The voice add-on](#the-voice-add-on)
+  - [Talking to it](#talking-to-it)
+  - [When you are gone a long time (the lonely base)](#when-you-are-gone-a-long-time-the-lonely-base)
 - [The spawn speaker](#the-spawn-speaker)
 - [The map](#the-map)
 - [Chat commands](#chat-commands)
@@ -383,6 +385,9 @@ how long you were away, what was mined and mapped, what the factory built, which
 found again or marked MISSING, what went wrong and what needs you now.
 Type `away` on the computer to see it again. Settings: SETTINGS > AWAY.
 
+Gone for a week or more? With the voice add-on the base looks after itself and its visitors:
+see [the lonely base](#when-you-are-gone-a-long-time-the-lonely-base).
+
 ## Turtle factory
 
 The base keeps your fleet at the size you choose (**SETTINGS > FACTORY**, "Keep this many
@@ -500,7 +505,8 @@ mining = {
 Optional: the base talks through **Speakers** next to the computer (and answers in chat). It
 greets you and visitors, reads out warnings, answers questions ("base, status?", "base, where is
 turtle 5?"), plays games and quizzes, tells jokes, has long conversations and remembers what each
-player likes. It never takes orders from other players.
+player likes. It never takes orders from other players, and it stays humble: call it a god and it
+tells you it is just a bot.
 
 - Install: `voice install` on the base computer (needs http on). The files go onto a DATA floppy
   (`disks data` makes one) or a storage helper - never onto the computer's own 1 MB.
@@ -509,6 +515,47 @@ player likes. It never takes orders from other players.
   `voice preset <name>` (ready-made voices, try them with `voice try`), `voice speed`, `voice volume`.
 - The speech comes from the free CC text-to-speech service (music.madefor.cc) - the server needs
   http to that site.
+
+### Talking to it
+
+Everything goes through **chat**. Start a message with its name (`base` unless you changed it with
+`voice name`); once it is talking to you, the name is not needed any more.
+
+| Type in chat | You get |
+|---|---|
+| `base, status?` / `base, where is turtle 5?` | how the base is doing / where a turtle is |
+| `base, let's talk` / `base, i'm bored` / `base, ask me something` / just `base` | a **long conversation**: it asks, you answer, it reacts and asks the next thing |
+| `base, let's talk about mods` | a conversation about one topic: mods, mobs, food, building, mining, redstone, adventure, pets, music, games, the server, dreams, your day, or about it |
+| `what about you?` / `skip` / `something else` / `bye` (mid-chat) | its own answer / another question / another topic / the end |
+| `base, tell me a joke` / `roast me` / `play a game` / `quiz me` / `hangman` | jokes, roasts, games and quizzes (each said 100+ ways) |
+| `base, what do you remember about me?` / `who am I?` | what it learned about you: favourites, likes, how you play |
+| `base, help` | what you can say |
+
+It remembers what players tell it (favourite mob, the mods they like, what they are building, what
+gets in their way) and brings it up later. Server staff can be named with `voice staff add <name>
+<role>` (admin, maintainer, mod, builder ...) and get their own greetings and roasts. Every chat
+phrase is in [COMMANDS.md](COMMANDS.md).
+
+### When you are gone a long time (the lonely base)
+
+After `voice lonely` days without you online (default 7), the base changes the way it talks to
+visitors. The longer you are away, the more it changes (missing you, worried, lonely, keeper,
+legend - all within the 6 months a server world often lasts). It has a mood, writes you a
+**letter** every week, asks visitors for news, keeps a **wall** they can write on, tells them
+stories about you (`voice memory add <text>`) and reaches out to regular visitors.
+
+- **Caretakers**: `voice caretaker add <name> [status guard taxi supplies turtles wall]` lets
+  trusted players look after things while you are away (a turtle report, being told about
+  strangers at the base, the free drone taxi, a few items from AE2, stopping / calling home every
+  turtle). Everything they do is logged for you (`voice caretaker log`).
+- **AFK players**: a player standing still far from the base can be flown to the base by drone.
+  By default it only does this for players who said yes (`base, afk yes`); `voice afk everyone` /
+  `voice afk off` change that.
+- **The world reset**: if your server starts a new world on a schedule, tell the base the date
+  (`voice reset 2027-05-01`; it moves on by 6 months by itself, `voice reset every <months>`). It
+  counts down in its talk and letters, and anyone can ask `base, when does the world reset?`.
+- **When you come back**: one report in chat - days away, letters, who kept it company, wall notes,
+  news, what caretakers did. `base, read my letters` / `base, news` / `base, read the wall`.
 
 ## The spawn speaker
 
@@ -597,6 +644,9 @@ Type these on the base computer. `help` lists them all.
 | `upgrade` says it cannot read the file list | The branch it follows is gone or renamed: `upgrade branch main`, then `upgrade`. |
 | You want the messages in chat | `$drone notify on`, or the buttons on the CHAT tab. |
 | The computer's disk is full | `disks data` puts the map on floppies; the footer warns before anything is lost. |
+| The base does not answer in chat | Start with its name (`base, ...` or your `voice name`), stand near the base, and check `voice` (is it on?). After an `upgrade`, run `voice update`. |
+| `voice install` / `voice update` says there is no room | Add a storage helper computer (the voice files go there first) or `disks data` for one more data floppy. |
+| The voice talks too fast or is hard to hear | `voice speed 70`, `voice preset narrator`, or `voice try` to hear every voice. |
 
 > **Server tips:** the base and the turtles only work while their chunks are
 > loaded. Use the ANCHOR turtle for the base and the Chunky upgrade on every
@@ -633,7 +683,12 @@ Type these on the base computer. `help` lists them all.
 | `base_meplus.lua` · `base_ui_mesys.lua` | crafting CPUs, jobs, drives, patterns · the AE2 SYSTEM page |
 | `base_env.lua` · `base_ui_env.lua` | the Environment Detector · the WORLD page |
 | `base_ui_gifts.lua` | the GIFTS page (needs the voice add-on) |
-| `voice_*.lua` | the optional voice add-on (kept on a data floppy or a storage helper, not on the computer) |
+| `voice_addon.lua` | the optional voice add-on: speech, greetings, warnings, chat answers (kept on a data floppy or a storage helper, not on the computer) |
+| `voice_talk.lua` · `voice_talk2.lua` · `voice_talk3.lua` | its talk packs: games, friendship, badges, drone gifts, the taxi, mail between players, recipes |
+| `voice_lines.lua` · `voice_idle.lua` · `voice_lore.lua` · `voice_vary.lua` | many ways to say each thing, idle talk, questions about the base and the modpack |
+| `voice_convo.lua` · `voice_staff.lua` · `voice_profile.lua` | long conversations and what each player likes · server staff · how each player plays |
+| `voice_spawn.lua` · `voice_crowd.lua` | the spawn speaker · a crowd at spawn |
+| `voice_lonely.lua` | the lonely base: caretakers, AFK rescue, the wall, letters, the world reset countdown |
 | `spawn_speaker.lua` | the spawn relay computer (Speaker + Ender Modem) |
 | `CHANGELOG.md` | what changed in each release |
 | `COMMANDS.md` | every command with its usage |
@@ -645,7 +700,9 @@ Type these on the base computer. `help` lists them all.
 `me_setup.dat`, `me_names.dat`, `me_owed.dat`, `curios_last.dat`, `ui_page.dat`,
 `theme.dat`, `settings.dat`, `auto_survey.dat`, `survey_queue.dat`, `base_alive.dat`, `away.dat`,
 `factory.dat`, `recipes.dat`, `mining.dat`, `pockets.dat`, `curios_fits.dat`, `curios_auto.dat`,
-`store_helpers.dat`, `upgrade.dat`, `schematics/`, `events.log` + `events.old.log`, `system.log` + `system.old.log`.
+`store_helpers.dat`, `upgrade.dat`, `owner.dat`, `players_seen.dat`, `supply.dat`, `dronework.dat`, `fluid_buffer.dat`,
+`node_where.dat`, `voice_where.dat`, `voice_memory.dat`, `map_stale.dat`, `schematics/`, `events.log` + `events.old.log`,
+`system.log` + `system.old.log`.
 With a data floppy in a drive, the logs and the bigger data files live there.
 
 A computer has only **1 MB** of disk. The big files (map, turtle knowledge) can

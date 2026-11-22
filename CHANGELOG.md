@@ -69,6 +69,13 @@ Peripherals (tested on CC:Tweaked 1.120.2, Minecraft 1.21.1, NeoForge).
 - The spawn speaker (`spawn_speaker.lua` on a relay computer): its own voice and call word,
   item wishes delivered by drone, help for players who have never seen it, and a crowd mode
   (fights, duels, group quiz, roast battles) when many players are at spawn.
+- The lonely base: when you are away a week or more it changes how it talks (stages that fit a
+  6-month world), writes you letters, keeps a wall for visitors, lets caretakers you name help
+  (permissions, all logged), can fly AFK players to the base by drone (only those who said yes),
+  counts down to the next world reset (`voice reset <date>`) and gives you one report when you
+  are back.
+- Humble: call it a god or a lord and it says it is just a bot; call the owner one and they are
+  just a regular player who had time to waste. No fortune telling.
 
 ### Upgrading from a version before 1.0.0
 - Type `upgrade` on the base computer. If the voice add-on is installed, type `voice update`
