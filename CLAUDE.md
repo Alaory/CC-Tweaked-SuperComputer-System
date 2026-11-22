@@ -1562,6 +1562,19 @@ PneumaticCraft drone rides, turtle mapping/surveys, and an AE2 ME network view.
   only when state.lastRide changed (no drone = said, not remembered); "boss" / "the boss" alone is a MOB, playerIn skips
   little words (the / all ... "kill the ender dragon" was "Thea"); a gift trip that brought 0 = a failed try; split-gift
   trips (log part = true) count once toward giftDaily.
+- A CROWD AT SPAWN (voice_crowd.lua = VOICE_FILES LAST, needs the spawn pack; the owner: "sometimes a lot of players at spawn
+  fighting / joking"; V.CROWD = CR; `voice crowd on|off` = voice.crowd). CROWD = voice.crowdMin 3+ players at spawn (SP.players).
+  NOT TALKING OVER EVERYONE (SP.say wrapped): in a crowd at most voice.crowdSpeak 4 spoken answers per 20 s (the rest chat only),
+  its own lines one per 25 s; "big" moments (knockout, duel result, fight start, hype) always. GROWING: a line when the crowd
+  reaches 3 / 5 / 8 / 12 (each level 10 min apart); crowd idle talk every ~4 min. FIGHTS (CR.fightTick, health from the Player
+  Detector): a hit = health down > 1; a FIGHT = another player hurt within 12 s and 8 blocks -> a fight line (60 s apart), low
+  hearts once per player, knockout = health 0 or low -> full again (a respawn) -> "X is down, Y wins" (exactly one other fighter)
+  else a plain one; a lone hurt player is no fight. DUELS: "<name>, duel Steve" (1v1 / fight / challenge) -> countdown, the first
+  knocked out loses, 180 s = a draw; CR.score (wins / draws / quiz points, memory only, reset after 1 h of an empty spawn) ->
+  "scoreboard". GROUP QUIZ ("group quiz", 2+ players): 5 questions to everyone, the first right answer (all answer words) scores,
+  40 s each, no saved points. ROAST BATTLE <name>: a roast each, 45 s vote "1" / "2". LISTENING (spoken only): laughter (3+ laughs
+  from 2+ players in 20 s, 10 min apart), "gg" after a fight, trash talk, fight words, a busy chat (8+ messages from 3+ players).
+  Never friendship / rewards (spawn rules). test_spawn_crowd.lua (fights, duels, quiz, votes, 300 messy crowd messages).
 - CONVERSATIONS + WHAT PLAYERS LIKE (voice_convo.lua = VOICE_FILES before voice_vary; the owner: "players just say hi or hello and
   don't know what to say - make it have long conversations", "an information system where it remembers what a player likes -
   players do talk about mods", "players sometimes just mention the name: sparky", "friendship at spawn shouldn't work"). V.CONVO = C.
@@ -1781,6 +1794,7 @@ The old Block UI (stone buttons, bedrock theme) is gone.
 | voice_vary.lua | VARIETY PACK: every other answer said 50+ ways (openers / closers by the kind of answer) |
 | voice_lore.lua | LORE PACK: why drones and not /tp and other questions about the base, modpack tips, mod glossary |
 | voice_spawn.lua / spawn_speaker.lua | the SPAWN SPEAKER: the base talks at spawn through a relay computer (Speaker + ender modem) - own voice and lines, no rewards, item wishes by drone, how-to help |
+| voice_crowd.lua | A CROWD AT SPAWN: does not talk over a crowd, comments on fights / knockouts / laughter, duels, group quiz, roast battles, scoreboard |
 | voice_talk2.lua | TALK PACK 2: friendship + titles, badges, player memory, daily secret word, more games, ideas, guides, styles, holidays, diary, FRIENDSHIP GIFTS by drone |
 
 ## The owner's setup (found out the hard way)

@@ -37,6 +37,8 @@ local okL, errL = pcall(loadVoiceChain)
 CHECK(okL, "the voice chain loads: " .. tostring(errL))
 CHECK(VOICE and VOICE.SPAWN and VOICE.packs["voice_spawn.lua"], "the spawn pack is loaded")
 local SP = VOICE.SPAWN
+CONFIG.voice = CONFIG.voice or {}
+CONFIG.voice.crowd = false            -- the crowd rules (voice_crowd.lua) have their own test: test_spawn_crowd.lua
 setSetting("voice.spamBurst", 100000)          -- (the spam limit is tested in part 9; the other parts chat fast)
 CHECK(#VOICE.dupIntents == 0, "no pack intent added twice")
 
