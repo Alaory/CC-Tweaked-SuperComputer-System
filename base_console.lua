@@ -1148,6 +1148,40 @@ function handleCommand(line)
   elseif cmd == "version" then
     say("Base program " .. versionText() .. "   (type  upgrade check  for a newer one)")
 
+  elseif cmd == "owner" then
+    if words[2] == "new" then
+      OWNER_SAVED, OWNER_UUID, INV_FOREIGN, INV_FOREIGN_AT = nil, nil, nil, nil
+      pcall(fs.delete, OWNER_FILE)
+      PERIPH_SKIP = {}
+      pcall(rescanPeripherals)
+      state.force.inv = true
+      say("The next memory card the Inventory Manager holds is the owner's." ..
+          ((type(CONFIG.owner) == "string" and CONFIG.owner ~= "") and (" (CONFIG.owner = " .. CONFIG.owner ..
+          " in base_config.lua still decides - change that line too)") or ""))
+    else
+      say("Owner: " .. tostring(knownOwner() or "not known yet") .. (state.ownerOff and " (offline)" or ""))
+      if INV_FOREIGN then say("Inventory Manager NOT USED: " .. INV_FOREIGN) end
+      say("owner new = the next memory card in the Inventory Manager becomes the owner (you changed accounts)")
+    end
+
+  elseif cmd == "parts" then
+    -- PARTS MISSING (base_devices.lua NET.gone): blocks / data floppies the base saw and does not see now
+    if words[2] == "forget" then
+      local k = partsForget(words[3] and table.concat(words, " ", 3) or "")
+      if #k == 0 then say("Usage: parts forget <n|name|all>  (n from the list)")
+      else say("Forgotten: " .. table.concat(k, ", ") .. " - not listed as missing any more") end
+    else
+      say("Screen: " .. (mon.blank and ("NONE - " .. tostring(MON_WHY or "no monitor") .. " (the base runs without it)")
+                         or tostring(monName)))
+      if inv == nil and INV_FOREIGN then say("Inventory Manager: NOT USED - " .. INV_FOREIGN) end
+      local list = partsGone()
+      if #list == 0 then say("No parts missing.") end
+      for i, g in ipairs(list) do say(i .. ". " .. partText(g)) end
+      if #list > 0 then
+        say("Broken, moved or its chunk is not loaded. Taken away on purpose:  parts forget <n|all>")
+      end
+    end
+
   elseif cmd == "uptime" then
     local a = BASE_ALIVE or {}
     local now = os.epoch("utc")

@@ -217,6 +217,7 @@ function netTick()
     end
   end
   pcall(noteNetwork)
+  pcall(partsTick)
 end
 
 -- worker 2: whatever the visible page needs (only the visible page)
@@ -795,6 +796,11 @@ end
 -- a page that cannot be drawn (an odd value from a peripheral, a bug) never stops the base: HOME instead, the
 -- error in the SYSTEM log (once a minute); HOME failing too = a plain error screen until the next good draw
 function safeDraw()
+  if state.monChanged then          -- the monitor went / came back (base_devices.lua monitorCheck / forgetDetached)
+    state.monChanged = false
+    pcall(buildWindow)
+  end
+  if mon.blank then return true end -- no monitor (base_devices.lua blankMonitor): nothing to draw onto
   local ok, err = pcall(draw)
   if ok then state.drawErr = nil return true end
   if not state.drawErrAt or os.clock() - state.drawErrAt > 60 then

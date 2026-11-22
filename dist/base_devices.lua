@@ -118,10 +118,20 @@ function norm(x) return (tostring(x):lower():gsub("[^%a]", "")) end
 
 
 
+
+
+PERIPH_SKIP = {}
+function periphSkipped(name)
+local u = PERIPH_SKIP[name]
+if u and os.clock() < u then return true end
+PERIPH_SKIP[name] = nil
+return false
+end
 function candidates(types)
 local remote, side = {}, {}
 for _, name in ipairs(peripheral.getNames()) do
 for _, t in ipairs(types) do
+if periphSkipped(name) then break end
 local ok, has = pcall(peripheral.hasType, name, t)
 if ok and has then
 if SIDES[name] then side[#side + 1] = name else remote[#remote + 1] = name end
@@ -171,7 +181,7 @@ end
 local want = {}
 for _, t in ipairs(types) do want[#want + 1] = norm(t) end
 for _, name in ipairs(peripheral.getNames()) do
-local cands = { name, peripheral.getType(name) }
+local cands = periphSkipped(name) and {} or { name, peripheral.getType(name) }
 for _, c in ipairs(cands) do
 if type(c) == "string" then
 local nc = norm(c)
@@ -219,7 +229,7 @@ picked = {}
 
 
 NET_FILE = "net_seen.dat"
-NET = { p = {}, f = {} }
+NET = { p = {}, f = {}, gone = {} }
 DATA_AWAY = {}
 NET_START_MISSING = {}
 local function startCfg(k, d)
@@ -231,13 +241,23 @@ do
 local okR, t = pcall(readSafe, NET_FILE)
 if okR and type(t) == "table" then
 for n, e in pairs(type(t.p) == "table" and t.p or {}) do
-if type(n) == "string" and type(e) == "table" and tonumber(e.at) then NET.p[n] = { t = tostring(e.t or "?"), at = tonumber(e.at) } end
+if type(n) == "string" and type(e) == "table" and tonumber(e.at) then
+NET.p[n] = { t = tostring(e.t or "?"), at = tonumber(e.at), first = tonumber(e.first) }
+end
 end
 for id, e in pairs(type(t.f) == "table" and t.f or {}) do
 if tonumber(id) and type(e) == "table" and tonumber(e.at) then
 local files = {}
 for _, f in ipairs(type(e.files) == "table" and e.files or {}) do if type(f) == "string" then files[#files + 1] = f end end
 NET.f[tonumber(id)] = { at = tonumber(e.at), drive = tostring(e.drive or "?"), files = files }
+end
+end
+for k, e in pairs(type(t.g) == "table" and t.g or {}) do
+if type(k) == "string" and type(e) == "table" and tonumber(e.since) then
+local files = {}
+for _, f in ipairs(type(e.files) == "table" and e.files or {}) do if type(f) == "string" then files[#files + 1] = f end end
+NET.gone[k] = { kind = e.kind == "floppy" and "floppy" or "block", t = tostring(e.t or "?"), since = tonumber(e.since),
+id = tonumber(e.id), drive = e.drive and tostring(e.drive) or nil, files = files }
 end
 end
 end
@@ -283,7 +303,7 @@ for _, n in ipairs(peripheral.getNames()) do
 local okT, ty = pcall(peripheral.getType, n)
 local e = NET.p[n]
 if not e then changed = true end
-NET.p[n] = { t = tostring(okT and ty or "?"), at = now }
+NET.p[n] = { t = tostring(okT and ty or "?"), at = now, first = e and (e.first or e.at) or now }
 local okD, isDrive = pcall(peripheral.hasType, n, "drive")
 if disk and okD and isDrive then
 local okP, there = pcall(disk.isPresent, n)
@@ -301,14 +321,142 @@ NET.f[id] = { at = now, drive = n, files = files }
 end
 end
 end
+if partsNote(now) then changed = true end
 local since = now - (tonumber(startCfg("rememberDays", 3)) or 3) * 86400000
 for n, e in pairs(NET.p) do if e.at < since then NET.p[n] = nil changed = true end end
 for id, e in pairs(NET.f) do if e.at < since then NET.f[id] = nil changed = true end end
 if changed or force or not NET.savedAt or os.clock() - NET.savedAt > 600 then
 NET.savedAt = os.clock()
-pcall(writeSafe, NET_FILE, textutils.serialize({ p = NET.p, f = NET.f }))
+pcall(writeSafe, NET_FILE, textutils.serialize({ p = NET.p, f = NET.f, g = NET.gone }))
 end
 end
+
+
+
+
+
+
+
+GONE_RUN = {}
+local function watched(t) return not tostring(t):find("turtle", 1, true) end
+function partsNote(now)
+local changed = false
+local present = {}
+for _, n in ipairs(peripheral.getNames()) do present[n] = true end
+for n, e in pairs(NET.p) do
+if present[n] then
+if NET.gone[n] then
+NET.gone[n], GONE_RUN[n] = nil, nil
+changed = true
+if sysLog then pcall(sysLog, "Part back: " .. n .. " (" .. e.t .. ")", "INFO") end
+end
+elseif watched(e.t) and not NET.gone[n] then
+NET.gone[n] = { kind = "block", t = e.t, since = e.at }
+changed = true
+end
+end
+for id, e in pairs(NET.f) do
+local k = "floppy #" .. id
+if floppyHere(id) then
+if NET.gone[k] then
+NET.gone[k], GONE_RUN[k] = nil, nil
+changed = true
+if sysLog then pcall(sysLog, "Data floppy #" .. id .. " is back", "INFO") end
+end
+elseif #e.files > 0 and not NET.gone[k] then
+NET.gone[k] = { kind = "floppy", t = "data floppy", since = e.at, id = id, drive = e.drive, files = e.files }
+changed = true
+end
+end
+for k, g in pairs(NET.gone) do
+local by = nil
+if g.kind == "block" then
+if present[k] then by = k end
+for n, e in pairs(NET.p) do
+if n ~= k and present[n] and e.t == g.t and (e.first or e.at) > g.since then by = n break end
+end
+end
+if by and by ~= k then
+if sysLog then pcall(sysLog, "Part " .. k .. " (" .. g.t .. ") was replaced by " .. by, "INFO") end
+NET.gone[k], GONE_RUN[k], NET.p[k] = nil, nil, nil
+changed = true
+elseif by == k then
+NET.gone[k], GONE_RUN[k] = nil, nil
+changed = true
+elseif now - g.since > 60 * 86400000 then
+NET.gone[k], GONE_RUN[k] = nil, nil
+changed = true
+else
+GONE_RUN[k] = GONE_RUN[k] or os.clock()
+end
+end
+return changed
+end
+
+function partsGone()
+local out = {}
+for k, g in pairs(NET.gone) do
+out[#out + 1] = { key = k, kind = g.kind, t = g.t, since = g.since, id = g.id, files = g.files, drive = g.drive,
+run = GONE_RUN[k] and (os.clock() - GONE_RUN[k]) or 0 }
+end
+table.sort(out, function(a, b) if a.since ~= b.since then return a.since < b.since end return a.key < b.key end)
+return out
+end
+
+function partText(g)
+local age = math.max(0, ((os.epoch and os.epoch("utc")) or 0) - g.since) / 1000
+local ago = (spanWords and spanWords(age)) or (fmtSpan and fmtSpan(age)) or (math.floor(age) .. " s")
+if g.kind == "floppy" then
+local held = false
+for _, id in pairs(DATA_AWAY) do if id == g.id then held = true end end
+return "data floppy #" .. tostring(g.id) .. " (was in " .. tostring(g.drive or "?") .. ": " ..
+table.concat(g.files or {}, ", ", 1, math.min(3, #(g.files or {}))) .. ") - gone " .. ago ..
+(held and "; its files are NOT saved until it is back" or "")
+end
+return g.key .. " (" .. tostring(g.t) .. ") - gone " .. ago
+end
+
+
+function partsForget(which)
+local list = partsGone()
+local keys = {}
+if which == "all" then for _, g in ipairs(list) do keys[#keys + 1] = g.key end
+elseif tonumber(which) and list[tonumber(which)] then keys[1] = list[tonumber(which)].key
+elseif NET.gone[tostring(which)] then keys[1] = tostring(which)
+elseif tonumber(which) and NET.gone["floppy #" .. tonumber(which)] then keys[1] = "floppy #" .. tonumber(which) end
+for _, k in ipairs(keys) do
+local g = NET.gone[k]
+if g.kind == "floppy" and g.id then
+NET.f[g.id] = nil
+for f, id in pairs(DATA_AWAY) do if id == g.id then DATA_AWAY[f] = nil end end
+else
+NET.p[k] = nil
+end
+NET.gone[k], GONE_RUN[k] = nil, nil
+if sysLog then pcall(sysLog, "Missing part forgotten: " .. k, "INFO") end
+end
+if #keys > 0 then pcall(writeSafe, NET_FILE, textutils.serialize({ p = NET.p, f = NET.f, g = NET.gone })) end
+return keys
+end
+
+PARTS_WARNED = {}
+function partsTick()
+local after = tonumber(startCfg("goneAfter", 600)) or 600
+local new = {}
+for _, g in ipairs(partsGone()) do
+if g.run >= after and not PARTS_WARNED[g.key] then
+PARTS_WARNED[g.key] = true
+new[#new + 1] = partText(g)
+end
+end
+if #new == 0 then return 0 end
+local msg = "PART" .. (#new > 1 and "S" or "") .. " MISSING (broken, moved or the chunk is not loaded): " ..
+table.concat(new, "; ") .. ". Type  parts  - `parts forget <n>` if it was taken away on purpose"
+if sysLog then pcall(sysLog, msg, "WARNING") end
+if pushNote then pcall(pushNote, "WARNING", msg, C and C.warn) end
+return #new
+end
+
 
 
 
@@ -409,9 +557,55 @@ pcall(noteNetwork)
 inv, mon, det, envDet, bridge, bridgeKind = nil
 
 inv, picked.inv = locate("Inventory Manager", CONFIG.names.inventoryManager, IM_TYPES)
-mon, picked.mon = locate("monitor", CONFIG.names.monitor, { "monitor" }, true, true)
 
-if not mon.isColor() then error("This needs an Advanced (gold) Monitor for colours.", 0) end
+
+
+
+
+function blankMonitor()
+local m = { blank = true }
+local noop = function() end
+for _, k in ipairs({ "write", "blit", "clear", "clearLine", "setCursorPos", "setCursorBlink", "setTextColor",
+"setTextColour", "setBackgroundColor", "setBackgroundColour", "scroll", "setTextScale",
+"setPaletteColor", "setPaletteColour" }) do m[k] = noop end
+m.getSize = function() return 100, 40 end
+m.isColor = function() return true end
+m.isColour = m.isColor
+m.getCursorPos = function() return 1, 1 end
+m.getCursorBlink = function() return false end
+m.getTextColor = function() return colors.white end
+m.getTextColour = m.getTextColor
+m.getBackgroundColor = function() return colors.black end
+m.getBackgroundColour = m.getBackgroundColor
+m.getTextScale = function() return 1 end
+m.getPaletteColor = function(c) return term.nativePaletteColor(c) end
+m.getPaletteColour = m.getPaletteColor
+return m
+end
+MON_WHY = nil
+
+function findMonitor()
+local okL, m, n = pcall(locate, "monitor", CONFIG.names.monitor, { "monitor" }, false, true)
+if not okL or not m then return nil, nil, "no monitor found" end
+local okC, col = pcall(m.isColor)
+if not (okC and col) then
+pcall(function()
+m.setTextScale(1) m.clear() m.setCursorPos(1, 1) m.write("This needs an ADVANCED (gold) Monitor.")
+end)
+return nil, nil, "the monitor '" .. tostring(n) .. "' is not an Advanced (gold) Monitor"
+end
+return m, n
+end
+do
+local m, n, why = findMonitor()
+if m then
+mon, picked.mon = m, n
+else
+mon, picked.mon, MON_WHY = blankMonitor(), nil, why
+print("NO SCREEN: " .. tostring(why) .. " - the base runs without one; place an Advanced Monitor " ..
+"(next to the computer or on the cable) and it is used within 20 s")
+end
+end
 
 
 det, picked.det = locate("Player Detector", CONFIG.names.playerDetector, PD_TYPES)
@@ -529,6 +723,7 @@ if not envDet then
 envDet, picked.env = tryLocate("Environment Detector", CONFIG.names.environmentDetector, ED_TYPES)
 end
 if scanDrones then scanDrones() end
+pcall(monitorCheck)
 if not bridge then
 local b, n = tryLocate("ME/RS Bridge", CONFIG.names.meBridge, BR_TYPES)
 if b then bridge, picked.bridge, bridgeKind = b, n, kindOf(n) end
@@ -544,9 +739,26 @@ if picked.env == name then envDet, picked.env = nil, nil end
 if picked.chat == name then chatBox, picked.chat = nil, nil end
 if forgetDrone then forgetDrone(name) end
 if picked.bridge == name then bridge, bridgeKind, picked.bridge = nil, nil, nil end
+if monName and name == monName then
+mon, picked.mon, monName, MON_WHY = blankMonitor(), nil, nil, "the monitor '" .. name .. "' is gone"
+state.monChanged = true
+if sysLog then pcall(sysLog, "The MONITOR (" .. name .. ") is gone - broken, moved or its chunk unloaded. The base " ..
+"keeps running; place an Advanced Monitor again and it is used within 20 s", "WARNING") end
+end
 netInfo.t = -100
 end
 
-monName = peripheral.getName(mon)
+function monitorCheck()
+if not mon.blank then return false end
+local m, n, why = findMonitor()
+if not m then MON_WHY = why return false end
+mon, picked.mon, monName, MON_WHY = m, n, n, nil
+pcall(mon.setTextScale, CONFIG.textScale)
+state.monChanged = true
+if sysLog then pcall(sysLog, "Monitor found: " .. n .. " - the screen is back", "INFO") end
+return true
+end
+
+monName = (not mon.blank) and picked.mon or nil
 mon.setTextScale(CONFIG.textScale)
 

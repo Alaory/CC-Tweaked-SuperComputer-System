@@ -217,6 +217,7 @@ end
 end
 end
 pcall(noteNetwork)
+pcall(partsTick)
 end
 
 
@@ -795,6 +796,11 @@ end
 
 
 function safeDraw()
+if state.monChanged then
+state.monChanged = false
+pcall(buildWindow)
+end
+if mon.blank then return true end
 local ok, err = pcall(draw)
 if ok then state.drawErr = nil return true end
 if not state.drawErrAt or os.clock() - state.drawErrAt > 60 then

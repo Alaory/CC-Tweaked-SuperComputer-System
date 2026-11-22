@@ -47,6 +47,10 @@ some answers come later as a message on the monitor or in the turtle's log.
 | `upgrade check` | only shows what would change - nothing is written |
 | `upgrade full` / `upgrade slim` | from now on get the commented files / the smaller files without comments again (the default) |
 | `upgrade branch <name>` | take the files from another GitHub branch from now on |
+| `parts` | blocks and data floppies the base saw and does not see now (broken, moved or their chunk is not loaded), and whether it has a screen |
+| `parts forget <n\|name\|all>` | a missing part was taken away on purpose - not listed any more; a data floppy: its files are saved somewhere else again |
+| `owner` | who the base thinks its owner is, and whether the Inventory Manager holds someone else's memory card |
+| `owner new` | you changed accounts: the next memory card in the Inventory Manager becomes the owner's |
 | `uptime` | how long the base has been running, and the last 10 times it was off (and why: crash, you stopped it, server restart) |
 | `away` | away mode: is it on, is the owner online, the last WHILE YOU WERE AWAY report |
 | `events [n] [errors]` | the last `n` saved messages (default a screenful), also from before a restart. `events 30 errors` = only warnings and errors |

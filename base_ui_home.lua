@@ -109,6 +109,11 @@ local function needs()
     end
   end
   if DW and DW.job and DW.job.paused then out[#out + 1] = { C.warn, "Drone build paused", DW.job.paused, "work", "OPEN" } end
+  local gone = partsGone and partsGone() or {}
+  if #gone > 0 then
+    out[#out + 1] = { C.bad, #gone .. " part(s) missing", partText(gone[1]) .. (#gone > 1 and " (+" .. (#gone - 1) .. " more - type parts)" or ""),
+                      "system", "OPEN" }
+  end
   if state.diskLow then out[#out + 1] = { C.bad, "Disk almost full", state.diskLow, "system", "OPEN" } end
   local s = state.sys or {}
   if s.mapFree and s.mapFloppies and s.mapFloppies > 0 and s.mapFree < 40960 then

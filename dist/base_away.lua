@@ -233,6 +233,10 @@ end
 end
 end
 if MAP.full then need[#need + 1] = "map floppies full" end
+for i, g in ipairs(partsGone and partsGone() or {}) do
+if i > 4 then need[#need + 1] = "more parts missing (type parts)" break end
+need[#need + 1] = "part missing: " .. partText(g)
+end
 if FACTORY and FACTORY.lastMissing and #FACTORY.lastMissing > 0 then
 need[#need + 1] = "the turtle factory needs AE2 patterns (" .. FACTORY.lastMissing[1].what .. "...)"
 end

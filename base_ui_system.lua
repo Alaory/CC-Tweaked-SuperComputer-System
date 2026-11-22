@@ -23,7 +23,7 @@ function drawSystemPage(G)
   local now = os.epoch("utc")
 
   ------------------------------------------------ status
-  local sh = 19
+  local sh = 20
   card(lx, y0, leftW, sh, "STATUS")
   local r = y0 + 3
   kv(ix, r, iw, "Running for", fmtSpan((now - (A.since or now)) / 1000) .. "   (start #" .. tostring(A.starts or "?") .. ")")
@@ -64,6 +64,9 @@ function drawSystemPage(G)
   kv(ix, r + 12, iw, "Pocket remote", np == 0 and "none paired (pocket.lua on a pocket computer)"
      or (np .. " paired" .. (lastP and ("   last used " .. TT.ago(lastP)) or "")), np > 0 and C.text or C.dim)
   kv(ix, r + 14, iw, "Program", s.version or ("v" .. tostring(BASE_VERSION)))
+  local gone = partsGone and partsGone() or {}
+  kv(ix, r + 15, iw, "Parts missing", #gone == 0 and "none" or (#gone .. ": " .. partText(gone[1]) ..
+     (#gone > 1 and " ..." or "") .. "   (type  parts)"), #gone == 0 and C.text or C.bad)
   kv(ix, r + 13, iw, "Schematics", (s.schematics or 0) .. " stored" .. ((s.schematics or 0) == 0
      and "   (drag a Create .nbt onto the computer's screen)" or "   (type  schem)"), (s.schematics or 0) > 0 and C.text or C.dim)
 

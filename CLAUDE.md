@@ -73,6 +73,18 @@ PneumaticCraft drone rides, turtle mapping/surveys, and an AE2 ME network view.
   longer REQUIRED and a CONFIG.names pin that is not there returns nil (both crashed every start = startup.lua restarted
   into the same error until the chunk loaded); only the monitor is required. test_reload.lua + pre_reload.lua (run_tests
   sets PRE=tools/tests/pre_<name>.lua for test_<name>.lua: set-up BEFORE the base loads).
+- BROKEN WHILE OFF (the owner: "what if a player broke parts of the system when it's offline"): the MONITOR is no
+  longer required - none / a plain grey one -> blankMonitor() (no-op, mon.blank; safeDraw draws nothing) and
+  monitorCheck (rescanPeripherals: every 20 s + "peripheral") uses a real one when placed (state.monChanged -> safeDraw
+  rebuilds the window); detached mid-run -> blank again + WARNING. PARTS MISSING (base_devices.lua partsNote in
+  noteNetwork): every block (not turtles) / data floppy in NET.p / NET.f that is not here -> NET.gone (net_seen.dat g,
+  kept 60 days - the start waits only 3); back / REPLACED (a present block of the same type first seen after it
+  went - a new ME Bridge with another number) / 60 days -> out. partsTick (netTick): missing CONFIG.startup.goneAfter
+  600 s of THIS run -> ONE WARNING for the new ones. Shown: HOME NEEDS YOU, SYSTEM > STATUS "Parts missing", the away
+  report's needs, console `parts` (+ the screen) / `parts forget <n|name|all>` (a floppy: NET.f + DATA_AWAY cleared ->
+  its files are saved elsewhere again). ANOTHER PLAYER'S CARD (refreshInventory): getOwner() ~= CONFIG.owner / the
+  saved owner -> inv nil, PERIPH_SKIP[name] 60 s (candidates / locate skip it), INV_FOREIGN, one WARNING an hour;
+  `owner new` accepts the next card. test_broken.lua + pre_broken.lua.
 - **Peripheral calls belong in workers or fetch functions, never in drawing
   code.** Drawing reads `state.*` only.
 - Drawing: everything is drawn into an off-screen window `win` (text / fill CLIPPED to the

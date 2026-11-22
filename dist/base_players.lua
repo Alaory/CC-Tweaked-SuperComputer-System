@@ -348,6 +348,7 @@ end
 
 
 OWNER_FILE = "owner.dat"
+INV_FOREIGN, INV_FOREIGN_AT = nil, nil
 do
 local t = readSafe(OWNER_FILE)
 OWNER_SAVED = type(t) == "table" and type(t.name) == "string" and t.name ~= "" and t.name or nil
@@ -381,7 +382,30 @@ if type(owner) == "string" then
 local stripped = owner:gsub("^%x+%-%x+%-%x+%-%x+%-%x+%s*", "")
 if stripped ~= "" then owner = stripped end
 end
+
+
+
+
+local want = (type(CONFIG.owner) == "string" and CONFIG.owner ~= "" and CONFIG.owner) or OWNER_SAVED
+if type(owner) == "string" and owner ~= "" and want and owner:lower() ~= want:lower() then
+INV_FOREIGN = "it holds " .. owner .. "'s memory card, not " .. want .. "'s (type  owner new  if you changed accounts)"
+if picked.inv then PERIPH_SKIP[picked.inv] = os.clock() + 60 end
+if not INV_FOREIGN_AT or os.clock() - INV_FOREIGN_AT > 3600 then
+INV_FOREIGN_AT = os.clock()
+local msg = "The Inventory Manager " .. tostring(picked.inv) .. " is NOT USED: " .. INV_FOREIGN
+pcall(sysLog, msg, "WARNING")
+pcall(pushNote, "WARNING", msg, C.warn)
+end
+inv, picked.inv = nil, nil
+updateCaps()
+state.owner = want
+state.status = "offline"
+state.err = "Inventory Manager not used: " .. INV_FOREIGN
+state.t.inv = os.clock()
+return
+end
 if type(owner) == "string" and owner ~= "" then
+INV_FOREIGN = nil
 rememberOwner(owner, state.ownerUuid)
 state.ownerOff = nil
 else
