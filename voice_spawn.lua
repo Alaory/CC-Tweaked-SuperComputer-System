@@ -388,7 +388,7 @@ SP.EXAMPLES = { "{botl} tell me a joke", "{botl} roast me", "{botl} play a game"
   "{botl} rock paper scissors", "{botl} would you rather", "{botl} magic 8 ball, will I get rich", "{botl} hangman",
   "{botl} what time is it", "{botl} what is the weather", "{botl} give me a mod tip", "{botl} how do I make a beacon",
   "{botl} what is a creeper", "{botl} give me a build idea", "{botl} knock knock", "{botl} guess my number",
-  "{botl} I wish for an apple", "{botl} tell me a fortune", "{botl} pick a number", "{botl} true or false",
+  "{botl} I wish for an apple", "{botl} tell me a fun fact", "{botl} pick a number", "{botl} true or false",
   "{botl} what should I do", "{botl} talk like a pirate", "{botl} who are you", "{botl} help" }
 SP.HELP_OPEN = { "I am a talking speaker!", "Good question - I am the voice of a base, out here at spawn.", "Hi! I am the spawn speaker.",
   "You talk to me in chat.", "Easy: just type in chat.", "No buttons, no menus - just chat.", "I listen to the chat.",
@@ -499,7 +499,7 @@ SP.TIPS = combos({ "Tip:", "Did you know?", "Psst.", "Hint:", "Little secret:", 
 SP.INVITES = { "Anyone up for a quiz? Type {botl} quiz.", "Who wants a riddle? Type {botl} riddle.", "I feel like a game. Type {botl} play a game.",
   "Rock, paper, scissors, anyone? Type {botl} rock paper scissors.", "Bored in the queue? Type {botl} hangman.",
   "Need a laugh? Type {botl} joke.", "I have a story ready. Type {botl} tell me a story.", "Who dares? Type {botl} roast me.",
-  "Think you are lucky? Type {botl} flip a coin.", "Want to know your future? Type {botl} fortune." }
+  "Think you are lucky? Type {botl} flip a coin.", "Want a fun fact? Type {botl} fun fact." }
 SP.NAMED = combos({ "{name}, ", "Hey {name}, ", "Psst, {name}. ", "{name}! ", "Oh, {name}, " },
   { "you look like someone who would enjoy a joke. Type {botl} joke.", "have you tried talking to me? Start with {botl}.",
     "want a riddle while you shop? Type {botl} riddle.", "nice to see you around spawn.", "do you dare? {botl} roast me.",
@@ -591,6 +591,13 @@ SP.NOT_ITEM = { "to", "you", "a joke", "joke", "jokes", "a game", "game", "games
   "a tip", "tip", "an idea", "idea", "a hug", "hug", "friends", "a friend", "more", "it", "that", "this", "something", "anything",
   "nothing", "money", "a fortune", "fortune", "a quiz", "quiz", "a number", "number", "a name", "name", "a home", "home", "sleep",
   "food", "luck", "good luck", "peace", "silence", "quiet", "the base", "your base", "a ride", "ride", "a taxi", "taxi", "sing" }
+-- (the owner's screenshot: "sparky give me a mod tip" -> "you are the one who grants wishes here": a phrase with one of these
+-- words is something to SAY, never an item - "a mod tip", "another joke", "some advice", "a good idea")
+SP.NOT_ITEM_WORDS = { tip = 1, tips = 1, joke = 1, jokes = 1, fact = 1, facts = 1, riddle = 1, riddles = 1, story = 1, stories = 1,
+  idea = 1, ideas = 1, advice = 1, hint = 1, hints = 1, quiz = 1, game = 1, games = 1, roast = 1, compliment = 1, compliments = 1,
+  poem = 1, poems = 1, fortune = 1, fortunes = 1, dare = 1, challenge = 1, recipe = 1, recipes = 1, guide = 1, tutorial = 1,
+  lore = 1, question = 1, questions = 1, answer = 1, secret = 1, secrets = 1, word = 1, words = 1, ride = 1, lift = 1, taxi = 1,
+  hug = 1, chance = 1, minute = 1, moment = 1, ["break"] = 1, reason = 1, update = 1, status = 1, report = 1, nickname = 1, song = 1 }
 -- never wished for. "=x" = exactly that item, "*x" = an item ending in x, "@ns" = every item of that mod, a plain word = that
 -- word anywhere (only words no normal item has). (Review: plain words matched ANYWHERE - "light" blocked light blue wool,
 -- lightning rods, daylight detectors; "turtle" blocked turtle eggs / helmets.)
@@ -791,10 +798,12 @@ function SP.wish(who, raw)
     this = 1, there = 1, was = 1, were = 1, is = 1, are = 1, could = 1, would = 1, can = 1, had = 1, to = 1, my = 1, everyone = 1,
     somebody = 1, someone = 1, people = 1, more = 1, less = 1, peace = 1, world = 1, nothing = 1, everything = 1 }
   if first and NOTFIRST[first] then return nil end
+  for w in phrase:gmatch("%S+") do if SP.NOT_ITEM_WORDS[w] then return nil end end
   local n, name = SP.wishParse(phrase)
   if name == "" then return nil end
   if cfg("wish", true) == false then return "Wishes are switched off at spawn right now. Sorry!" end
-  if V.isOwner(who) then return fill(pick(SP.W_OWNER), who) end
+  -- (the owner: only when it IS an item - anything else goes on to the normal answers)
+  if V.isOwner(who) then return SP.findItem(name) and fill(pick(SP.W_OWNER), who) or nil end
   if not V.giftEarn then return "I cannot send things from here yet. Sorry!" end
   local it = SP.findItem(name)
   if not it then

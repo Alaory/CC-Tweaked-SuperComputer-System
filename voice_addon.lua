@@ -1569,7 +1569,7 @@ VOICE.INTENTS = {
   { id = "fact", canon = "fun fact", keys = { "fun fact", "fact", "facts", "something interesting", "tell me something", "teach me" } },
   { id = "roast", canon = "roast me", keys = { "roast", "insult" } },
   { id = "compliment", canon = "compliment me", keys = { "compliment", "say something nice", "cheer me up", "sad" } },
-  { id = "eight", canon = "magic 8 ball will i", keys = { "8 ball", "eight ball", "magic ball", "predict", "future", "fortune" } },
+  { id = "eight", canon = "magic 8 ball will i", keys = { "8 ball", "eight ball", "magic ball", "predict", "future" } },
   { id = "owner", canon = "who lives here", keys = { "who lives here", "who lives", "owner", "owns", "whose", "belongs", "creator",
       "who made", "who built", "who is the owner", "who is in charge", "your master", "your boss", "who are your", "player who" } },
   { id = "lonely", canon = "what happened", keys = { "what happened", "happened", "lonely", "alone", "abandoned", "empty",

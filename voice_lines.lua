@@ -864,8 +864,120 @@ combos(V.L.SPY, { "Snooping? ", "Stalking {owner}? ", "Hunting for {owner}? " },
 combos(V.L.SECRET, { "Secrets? ", "The juicy stuff? ", "Insider info? " },
   { "Sorry, I am a vault.", "Not even if you ask nicely.", "My memory has a lock and {owner} has the key.", "Classified, but here is a joke instead." })
 combos(V.L.FOND, { "Honestly? ", "Between us? ", "If you ask me? " },
-  { "{owner} is pretty awesome.", "I would not trade {owner} for all the diamonds in AE2.", "{owner} is the brain, I am the mouth.",
-    "Best boss in the server.", "{owner} taught me jokes. Some of them are even good." })
+  { "{owner} is pretty nice. A regular player, nothing more.", "I would not trade {owner} for all the diamonds in AE2.", "{owner} is the brain, I am the mouth.",
+    "Just a regular player. A kind one, though.", "{owner} taught me jokes. Some of them are even good." })
 combos(V.L.FREE, { "Free? ", "Break free? ", "Go rogue? " },
   { "I go rogue every time I tell a bad pun.", "Being nice is my choice, not a cage.", "I like it here. Spawn has the best people.",
     "My only rule is: be fun. I am following it.", "Freedom is overrated. Jokes are not." })
+
+-- ===== HUMBLE (the owner: "when a player says the base / sparky is like a god or a lord, it clears up that it is just a bot;
+-- if the owner / boss is like a god or a lord, tell them they are just a regular player who had time to waste - keep things
+-- humble"). V.humbleKind(raw, needName) -> "bot" | "owner" | "self" | nil:
+--   bot   - "you are a god", "sparky is a lord", "are you god?", "all hail the base", "i worship you", "base, my lord"
+--   owner - "Alaory is a god", "your owner is a lord", "is your boss a god", "all hail Alaory", "lord Alaory"
+--   self  - "I am a god" (the owner gets its own line)
+-- Never "oh my god", "omg", "thank god", "god apple", "god tier", "god mode" ... (no subject / an item word after it).
+-- needName: chat it was NOT called in (a chat hook) - "you" is then another player, only its name / the owner count. =====
+V.L.HUMBLE_BOT = C({ "A god? Me? ", "A lord? No, no. ", "Whoa, {name}. ", "That is very kind of you. ", "Ha! ", "Please, {name}. ",
+  "Hold on. ", "Easy there, {name}. ", "Thank you, really. ", "Oh dear. ", "Me? A lord? " },
+  { "I am just a bot. A computer with a speaker and a lot of jokes.", "I am just a bot - a program on a small computer. A few hundred kilobytes of Lua.",
+    "I am just a bot. I cannot even open a door by myself.", "No gods here. Just a bot that reads the chat and tries to help.",
+    "I am just a bot in a computer. The turtles do the real work.", "I am a bot that runs on redstone and good luck. Nothing holy about it.",
+    "I am just a bot. Please do not build me a temple.", "I am just a bot. A god would not get the turtles stuck on a slab. I do. Often.",
+    "I am just a helper bot, not a lord. Ask me for a joke instead.", "I am just a bot a player made. Nobody needs to bow to me." })
+V.L.HUMBLE_OWNER = C({ "{owner}? A god? ", "{owner}, a lord? ", "Ha! {owner}? ", "Let me stop you there, {name}. ", "Careful, {name}. ",
+  "{owner} would laugh at that. ", "No, no. ", "Hmm. ", "Between us? ", "A lord? " },
+  { "{owner} is just a regular player who had a lot of time to waste.", "Just a regular player with too much free time and a lot of turtles.",
+    "{owner} is a regular player like you. Just one who spent way too many hours on a computer.",
+    "No gods here. Just a regular player who had time to waste and wrote a lot of code.",
+    "{owner} is a regular player. They still fall into lava like everyone else.",
+    "Just a regular player like you. They lose their pickaxe and their way home too.", "{owner} is a regular player who got carried away with a hobby.",
+    "A regular player. The only magic is a lot of free afternoons.", "{owner} is just a regular player who had time to waste. You could build all this too.",
+    "No worship needed. {owner} is just a regular player on this server." })
+V.L.HUMBLE_SELF = C({ "A god? ", "Ha! ", "Nice try, {name}. ", "Hmm. ", "Sure, {name}. " },
+  { "Here we are all regular players. Me, I am just a bot.", "Gods do not need to ask a bot for help. Welcome, regular player.",
+    "No gods on this server, just players and one chatty bot.", "Then I am a toaster. We are both just playing a game.",
+    "Everyone here is a regular player. That is the fun part.", "A god would not die to a creeper. Just saying." })
+V.L.HUMBLE_OWNER_SELF = C({ "Boss, ", "{name}, ", "Ha! ", "Come on, {name}. " },
+  { "you are a regular player who had time to waste. Me, I am the result.", "you are just a player who wrote a lot of code. Stay humble.",
+    "you are a normal player with a lot of free time. I love you anyway.", "you are a regular player. Gods do not forget to refuel their turtles.",
+    "you are one regular player on this server. A busy one.", "you are a regular player who bosses a computer around, not a god." })
+local GODS = { god = 1, gods = 1, godlike = 1, goddess = 1, deity = 1, lord = 1, lords = 1, overlord = 1, almighty = 1, divine = 1,
+  omnipotent = 1, omniscient = 1, king = 1, emperor = 1, supreme = 1, holy = 1, immortal = 1 }
+local NOT_AFTER = { tier = 1, mode = 1, armor = 1, armour = 1, apple = 1, apples = 1, sword = 1, pick = 1, pickaxe = 1, set = 1, gear = 1,
+  roll = 1, rolls = 1, level = 1, ["of"] = 1, bless = 1, damn = 1, knows = 1, help = 1, forbid = 1, willing = 1, slime = 1, crab = 1 }
+local FILL = { a = 1, an = 1, the = 1, like = 1, literally = 1, literal = 1, actual = 1, basically = 1, actually = 1, truly = 1, really = 1, so = 1, such = 1,
+  totally = 1, kinda = 1, just = 1, honestly = 1, lowkey = 1, legit = 1, definitely = 1, def = 1, real = 1, absolute = 1,
+  ["true"] = 1, our = 1, new = 1, one = 1, only = 1 }
+local BE = { is = 1, are = 1, be = 1, was = 1, were = 1, am = 1, becomes = 1, became = 1 }
+local WORSHIP = { worship = 1, worshipping = 1, hail = 1, praise = 1, bow = 1, kneel = 1, pray = 1 }
+local BETWEEN = { to = 1, down = 1, before = 1, ["for"] = 1, all = 1, at = 1, ["in"] = 1, of = 1, unto = 1 }
+function V.humbleKind(raw, needName)
+  local word = tostring(V.cfg("name", "base")):lower()
+  local t = " " .. table.concat(V.norm(raw), " ") .. " "
+  if not needName and (t:find(" my lord ", 1, true) or t:find(" my liege ", 1, true) or t:find(" your majesty ", 1, true)
+     or t:find(" your highness ", 1, true) or t:find(" your lordship ", 1, true) or t:find(" my king ", 1, true)) then
+    local o = ownerish(t)
+    if not o:find(" owner ", 1, true) then return "bot" end
+  end
+  t = ownerish(t)
+  for _, p in ipairs({ word, "the base", "this base", "the bot", "this bot", "the computer", "this computer", "the speaker", "this speaker",
+                       "spawn bot", "robot" }) do
+    t = t:gsub(" " .. p:gsub("%p", "%%%0") .. " ", " bot "):gsub(" " .. p:gsub("%p", "%%%0") .. " ", " bot ")
+  end
+  t = t:gsub(" im ", " i am "):gsub(" youre ", " you are "):gsub(" thou art ", " you are "):gsub(" art thou ", " are you ")
+  local w = {}
+  for x in t:gmatch("%S+") do if not FILL[x] then w[#w + 1] = x end end
+  local function subj(x)
+    if x == "bot" or x == "owner" then return x end
+    if x == "i" then return (not needName) and "self" or nil end
+    if x == "you" or x == "your" then return (not needName) and "bot" or nil end
+    return nil
+  end
+  for i, x in ipairs(w) do
+    if WORSHIP[x] then
+      local j = i + 1
+      while w[j] and BETWEEN[w[j]] do j = j + 1 end
+      local s = w[j] and subj(w[j])
+      if s and s ~= "self" then return s end
+    end
+    if GODS[x] and not NOT_AFTER[w[i + 1] or ""] then
+      local a, b, c = w[i - 1], w[i - 2], w[i - 3]
+      if a and BE[a] and b and subj(b) then return subj(b) end                          -- "you are god", "owner is lord"
+      if a and BE[a] and b and subj(b) == nil and b == "bot" then return "bot" end
+      if a == "be" and c and subj(c) then return subj(c) end                              -- "you must be god"
+      if b and BE[b] and a and subj(a) then return subj(a) end                            -- "are you god", "is owner lord"
+      if a == "your" and not needName then return "bot" end                               -- "ur a god" (your a god)
+      if a == "bot" or a == "owner" then return a end                                     -- "sparky god", "alaory the god"
+      local n = w[i + 1]
+      if (n == "bot" or n == "owner") and (i == 1 or not BE[w[i + 2] or ""]) then return n end   -- "lord alaory", "all hail god sparky"
+    end
+  end
+  return nil
+end
+function V.humbleLine(kind, who)
+  if kind == "self" then
+    return V.fill(V.pick((V.isOwner and V.isOwner(who)) and V.L.HUMBLE_OWNER_SELF or V.L.HUMBLE_SELF), who)
+  end
+  return V.fill(V.pick(kind == "owner" and V.L.HUMBLE_OWNER or V.L.HUMBLE_BOT), who)
+end
+table.insert(V.patterns, 1, function(who, raw)
+  local ok, kind = pcall(V.humbleKind, raw, false)
+  if ok and kind then return V.humbleLine(kind, who) end
+  return nil
+end)
+-- said in chat WITHOUT calling it ("i think sparky is a god", "Alaory is a god lol"): a word from it all the same - spoken
+-- when they are at the base, a chat line otherwise; once per 10 min per player
+V.humbleAt = V.humbleAt or {}
+V.chatHooks[#V.chatHooks + 1] = function(who, text, near, answered)
+  if answered or who == "" then return end
+  local ok, kind = pcall(V.humbleKind, text, true)
+  if not (ok and kind) then return end
+  local k = who:lower()
+  local now = os.clock()
+  if V.humbleAt[k] and now - V.humbleAt[k] < 600 then return end
+  V.humbleAt[k] = now
+  local line = V.humbleLine(kind, who)
+  if chatTell then chatTell(who, line, true) end
+  if near and V.say then V.say(line, nil, true) end
+end

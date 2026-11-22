@@ -121,7 +121,7 @@ add(V.MUSINGS, {
 })
 add(V.TIPS, {
 "Tip: you can just talk to me in chat. Say hello!", "Tip: ask me for a riddle. I have lots.",
-"Tip: say let's play a game, and I will show you what we can play.", "Tip: ask me to tell you a fortune.",
+"Tip: say let's play a game, and I will show you what we can play.", "Tip: ask me for a fun fact.",
 "Tip: you can sign my guestbook. Just say sign the guestbook.", "Tip: ask me for an adventure. You choose the way.",
 "Tip: say hangman and try to guess my word.", "Tip: ask me a maths question, like what is 12 times 7.",
 "Tip: say would you rather, and pick one.", "Tip: say knock knock. Or ask me for one.",
@@ -160,8 +160,7 @@ add(V.LONELY_TALK, {
 "Every visitor gets a place in my memory. You too.", "Sometimes the wind blows through the base and I pretend it is {owner} walking in.",
 "Leave a message for {owner} if you like. Just say leave a message.", "You can sign my guestbook. I keep every name.",
 })
-add(V.MORE, { { "an adventure (you choose)", "#adv:start" }, { "a fortune cookie", "fortune cookie" },
-{ "rate me", "rate me" }, { "sign the guestbook", "sign the guestbook" }, { "a poem", "tell me a poem" },
+add(V.MORE, { { "an adventure (you choose)", "#adv:start" }, { "rate me", "rate me" }, { "sign the guestbook", "sign the guestbook" }, { "a poem", "tell me a poem" },
 { "ask me a question", "ask me a question about me" } })
 add(V.GAMES, { { "a riddle", "give me a riddle" }, { "unscramble a word", "unscramble" }, { "hangman", "hangman" },
 { "a maths question", "maths question" }, { "would you rather", "would you rather" }, { "knock knock jokes", "knock knock joke" },
@@ -438,14 +437,17 @@ local chat = V.showMenu(who, items, n[1] .. " Type a number:")
 return chat, n[1]
 end
 
-local FORTUNES = { "You will find diamonds where you least expect them.", "A creeper is thinking about you. Be careful.",
-"Your next build will be your best one.", "Good things come to those who mine.", "A friendly turtle will cross your path.",
-"Do not trust the next villager who says hmm.", "You will soon travel far. Pack food.", "Luck is on your side today. Try fishing.",
-"Someone on this server thinks you are cool.", "The answer you seek is under bedrock. Do not go there.",
-"A full moon brings a full inventory.", "Your pickaxe will not break today.", "A new friend is closer than you think.",
-"Today is a good day to build a house that is not made of dirt.", "Beware of holes in the floor.", "You will laugh before sunset.",
-"Follow the river and you will find something nice.", "Patience is a virtue. So is a sharp sword.",
-"The cake is not a lie. Today.", "Your lucky block is gold.", "Expect a surprise from the sky." }
+
+local NOFORTUNE = {}
+for _, a in ipairs({ "A fortune? ", "My fortune telling? ", "Your future? ", "Fortunes? ", "Predict your future? ", "Hmm, a fortune? ",
+"Sorry, {name}. ", "Ah, the future. " }) do
+for _, b in ipairs({ "I cannot see the future. I am just a bot.", "I do not tell fortunes. I am just a bot with a speaker.",
+"I am just a bot - I can barely predict the weather.", "No crystal ball in here. Just a bot and a lot of Lua.",
+"I am just a bot, and bots do not tell fortunes.", "I am a bot, not a fortune teller. Want a joke instead?",
+"Nobody knows the future. Me least of all.", "I only know what the turtles tell me. They do not know the future either." }) do
+NOFORTUNE[#NOFORTUNE + 1] = a .. b
+end
+end
 
 local function rateMe(who)
 local n = math.random(6, 10)
@@ -577,8 +579,9 @@ lines("dare", { "dare", "give me a dare", "challenge me", "challenge" }, { "I da
 "I dare you to say something nice to the next player you see.", "I dare you to do a little dance. I am watching.",
 "I dare you to walk backwards for ten seconds.", "I dare you to crouch three times. That is how turtles say hello.",
 "I dare you to tell me your best joke.", "I dare you to sign my guestbook." }),
-lines("fortune", { "fortune cookie", "my fortune", "tell my fortune", "horoscope", "cookie" },
-function(w) return "Your fortune cookie says: " .. pick(FORTUNES) end),
+lines("fortune", { "fortune cookie", "my fortune", "tell my fortune", "tell me my fortune", "tell me a fortune", "tell me the fortune",
+"fortune", "fortune teller", "horoscope", "fortune of the day", "daily fortune", "todays fortune", "read my future" },
+function(w) return V.fill(pick(NOFORTUNE), w) end),
 lines("rate", { "rate me", "rate my", "how cool am i", "am i cool", "score me" }, function(w) return rateMe(w) end),
 lines("sign", { "sign the guestbook", "sign guestbook", "sign the book", "sign my name", "guestbook sign" }, function(w) return sign(w) end),
 lines("book", { "read the guestbook", "guestbook", "who signed", "guest book" }, function() return readBook() end),
@@ -923,15 +926,11 @@ function(nearNow, who)
 if not isStranger(who) then return nil end
 return V.say(pick(VISITOR_LINES))
 end,
-function(nearNow, who)
-if not who then return nil end
-return V.say(who .. ", here is a free fortune: " .. pick(FORTUNES))
-end,
 })
 
 V.hash.games = function(who) return V.showMenu(who, V.GAMES, "Which game? Type a number:") end
 
 V.L = V.L or {}
 V.L.RIDDLES, V.L.WORDS, V.L.WYR, V.L.KNOCK, V.L.THISTHAT, V.L.REACT_OK, V.L.QUESTIONS = RIDDLES, WORDS, WYR, KNOCK, THISTHAT, REACT_OK, QUESTIONS
-V.L.FORTUNES, V.L.POEMS, V.L.TIME_LINES, V.L.WEATHER_LINES, V.L.MC_FACTS, V.L.SELF_TALK, V.L.VISITOR_LINES =
-FORTUNES, POEMS, TIME_LINES, WEATHER_LINES, MC_FACTS, SELF_TALK, VISITOR_LINES
+V.L.POEMS, V.L.TIME_LINES, V.L.WEATHER_LINES, V.L.MC_FACTS, V.L.SELF_TALK, V.L.VISITOR_LINES =
+POEMS, TIME_LINES, WEATHER_LINES, MC_FACTS, SELF_TALK, VISITOR_LINES

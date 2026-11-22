@@ -6,7 +6,7 @@
 --   BADGES      27 badges to collect (games won, visits, secret word, night owl, ...): "my badges".
 --   MEMORY      "call me Captain", "my favourite food is cake", "my birthday is 14 march",
 --               "what do you know about me", "forget me" (everything about you is deleted).
---   DAILY       a SECRET WORD of the day (say it at the base!), word / question / fact / fortune of the day.
+--   DAILY       a SECRET WORD of the day (say it at the base!), word / question / fact of the day.
 --   GAMES       true or false, guess the mob, word chain, higher or lower, mad libs, count with me,
 --               hack the mainframe, make a wish; top players.
 --   IDEAS       build ideas, pet names, base names, team names, hero names, what should I do, pick for me.
@@ -689,14 +689,6 @@ local FACTS = { "Octopuses have three hearts.", "Honey never goes bad. Jars thou
   "Your nose can remember fifty thousand smells.", "Goats have accents.", "A cloud can weigh more than a million kilograms.",
   "Crows can remember human faces.", "Pineapples take two years to grow.", "Rats laugh when you tickle them.", "Some cats are allergic to people.",
   "The moon has moonquakes.", "Hummingbirds can fly backwards.", "Bees can recognise faces.", "An ostrich's eye is bigger than its brain." }
-local DAILY_FORTUNE = { "Today the creepers will miss you.", "Today you will find something shiny.", "Today a friend will make you laugh.",
-  "Today is a great day to build something new.", "Today luck is on your side. Go fishing.", "Today, watch your step near ravines.",
-  "Today you will win a game. Maybe against me.", "Today the villagers give you good prices.", "Today is a lucky mining day.",
-  "Today you should eat a golden carrot. Trust me.", "Today the weather will surprise you.", "Today someone will think of you.",
-  "Today you will make a new friend.", "Today, beware of chickens.", "Today is a good day to explore the ocean.", "Today: sleep early, phantoms are grumpy.",
-  "Today a turtle will cross your path. Say hi.", "Today your next build will be your best.", "Today is not the day to fight the Warden.",
-  "Today your pickaxe will last longer than usual." }
-
 -- ===== 9. idea generators =====
 local B_STYLE = { "cosy", "spooky", "floating", "underground", "giant", "tiny", "medieval", "modern", "steampunk", "desert", "jungle", "icy",
   "nether-themed", "mushroom", "upside-down", "glass", "ancient", "pirate", "fairy-tale", "abandoned" }
@@ -1357,7 +1349,6 @@ local T = {
       V.pend[tostring(w):lower()] = { kind = "react", lines = V.REACT_OK or { "Interesting!", "Good answer.", "I like that." }, till = os.clock() + 180 }
       return "Question of the day: " .. daily(QOTD, "qotd")
     end),
-  L("dailyfortune", { "daily fortune", "fortune of the day", "todays fortune", "my fortune today" }, function(w) return "Your fortune for today, " .. w .. ": " .. daily(DAILY_FORTUNE, w) end),
   L("realfact", { "real fact", "real life fact", "science fact", "animal fact", "fact of the day", "facts about the world" }, function()
       return math.random() < 0.5 and ("Fact of the day: " .. daily(FACTS, "fact")) or ("Real fact: " .. pick(FACTS))
     end),
@@ -1633,5 +1624,5 @@ add(V.idleExtra, {
 })
 -- (its lists, for the packs after it - voice_lines.lua adds to the same tables)
 V.L = V.L or {}
-V.L.TF, V.L.MOBS, V.L.FACTS, V.L.DAILY_FORTUNE, V.L.QOTD, V.L.WOTD, V.L.ACTIVITIES, V.L.MOTTOS, V.L.WISDOM, V.L.TURTLE_TALK, V.L.RACE =
-  TF, MOBS, FACTS, DAILY_FORTUNE, QOTD, WOTD, ACTIVITIES, MOTTOS, WISDOM, TURTLE_TALK, RACE
+V.L.TF, V.L.MOBS, V.L.FACTS, V.L.QOTD, V.L.WOTD, V.L.ACTIVITIES, V.L.MOTTOS, V.L.WISDOM, V.L.TURTLE_TALK, V.L.RACE =
+  TF, MOBS, FACTS, QOTD, WOTD, ACTIVITIES, MOTTOS, WISDOM, TURTLE_TALK, RACE

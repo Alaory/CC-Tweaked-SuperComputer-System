@@ -622,7 +622,7 @@ CHECK(say2("who signed the guestbook"):find("Kevin", 1, true), "the guestbook li
 -- sloppy questions about it
 CHECK(say2("what is ur favrite colour") ~= "", "'what is ur favrite colour' -> " .. told[1])
 CHECK(say2("can u see me"):find("blocks away", 1, true), "can u see me -> the detector distance: " .. told[1])
-CHECK(say2("fortune cookie pls"):find("fortune cookie says", 1, true), "a fortune cookie")
+do local fc = say2("fortune cookie pls") CHECK(not fc:find("fortune cookie says", 1, true) and #fc > 5, "no fortunes any more (the owner): a humble no - " .. fc) end
 CHECK(say2("can i grief here"):find("claimed", 1, true) or told[1]:find("sad", 1, true), "griefing -> please do not: " .. told[1])
 CHECK(say2("open the door"):find("cannot", 1, true) or told[1]:find("closed", 1, true), "open the door -> no: " .. told[1])
 -- the menus show the new things
@@ -2216,9 +2216,9 @@ end)()
     ALIVE = VOICE.ALIVE, TIPS = VOICE.TIPS, MUSINGS = VOICE.MUSINGS, LONELY_TALK = VOICE.LONELY_TALK, NOSING = VOICE.NOSING,
     HELLO_NEW = VOICE.HELLO_NEW, HELLO_AGAIN = VOICE.HELLO_AGAIN, HELLO_FRIEND = VOICE.HELLO_FRIEND, HELLO_OWNER = VOICE.HELLO_OWNER,
     HELLO_GROUP = VOICE.HELLO_GROUP, MODTIPS = VOICE.MODTIPS,
-    FORTUNES = L.FORTUNES, POEMS = L.POEMS, MC_FACTS = L.MC_FACTS, SELF_TALK = L.SELF_TALK, VISITOR_LINES = L.VISITOR_LINES,
+    POEMS = L.POEMS, MC_FACTS = L.MC_FACTS, SELF_TALK = L.SELF_TALK, VISITOR_LINES = L.VISITOR_LINES,
     QUESTIONS = L.QUESTIONS, WYR = L.WYR, KNOCK = L.KNOCK, RIDDLES = L.RIDDLES, THISTHAT = L.THISTHAT, REACT_OK = L.REACT_OK,
-    TF = L.TF, FACTS = L.FACTS, DAILY_FORTUNE = L.DAILY_FORTUNE, QOTD = L.QOTD, WOTD = L.WOTD, ACTIVITIES = L.ACTIVITIES, MOTTOS = L.MOTTOS,
+    TF = L.TF, FACTS = L.FACTS, QOTD = L.QOTD, WOTD = L.WOTD, ACTIVITIES = L.ACTIVITIES, MOTTOS = L.MOTTOS,
     WISDOM = L.WISDOM, TURTLE_TALK = L.TURTLE_TALK, RACE = L.RACE, SPIRIT_WHY = L.SPIRIT_WHY, WORDS = L.WORDS }
   for _, when in ipairs({ "morning", "noon", "evening", "night" }) do pools["TIME_" .. when] = L.TIME_LINES[when] end
   for _, w in ipairs({ "clear", "rain", "thunder" }) do pools["WEATHER_" .. w] = L.WEATHER_LINES[w] end
@@ -2251,7 +2251,7 @@ end)()
     return n
   end
   for _, ask in ipairs({ "roast me", "compliment me", "tell me a joke", "tell me a story", "fun fact", "give me a riddle", "would you rather",
-                         "knock knock joke", "fortune cookie", "magic 8 ball will i find diamonds", "are you alive", "give me a mod tip" }) do
+                         "knock knock joke", "magic 8 ball will i find diamonds", "are you alive", "give me a mod tip" }) do
     local n = hundred(ask)
     CHECK(n >= (ask == "fun fact" and 88 or 95), "'" .. ask .. "' 100 times: " .. n .. " different answers")
   end

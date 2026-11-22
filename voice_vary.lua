@@ -28,7 +28,7 @@ local SKIP = { "menu", "games", "joke", "story", "fact", "roast", "compliment", 
   "wyr", "knockjoke", "adventure", "thisthat", "askme", "dare", "fortune", "quiz", "guess", "rps", "coin", "dice", "number", "sing",
   "tour", "message", "bye", "remind", "remember", "say", "quiet", "talk", "clearmsg", "forgetheard", "tf", "mobgame", "chain", "hl",
   "madlibs", "countgame", "hackgame", "pirate", "robotmode", "cowboy", "knight", "normal", "taxi", "taxihome", "taxibase",
-  "lore_modtip", "poem", "wotd", "qotd", "dailyfortune", "realfact", "secretword", "random", "petname", "basename", "teamname",
+  "lore_modtip", "poem", "wotd", "qotd", "realfact", "secretword", "random", "petname", "basename", "teamname",
   "heroname", "buildidea", "whattodo", "motto", "randommob", "randomitem", "love", "alive", "spirit", "tellsomeone", "sign",
   "book", "rate", "wish2", "favnumber", "joketoo", "talktome", "diss" }
 local KIND = {}

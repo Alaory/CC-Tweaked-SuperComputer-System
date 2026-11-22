@@ -195,16 +195,6 @@ combos(L.WISDOM or {}, { "An old turtle once said: ", "Wise words: ", "The villa
 { "dig deep, but light your way.", "a full inventory means go home.", "never dig straight down.", "the night always ends.",
 "friends are worth more than diamonds.", "build slow, build well.", "carry water, fear no lava.", "every big base starts with a dirt hut.",
 "a torch now saves a life later.", "patience grows the best crops." })
-combos(L.FORTUNES or {}, { "You will find ", "Soon you will discover ", "Today you will see ", "Tomorrow brings ", "I predict ", "The stars say you will find ",
-"Your future holds ", "Look out for ", "Expect ", "A turtle told me you will find " },
-{ "diamonds where you least expect them.", "a new friend.", "a hidden cave.", "a very lucky enchantment.", "a village full of good trades.",
-"a creeper that changed its mind.", "the perfect build spot.", "an ancient city.", "a stack of golden apples.", "a mending book." })
-combos(L.DAILY_FORTUNE or {}, { "Today ", "This day ", "Before tonight ", "Some time today ", "By sunset " },
-{ "the creepers will miss you.", "you will find something shiny.", "a friend will make you laugh.", "your farm will grow fast.",
-"a villager will give you a good deal.", "you will not fall in lava.", "your pickaxe will find a lucky ore.", "a cat will choose you.",
-"you will build something great.", "the weather will be on your side.", "a turtle will think of you.", "you will finish a project.",
-"your arrows will fly true.", "the night will be calm.", "you will discover a secret.", "an old friend will visit.",
-"your storage will be tidy.", "you will beat a boss.", "you will find a rare mob.", "the server will not lag." })
 combos(L.ACTIVITIES or {}, { "Go and ", "Why not ", "Try to ", "Today, ", "Challenge: " },
 { "build a treehouse.", "find a village and trade.", "explore a cave with ten torches.", "tame a wolf.", "make a garden.", "fish for an hour.",
 "build a tiny house for a pet.", "find a desert temple.", "make a pixel art.", "build a bridge over a river.", "climb the tallest mountain you can see.",

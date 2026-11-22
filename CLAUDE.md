@@ -1211,12 +1211,12 @@ PneumaticCraft drone rides, turtle mapping/surveys, and an AE2 ME network view.
   maths with a cue word or the sum alone - never "a 3x3 farm", spell X backwards, count to N, THEIR knock knock),
   VOICE.hash["adv"] (menu choices "#adv:<node>"), VOICE.gameKinds (wyr, knock, theyknock, hang), pend kind
   "react" (it asked them something: any answer gets VOICE.REACT_OK), VOICE.idleExtra (65 % of idle moments:
-  time of day, weather, turtle gossip, Minecraft facts, notes to self, poems, a question / game invite / fortune
+  time of day, weather, turtle gossip, Minecraft facts, notes to self, poems, a question / game invite
   for the player near it, how-to-talk lines for strangers), VOICE.MORE / VOICE.GAMES menus, fill() knows {owner}
   {bot}; VOICE.lastRaw (hangman letters: "u" "r" "n" are chat shorthand elsewhere). Pack: 140+ intents (about it,
   Minecraft mobs / places / things, the base, social, rules / grief / hack / door - always no), games (riddles +
   unscramble + maths through the quiz kind = points, hangman, would you rather, knock knock both ways, a
-  choose-your-own ADVENTURE through numbered menus, this or that, dares, fortunes, rate me, the GUESTBOOK
+  choose-your-own ADVENTURE through numbered menus, this or that, dares, rate me, the GUESTBOOK
   in "#base".guest), +40 jokes, +40 quiz / riddles, +30 musings, stories, roasts, compliments, lonely lines.
   HANGMAN (the owner's screenshot: "hint" got no answer, "hangman" typed again counted as a WRONG 7-letter
   guess, "tried: )" empty): while playing, the typed message (V.lastRaw, the base's name in front stripped)
@@ -1248,7 +1248,7 @@ PneumaticCraft drone rides, turtle mapping/surveys, and an AE2 ME network view.
   r.nick, used by fill {name} via V.callName; my favourite X is Y; my birthday is D month (parseDate: "14th of
   march"); what do you know about me; forget me -> asks, then V.forgetPlayer + V.justForgot so the hooks of
   that message make no new record), DAILY (secret word of the day - said at the base = DING + badge; hint for
-  strangers, the word for the owner; word / question / fact / fortune of the day via daily(list, salt)), GAMES
+  strangers, the word for the owner; word / question / fact of the day via daily(list, salt)), GAMES
   (true or false streak, guess the mob with hints, word chain - their own word from V.lastRaw, higher or lower,
   mad libs, count to 20, hack the mainframe; pack 1 hangman / their knock knock / adventure endings wrapped for
   badges), IDEAS (build idea, pet / base / team / hero names, what should I do, pick for me, random number
@@ -1433,7 +1433,7 @@ PneumaticCraft drone rides, turtle mapping/surveys, and an AE2 ME network view.
   voice; ~118 KB slim together). voice_lines.lua (asked for: roasts, compliments, jokes, riddles + the quiz - riddles go
   into V.L.RIDDLES too, knock knock (one per setup), would you rather (pairs from one group), true or false, facts, tips,
   words of the day, unscramble words), voice_idle.lua (greetings, the 9 chat reactions, musings, self talk, time of day,
-  weather, turtle gossip, the race, wisdom, fortunes, poems, questions / question of the day, this or that, stories =
+  weather, turtle gossip, the race, wisdom, poems, questions / question of the day, this or that, stories =
   hero x goal with its own twist / ending, 8 ball, are you alive, no singing, lonely talk, icebreakers, VOICE.EXTRA),
   voice_lore.lua (why drones and not /tp, why are drones slow + the measured server speed (VOICE.tps), lag, why
   turtles, the map, lost turtles, chunk loading, floppies, how it talks, the modpack: start / power / AE2 / Mekanism /
@@ -1445,7 +1445,7 @@ PneumaticCraft drone rides, turtle mapping/surveys, and an AE2 ME network view.
   "fun fact" tied with the games intent ("fun") and opened the games menu - fact keys "fun fact"; VOICE.factText now
   draws from V.L.FACTS / MC_FACTS (90 %); "knock knock joke" was taken as THEIR knock knock (the pattern) - "Who is
   there?". test_voice part 33: every list (69) has 100+ different lines, asking the same thing 100 times (roast,
-  compliment, joke, story, fact, riddle, wyr, knock knock, fortune, 8 ball, alive, mod tip) gives 95+ different
+  compliment, joke, story, fact, riddle, wyr, knock knock, 8 ball, alive, mod tip) gives 95+ different
   answers, the lore questions answered.
   AFTER AN UPGRADE (the owner: "base, fun fact" still opened the games menu after `upgrade`): `upgrade` runs with the
   OLD program in memory - its VOICE_FILES did not know the new files, nothing installed them later, and a voice file
@@ -1711,6 +1711,23 @@ PneumaticCraft drone rides, turtle mapping/surveys, and an AE2 ME network view.
   burned out" - is never solved) / neither, one tip, then on; "I am good now" clears a struggle only inside its own check-in; the
   idle tip about a struggle only when that player is alone with it (never out loud with others near); a player's "Alex is a
   builder" is not a staff order (only admin / mod words get "only the owner can").
+- HUMBLE + NO FORTUNES (the owner: "remove the tell me the fortune speech" + "when a player says the base / sparky is like a god
+  or a lord, make it clear it is just a bot; if the owner / boss is like a god or a lord, they are just a regular player who had
+  time to waste - keep things humble"). FORTUNES GONE: FORTUNES / DAILY_FORTUNE lists, the idle fortune, the menu entry, tips,
+  the spawn example / invite, the 8 ball's "fortune" key, the dailyfortune intent; the "fortune" intent (all its old keys + "tell
+  me a fortune", "fortune of the day" ...) answers a humble no (NOFORTUNE, voice_talk.lua: "I cannot see the future. I am just a
+  bot."). The fortune ENCHANTMENT (quiz, glossary) stays. HUMBLE (voice_lines.lua, end): V.humbleKind(raw, needName) -> bot |
+  owner | self | nil - ownerish() (owner's name / your owner / boss ...), its name / the base / the bot / the speaker -> "bot",
+  fillers dropped (a the like literally ...), GODS (god lord king almighty divine ...) after "SUBJ is/are/must be", "are/is
+  SUBJ", "ur a", next to bot / owner ("lord alaory"); WORSHIP (worship hail praise bow kneel) + SUBJ; "my lord" / "your
+  majesty" when called = bot; never with NOT_AFTER (god apple / tier / mode / armor ...) or no subject ("oh my god", "thank
+  god"). V.L.HUMBLE_BOT ("I am just a bot ..."), HUMBLE_OWNER ("{owner} is just a regular player who had time to waste"),
+  HUMBLE_SELF / HUMBLE_OWNER_SELF ("I am a god"), 100+ / 50+ each (combos). A pattern inserted first (called by name) + a
+  chat hook (NOT called: needName - "you" is then another player; once per 10 min per player, spoken when at the base). FOND
+  lines toned down ("Best boss in the server" -> "Just a regular player. A kind one, though."). SPAWN WISH FIX (the owner's
+  screenshot: "sparky give me a mod tip" -> "you are the one who grants wishes here"): SP.NOT_ITEM_WORDS (tip joke fact advice
+  idea ...) anywhere in the phrase = no wish; the owner's line only when SP.findItem finds a real item. test_voice_humble.lua,
+  test_spawn_scenarios ("the owner asks for a mod tip", "someone calls the speaker a god").
 - NAMES WITHOUT NUMBERS (the owner: "stop it from mentioning numbers in players' names - deadman213, 125steve1, 1alex2steve"):
   VOICE.cleanName (digits and _ out, parts kept: "1alex2steve" -> "alex steve"; only digits -> "friend") in fill() ({name},
   {owner}; a nickname chosen with "call me ..." stays as it is), VOICE.cleanNames(text) (every known player name with digits,
