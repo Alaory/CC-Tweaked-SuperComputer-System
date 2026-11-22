@@ -25,7 +25,7 @@ def files():
     out += [("node", "node.lua")]  # (the turtle program: NOT on the base computer - `upgrade` stores it on a storage helper / data floppy)
     out += [("pocket", "pocket.lua"), ("pocket", "upgrade.lua")]
     out += [("miner", "miner.lua")]
-    out += [("voice", "voice_addon.lua"), ("voice", "voice_talk.lua"), ("voice", "voice_talk2.lua"), ("voice", "voice_talk3.lua"), ("voice", "voice_lines.lua"), ("voice", "voice_idle.lua"), ("voice", "voice_lore.lua"), ("voice", "voice_convo.lua"), ("voice", "voice_staff.lua"), ("voice", "voice_profile.lua"), ("voice", "voice_vary.lua"), ("voice", "voice_spawn.lua"), ("voice", "voice_crowd.lua")]
+    out += [("voice", "voice_addon.lua"), ("voice", "voice_talk.lua"), ("voice", "voice_talk2.lua"), ("voice", "voice_talk3.lua"), ("voice", "voice_lines.lua"), ("voice", "voice_idle.lua"), ("voice", "voice_lore.lua"), ("voice", "voice_convo.lua"), ("voice", "voice_staff.lua"), ("voice", "voice_profile.lua"), ("voice", "voice_vary.lua"), ("voice", "voice_spawn.lua"), ("voice", "voice_crowd.lua"), ("voice", "voice_lonely.lua")]
     out += [("spawn", "spawn_speaker.lua")]  # (the SPAWN SPEAKER computer: copied there by hand as startup.lua - never on the base)  # (an optional add-on: `voice install` puts it on a data floppy)      # (NOT installed on the base: `mine update` fetches it for the mining turtles)
     return out
 

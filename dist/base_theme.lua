@@ -615,7 +615,7 @@ end
 
 
 
-VOICE_FILES = { "voice_addon.lua", "voice_talk.lua", "voice_talk2.lua", "voice_talk3.lua", "voice_lines.lua", "voice_idle.lua", "voice_lore.lua", "voice_convo.lua", "voice_staff.lua", "voice_profile.lua", "voice_vary.lua", "voice_spawn.lua", "voice_crowd.lua" }
+VOICE_FILES = { "voice_addon.lua", "voice_talk.lua", "voice_talk2.lua", "voice_talk3.lua", "voice_lines.lua", "voice_idle.lua", "voice_lore.lua", "voice_convo.lua", "voice_staff.lua", "voice_profile.lua", "voice_vary.lua", "voice_spawn.lua", "voice_crowd.lua", "voice_lonely.lua" }
 
 
 

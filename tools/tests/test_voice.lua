@@ -437,7 +437,8 @@ ENV.data.ents = { { kind = "player", name = "Alex", dist = 4, hp = 20, max = 20 
 VOICE.queue = {}
 CLOCK = CLOCK + 2
 VOICE.tick()
-CHECK(said():find("A visitor! I have not seen anyone in 23 days", 1, true), "the stranger meets a lonely computer: " .. said())
+-- (voice_lonely.lua: a greeting per stage - always the days for a first visit)
+CHECK(said():find("23", 1, true) and (VOICE.LONELY or said():find("A visitor!", 1, true)), "the stranger meets a lonely computer: " .. said())
 CHECK(said():find("gone fishing back soon", 1, true), "... and hears the owner's message")
 CHECK(said():find("500 more chunks", 1, true), "... and what it did while alone")
 CHECK(B.visitors.alex and B.visitors.alex.n == 1, "the visitor is noted for the owner")

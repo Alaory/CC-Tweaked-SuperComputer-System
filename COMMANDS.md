@@ -361,6 +361,26 @@ only (not in chat).
 | `voice gifts clear` | empties the gift queue |
 | `voice crowd [on\|off]` | the crowd mode at spawn (fights, duels, group games) |
 
+### While you are away (the lonely base)
+
+When you have been offline `voice lonely` days (default 7) the base changes: its own greetings and
+talk for each stage (missing you, worried, lonely, keeper, legend), a mood, letters to you, and
+things for visitors to do. Caretakers you name may help while you are away.
+
+| Command | What it does |
+|---|---|
+| `voice lonely <days>` | after how many days away it acts lonely (0 = never) |
+| `voice caretaker` | the caretakers, their permissions, and whether they count right now |
+| `voice caretaker add <name> [perm ...]` | e.g. `voice caretaker add Steve turtles supplies`. Permissions: `status` (where the turtles are + a report), `guard` (told in chat when a stranger is at the base), `taxi` (the free drone taxi), `supplies` (a few items from AE2 by drone), `turtles` (stop / call home every turtle), `wall` (tidy the wall), `all`. No names = status, guard, taxi |
+| `voice caretaker remove <name> [perm]` | takes one permission / all of them away |
+| `voice caretaker after <days>` | caretakers may act once you are away that long (default: the lonely days; 0 = whenever you are offline) |
+| `voice caretaker log` | what caretakers did, strangers who came, AFK rescues |
+| `voice memory` / `voice memory add <text>` | stories about you that visitors hear while you are away / add one |
+| `voice memory remove <n>` / `voice memory clear` | remove one / all |
+| `voice afk off\|ask\|everyone` | AFK rescue: `ask` (default) = only players who said yes; `everyone` = everyone who did not say no; `off` |
+| `voice afk after <minutes>` | how long a player stands still before it counts as AFK (default 10) |
+| `voice afk when lonely\|always` | only while the base is lonely (default) / whenever you are offline |
+
 ### The spawn speaker (`voice spawn ...`)
 
 | Command | What it does |
@@ -411,6 +431,27 @@ a stranger's word.
 | `base, how many diamonds do we have?` (owner and friends) | the AE2 count |
 | `base, take me home` / `take me to the base` (friends) | the free drone taxi between the base and your bed |
 | `base, shh` / `base, talk to me` | quiet for 30 minutes / talks again |
+
+While you are away (the lonely base), visitors and caretakers can also say:
+
+| Say | You get |
+|---|---|
+| `base, write on the wall <words>` / `base, read the wall` | a note everyone who comes here reads (3 a day) / the newest notes |
+| `base, tell me a memory` | a story about the owner |
+| `base, what are you thinking?` / `how do you feel?` / `did you dream?` | what the lonely base thinks, feels and dreams about |
+| `base, how long has it been?` | the days without the owner |
+| `base, I have news` | it asks for your news and tells the owner |
+| `base, afk yes` / `base, afk no` | a drone may / may never fly you to the base when you go AFK far away |
+| `base, stay` | the drone that was about to pick you up does not come |
+| `base, take me back to where I was` | after an AFK pickup: a ride back (2 hours) |
+| `base, stop messaging me` | it never messages you again ("come and visit me?") |
+| `base, am I a caretaker?` (caretakers) | your permissions |
+| `base, stop all turtles` / `all turtles home` (caretakers with `turtles`) | stops / calls home every turtle |
+| `base, caretaker report` / `where is turtle 7?` (caretakers with `status`) | turtles online, problems, strangers today / where a turtle is |
+| `base, I need 32 torches` (caretakers with `supplies`) | a drone brings them from AE2 (5 requests a day, 64 each) |
+| `base, make Steve a caretaker` / `Steve is not a caretaker` (owner) | the same as `voice caretaker add / remove` |
+| `base, read my letters` / `news` / `caretaker log` / `clear the wall` (owner) | the letters it wrote you, news from visitors, what happened, a clean wall |
+| `base, remember for visitors <text>` (owner) | the same as `voice memory add` |
 
 Typos and chat shorthand (`u`, `wat`, `pls` ...) are understood. Not understood -> a numbered
 menu; answer with the number.

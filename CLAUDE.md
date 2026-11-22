@@ -1588,6 +1588,34 @@ PneumaticCraft drone rides, turtle mapping/surveys, and an AE2 ME network view.
   player separately) will have delivered it (CR.chatLag); the roast battlers' own votes do not count; nobody left at
   spawn = the quiz stops. `voice name <word>`: one word of letters / digits (it goes into patterns - "(bot" broke every
   chat answer), like `voice spawn name`.
+- THE LONELY BASE, BIGGER (voice_lonely.lua = VOICE_FILES LAST; V.LONELY = LN; the owner: "improve the lonely feature - when I
+  leave for more than 7 days: new dialogs, activities, permissions" + "have the base become like sentient" + "if it sees a player
+  who is AFK it teleports them to the base"). Data in "#base".lone (wall, mem, news, letters, log, mile, comp, reach, away ...),
+  saved at most every 60 s. STAGES (LN.stage from V.lonelyDays): missing (lonely days) / worried 14 / lonely 30 / keeper 100 /
+  legend 365 - LN.GREET / LN.IDLE per stage (combos, 20+ / 15+ each), LN.mood 0-100 (stage + time since a visit - company today)
+  -> V.moodText wrapped; V.lonelyGreet REPLACED (caretaker greeting + report / best friend / visitor again / stage line; the
+  owner's message; a due milestone; 35 % asks for NEWS, else a hint); V.idle wrapped while lonely (stage lines, LN.thought from
+  real turtle / map / weather data, memories, a wall note, dreams / night lines from ENV.clock(dd.time)). CARETAKERS (voice.care =
+  {[name lower] = "status,guard,..."}; LN.PERMS status guard taxi supplies turtles wall + all; default status, guard, taxi): active
+  only while LN.careActive = the owner away >= voice.careAfter days (default = the lonely days); LN.may(name, perm) (the owner
+  always). turtles = POCKET.act allstop / allhome (2 min apart); status = V.whereText + LN.report; supplies = SP.wishParse +
+  SP.findItem -> V.giftEarn(who, "wish") (voice.careDaily 5, max 64; never at spawn, "i need help" = no request); guard = strangers
+  at the base -> chatTell to online guard caretakers by their REAL name (the list keeps lower case), once per 30 min; taxi =
+  V.taxi wrapped (V.isFriend true for that player during the call). Everything -> LN.log (60) + sysLog. The owner in chat: "make X a
+  caretaker [perms]", "X is (not) a caretaker" (LN.ownerCare); console `voice caretaker [add|remove|after|log]`. AFK RESCUE
+  (LN.afkTick, every tick; voice.afkPickup ask (default) | everyone | off; voice.afkWhen lonely (default) | always; afkAfter 600 s,
+  afkMax 3000, afkEvery 7200): a player still (x z within 1, same yaw) far from the base, not under ground (MAP.get top > y + 3) ->
+  ask mode: asked ONCE in chat (r.afkAsked), only "afk yes" players are fetched (a player AFK on purpose at a farm would be pulled
+  away); everyone mode: all but "afk no"; a 60-s warning first ("base, stay" = r.afkStay 2 h) -> startRide(name, base, true),
+  counted only when state.lastRide changed; r.afkFrom kept 2 h -> "take me back to where I was" (the farHook is inserted FIRST:
+  pack 3's taxi hook took "take me back"); "welcome back" only when they move by themselves at the base after standing there 30 s
+  (a drone lift moves them too). ACTIVITIES: the WALL (3 notes a day, 120 chars, 50 kept, rude refused via V.CONVO.isBad; read =
+  newest 5), MEMORIES (`voice memory add`, "remember for visitors ..." + facts from V.mem / PLAYER_INFO / turtles / MAP), NEWS
+  (pend react fn -> L.news 30, owner: "news"), COMPANY (seconds near while lonely -> best friend), MILESTONES (14 30 50 100 200 365
+  500 730 1000 ...), LETTERS (one per week away from the real numbers, 12 kept; "read my letters"), REACH OUT (a visitor with 2+
+  visits online elsewhere: one chat message a day, 5 a day in all, "stop messaging me" = r.noReach). THE OWNER BACK (LN.returnTick:
+  L.away kept while lonely): one chat report (days, letters, company + best friend, wall, news, caretaker / stranger log, AFK
+  rescues) + a spoken welcome; then L.away / comp cleared. test_voice_lonely.lua (1670+ checks, a 400-message fuzz).
 - CONVERSATIONS + WHAT PLAYERS LIKE (voice_convo.lua = VOICE_FILES before voice_vary; the owner: "players just say hi or hello and
   don't know what to say - make it have long conversations", "an information system where it remembers what a player likes -
   players do talk about mods", "players sometimes just mention the name: sparky", "friendship at spawn shouldn't work"). V.CONVO = C.
@@ -1817,6 +1845,7 @@ The old Block UI (stone buttons, bedrock theme) is gone.
 | voice_lore.lua | LORE PACK: why drones and not /tp and other questions about the base, modpack tips, mod glossary |
 | voice_spawn.lua / spawn_speaker.lua | the SPAWN SPEAKER: the base talks at spawn through a relay computer (Speaker + ender modem) - own voice and lines, no rewards, item wishes by drone, how-to help |
 | voice_crowd.lua | A CROWD AT SPAWN: does not talk over a crowd, comments on fights / knockouts / laughter, duels, group quiz, roast battles, scoreboard |
+| voice_lonely.lua | THE LONELY BASE: stages + mood, caretakers with permissions, AFK rescue by drone (asks first), the wall, memories, news, letters to the owner, reaching out, the owner's return report |
 | COMMANDS.md | EVERY command with its usage (console, turtle, $drone, voice, chat talk, spawn, other computers) - test_commands_doc.lua fails when a command in the code is missing from it: add new commands there |
 | CHANGELOG.md / tools/make_release.py | release notes per version (newest = BASE_VERSION) / builds release/ for a GitHub release |
 | voice_talk2.lua | TALK PACK 2: friendship + titles, badges, player memory, daily secret word, more games, ideas, guides, styles, holidays, diary, FRIENDSHIP GIFTS by drone |
