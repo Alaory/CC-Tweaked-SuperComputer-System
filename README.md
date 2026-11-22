@@ -646,6 +646,7 @@ Type these on the base computer. `help` lists them all.
 | The computer's disk is full | `disks data` puts the map on floppies; the footer warns before anything is lost. |
 | The base does not answer in chat | Start with its name (`base, ...` or your `voice name`), stand near the base, and check `voice` (is it on?). After an `upgrade`, run `voice update`. |
 | `voice install` / `voice update` says there is no room | Add a storage helper computer (the voice files go there first) or `disks data` for one more data floppy. |
+| After a server restart the base says "waiting for its blocks to load" | It saw those blocks / data floppies last time and their chunks are not loaded yet. It waits up to a minute (tap the screen to start at once) and finds them later by itself. A block you removed for good is forgotten after 3 days. |
 | The voice talks too fast or is hard to hear | `voice speed 70`, `voice preset narrator`, or `voice try` to hear every voice. |
 
 > **Server tips:** the base and the turtles only work while their chunks are
@@ -701,7 +702,7 @@ Type these on the base computer. `help` lists them all.
 `theme.dat`, `settings.dat`, `auto_survey.dat`, `survey_queue.dat`, `base_alive.dat`, `away.dat`,
 `factory.dat`, `recipes.dat`, `mining.dat`, `pockets.dat`, `curios_fits.dat`, `curios_auto.dat`,
 `store_helpers.dat`, `upgrade.dat`, `owner.dat`, `players_seen.dat`, `supply.dat`, `dronework.dat`, `fluid_buffer.dat`,
-`node_where.dat`, `voice_where.dat`, `voice_memory.dat`, `map_stale.dat`, `schematics/`, `events.log` + `events.old.log`,
+`node_where.dat`, `voice_where.dat`, `net_seen.dat`, `voice_memory.dat`, `map_stale.dat`, `schematics/`, `events.log` + `events.old.log`,
 `system.log` + `system.old.log`.
 With a data floppy in a drive, the logs and the bigger data files live there.
 

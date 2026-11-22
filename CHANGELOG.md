@@ -22,6 +22,9 @@ Peripherals (tested on CC:Tweaked 1.120.2, Minecraft 1.21.1, NeoForge).
 - Autostart and crash restart (`startup.lua`); the base notes when and why it was off. An error in one
   part (a page, a button, a background job) no longer stops the base: that part starts again and the
   error goes to the SYSTEM log.
+- Loading again after a server restart, a chunk reload or a reboot: the base waits up to a minute for the
+  blocks and data floppies it saw last time (their chunks may load later), finds missing ones every 20 s,
+  never saves a data file elsewhere while its floppy is not loaded, and restarts once when it comes.
 - Away mode: while you are offline the turtles keep mapping, and you get a WHILE YOU WERE
   AWAY report when you come back.
 

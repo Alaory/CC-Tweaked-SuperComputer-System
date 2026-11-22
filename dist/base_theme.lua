@@ -255,6 +255,13 @@ local okR, root = pcall(fs.isDriveRoot, top)
 return okR and root == false
 end
 function saveFileSafe(path, text)
+
+
+local awayId = dataAway and dataAway(path)
+if awayId then
+return false, fs.getName(path) .. " not saved: its data floppy #" .. awayId .. " is not loaded yet (the drive's " ..
+"chunk) - the base restarts once it is"
+end
 if goneFloppy(path) then
 if dataPathReset then dataPathReset() end
 local np = dataFile(fs.getName(path), true)

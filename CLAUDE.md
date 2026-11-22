@@ -58,6 +58,21 @@ PneumaticCraft drone rides, turtle mapping/surveys, and an AE2 ME network view.
   from "high") -> dist3 / MAP toCell on the drone page / MAP stopped the base; fetchME's AE2 numbers (energy, item / fluid /
   chemical storage) through getN = tonumber (true / a table stopped the AE2 page). test_odd_answers.lua. (The runner loads
   base_*.lua from the SOURCE, voice files from floppies filled from dist/ - swap the right one to test old code.)
+- LOADING AGAIN (a server restart / the base's chunk loaded again / a reboot; the owner: "everything needs to be
+  reconnected - other stuff is in other chunks and not loaded"): base_devices.lua NET_SEEN = net_seen.dat on the computer
+  {p = {[name] = {t, at}}, f = {[floppy id] = {at, drive, files = root *.dat / *.log}}} (noteNetwork: at the start + every
+  20 s, written when the set changes / every 10 min; older than CONFIG.startup.rememberDays 3 dropped). waitForNetwork (load
+  time, before locate): what was seen lately and is not here (netMissing: blocks by name, floppies by disk.getID in any
+  drive) -> waits up to CONFIG.startup.wait 60 s (monitor + terminal list them; a tap / key = start now; nothing remembered =
+  no wait). Still missing -> NET_START_MISSING; a missing DATA floppy's files -> DATA_AWAY[file] = id: saveFileSafe refuses
+  them anywhere (dataAway - the base read nothing for them; the voice memory's computer fallback has the same name).
+  netTick (page worker, every 20 s): rescanPeripherals (a lost "peripheral" event never leaves a block out), the drives
+  changed -> dataPathReset + dedupeDataFiles (a floppy that UNLOADED mid-run comes back with old copies of files saved
+  elsewhere meanwhile: the newest copy by fs.attributes modified stays, the others go; no times -> nothing deleted), a
+  DATA_AWAY floppy here now -> MAP.save + BASE_RESTART (os.reboot) ONCE (state.netRestarting). The Inventory Manager is no
+  longer REQUIRED and a CONFIG.names pin that is not there returns nil (both crashed every start = startup.lua restarted
+  into the same error until the chunk loaded); only the monitor is required. test_reload.lua + pre_reload.lua (run_tests
+  sets PRE=tools/tests/pre_<name>.lua for test_<name>.lua: set-up BEFORE the base loads).
 - **Peripheral calls belong in workers or fetch functions, never in drawing
   code.** Drawing reads `state.*` only.
 - Drawing: everything is drawn into an off-screen window `win` (text / fill CLIPPED to the

@@ -127,8 +127,11 @@ for t in sorted(glob.glob(os.path.join(ROOT, "tools", "tests", "test_*.lua"))):
     name = os.path.basename(t)
     @check("base", name)
     def _(t=t):
+        env = {"TESTMODE": "1"}
+        pre = os.path.join(os.path.dirname(t), os.path.basename(t).replace("test_", "pre_", 1))
+        if os.path.exists(pre): env["PRE"] = pre          # (set-up before the base loads: tools/tests/pre_<name>.lua)
         rc, out = run(["lua5.3", "run.lua", "../..", "/tmp/run_tests_%d_%s.txt" % (os.getpid(), os.path.basename(t)), "system", t],
-                      cwd=PREVIEW, env={"TESTMODE": "1"})
+                      cwd=PREVIEW, env=env)
         tail = "\n".join(l for l in out.splitlines() if l.startswith(("FAIL", "PASS", "lua5.3:")) or "ERROR" in l)
         return rc == 0 and "PASS" in out, tail or out[-800:]
 

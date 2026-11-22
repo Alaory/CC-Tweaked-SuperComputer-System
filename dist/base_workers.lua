@@ -180,6 +180,46 @@ end
 end
 
 
+
+
+
+function BASE_RESTART() os.reboot() end
+function netTick()
+pcall(rescanPeripherals)
+local drives = {}
+for _, n in ipairs(peripheral.getNames()) do
+local okD, isDrive = pcall(peripheral.hasType, n, "drive")
+if okD and isDrive then
+local okP, there = pcall(disk.isPresent, n)
+drives[#drives + 1] = n .. (okP and there and "+" or "-")
+end
+end
+local key = table.concat(drives, ",")
+if state.netDrives and state.netDrives ~= key then
+if dataPathReset then dataPathReset() end
+local okD, n = pcall(dedupeDataFiles)
+if okD and (n or 0) > 0 and dataPathReset then dataPathReset() end
+end
+state.netDrives = key
+if not state.netRestarting then
+for f, id in pairs(DATA_AWAY or {}) do
+local drive = floppyHere(id)
+if drive then
+state.netRestarting = true
+local msg = "Data floppy #" .. id .. " (" .. f .. " ...) is loaded now (" .. drive .. ") - it was not when the " ..
+"base started: restarting the base once so it reads it"
+pcall(sysLog, msg, "WARNING")
+pcall(setToast, msg, C.warn, 10)
+if MAP and MAP.loaded then pcall(MAP.save) end
+pcall(BASE_RESTART)
+return
+end
+end
+end
+pcall(noteNetwork)
+end
+
+
 function pageWorker()
 while state.running do
 local page = state.page
@@ -323,6 +363,11 @@ end
 if OWED and #OWED > 0 and bridge and os.clock() - (state.lastOwed or -100) > 30 then
 state.lastOwed = os.clock()
 pcall(settleOwed)
+end
+
+if os.clock() - (state.netAt or -100) > 20 then
+state.netAt = os.clock()
+pcall(netTick)
 end
 
 if #droneOrder > 0 and os.clock() - (state.lastPark or -100) > 10 then

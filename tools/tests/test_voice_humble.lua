@@ -124,4 +124,9 @@ CHECK(not table.concat(menu, " "):lower():find("fortune", 1, true), "no fortune 
 said = {}
 for _ = 1, 300 do pcall(V.idle, { Kim = true }) end
 local idleTxt = table.concat(said, " "):lower()
-CHECK(not idleTxt:find("fortune", 1, true) and not idleTxt:find("i predict", 1, true), "no fortunes in idle talk")
+-- (the Fortune ENCHANTMENT may come up - a quiz question, "Fortune favours the bold" - fortune TELLING may not)
+local told0 = nil
+for _, w in ipairs({ "fortune cookie", "your fortune", "free fortune", "i predict", "the stars say", "your future holds" }) do
+  if idleTxt:find(w, 1, true) then told0 = w end
+end
+CHECK(not told0, "no fortune telling in idle talk (" .. tostring(told0) .. ")")

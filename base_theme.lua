@@ -255,6 +255,13 @@ local function goneFloppy(path)
   return okR and root == false
 end
 function saveFileSafe(path, text)
+  -- its data floppy is in a drive whose chunk is not loaded yet (base_devices.lua DATA_AWAY): never saved anywhere
+  -- else - the base read nothing for it at the start, so this would put an empty state over the real one later
+  local awayId = dataAway and dataAway(path)
+  if awayId then
+    return false, fs.getName(path) .. " not saved: its data floppy #" .. awayId .. " is not loaded yet (the drive's " ..
+                  "chunk) - the base restarts once it is"
+  end
   if goneFloppy(path) then
     if dataPathReset then dataPathReset() end
     local np = dataFile(fs.getName(path), true)

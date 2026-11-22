@@ -179,6 +179,46 @@ function invWorker()
   end
 end
 
+-- LOADING AGAIN (base_devices.lua NET_SEEN): every 20 s - blocks that are missing are looked for again (a lost
+-- "peripheral" event never leaves one out), floppies put in / loaded = data paths looked up again, what is here is
+-- remembered; a data floppy that was NOT here at the start is back -> the map is saved and the base restarts ONCE so
+-- every data file is read from it (it started with nothing for them - saving them was refused meanwhile).
+function BASE_RESTART() os.reboot() end
+function netTick()
+  pcall(rescanPeripherals)
+  local drives = {}
+  for _, n in ipairs(peripheral.getNames()) do
+    local okD, isDrive = pcall(peripheral.hasType, n, "drive")
+    if okD and isDrive then
+      local okP, there = pcall(disk.isPresent, n)
+      drives[#drives + 1] = n .. (okP and there and "+" or "-")
+    end
+  end
+  local key = table.concat(drives, ",")
+  if state.netDrives and state.netDrives ~= key then
+    if dataPathReset then dataPathReset() end
+    local okD, n = pcall(dedupeDataFiles)          -- a floppy back after an unload: its old copies go
+    if okD and (n or 0) > 0 and dataPathReset then dataPathReset() end
+  end
+  state.netDrives = key
+  if not state.netRestarting then
+    for f, id in pairs(DATA_AWAY or {}) do
+      local drive = floppyHere(id)
+      if drive then
+        state.netRestarting = true
+        local msg = "Data floppy #" .. id .. " (" .. f .. " ...) is loaded now (" .. drive .. ") - it was not when the " ..
+                    "base started: restarting the base once so it reads it"
+        pcall(sysLog, msg, "WARNING")
+        pcall(setToast, msg, C.warn, 10)
+        if MAP and MAP.loaded then pcall(MAP.save) end
+        pcall(BASE_RESTART)
+        return
+      end
+    end
+  end
+  pcall(noteNetwork)
+end
+
 -- worker 2: whatever the visible page needs (only the visible page)
 function pageWorker()
   while state.running do
@@ -323,6 +363,11 @@ function pageWorker()
     if OWED and #OWED > 0 and bridge and os.clock() - (state.lastOwed or -100) > 30 then
       state.lastOwed = os.clock()
       pcall(settleOwed)
+    end
+
+    if os.clock() - (state.netAt or -100) > 20 then
+      state.netAt = os.clock()
+      pcall(netTick)
     end
 
     if #droneOrder > 0 and os.clock() - (state.lastPark or -100) > 10 then

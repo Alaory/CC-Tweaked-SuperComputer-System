@@ -141,8 +141,14 @@ function locate(label, pinned, types, required, preferSide)
 if pinned then
 local p = peripheral.wrap(pinned)
 if not p then
+
+
+if required then
 error(label .. " '" .. pinned .. "' (CONFIG.names) is not on the network. " ..
 "Run 'peripherals' to see the names.", 0)
+end
+print(label .. " '" .. pinned .. "' is not there yet - looked for again every 20 s")
+return nil
 end
 return p, pinned
 end
@@ -199,8 +205,210 @@ local scanDrones, forgetDrone
 
 picked = {}
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+NET_FILE = "net_seen.dat"
+NET = { p = {}, f = {} }
+DATA_AWAY = {}
+NET_START_MISSING = {}
+local function startCfg(k, d)
+local c = CONFIG.startup
+if type(c) == "table" and c[k] ~= nil then return c[k] end
+return d
+end
+do
+local okR, t = pcall(readSafe, NET_FILE)
+if okR and type(t) == "table" then
+for n, e in pairs(type(t.p) == "table" and t.p or {}) do
+if type(n) == "string" and type(e) == "table" and tonumber(e.at) then NET.p[n] = { t = tostring(e.t or "?"), at = tonumber(e.at) } end
+end
+for id, e in pairs(type(t.f) == "table" and t.f or {}) do
+if tonumber(id) and type(e) == "table" and tonumber(e.at) then
+local files = {}
+for _, f in ipairs(type(e.files) == "table" and e.files or {}) do if type(f) == "string" then files[#files + 1] = f end end
+NET.f[tonumber(id)] = { at = tonumber(e.at), drive = tostring(e.drive or "?"), files = files }
+end
+end
+end
+end
+local function nowE() return (os.epoch and os.epoch("utc")) or 0 end
+
+function floppyHere(id)
+if not disk then return nil end
+for _, n in ipairs(peripheral.getNames()) do
+local okT, isDrive = pcall(peripheral.hasType, n, "drive")
+if okT and isDrive then
+local okP, there = pcall(disk.isPresent, n)
+local okI, did = pcall(disk.getID or function() end, n)
+if okP and there and okI and did == id then return n end
+end
+end
+return nil
+end
+
+function netMissing()
+local out = {}
+local since = nowE() - (tonumber(startCfg("rememberDays", 3)) or 3) * 86400000
+local names = {}
+for n in pairs(NET.p) do names[#names + 1] = n end
+table.sort(names)
+for _, n in ipairs(names) do
+local e = NET.p[n]
+if e.at >= since and not peripheral.isPresent(n) then out[#out + 1] = { kind = "block", name = n, what = e.t } end
+end
+for id, e in pairs(NET.f) do
+if e.at >= since and #e.files > 0 and not floppyHere(id) then
+out[#out + 1] = { kind = "floppy", name = "floppy #" .. id, id = id, what = "data floppy (" .. e.drive .. "): " ..
+table.concat(e.files, ", ", 1, math.min(4, #e.files)) .. (#e.files > 4 and " ..." or "") }
+end
+end
+return out
+end
+
+function noteNetwork(force)
+local now = nowE()
+local changed = false
+for _, n in ipairs(peripheral.getNames()) do
+local okT, ty = pcall(peripheral.getType, n)
+local e = NET.p[n]
+if not e then changed = true end
+NET.p[n] = { t = tostring(okT and ty or "?"), at = now }
+local okD, isDrive = pcall(peripheral.hasType, n, "drive")
+if disk and okD and isDrive then
+local okP, there = pcall(disk.isPresent, n)
+local okM, mount = pcall(disk.getMountPath, n)
+local okI, id = pcall(disk.getID or function() end, n)
+if okP and there and okM and mount and okI and id and fs.exists(fs.combine(mount, "base_data")) then
+local files = {}
+for _, f in ipairs(fs.list(mount)) do
+if (f:find("%.dat$") or f:find("%.log$")) and not fs.isDir(fs.combine(mount, f)) then files[#files + 1] = f end
+end
+table.sort(files)
+local old = NET.f[id]
+if not old or table.concat(old.files, ",") ~= table.concat(files, ",") then changed = true end
+NET.f[id] = { at = now, drive = n, files = files }
+end
+end
+end
+local since = now - (tonumber(startCfg("rememberDays", 3)) or 3) * 86400000
+for n, e in pairs(NET.p) do if e.at < since then NET.p[n] = nil changed = true end end
+for id, e in pairs(NET.f) do if e.at < since then NET.f[id] = nil changed = true end end
+if changed or force or not NET.savedAt or os.clock() - NET.savedAt > 600 then
+NET.savedAt = os.clock()
+pcall(writeSafe, NET_FILE, textutils.serialize({ p = NET.p, f = NET.f }))
+end
+end
+
+
+
+
+function dedupeDataFiles()
+if not (fs.attributes and disk) then return 0 end
+local places = { "" }
+for _, n in ipairs(peripheral.getNames()) do
+local okD, isDrive = pcall(peripheral.hasType, n, "drive")
+if okD and isDrive then
+local okP, there = pcall(disk.isPresent, n)
+local okM, mount = pcall(disk.getMountPath, n)
+if okP and there and okM and mount and fs.exists(fs.combine(mount, "base_data")) then places[#places + 1] = mount end
+end
+end
+local names = {}
+for _, e in pairs(NET.f) do for _, f in ipairs(e.files) do names[f] = true end end
+local removed = 0
+for name in pairs(names) do
+local copies = {}
+for _, pl in ipairs(places) do
+local p = pl == "" and name or fs.combine(pl, name)
+if fs.exists(p) and not fs.isDir(p) then
+local okA, a = pcall(fs.attributes, p)
+local m = okA and type(a) == "table" and tonumber(a.modified or a.modification)
+if not m then copies = nil break end
+copies[#copies + 1] = { p = p, m = m }
+end
+end
+if copies and #copies > 1 then
+table.sort(copies, function(a, b) return a.m > b.m end)
+for i = 2, #copies do
+if pcall(fs.delete, copies[i].p) then
+removed = removed + 1
+if sysLog then pcall(sysLog, "Data file " .. name .. ": an OLDER copy on " .. copies[i].p .. " was removed " ..
+"(its floppy came back after the base saved it on " .. copies[1].p .. ")", "INFO") end
+end
+end
+end
+end
+return removed
+end
+
+function dataAway(path)
+local id = DATA_AWAY[fs.getName(tostring(path or ""))]
+if not id then return nil end
+if floppyHere(id) then return nil end
+return id
+end
+
+function waitForNetwork()
+local maxW = tonumber(startCfg("wait", 60)) or 60
+local missing = netMissing()
+if maxW <= 0 or #missing == 0 then return missing end
+local okM, m = pcall(peripheral.find, "monitor")
+local monW = okM and m or nil
+local t0 = os.clock()
+print("Waiting for blocks that are not loaded yet (" .. #missing .. ") - tap the screen or press a key to start now")
+while #missing > 0 and os.clock() - t0 < maxW do
+local left = math.ceil(maxW - (os.clock() - t0))
+if monW then
+pcall(function()
+monW.setBackgroundColor(colors.black)
+monW.clear()
+monW.setTextColor(colors.orange)
+monW.setCursorPos(2, 2)
+monW.write("BASE STARTING - waiting for its blocks to load (" .. left .. " s)")
+monW.setTextColor(colors.lightGray)
+for i, e in ipairs(missing) do
+if i > 12 then break end
+monW.setCursorPos(4, 3 + i)
+monW.write(e.name .. "  (" .. tostring(e.what) .. ")")
+end
+monW.setTextColor(colors.white)
+monW.setCursorPos(2, 5 + math.min(12, #missing))
+monW.write("Tap the screen to start without them - they are found when their chunk loads.")
+end)
+end
+local tm = os.startTimer(1)
+local ev, a = os.pullEventRaw()
+if ev == "terminate" then error("Terminated", 0) end
+if ev == "key" or ev == "char" or ev == "monitor_touch" then break end
+missing = netMissing()
+end
+if #missing > 0 then
+print("Started without: " .. #missing .. " block(s) / floppy(s) - their chunks may not be loaded")
+end
+return missing
+end
+NET_START_MISSING = waitForNetwork()
+for _, e in ipairs(NET_START_MISSING) do
+if e.kind == "floppy" then
+for _, f in ipairs(NET.f[e.id].files) do DATA_AWAY[f] = e.id end
+end
+end
+pcall(noteNetwork)
+
 inv, mon, det, envDet, bridge, bridgeKind = nil
-inv, picked.inv = locate("Inventory Manager", CONFIG.names.inventoryManager, IM_TYPES, true)
+
+inv, picked.inv = locate("Inventory Manager", CONFIG.names.inventoryManager, IM_TYPES)
 mon, picked.mon = locate("monitor", CONFIG.names.monitor, { "monitor" }, true, true)
 
 if not mon.isColor() then error("This needs an Advanced (gold) Monitor for colours.", 0) end
