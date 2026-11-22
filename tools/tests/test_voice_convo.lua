@@ -96,8 +96,10 @@ local cm = say("Steve", "what about you?")
 CHECK(asks(cm) and (lowc(cm):find("axolotl", 1, true) or lowc(cm):find("turtles", 1, true) or lowc(cm):find("me?", 1, true) or
       lowc(cm):find("my answer", 1, true)), "what about you -> its own answer + the question back: " .. cm)
 local cbye = say("Steve", "bye")
-CHECK(not V.pend.steve and (lowc(cbye):find("bye", 1, true) or lowc(cbye):find("see you", 1, true) or lowc(cbye):find("talk soon", 1, true) or
-      lowc(cbye):find("next time", 1, true) or lowc(cbye):find("chat", 1, true)), "bye ends the chat: " .. cbye)
+-- (any line of C.BYE: "Got it. Have fun out there" has none of the old test's words - it failed with other random seeds)
+local byeLine = false
+for _, l in ipairs(C.BYE) do if cbye:find(V.fill(l, "Steve"), 1, true) then byeLine = true end end
+CHECK(not V.pend.steve and not (C.state.steve and C.state.steve.topic) and byeLine, "bye ends the chat: " .. cbye)
 -- 5) answers with stop words in them are answers ("busy with my farm", "I'll do it later")
 fresh("Steve")
 say("Steve", "hi")

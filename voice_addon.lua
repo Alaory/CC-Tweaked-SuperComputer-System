@@ -3016,8 +3016,14 @@ function VOICE.command(words)
   elseif VOICE.commands[a] then
     VOICE.commands[a](words, say)
   elseif a == "name" and words[3] then
-    setSetting("voice.name", tostring(words[3]):lower())
-    say("Ask it in chat:  " .. VOICE.cfg("name", "base") .. ", status?")
+    -- (one plain word: it is matched in chat as a WORD, and inside patterns - "(" or "%" there broke every chat answer)
+    local w = tostring(words[3]):lower()
+    if not (w:match("^%a[%w]*$") and #w >= 2 and #w <= 16) then
+      say("The name must be one word of letters and digits (2 to 16, starting with a letter) - like: voice name sparky")
+    else
+      setSetting("voice.name", w)
+      say("Ask it in chat:  " .. VOICE.cfg("name", "base") .. ", status?")
+    end
   else
     local sps = #VOICE.speakers()
     say("THE BASE TALKS (add-on v" .. VOICE.VERSION .. "): " .. (VOICE.cfg("on", true) == false and "OFF" or "ON") ..

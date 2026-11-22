@@ -222,7 +222,11 @@ end)
 scenario("two wishes", function()
   world({ Steve = "spawn", Alex = "spawn" })
   say("Steve", "base i wish for 16 apples") say("Steve", "yes")
-  CHECK(has(say("Steve", "base i wish for 16 torches"), "one at a time", "still", "patience"), "one at a time")
+  -- (any SP.W_BUSY line: "Hold on! Let the last one land first." has none of the old words - it failed with another seed)
+  local r = say("Steve", "base i wish for 16 torches")
+  local busy = false
+  for _, l in ipairs(SP.W_BUSY) do if r:find(V.fill(l, "Steve"), 1, true) then busy = true end end
+  CHECK(busy, "one at a time: " .. r)
 end)
 -- 17. "free stuff?" right after it spoke
 scenario("free stuff", function()

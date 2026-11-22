@@ -344,6 +344,8 @@ local ok, r = callx(bridge, fn, ...)
 if ok then return r end
 end
 
+local function getN(fn, ...) return tonumber((get(fn, ...))) end
+
 
 local ok, items, e
 local craftables, tasks
@@ -353,13 +355,13 @@ local fns = {
 function() ok, items, e = callx(bridge, "getItems", {}) end,
 function() me.connected = get("isConnected") end,
 function() me.online = get("isOnline") end,
-function() me.energy.stored = get("getStoredEnergy") end,
-function() me.energy.cap = get("getEnergyCapacity") end,
-function() me.energy.usage = get("getEnergyUsage") end,
+function() me.energy.stored = getN("getStoredEnergy") end,
+function() me.energy.cap = getN("getEnergyCapacity") end,
+function() me.energy.usage = getN("getEnergyUsage") end,
 
-function() me.energy.inj = get("getAverageEnergyInput") or get("getAvgPowerInjection") end,
-function() me.storage.used = get("getUsedItemStorage") end,
-function() me.storage.max = get("getTotalItemStorage") or get("getMaxItemStorage") end,
+function() me.energy.inj = getN("getAverageEnergyInput") or getN("getAvgPowerInjection") end,
+function() me.storage.used = getN("getUsedItemStorage") end,
+function() me.storage.max = getN("getTotalItemStorage") or getN("getMaxItemStorage") end,
 function() tasks = get("getCraftingTasks") end,
 
 function()
@@ -397,14 +399,14 @@ local okT, t = pcall(peripheral.call, b, "tanks")
 me.fluidBufTanks = okT and type(t) == "table" and t or {}
 end
 end,
-function() me.fstorage.used = get("getUsedFluidStorage") end,
-function() me.fstorage.max = get("getTotalFluidStorage") end,
+function() me.fstorage.used = getN("getUsedFluidStorage") end,
+function() me.fstorage.max = getN("getTotalFluidStorage") end,
 function() cellsRaw = get("getCells") end,
 }
 if me.hasChem then
 fns[#fns + 1] = function() chemRaw = get("getChemicals", {}) end
-fns[#fns + 1] = function() me.cstorage.used = get("getUsedChemicalStorage") end
-fns[#fns + 1] = function() me.cstorage.max = get("getTotalChemicalStorage") end
+fns[#fns + 1] = function() me.cstorage.used = getN("getUsedChemicalStorage") end
+fns[#fns + 1] = function() me.cstorage.max = getN("getTotalChemicalStorage") end
 end
 if state.meCraftOnly then
 fns[#fns + 1] = function() craftables = get("getCraftableItems", {}) end

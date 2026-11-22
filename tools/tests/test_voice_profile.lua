@@ -90,15 +90,18 @@ for _ = 1, 30 do fresh("Kim") say("Kim", "hello") if C.state.kim.topic == "check
 local ck3 = say("Kim", "much better now")
 CHECK(checked and not prof("Kim").s.burnout, "better now: the burnout is forgotten: " .. ck3)
 -- 4) conversations lean to what they love
+-- (the topic CHOICE itself: after "hi" the first question is often "how are you" / something it remembers, by design -
+-- counting only that first topic over 20 chats passed or failed by luck with other random seeds)
 local techT = 0
-for _ = 1, 20 do
+prof("Steve").s = {}
+for _ = 1, 60 do
   fresh("Steve")
-  prof("Steve").s = {}
-  say("Steve", "hi")
-  local tp = C.state.steve.topic
+  local st = C.fresh("Steve")
+  C.nextTopic("Steve", st)
+  local tp = st.topic
   if tp == "prof_tech" or tp == "mods" or tp == "redstone" then techT = techT + 1 end
 end
-CHECK(techT >= 8, "a tech player: tech topics in " .. techT .. " of 20 chats (a random one would be ~3)")
+CHECK(techT >= 28, "a tech player: tech topics in " .. techT .. " of 60 picks (a random one would be ~10)")
 -- 5) what kind of player am I / what should I do / what do you know about me
 prof("Steve").s.tutorials = { n = 1, at = os.epoch("utc"), first = os.epoch("utc") }
 fresh("Steve")

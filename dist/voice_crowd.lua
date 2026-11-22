@@ -42,9 +42,12 @@ function CR.count() local okP, l = pcall(SP.players) return okP and #l or 0 end
 function CR.on() return CR.enabled() and CR.count() >= (tonumber(cfg("crowdMin", 3)) or 3) end
 local function atSpawn(name) local ok, r = pcall(SP.isAt, name) return ok and r end
 
+CR.NOT_NAME = { me = 1, you = 1, him = 1, her = 1, them = 1, us = 1, the = 1, a = 1, an = 1, with = 1, against = 1, vs = 1, versus = 1,
+everyone = 1, everybody = 1, someone = 1, somebody = 1, anyone = 1, anybody = 1, all = 1, yourself = 1, myself = 1, ["then"] = 1,
+now = 1, please = 1, pls = 1, plz = 1, again = 1, too = 1, my = 1, your = 1, this = 1, that = 1, ["and"] = 1, ["or"] = 1, it = 1 }
 function CR.findHere(word, not1)
 local w = low(word):gsub("[^%w_]", "")
-if #w < 2 then return nil end
+if #w < 2 or CR.NOT_NAME[w] then return nil end
 local okP, list = pcall(SP.players)
 local hit
 for _, p in ipairs(okP and list or {}) do
@@ -164,7 +167,7 @@ if h then
 local mx = tonumber(p.max) or 20
 if prev and prev.h then
 
-if h <= 0 or (prev.h <= 4 and h >= mx - 1 and h - prev.h >= 12 and t - prev.t <= 10) then
+if h <= 0 or (h >= mx - 1 and h - prev.h >= 12 and t - prev.t <= 10) then
 if not prev.down then CR.knockout(p.name, t) end
 prev.down = h <= 0
 elseif h < prev.h - 1 then
@@ -172,10 +175,18 @@ CR.hurtAt[k] = t
 CR.hit(p, h, t)
 end
 end
-CR.hp[k] = { h = h, t = t, down = (h <= 0) or nil }
+CR.hp[k] = { h = h, t = t, down = (h <= 0) or nil, name = p.name }
 end
 end
-for k in pairs(CR.hp) do if not here[k] then CR.hp[k] = nil end end
+
+for k, prev in pairs(CR.hp) do
+if not here[k] then
+local d = CR.duel
+local inIt = (d and (low(d.a) == k or low(d.b) == k)) or (CR.fight and CR.fight.who[k])
+if inIt and not prev.down and prev.h and prev.h <= 6 and t - prev.t <= 6 then CR.knockout(prev.name or k, t) end
+CR.hp[k] = nil
+end
+end
 
 local d = CR.duel
 if d and t > d.till then
@@ -201,6 +212,7 @@ local f = CR.fight
 if other then
 if not f then
 CR.fight = { at = t, who = { [k] = p.name, [low(other)] = other } }
+CR.lowSaid = {}
 if not CR.fightSaid or t - CR.fightSaid > 60 then
 CR.fightSaid = t
 CR.say((pick(CR.FIGHT):gsub("{a}", cleanN(p.name)):gsub("{b}", cleanN(other))), "big")
@@ -222,13 +234,13 @@ end
 function CR.knockout(name, t)
 local k = low(name)
 CR.lowSaid[k] = nil
-scoreOf(name).d = scoreOf(name).d + 1
 
 local winner
 local d = CR.duel
 if d and (low(d.a) == k or low(d.b) == k) then
 winner = low(d.a) == k and d.b or d.a
 CR.duel = nil
+scoreOf(name).d = scoreOf(name).d + 1
 scoreOf(winner).w = scoreOf(winner).w + 1
 CR.say((pick(CR.DUEL_WIN):gsub("{w}", cleanN(winner)):gsub("{l}", cleanN(name))), "big")
 return
@@ -239,6 +251,7 @@ local others = {}
 for kk, n in pairs(f.who) do if kk ~= k then others[#others + 1] = n end end
 if #others == 1 then winner = others[1] end
 end
+if f and f.who[k] then scoreOf(name).d = scoreOf(name).d + 1 end
 if winner then
 scoreOf(winner).w = scoreOf(winner).w + 1
 CR.say((pick(CR.DOWN):gsub("{a}", cleanN(name)):gsub("{b}", cleanN(winner))), "big")
@@ -296,32 +309,47 @@ if #CR.heard >= 8 and n >= 3 and once("busy", 600) then CR.say(pick(CR.BUSY), tr
 end
 
 
-local function quizItem()
-local list = {}
-for _, q in ipairs(V.QUIZ or {}) do if type(q) == "table" and q.q and type(q.a) == "table" then list[#list + 1] = q end end
+local function quizItem(used)
+local list, fresh = {}, {}
+for _, q in ipairs(V.QUIZ or {}) do
+if type(q) == "table" and q.q and type(q.a) == "table" and #q.a > 0 then
+list[#list + 1] = q
+if not (used and used[q.q]) then fresh[#fresh + 1] = q end
+end
+end
+if #fresh > 0 then list = fresh end
 if #list == 0 then return nil end
 return list[math.random(1, #list)]
 end
-function CR.quizAsk()
-local g = CR.quiz
-local q = quizItem()
-if not (g and q) then CR.quiz = nil return end
-g.q, g.till = q, now() + 40
-CR.toAll("Group quiz, question " .. g.round .. " of " .. g.max .. ": " .. q.q .. " (First right answer wins - just type it.)",
-"Question " .. g.round .. ": " .. q.q)
+
+function CR.chatLag()
+return #((state and state.chatOut) or {}) * 1.1
 end
-function CR.quizEnd()
+function CR.quizAsk(before)
+local g = CR.quiz
+if not g then return end
+g.used = g.used or {}
+local q = quizItem(g.used)
+if not q then CR.quiz = nil if before then CR.toAll(before) end return end
+g.used[q.q] = true
+local pre = before and (before .. " ") or ""
+CR.toAll(pre .. "Group quiz, question " .. g.round .. " of " .. g.max .. ": " .. q.q .. " (First right answer wins - just type it.)",
+pre .. "Question " .. g.round .. ": " .. q.q)
+g.q, g.till = q, now() + 40 + CR.chatLag()
+end
+function CR.quizEnd(before)
 local g = CR.quiz
 CR.quiz = nil
 if not g then return end
+local pre = before and (before .. " ") or ""
 local best, bn = {}, 0
 for k, n in pairs(g.scores) do
 if n > bn then best, bn = { g.names[k] }, n elseif n == bn and n > 0 then best[#best + 1] = g.names[k] end
 end
 local names = {}
 for _, n in ipairs(best) do names[#names + 1] = cleanN(n) end
-if bn == 0 then CR.toAll("The group quiz is over - nobody scored! Next time.") return end
-CR.toAll("The group quiz is over! " .. (#names == 1 and ("The winner is " .. names[1]) or ("A tie between " .. joinAnd(names))) ..
+if bn == 0 then CR.toAll(pre .. "The group quiz is over - nobody scored! Next time.") return end
+CR.toAll(pre .. "The group quiz is over! " .. (#names == 1 and ("The winner is " .. names[1]) or ("A tie between " .. joinAnd(names))) ..
 " with " .. bn .. (bn == 1 and " point" or " points") .. "!")
 end
 function CR.quizAnswer(who, ws)
@@ -345,9 +373,8 @@ g.names[k] = who
 scoreOf(who).q = scoreOf(who).q + 1
 local line = cleanN(who) .. " got it! The answer was " .. tostring(g.q.a[1]) .. "."
 g.round = g.round + 1
-if g.round > g.max then CR.toAll(line) CR.quizEnd() return true end
-CR.toAll(line)
-CR.quizAsk()
+if g.round > g.max then CR.quizEnd(line) return true end
+CR.quizAsk(line)
 return true
 end
 function CR.voteEnd()
@@ -399,15 +426,19 @@ if target or has(r, { "roast battle" }) then
 local other = target and CR.findHere(target, who)
 if not other then return "A roast battle needs a name of someone at spawn. Say: speaker, roast battle and their name." end
 if CR.vote then return "A roast battle is already running - vote 1 or 2!" end
-CR.vote = { a = who, b = other, votes = {}, till = now() + 45 }
+CR.vote = { a = who, b = other, votes = {}, till = now() + 45 + CR.chatLag() + 1.1 * CR.count() }
 CR.toAll("ROAST BATTLE! " .. cleanN(who) .. " versus " .. cleanN(other) .. "! Round one: " .. roastOf(other) .. " And: " .. roastOf(who) ..
 " Who won? Everybody: type 1 for " .. cleanN(who) .. " or 2 for " .. cleanN(other) .. ".",
 "Roast battle! " .. cleanN(who) .. " versus " .. cleanN(other) .. "! " .. roastOf(other) .. " " .. roastOf(who) .. " Type 1 or 2!")
 return true
 end
-local dt = r:match(" duel (%S+) ") or r:match(" 1v1 (%S+) ") or r:match(" fight (%S+) ") or r:match(" i challenge (%S+) ") or
-r:match(" challenge (%S+) ") or r:match(" duel with (%S+) ") or r:match(" duel against (%S+) ")
-if dt == "with" or dt == "against" or dt == "me" then dt = r:match(" %S+ %S+ (%S+) ") end
+local dt
+for _, re in ipairs({ " duel with (%S+) ", " duel against (%S+) ", " duel vs (%S+) ", " 1v1 with (%S+) ", " 1v1 vs (%S+) ",
+" fight with (%S+) ", " fight against (%S+) ", " duel (%S+) ", " 1v1 (%S+) ", " fight (%S+) ",
+" challenge (%S+) " }) do
+local x = r:match(re)
+if x and not CR.NOT_NAME[x] then dt = x break end
+end
 if dt or has(r, { "duel", "1v1", "referee" }) then
 local other = dt and CR.findHere(dt, who)
 if not other then return "Say: speaker, duel and the name of someone at spawn - I will be the referee." end
@@ -435,7 +466,12 @@ pcall(CR.listen, who, ws, t)
 
 if CR.quiz then local okQ, q = pcall(CR.quizAnswer, who, ws) if okQ and q then return true end end
 if CR.vote and #ws == 1 and (ws[1] == "1" or ws[1] == "2" or ws[1] == "one" or ws[1] == "two") then
-CR.vote.votes[low(who)] = (ws[1] == "1" or ws[1] == "one") and 1 or 2
+local v = CR.vote
+if low(who) == low(v.a) or low(who) == low(v.b) then
+if chatTell then chatTell(who, "You are in the battle - the crowd decides!") end
+return true
+end
+v.votes[low(who)] = (ws[1] == "1" or ws[1] == "one") and 1 or 2
 if chatTell then chatTell(who, "Vote counted!") end
 return true
 end
@@ -455,9 +491,10 @@ if CR.fight then CR.lastFightAt = now() end
 local t = now()
 if CR.quiz and CR.quiz.till and t > CR.quiz.till then
 local g = CR.quiz
-CR.toAll("Nobody got it - the answer was " .. tostring(g.q and g.q.a[1] or "?") .. ".")
+local line = "Nobody got it - the answer was " .. tostring(g.q and g.q.a[1] or "?") .. "."
 g.round = g.round + 1
-if g.round > g.max then CR.quizEnd() else CR.quizAsk() end
+if CR.count() == 0 then CR.quiz = nil
+elseif g.round > g.max then CR.quizEnd(line) else CR.quizAsk(line) end
 end
 if CR.vote and t > CR.vote.till then CR.voteEnd() end
 

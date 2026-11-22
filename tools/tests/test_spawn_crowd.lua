@@ -237,11 +237,72 @@ world({ Steve = "spawn", Alex = "spawn", Mia = "spawn", Kim = "spawn" })
 say("Steve", "bot roast battle alex")
 CHECK(CR.vote and CR.vote.b == "Alex", "bot, roast battle alex: a vote opens")
 say("Mia", "1") say("Kim", "1") say("Alex", "2")
+CHECK(CR.vote.votes.alex == nil, "a battler's own vote does not count (the crowd decides)")
 n0 = #told
 CLOCK = CLOCK + 50 tick()
 local won = false
 for i = n0 + 1, #told do if told[i].text:find("Steve wins the roast battle", 1, true) then won = true end end
-CHECK(won and not CR.vote, "2 votes to 1: Steve wins the roast battle")
+CHECK(won and not CR.vote, "the crowd's 2 votes: Steve wins the roast battle")
+-- 6b) REVIEW FIXES
+-- "can we duel with alex": the name after "with" (it took the first words of the message: "duel")
+reset()
+world({ Steve = "spawn", Alex = "spawn", Youri = "spawn" })
+setHp("Steve", 20) setHp("Alex", 20) setHp("Youri", 20)
+tick()
+say("Steve", "speaker can we duel with alex")
+CHECK(CR.duel and CR.duel.b == "Alex", "speaker, can we duel with alex: a duel with Alex (" .. tostring(CR.duel and CR.duel.b) .. ")")
+CR.duel = nil
+say("Steve", "speaker i challenge you")
+CHECK(not CR.duel, "'i challenge you' is no duel with Youri (you is not a name)")
+-- a knockout from 8 hearts' worth of health straight to a respawn (a 2-s reading misses the last hits)
+reset()
+world({ Steve = "spawn", Alex = "spawn" })
+for _, e in ipairs(state.players) do e.p.x, e.p.z = SPAWN.x + 1, SPAWN.z + 1 end
+setHp("Steve", 20) setHp("Alex", 20)
+tick()
+CLOCK = CLOCK + 2 setHp("Steve", 14) tick()
+CLOCK = CLOCK + 2 setHp("Alex", 12) tick()
+q0 = #LOG
+CLOCK = CLOCK + 2 setHp("Steve", 8) tick()
+CLOCK = CLOCK + 2 setHp("Steve", 20) tick()
+CHECK(lineIn(spokenSince(q0), CR.DOWN, { a = "Steve", b = "Alex" }), "8 health, then full at once (a respawn): a knockout: " .. spokenSince(q0))
+-- died and respawned at a bed far away: gone from spawn right after a low reading = down (a duel)
+reset()
+world({ Steve = "spawn", Alex = "spawn" })
+setHp("Steve", 20) setHp("Alex", 20)
+tick()
+say("Steve", "speaker duel alex")
+CLOCK = CLOCK + 2 setHp("Alex", 4) tick()
+q0 = #LOG
+for _, e in ipairs(state.players) do if e.name == "Alex" then e.p.x = SPAWN.x + 900 e.p.health = 20 end end
+CLOCK = CLOCK + 2 tick()
+CHECK(not CR.duel and lineIn(spokenSince(q0), CR.DUEL_WIN, { w = "Steve", l = "Alex" }), "duelist gone from spawn just after 4 health: Steve wins: " .. spokenSince(q0))
+-- a player dying alone (no fight, no duel) is not on the scoreboard
+reset()
+world({ Steve = "spawn", Alex = "spawn" })
+setHp("Steve", 20) setHp("Alex", 20)
+tick()
+CLOCK = CLOCK + 2 setHp("Steve", 0) tick()
+CHECK(not CR.score.steve, "a death alone (lava, a fall) is no score")
+-- a group quiz: no question twice in one game; one chat line per step; the timer counts the chat backlog
+reset()
+world({ Steve = "spawn", Alex = "spawn", Mia = "spawn" })
+state.chatOut = {}
+for i = 1, 20 do state.chatOut[i] = { name = "x", text = "waiting" } end
+say("Steve", "speaker group quiz")
+CHECK(CR.quiz and CR.quiz.till >= V.rt() + 40 + 20, "20 chat lines waiting: 22 s more to answer (" .. tostring(CR.quiz and (CR.quiz.till - V.rt())) .. ")")
+state.chatOut = {}
+local asked = { [CR.quiz.q.q] = 1 }
+local twice = false
+n0 = #told
+for _ = 1, 4 do
+  say("Mia", tostring(CR.quiz.q.a[1]))
+  if CR.quiz then if asked[CR.quiz.q.q] then twice = true end asked[CR.quiz.q.q] = 1 end
+end
+CHECK(not twice, "five different questions in one group quiz")
+local both = false
+for i = n0 + 1, #told do if told[i].who == "Steve" and told[i].text:find("got it", 1, true) and told[i].text:find("question 2", 1, true) then both = true end end
+CHECK(both, "'Mia got it' and the next question go in ONE chat line")
 -- 7) JOKING: laughter from several players, trash talk, gg after a fight - spoken only, minutes apart, nothing in chat
 reset()
 world({ Steve = "spawn", Alex = "spawn", Mia = "spawn" })
@@ -270,3 +331,14 @@ for i = 1, 300 do
   if i % 7 == 0 then CLOCK = CLOCK + math.random(1, 30) setHp(names[math.random(1, 5)], math.random(0, 20)) tick() end
 end
 CHECK(true, "300 messy crowd messages with health changes: no error")
+-- voice name: one plain word only ("(" or "%" in it broke every chat answer: the name goes into patterns)
+local name0 = CONFIG.voice.name
+VOICE.command({ "voice", "name", "(bot" })
+CHECK(CONFIG.voice.name == name0, "voice name (bot: refused (" .. tostring(CONFIG.voice.name) .. ")")
+VOICE.command({ "voice", "name", "r2-d2" })
+CHECK(CONFIG.voice.name == name0, "voice name r2-d2: refused")
+VOICE.command({ "voice", "name", "Sparky" })
+CHECK(CONFIG.voice.name == "sparky", "voice name Sparky: saved as sparky")
+local okN, errN = pcall(VOICE.chat, { name = "Steve", msg = "sparky what time is it" })
+CHECK(okN, "chat still works after a rename: " .. tostring(errN))
+if name0 ~= nil then setSetting("voice.name", name0) else resetSetting("voice.name") end

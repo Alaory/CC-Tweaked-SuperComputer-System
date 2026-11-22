@@ -447,8 +447,9 @@ end
 
 function parsePos(t)
 if type(t) ~= "table" then return nil end
-local x, y, z = t[1] or t.x, t[2] or t.y, t[3] or t.z
-if x and y and z then return tonumber(x), tonumber(y), tonumber(z) end
+local x, y, z = tonumber(t[1] or t.x), tonumber(t[2] or t.y), tonumber(t[3] or t.z)
+
+if x and y and z then return x, y, z end
 end
 
 

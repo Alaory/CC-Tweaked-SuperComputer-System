@@ -46,6 +46,10 @@ PneumaticCraft drone rides, turtle mapping/surveys, and an AE2 ME network view.
   pockets need a key; factory job / recipes; survey queue numbers; auto-map; away; theme; versions; me_setup;
   back spots; helpers; drone logs; the DW job); cleanPlayerData (base_players: detector answers - numbers that
   are not numbers dropped, no x y z = not found); MEX first() = numbers only.
+  OTHER SEEDS (test_fuzz_periph with 20 more seeds; the owner: "look for bugs"): parsePos gave a HALF position (x, nil, z
+  from "high") -> dist3 / MAP toCell on the drone page / MAP stopped the base; fetchME's AE2 numbers (energy, item / fluid /
+  chemical storage) through getN = tonumber (true / a table stopped the AE2 page). test_odd_answers.lua. (The runner loads
+  base_*.lua from the SOURCE, voice files from floppies filled from dist/ - swap the right one to test old code.)
 - **Peripheral calls belong in workers or fetch functions, never in drawing
   code.** Drawing reads `state.*` only.
 - Drawing: everything is drawn into an off-screen window `win` (text / fill CLIPPED to the
@@ -1575,6 +1579,15 @@ PneumaticCraft drone rides, turtle mapping/surveys, and an AE2 ME network view.
   40 s each, no saved points. ROAST BATTLE <name>: a roast each, 45 s vote "1" / "2". LISTENING (spoken only): laughter (3+ laughs
   from 2+ players in 20 s, 10 min apart), "gg" after a fight, trash talk, fight words, a busy chat (8+ messages from 3+ players).
   Never friendship / rewards (spawn rules). test_spawn_crowd.lua (fights, duels, quiz, votes, 300 messy crowd messages).
+  REVIEW (the owner: "look for bugs"): "can we duel with alex" took "duel" as the name (the first words of the message) -
+  "duel with / against / vs X" first, CR.NOT_NAME (you / me / with ...: "i challenge you" chose the player Youri); a
+  respawn counted only from <= 4 health (a 2-s reading misses the last hits) - any jump of 12+ to full; a fighter / duelist
+  GONE from spawn right after a low reading (<= 6, 6 s) = down (respawned at a bed); deaths outside a fight / duel are no
+  score; low hearts said once per FIGHT (was: until a knockout); the group quiz never asks a question twice, sends
+  "X got it" + the next question as ONE chat line, and its 40 s count from when the Chat Box (one line a second, each
+  player separately) will have delivered it (CR.chatLag); the roast battlers' own votes do not count; nobody left at
+  spawn = the quiz stops. `voice name <word>`: one word of letters / digits (it goes into patterns - "(bot" broke every
+  chat answer), like `voice spawn name`.
 - CONVERSATIONS + WHAT PLAYERS LIKE (voice_convo.lua = VOICE_FILES before voice_vary; the owner: "players just say hi or hello and
   don't know what to say - make it have long conversations", "an information system where it remembers what a player likes -
   players do talk about mods", "players sometimes just mention the name: sparky", "friendship at spawn shouldn't work"). V.CONVO = C.
