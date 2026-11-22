@@ -231,7 +231,7 @@ CHECK(a:lower():find("unobtainium", 1, true) and not SP.wpend.steve, "an item AE
 a = wish("base i want to play a game")
 CHECK(not a:lower():find("wish", 1, true) and not SP.wpend.steve, "'I want to play a game' is not a wish: " .. a)
 a = wish("base i want 5000 golden apples")
-CHECK(a:find("30 Golden Apples", 1, true), "never more than AE2 has: " .. a)
+CHECK(a:find("15 Golden Apples", 1, true), "never more than half of what AE2 has (30 -> 15): " .. a)
 wish("yes")
 for i = #VOICE.giftQueue(), 1, -1 do table.remove(VOICE.giftQueue(), i) end
 wish("base i need 2 apples")
