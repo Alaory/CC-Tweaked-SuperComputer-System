@@ -22,6 +22,10 @@ Peripherals (tested on CC:Tweaked 1.120.2, Minecraft 1.21.1, NeoForge).
 - Autostart and crash restart (`startup.lua`); the base notes when and why it was off. An error in one
   part (a page, a button, a background job) no longer stops the base: that part starts again and the
   error goes to the SYSTEM log.
+- Mining teams survive a server crash right after moving to the next chunk: miners put back into the old chunk
+  walk over again (the loader goes back for them when they do not answer), a loader put back walks over itself.
+- Drones never fly out of the loaded area (they were lost), an arrival spot for underground bases, where each
+  drone was last seen.
 - Parts broken while the base is off: it starts even without its monitor (and uses a new one when you place it),
   lists every block / data floppy it saw before and does not see now (`parts`, HOME, SYSTEM, the away report, one
   warning), notices a replacement by itself, and never uses an Inventory Manager holding another player's card.

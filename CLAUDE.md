@@ -593,6 +593,18 @@ PneumaticCraft drone rides, turtle mapping/surveys, and an AE2 ME network view.
   steps stay in CHUNK_LOCK, else the chunk the turtle stands in. minesim team3makeway /
   team5makewaycaves (a make-way request to a waiting miner) + EVERY scenario: a miner in "ready"
   (no crossing due) outside its job chunk = FAIL (m24 failed it).
+  m26 A SERVER CRASH RIGHT AFTER A CROSSING (the owner: "a server crash sometimes returns the miners to the old chunk and
+  leaves the loader in the new chunk" + "or vice versa"): the world goes back to its last save, the turtles' state files
+  (written at once - the next job is saved BEFORE the step) do not; only the loader's chunk is loaded, so miners put
+  back into the old chunk are FROZEN there (silent -> paused 20 min -> dropped at 60). Now: every miner says "hello"
+  {boot} + gpsCheck at every start (GPS_RUN); a miner whose GPS chunk is the one BEFORE its job's chunk -> J.late (the
+  chunk lock off until inside, like a late joiner) + "behind" to the loader, walks over. The loader (leaderCrashFix,
+  work phase): its own GPS chunk = the previous one -> walks to where its step took it; else, with P.crossedAt (saved at
+  each crossing) less than 30 min before LOADER_BOOT and 90 s after the start, team members not heard since
+  LOADER_BOOT (not at the station) -> ONCE per chunk (P.fetched) it goes one block back into the old chunk (its
+  Chunky loads it - they wake up), waits until each has spoken + 45 s (CONFIG.fetchWait 300 s at most), goes back.
+  minesim team3crashback / team3crashbackloader / team5crashbackcaves (c.gate: a restarted turtle in an unloaded chunk
+  does not run; the old code: "never ran again", 0 ores after the crash).
   MINE.silentTick: a unit silent 15 min (mining.silentWarn) -> ONE WARNING + sysLog with last spot,
   dim, job, last note (a crash can delete a turtle: "no trace"); `mine` shows offline units' spot. TOOL CHECK (m20, toolNow): turtle.getEquippedLeft/Right where they exist
   (the ITEM: modem / geo / pickaxe / "none"); else the side's peripheral type - BUT a side whose

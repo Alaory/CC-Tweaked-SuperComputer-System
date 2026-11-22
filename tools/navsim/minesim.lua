@@ -718,6 +718,35 @@ while T < maxT do
       MINE.cmd(LOADER, "start", {})
     end
   end
+  -- A SERVER CRASH RIGHT AFTER A CROSSING (the owner: "a server crash sometimes returns the miner turtles to the old
+  -- chunk and leaves the loader in the new chunk" + "or vice versa"): the world goes back to its last save - the
+  -- miners ("crashback") or the loader ("crashbackloader") are one block back, in the OLD chunk, while their saved
+  -- state (written to disk at once) says the new one. Every program restarts; a turtle in a chunk that is not loaded
+  -- does not run at all (c.gate) until something loads it.
+  if SCEN:find("crashback") and lu and ENVS.loader.S and ENVS.loader.S.plan then
+    local P = ENVS.loader.S.plan
+    if not CB_AT and CB_CI and P.ci == CB_CI + 1 and P.ci >= 2 then
+      CB_AT = T
+      local back = SCEN:find("crashbackloader") and { l } or MS
+      for _, u in ipairs(back) do
+        local nx, nz = u.pos.x - DX[u.f], u.pos.z - DZ[u.f]
+        if not occupied(nx, u.pos.y, nz) then u.pos.x, u.pos.z = nx, nz setBlock(nx, u.pos.y, nz, nil) end
+      end
+      CB_ORES = 0
+      for _, id in ipairs(MINERS) do local mu2 = MINE.units[id] CB_ORES = CB_ORES + ((mu2 and mu2.stats and mu2.stats.ores) or 0) end
+      for _, c in ipairs(cos) do
+        c.u.open = {}
+        local env = envFor(c.u)
+        ENVS[c.u.id] = env
+        if c.u.role == "loader" then ENVS.loader = env end
+        c.co = coroutine.create(assert(load(SRC, "miner.lua", "t", env)))
+        c.wake, c.gate = T + 5, true
+      end
+      io.write(string.format("** SERVER CRASH right after the crossing into chunk %d: %s back in the old chunk\n", P.ci,
+        SCEN:find("crashbackloader") and "the LOADER is" or "the MINERS are"))
+    end
+    if not CB_AT then CB_CI = P.ci end
+  end
   -- a miner DELETED by a server crash (miner 1 - the one digging the main
   -- tunnel), then on the base:  mine drop <id>  - the others must go on
   -- "dropready": the miner is lost while the OTHERS already wait at their lanes (stacked in one
@@ -913,6 +942,14 @@ while T < maxT do
   table.sort(cos, function(p, q) return p.wake < q.wake end)
   local c = cos[1]
   if c.wake > T then T = c.wake end
+  -- (restarted after the crash: a turtle in an unloaded chunk does not run at all)
+  if c.gate and not loaded(c.u.pos.x, c.u.pos.z) then
+    c.wake = T + 1
+    c.gateT = c.gateT or T
+    if T - c.gateT > 1800 then fail(c.u.role .. " " .. c.u.id .. " never ran again after the crash: its chunk stayed unloaded") c.gate = nil end
+    goto continue
+  end
+  c.gate = nil
   if coroutine.status(c.co) == "dead" then fail(c.u.role .. " program ENDED") break end
   local ok, w = coroutine.resume(c.co)
   if ok and w == "REBOOT" then
@@ -954,6 +991,7 @@ while T < maxT do
       mu and tostring(mu.task) or "?", MINE.units[LOADER] and tostring(MINE.units[LOADER].task) or "?"))
   end
   if #FAIL > 5 then break end
+  ::continue::
 end
 
 local mu = MINE.units[MINER]
@@ -1046,6 +1084,19 @@ if SCEN:find("blocker") then
   end
   if stopped then fail("a miner STOPPED behind the dead turtle: " .. tostring(stopped)) end
   print("ores in all: " .. now .. " (the dead turtle appeared at " .. math.floor(BLOCKED_AT) .. " s)")
+end
+if SCEN:find("crashback") then
+  if not CB_AT then fail("no crash right after a crossing happened") end
+  local now = 0
+  for _, id in ipairs(MINERS) do local mu2 = MINE.units[id] now = now + ((mu2 and mu2.stats and mu2.stats.ores) or 0) end
+  print("ores after the crash: " .. (now - (CB_ORES or 0)))
+  if now - (CB_ORES or 0) < 100 then fail("the team did not get going again after the crash (" .. (now - (CB_ORES or 0)) .. " ores)") end
+  local lcx, lcz = math.floor(l.pos.x / 16), math.floor(l.pos.z / 16)
+  for _, mm in ipairs(MS) do
+    if math.abs(math.floor(mm.pos.x / 16) - lcx) + math.abs(math.floor(mm.pos.z / 16) - lcz) > 1 then
+      fail("miner " .. mm.id .. " is not with the loader at the end (left behind?)")
+    end
+  end
 end
 if SCEN:find("crashunload") then
   local now = 0

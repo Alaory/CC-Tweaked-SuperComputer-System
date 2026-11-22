@@ -298,7 +298,7 @@ MINING = ["plain", "team2", "team3", "team5", "caves", "reboot", "team3reboot", 
           "otherfuel", "loaderdrift", "wrongface", "gpsfix", "r1", "nofuel", "ownfull", "geoname", "corein", "modemon",
           "newfield", "team2newfield", "team3crosspause", "team3drop", "team5drop", "team3dropalive",
           "nearstation", "team3nearstation", "team3crashunload", "team2warpfail", "team3silentback",
-          "team2join", "team3join", "team2joincaves", "team2joinfar", "team2neighbour", "team3neighboureq", "team2update", "team3updatecaves", "team3blocker", "team4blockercaves", "team5blocker", "team4dropready", "team5dropready", "team4dropreadynopick", "team3makeway", "team5makewaycaves"]
+          "team2join", "team3join", "team2joincaves", "team2joinfar", "team2neighbour", "team3neighboureq", "team2update", "team3updatecaves", "team3blocker", "team4blockercaves", "team5blocker", "team4dropready", "team5dropready", "team4dropreadynopick", "team3makeway", "team5makewaycaves", "team3crashback", "team3crashbackloader", "team5crashbackcaves"]
 if QUICK:
     MINING = ["plain", "team3", "reboot", "newfield", "team3crosspause", "team3drop", "team3dropalive", "wrongface", "team3nearstation", "team3crashunload", "team2join", "team2neighbour", "team2update", "team3blocker", "team4dropready", "team3makeway"]
 HOURS = "1" if QUICK else "2"

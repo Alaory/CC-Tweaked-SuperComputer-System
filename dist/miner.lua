@@ -80,7 +80,7 @@ protect = { "computercraft:*", "*shulker*", "ae2:*", "*chest*", "*barrel*", "sop
 }
 
 STATE_FILE = "miner_state"
-MYVER = "m25"
+MYVER = "m26"
 DX = { [0] = 0, 1, 0, -1 }
 DZ = { [0] = -1, 0, 1, 0 }
 FNAME = { [0] = "north", "east", "south", "west" }
@@ -546,6 +546,10 @@ sendTeam(id, "layer", { ci = P.ci, li = P.assigned[id] })
 elseif m.t == "stepped" then
 STEPPED = STEPPED or {}
 STEPPED[id] = true
+elseif m.t == "behind" then
+BEHIND = BEHIND or {}
+if not BEHIND[id] then note("Miner " .. id .. ": a server crash put it back into chunk " .. tostring((tonumber(m.ci) or 1) - 1) .. " - it walks over") end
+BEHIND[id] = now()
 elseif m.t == "unloadreq" then
 
 
@@ -1614,6 +1618,7 @@ if not S.pos then return end
 local x, y, z = gpsHere(1)
 if not x then return end
 S.gpsOk = true
+GPS_RUN = true
 if x ~= S.pos.x or y ~= S.pos.y or z ~= S.pos.z then
 note("GPS: position corrected " .. fmtPos() .. " -> " .. x .. " " .. y .. " " .. z)
 S.pos.x, S.pos.y, S.pos.z = x, y, z
@@ -2198,6 +2203,20 @@ CHUNK_LOCK = (J.phase ~= "ready") and { cx, cz } or nil
 
 
 local outside = math.floor(S.pos.x / 16) ~= cx or math.floor(S.pos.z / 16) ~= cz
+
+
+
+
+if outside and GPS_RUN and ci > 0 and not J.late and J.phase ~= "ready" then
+local pcx, pcz = chunkAt(tp, ci - 1)
+if math.floor(S.pos.x / 16) == pcx and math.floor(S.pos.z / 16) == pcz then
+J.late = true
+save()
+note("A server crash put me back into chunk " .. (ci - 1) .. " - walking into chunk " .. ci .. " again")
+equipTool("modem")
+pcall(sendTeam, S.leader, "behind", { ci = ci })
+end
+end
 if (ci == 0 or J.late) and outside then CHUNK_LOCK = nil end
 if J.late and not outside then J.late = nil save() end
 if J.phase == "tunnel" then
@@ -2467,6 +2486,7 @@ local P = S.plan
 
 
 if not P or (not S.running and P.goSent ~= P.ci) then return end
+if P.phase == "work" and S.running and leaderCrashFix(P) then return end
 if P.phase == "work" and S.running then
 local missing = 0
 for _, id in ipairs(S.team) do
@@ -2541,6 +2561,7 @@ for _, id in ipairs(S.team) do
 if P.ready[id] == P.ci and not STEPPED[id] then note("Miner " .. id .. " did not answer the crossing - maybe left behind") end
 end
 P.ci, P.phase, P.ready, P.goSent = P.ci + 1, "work", {}, nil
+P.crossedAt = now()
 fillLayers(P)
 save()
 
@@ -2553,6 +2574,61 @@ return
 end
 sendPlan()
 end
+end
+
+
+
+
+
+
+LOADER_BOOT = nil
+function leaderCrashFix(P)
+if (P.ci or 0) < 1 or not S.pos or not S.pos.x then return false end
+local cx, cz = chunkAt(P, P.ci)
+local pcx, pcz = chunkAt(P, P.ci - 1)
+local _, _, exp, ezp, dirp = chunkCols(P, P.ci - 1)
+local hyp = tunY(P, P.ci - 1) + 1
+local lcx, lcz = math.floor(S.pos.x / 16), math.floor(S.pos.z / 16)
+if GPS_RUN and (lcx ~= cx or lcz ~= cz) and lcx == pcx and lcz == pcz then
+note("A server crash put me back into chunk " .. (P.ci - 1) .. " - going over to chunk " .. P.ci .. " again")
+setTask("back to chunk " .. P.ci .. " after a server crash")
+local ok, err = goTo(exp + DX[dirp], hyp, ezp + DZ[dirp])
+if not ok then note("Loader: could not get back into chunk " .. P.ci .. ": " .. tostring(err)) sleep(5) end
+return true
+end
+if P.fetched == P.ci or not P.crossedAt or not LOADER_BOOT then return false end
+if LOADER_BOOT - P.crossedAt > 1800 or now() - LOADER_BOOT < 90 then return false end
+local silent = {}
+for _, id in ipairs(S.team or {}) do
+local seen = S.seen and S.seen[id] or 0
+if seen < LOADER_BOOT and not (S.stationUse and S.stationUse.id == id) then silent[#silent + 1] = id end
+end
+P.fetched = P.ci
+save()
+if #silent == 0 then return false end
+note("Miner(s) " .. table.concat(silent, ", ") .. " silent since the restart - a server crash may have put them back " ..
+"into chunk " .. (P.ci - 1) .. ": going back for them")
+local here = { x = S.pos.x, y = S.pos.y, z = S.pos.z }
+setTask("fetching miners left in chunk " .. (P.ci - 1) .. " by the server crash")
+local ok, err = goTo(exp, hyp, ezp)
+if ok then
+local t0, heardAll = now(), nil
+while now() - t0 < (CONFIG.fetchWait or 300) do
+local all = true
+for _, id in ipairs(silent) do if (S.seen and S.seen[id] or 0) < t0 then all = false end end
+if all and not heardAll then heardAll = now() end
+if heardAll and now() - heardAll > 45 then break end
+setTask("fetching miners: waiting in chunk " .. (P.ci - 1) .. " (" .. math.floor(now() - t0) .. " s)")
+listen(1)
+end
+note(heardAll and "The miners are awake again - back to chunk " .. P.ci or "No answer from them - back to chunk " .. P.ci)
+else
+note("Could not go back for the miners: " .. tostring(err))
+end
+local okB, errB = goTo(here.x, here.y, here.z)
+if not okB then note("Loader: could not get back into chunk " .. P.ci .. ": " .. tostring(errB)) end
+sendPlan()
+return true
 end
 function equipCore()
 if coreSide() then return true end
@@ -2608,6 +2684,13 @@ end
 if S.running then
 note("Restarted - continuing in 6 s")
 sleep(6)
+end
+
+
+if S.leader then
+equipTool("modem")
+gpsCheck()
+pcall(sendTeam, S.leader, "hello", { boot = true, ci = S.job and S.job.ci })
 end
 local lastHello = -1000
 while true do
@@ -2698,6 +2781,7 @@ end
 end
 end
 function loaderRun()
+LOADER_BOOT = now()
 
 
 if S.stationUse then S.stationUse = nil save() end
