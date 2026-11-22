@@ -1817,6 +1817,7 @@ The old Block UI (stone buttons, bedrock theme) is gone.
 | voice_lore.lua | LORE PACK: why drones and not /tp and other questions about the base, modpack tips, mod glossary |
 | voice_spawn.lua / spawn_speaker.lua | the SPAWN SPEAKER: the base talks at spawn through a relay computer (Speaker + ender modem) - own voice and lines, no rewards, item wishes by drone, how-to help |
 | voice_crowd.lua | A CROWD AT SPAWN: does not talk over a crowd, comments on fights / knockouts / laughter, duels, group quiz, roast battles, scoreboard |
+| COMMANDS.md | EVERY command with its usage (console, turtle, $drone, voice, chat talk, spawn, other computers) - test_commands_doc.lua fails when a command in the code is missing from it: add new commands there |
 | CHANGELOG.md / tools/make_release.py | release notes per version (newest = BASE_VERSION) / builds release/ for a GitHub release |
 | voice_talk2.lua | TALK PACK 2: friendship + titles, badges, player memory, daily secret word, more games, ideas, guides, styles, holidays, diary, FRIENDSHIP GIFTS by drone |
 

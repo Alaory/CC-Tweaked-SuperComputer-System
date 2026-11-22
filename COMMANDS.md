@@ -1,0 +1,478 @@
+# Command Reference
+
+Every command of the base program, what it does and how to use it.
+
+- `<word>` = put your own value there (no brackets): `turtle <id> log` -> `turtle 7 log`
+- `[word]` = optional: `events [n]` -> `events` or `events 20`
+- `a|b` = one of these: `survey auto on|off` -> `survey auto on`
+- (owner) = only the owner may use it
+
+Contents:
+[Where you type what](#where-you-type-what) |
+[Base console](#base-console) |
+[Turtle commands](#turtle-commands-turtle-id-cmd) |
+[Chat commands ($drone)](#chat-commands-drone) |
+[Voice add-on](#voice-add-on-console-voice-) |
+[Talking to the base in chat](#talking-to-the-base-in-chat) |
+[At spawn](#at-spawn-the-spawn-speaker) |
+[Other computers](#other-computers)
+
+---
+
+## Where you type what
+
+| Where | How | Who |
+|---|---|---|
+| The base computer's keyboard | open the computer and type, e.g. `turtles` | anyone at the computer |
+| Minecraft chat, commands | start with `$drone`, e.g. `$drone home` (the `$` hides it from others, replies are private) | the owner and allowed players |
+| Minecraft chat, talking | start with the base's name, e.g. `base, status?` (needs the voice add-on) | everyone |
+| The monitor | tap the buttons; risky ones need a second tap (CONFIRM?) | anyone at the monitor |
+| The pocket computer | tap the buttons in `pocket.lua` | the paired pocket |
+| A mining turtle / storage helper / pocket | its own shell commands, see [Other computers](#other-computers) | at that computer |
+
+`help` on the base computer prints the short list. Most console commands answer on the screen;
+some answers come later as a message on the monitor or in the turtle's log.
+
+---
+
+## Base console
+
+### Program and system
+
+| Command | What it does |
+|---|---|
+| `help` | the short list of commands |
+| `version` | the program's release number and the GitHub commit `upgrade` installed |
+| `upgrade` | gets the newest program files from GitHub (only the changed ones, each checked), then restarts. Your `base_config.lua` and data files are never touched |
+| `upgrade check` | only shows what would change - nothing is written |
+| `upgrade full` / `upgrade slim` | from now on get the commented files / the smaller files without comments again (the default) |
+| `upgrade branch <name>` | take the files from another GitHub branch from now on |
+| `uptime` | how long the base has been running, and the last 10 times it was off (and why: crash, you stopped it, server restart) |
+| `away` | away mode: is it on, is the owner online, the last WHILE YOU WERE AWAY report |
+| `events [n] [errors]` | the last `n` saved messages (default a screenful), also from before a restart. `events 30 errors` = only warnings and errors |
+| `theme [name\|random]` | the monitor's colours: `teal` (default), `amber`, `ice`, `violet`, `graphite`, `crimson`; `random` = a different one each start. No name = shows the current one |
+| `report` | every connected block and all its functions -> `report.txt`, uploaded to pastebin (send the link when something does not work) |
+| `report local` | the same, only saved to `report.txt` (no upload) |
+| `disks` | floppies, storage helpers and the biggest files on the computer (it has only 1 MB) |
+| `disks data` | makes empty floppies DATA floppies (one is kept for the turtle installer) |
+| `disks move` | moves the map, logs, turtle and mining data onto the data floppies / storage helpers now |
+| `store` | the storage helper computers (`store.lua`): free space, files; turns on helpers that are off |
+| `store find` | looks for new storage helpers on the cable now |
+| `store update` | sends a new `store.lua` (dropped next to `inventory.lua`) to every helper now |
+| `chests` | every chest, barrel and tank on the cable: how full, and what the base uses it for |
+| `env` / `world` | the Environment Detector: time, weather, moon, light, mobs around the base |
+| `pocket` | the paired pocket computers |
+| `pocket unpair <id>` | forgets a paired pocket |
+
+### Drones
+
+Pick a drone first (`drone <n>`), then give it a destination and a job.
+
+| Command | What it does |
+|---|---|
+| `drones` | lists the drones (air, position, what they do) |
+| `drone <n>` | chooses drone number `n` for the commands below |
+| `dest <x> <y> <z>` | destination = those coordinates |
+| `dest <place>` | destination = a saved place (`list` shows them; `Base` is always there) |
+| `dest @<player>` | destination = where that player is (followed while the drone flies) |
+| `dest me` | destination = where you (the owner) are |
+| `fly` | flies the chosen drone to the destination |
+| `home` | flies it back to the base / its charger |
+| `pickup [player]` | picks a player up (default: the passenger chosen on the DRONES page) |
+| `drop` | flies the passenger to the destination and lets them off |
+| `ferry [player]` | pickup + drop in one go |
+| `stop` | stops the drone now (not counted as a failure) |
+| `release` | hands the drone back (lets a passenger off, idle again) |
+| `status` | what the chosen drone is doing |
+| `players` | online players and their positions |
+| `charger` | shows the Charging Station's spot |
+| `charger <x> <y> <z>` / `charger off` | moves it / no charger |
+
+### Saved places
+
+| Command | What it does |
+|---|---|
+| `save <name>` | saves the chosen drone's destination as a place |
+| `save <name> <x> <y> <z>` / `save <name> me` / `save <name> feet` | at these coordinates / the block UNDER you / where your feet are. In chat: `$drone mark <name>` |
+| `list` | shows the saved places |
+| `del <name>` | deletes a saved place (`Base` cannot be deleted - it is `drone.home` in `base_config.lua`) |
+
+### Who may use the drones
+
+| Command | What it does |
+|---|---|
+| `allow <name>` | `<name>` may use `$drone` in chat (tied to their UUID on first use) |
+| `deny <name>` | takes it away |
+| `allowed` | shows the list |
+
+### Turtles
+
+| Command | What it does |
+|---|---|
+| `turtles` | every turtle: status (IDLE, WORKING, STUCK, OFFLINE ...), fuel, where, why it waits |
+| `turtle <id\|name> <cmd> [args]` | sends a command to one turtle - see [Turtle commands](#turtle-commands-turtle-id-cmd) |
+| `drive <id>` | steer a turtle with the keyboard: W A S D, SPACE up, SHIFT down, Q quits (or the DRIVE page) |
+| `update` | turtle program versions; sends the newest program to every outdated online turtle now (busy ones install after their job) |
+| `rescue <id> [<x> <y> <z> [radius]]` | sends the rescuer turtle to a lost / stuck turtle (default: its last known spot) |
+| `findlost [radius]` | searches around the base for lost turtles and reinstalls them |
+| `party` | SEARCH PARTY: every free turtle looks for the lost ones together; the rescuer brings them home |
+| `party stop` | calls the search party back |
+| `lost` | every offline turtle: a copy? enough fuel for the way home? last task, last spot, last log line |
+| `forget base` | forgets turtles that went silent AT the base (picked up / broken - nobody is sent there) |
+| `exit` | the turtles' saved exit route out of the base |
+| `exit clear` | deletes the exit route |
+
+### The map and surveys
+
+| Command | What it does |
+|---|---|
+| `survey` | the big survey: progress, and what each turtle is waiting for |
+| `survey stats` | scans per hour and where the turtles' time goes (surveying, trips, stuck ...) |
+| `survey auto on\|off` | AUTO-MAP: turtles keep mapping from the base outward when no survey runs |
+| `map` | saves the map, then shows its size and where its files are |
+| `map clear` | deletes all map scans (cannot be undone) |
+
+The survey area, corners and "survey in rings" are set on SETTINGS > MAP and the MAP page.
+
+### Mining teams (mining dimension)
+
+| Command | What it does |
+|---|---|
+| `mine` | every mining team: loader, miners, field, ores, offline units and where they were last |
+| `mine drop <id>` | takes a lost miner (deleted by a server crash) out of its team so the team can go on |
+| `mine forget <id>` | takes a mining turtle off the base's list |
+| `mine update` | sends the newest `miner.lua` to every mining turtle (teams are paused first, then started again) |
+| `mine update stop` | stops sending it |
+
+### Turtle factory
+
+| Command | What it does |
+|---|---|
+| `factory` | the parts it needs, what is missing, the status and the last try |
+| `factory build` | tries again now (after 3 failures it waits for this) |
+| `factory stop` | stops the job running now |
+| `factory chest <name>` | the chest / barrel on the cable next to the builder (an EMPTY one) |
+| `factory builder <id>` | which turtle builds (default: the rescuer) |
+| `factory crafter <id>` | which turtle crafts taught recipes (it has a crafting table equipped) |
+| `factory fuel <item> [count]` / `factory fuel reset` | the fuel a new turtle gets / back to the default (16 coal blocks) |
+| `factory items [<item>]` | every version of an item in AE2 (default: the turtle) and whether it counts as plain or yours |
+| `factory learn` | teach a recipe: put it in the crafter's 3x3 grid first |
+| `factory recipes` | the taught recipes |
+| `factory forget <item>` | forgets a taught recipe |
+
+The fleet size is set on SETTINGS > FACTORY (0 = factory off).
+
+### AE2 / ME network, fluids, curios
+
+| Command | What it does |
+|---|---|
+| `mesetup` | finds the ME buffer chest - put ONE item in it first, then type this |
+| `me check` | does the full ME item list work right now? (finds the item that breaks it) |
+| `me add <item id>` | makes the AE2 page look up an item it does not list (partial view), e.g. `me add minecraft:diamond` |
+| `me tags <item id>` | the tags AE2 reports for an item (and its Curios slots) |
+| `me jobs` / `me cpus` | running crafting jobs / the crafting CPUs |
+| `me cancel <item>` | cancels the crafting job for that item |
+| `me raw` | each busy CPU's job exactly as the bridge gives it (for bug reports) |
+| `tanks` | your fluid containers: contents and what they accept |
+| `fluidbuffer` | which fluid storage AE2 fluids pass through, and the candidates (numbered) |
+| `fluidbuffer <n\|name>` / `fluidbuffer auto` | use that one / choose by itself again |
+| `fluidstop` | ends a big fluid ALL that is still moving |
+| `curios check` | can your worn Curios items be read? |
+| `curios probe` | what the Curios functions want (nothing is moved) |
+| `curios auto` / `curios auto clear` | the AUTO-EQUIP rules (keep a totem on ...) / remove them all |
+
+### Keep a storage filled (supply)
+
+Keeps a chest or tank on the wired cable stocked from AE2. It only ever puts things in.
+
+| Command | What it does |
+|---|---|
+| `supply` | the rules, and the storages on the cable (numbered) |
+| `supply <n\|name> <item> <count>` | keep `count` of an item in that storage, e.g. `supply 2 minecraft:coal 64` |
+| `supply <n\|name> fluid <fluid> <buckets>` | keep that many buckets, e.g. `supply 3 fluid minecraft:water 16` |
+| `supply stop <n\|name\|all>` | stop keeping it filled |
+| `supply now` | fill everything now |
+| `supply every <seconds>` | how often it checks (0.2 - 600, default 1) |
+| `supply check <n\|name>` | what that block is and which functions it has (for modded tanks) |
+
+### Drone work (work chest, fuel runs, building)
+
+| Command | What it does |
+|---|---|
+| `dw` | the drone work status: work chest, fuel runs, building |
+| `dw chest` | the candidates for the work chest (EMPTY chests on the cable, numbered) |
+| `dw chest <n\|name> <me\|x y z\|place>` | use that chest; its spot = the block under you / coordinates / a saved place |
+| `dw test [item]` | tests the work chest end to end (one item AE2 -> chest -> AE2; with you near it, a drone drops it at your feet) |
+| `dw fuel <id>` | a drone brings fuel to that turtle now |
+| `dw fuel item <item> [n]` | the fuel drones bring, and how many per run |
+| `dw auto on\|off` | drones bring fuel to turtles out of fuel by themselves |
+| `schem` | the stored schematics (drag a Create `.nbt` file onto the computer's screen to add one) |
+| `schem <name>` | its size and materials |
+| `schem delete <name>` | deletes it |
+| `schem build <name> <me\|place\|x y z> [rot 90\|180\|270] [clear]` | drones build it there (`clear` = dig out what does not belong first) |
+| `schem status` / `pause` / `resume` / `stop` | the build: how far / pause / go on / end |
+
+### The voice add-on
+
+`voice ...` - see [Voice add-on](#voice-add-on-console-voice-).
+
+---
+
+## Turtle commands (`turtle <id> <cmd>`)
+
+Type `turtle`, the turtle's id or name, then the command. Your commands go first: a job the
+turtle is doing is paused and comes back 2 minutes after your last command.
+
+| Command | What it does |
+|---|---|
+| `turtle <id> log [n]` | its last `n` log lines in full |
+| `turtle <id> diag` | its disk, files, saved job, gear, last save error (the answer is in its log) |
+| `turtle <id> status` | what it is doing now |
+| `turtle <id> ping` | is it there? (answers "pong") |
+| `turtle <id> stop` | stops it now; it stays STOPPED (no automatic jobs) until you give it a command |
+| `turtle <id> goto <x> <y> <z>` | goes there |
+| `turtle <id> home` | goes home |
+| `turtle <id> home dig` | goes home and may dig through natural blocks on the way (never near the base or its home) |
+| `turtle <id> move <up\|down\|forward\|back\|left\|right> [n]` | moves `n` blocks, e.g. `turtle 7 move up 3` |
+| `turtle <id> locate` | GPS: finds its position again |
+| `turtle <id> setpos <x> <y> <z> <north\|east\|south\|west>` | tells it where it is and which way it faces (no GPS) |
+| `turtle <id> sethome [<x> <y> <z>]` | its home = here / there |
+| `turtle <id> refuel` | burns the fuel it carries |
+| `turtle <id> scan [radius]` | scans around it for the map |
+| `turtle <id> survey <x1> <z1> <x2> <z2> [radius]` | maps that area |
+| `turtle <id> digup` | digs straight up to the surface (MINE UP on its card; natural blocks only) |
+| `turtle <id> sweep <x> <y> <z> [radius]` | digs out an area around that spot (for rescues) |
+| `turtle <id> anchor on\|off` | it stays put and keeps its chunk loaded (the ANCHOR) |
+| `turtle <id> setting <name> <value>` | one of its settings, e.g. `turtle 7 setting dig true` |
+| `turtle <id> forget` | takes a turtle that is gone for good (server crash) off the list - only when offline |
+| `turtle <id> newchunky [off]` | a COPY turtle got a NEW Chunky upgrade: it may move again (`off` = undo) |
+| `turtle <id> chunktest [stop]` | tests whether it loads its own chunk (pinged while nobody is near) |
+| `turtle <id> core` | checks its End Automata Core |
+| `turtle <id> warps` | the core's saved teleport points |
+| `turtle <id> warp <name>` | teleports to a saved point (End Automata Core) |
+| `turtle <id> warpsave <name>` | saves this spot as a point |
+
+The turtle card on TURTLES has buttons for the common ones (HOME, STOP, LOCATE, MINE UP,
+RESCUER, ANCHOR, FORGET ...).
+
+---
+
+## Chat commands (`$drone`)
+
+Type them in Minecraft chat. The `$` hides the message from other players; the answers come
+privately. Players who are not allowed only get `help` and ride requests (the owner says yes or no).
+
+| Command | What it does |
+|---|---|
+| `$drone help` | lists the commands you may use |
+| `$drone home` | a drone flies you to Base |
+| `$drone to <place>` | a drone flies you to a saved place |
+| `$drone to @<player>` | ... to a player (the owner, or everyone when allowed in `base_config.lua`) |
+| `$drone back` | back to where you were before a big jump, or where you died |
+| `$drone places` | the saved places |
+| `$drone status` | what the drones are doing |
+| `$drone stop` | stops your ride |
+| `$drone allow <name>` / `$drone deny <name>` (owner) | who may ride without asking |
+| `$drone allowed` (owner) | that list |
+| `$drone yes <name>` / `$drone no <name>` (owner) | says yes / no to a ride request |
+| `$drone notify on\|all\|off` (owner) | the monitor's messages in your chat: `on` = warnings and errors, `all` = everything |
+| `$drone mark <name> [feet]` (owner) | saves a place: the block you stand ON (`feet` = where your feet are) |
+| `$drone unmark <name>` (owner) | deletes a saved place |
+| `$drone workchest [<x> <y> <z>]` (owner) | the drones' work chest = the block you stand on (or those coordinates) |
+| `$drone test [item]` (owner) | tests the work chest while you stand near it (a drone drops an item at your feet) |
+| `$drone spawn here` (owner) | the spawn speaker's spot = where you stand |
+| `$drone spawn pair <code>` (owner) | pairs the spawn relay computer (the code is on its screen) |
+
+---
+
+## Voice add-on (console `voice ...`)
+
+The base talks through Speakers. All of these also work as `voice ...` on the base computer
+only (not in chat).
+
+### Install and basics
+
+| Command | What it does |
+|---|---|
+| `voice` | its state: on / off, speakers, settings |
+| `voice install` | downloads the add-on onto a data floppy / storage helper (needs http) |
+| `voice update` | gets the newest add-on files (also done by itself after `upgrade`) |
+| `voice remove` | removes the add-on |
+| `voice on\|off` | it talks / it is quiet |
+| `voice say <text>` / `voice test` | says that / says a test line |
+| `voice name <word>` | what players call it in chat (one word, default `base`) |
+| `voice volume <0-3>` | how loud |
+| `voice range <blocks>` | how far from the base a player counts as "at the base" (without an Environment Detector) |
+| `voice detector on\|off` | who is at the base comes from the Environment Detector (on) or the Player Detector |
+| `voice scan <seconds>` | how often the Environment Detector looks (its cooldown is 2 s) |
+
+### How it sounds
+
+| Command | What it does |
+|---|---|
+| `voice presets` / `voice voices` | the ready-made voices (standard, deep, british, bright, narrator, robot, tiny) |
+| `voice try [name]` | says a line in each voice (or in that one) |
+| `voice preset <n\|name>` | keeps that voice |
+| `voice speed <50-100>` | slower or faster (percent, default 80) |
+| `voice pitch <70-140>` | lower or higher (percent) |
+| `voice accent <voice>\|off` | another speech voice, e.g. `voice accent en-gb` |
+| `voice clear on\|off` | makes quiet sounds louder and pauses longer (clearer in Minecraft) |
+| `voice pause <ms>` / `voice gap <ms>` | extra time at commas and full stops / on short silences (0 = off) |
+| `voice sayas <word> <how>` | how it says a word, e.g. `voice sayas AE2 A E two`; `voice sayas <word> off` removes it |
+| `voice timing` / `voice timings` | how long the last answers took (and the server speed) |
+| `voice bench` | times one fresh line step by step |
+
+### What it says
+
+| Command | What it does |
+|---|---|
+| `voice greet on\|off` | greetings when players arrive |
+| `voice announce all\|summary\|errors\|off` | the monitor's messages out loud (`summary` = errors at once, warnings as one line every 15 min) |
+| `voice chat on\|off` | answers to questions in chat |
+| `voice fun on\|off` | reactions, small talk, jokes, games |
+| `voice chatter <minutes>` | how often it makes small talk (0 = never) |
+| `voice alarm on\|off` | a bell for strangers and monsters near the base (off by default) |
+| `voice modchat on\|off` | comments when players near the base talk about mods |
+| `voice joke` | tells a joke now |
+| `voice lonely <days>` | after how many days without you it acts lonely to visitors (0 = never) |
+| `voice message <text>` | a message for whoever finds the base while you are away (empty = remove it) |
+| `voice visitors` | who visited while you were away |
+| `voice listen on\|off` | remembers what players say about you while you are offline |
+| `voice listen tell on\|off` | says out loud "I will pass it on" when it hears it |
+| `voice heard [clear]` | what players said about you (shown ones are deleted) / delete all |
+| `voice nick <a,b,...>` | your other names it should listen for |
+| `voice forget` | forgets every player it met (your message for visitors and the visitor list stay) |
+
+### Players
+
+| Command | What it does |
+|---|---|
+| `voice likes <player>` | what it remembers a player likes |
+| `voice profile <player>` | how a player plays (what they love, what gets in their way) |
+| `voice staff` | the server staff list |
+| `voice staff add <name> <role> [role ...]` | e.g. `voice staff add Steve admin builder` (roles: admin, mod, maintainer, builder, helper, staff) |
+| `voice staff remove <name> [role]` | takes one role / all roles away |
+| `voice gifts` | waiting gifts and why each one waits |
+| `voice gifts list` | the rewards and what each gives |
+| `voice gifts on\|off` | friendship gifts by drone |
+| `voice gifts now` | tries to send the waiting gifts now |
+| `voice gifts give <name> <item> [count]` | sends a gift, e.g. `voice gifts give Steve diamond 16` |
+| `voice gifts block <name>` / `unblock <name>` | that player gets no gifts / gets them again |
+| `voice gifts clear` | empties the gift queue |
+| `voice crowd [on\|off]` | the crowd mode at spawn (fights, duels, group games) |
+
+### The spawn speaker (`voice spawn ...`)
+
+| Command | What it does |
+|---|---|
+| `voice spawn` / `voice spawn status` | paired? online? where, settings, sound sender running |
+| `voice spawn here` | its spot = where you stand (same as `$drone spawn here`) |
+| `voice spawn at <x> <y> <z>` | its spot = those coordinates |
+| `voice spawn pair <code>` | pairs the relay computer (the code is on its screen) |
+| `voice spawn unpair` | forgets the relay computer |
+| `voice spawn on\|off` | talks at spawn or not |
+| `voice spawn name <word>\|off` | its own call word at spawn / the base's word again |
+| `voice spawn range <blocks>` | how far from its spot counts as "at spawn" (default 24) |
+| `voice spawn voice <preset>` | its own voice (default `bright`) |
+| `voice spawn volume <0-3>` | how loud |
+| `voice spawn chatter <minutes>` | how often it talks by itself |
+| `voice spawn greet on\|off` | greetings at spawn |
+| `voice spawn say <text>` | says that at spawn |
+| `voice spawn wish` | the wish rules |
+| `voice spawn wish on\|off` | item wishes by drone |
+| `voice spawn wish daily <n>` / `all <n>` / `max <n>` | wishes per player a day / for everyone a day / items per wish (64 at most) |
+| `voice spawn wish block <item>` / `unblock <item>` | an item nobody may wish for / allowed again |
+
+---
+
+## Talking to the base in chat
+
+With the voice add-on, players talk to the base in normal chat (no `$`). Start with its name
+(`base` unless you changed it with `voice name`), or `bot` / `computer`. Away from the base only
+messages that START with its name count. It answers questions only - it never does anything on
+a stranger's word.
+
+| Say | You get |
+|---|---|
+| `base, status?` | how the base is doing (turtles, mining, map, warnings) |
+| `base, where is turtle 7?` | how far and which way, what it is doing |
+| `base, what time is it?` / `weather?` / `who is online?` | the answer |
+| `base, hi` / `base, how are you?` / `base, let's talk` | a conversation (it asks questions and remembers your answers) |
+| `base, tell me a joke` / `fact` / `riddle` / `roast me` / `compliment me` / `tell me a story` | one of hundreds |
+| `base, let's play` / `quiz` / `hangman` / `guess my number` / `rock paper scissors` / `would you rather` | a game |
+| `base, remind me in 10 minutes to check the farm` | a reminder |
+| `base, remember <text>` / `my notes` / `forget my notes` | notes it keeps for you |
+| `base, call me <name>` / `my birthday is 14 march` / `my favourite mob is the axolotl` | it remembers |
+| `base, who am I?` / `who is Steve?` / `what do you know about me?` | what it knows (never where anyone is) |
+| `base, about me: I build castles` | what it tells others who ask about you |
+| `base, tell Steve that the farm is done` | mail, given to Steve when he comes to the base |
+| `base, how do I make a piston?` / `what is a beacon?` / `give me a mod tip` | recipes, the glossary, modpack tips |
+| `base, what did people say about me?` (owner) | what players said while you were away |
+| `base, how many diamonds do we have?` (owner and friends) | the AE2 count |
+| `base, take me home` / `take me to the base` (friends) | the free drone taxi between the base and your bed |
+| `base, shh` / `base, talk to me` | quiet for 30 minutes / talks again |
+
+Typos and chat shorthand (`u`, `wat`, `pls` ...) are understood. Not understood -> a numbered
+menu; answer with the number.
+
+---
+
+## At spawn (the spawn speaker)
+
+Players at spawn talk to it the same way, with its spawn call word or `speaker` / `bot`. There
+are no rewards or friendship at spawn.
+
+| Say | You get |
+|---|---|
+| `speaker, help` / `how do I use this?` | how to talk to it, with examples |
+| `speaker, I wish for 16 torches` | asks "yes?", then a drone brings them from AE2 (a few wishes a day, at most 64 each) |
+| `speaker, how do I wish?` | how wishes work and how many you have left today |
+| `speaker, take me to Steve` | maybe a drone ride to that player (if it feels like it) |
+| `speaker, duel Steve` / `1v1 Steve` | a refereed duel: countdown, the first one down loses, 3 minutes = a draw |
+| `speaker, group quiz` | 5 questions for everyone at spawn; the first right answer scores (needs 2+ players) |
+| `speaker, roast battle Steve` | a roast for each, then the crowd votes `1` or `2` |
+| `speaker, scoreboard` | wins, knockouts and quiz points this session |
+| `speaker, hype` | cheers the crowd on |
+| anything from the chat list above | the same answers (jokes, games, questions ...) |
+
+---
+
+## Other computers
+
+### Pocket computer (`pocket.lua`)
+
+| Command | What it does |
+|---|---|
+| `pocket` | starts the remote; the first time it pairs (type the code shown on the monitor) |
+| `upgrade` | gets the newest `pocket.lua` from GitHub |
+
+Everything else is tapping: HOME, RIDE, BOTS, MINE, MSG tabs.
+
+### Mining turtles (`miner.lua`)
+
+| Command | What it does |
+|---|---|
+| `miner` | starts it; the first time it asks role (loader or miner), key, position and facing |
+| `miner setup` | asks everything again |
+| `miner here` | the turtle was moved: type its new position |
+| `miner station` | (miner) THIS spot is its unload station - stand it on the station first |
+
+After that: START / PAUSE / UNLOAD / NEW FIELD on TURTLES > MINING, `mine update` for new versions.
+
+### Storage helper computers (`store.lua`)
+
+| Command | What it does |
+|---|---|
+| `store` | starts it (it starts by itself after that) |
+| `store reset` | frees it from the base that uses it, so another base may |
+
+### Spawn relay computer (`spawn_speaker.lua`)
+
+Save it as `startup.lua` on a computer at spawn with a Speaker and an Ender Modem, and restart.
+It shows a 6-digit code; pair it with `$drone spawn pair <code>` while standing there. No
+commands of its own.
+
+### Turtles (`node.lua`)
+
+Nothing to type: turtles get their program from the install floppy or from the base, and every
+command comes from the base (`turtle <id> ...`, the TURTLES page, the pocket).

@@ -32,6 +32,7 @@ SYSTEM > Status and with the console command `version`.
 - [The map](#the-map)
 - [Chat commands](#chat-commands)
 - [Console commands](#console-commands)
+- [COMMANDS.md](COMMANDS.md): every command with its usage
 - [Themes & the message log](#themes--the-message-log)
 - [Tips & troubleshooting](#tips--troubleshooting)
 - [Files](#files)
@@ -527,6 +528,7 @@ rewards at spawn.
 
 These start with `$`, which hides the message from other players. The replies are
 private.
+All of them, and how to talk to the base in chat: [COMMANDS.md](COMMANDS.md#chat-commands-drone).
 
 | Command | What it does |
 |---|---|
@@ -546,6 +548,8 @@ private.
 ## Console commands
 
 Type these on the base computer. `help` lists them all.
+
+**Every command with its usage and examples: [COMMANDS.md](COMMANDS.md).** The table below is the short version.
 
 | Area | Commands |
 |---|---|
@@ -632,6 +636,7 @@ Type these on the base computer. `help` lists them all.
 | `voice_*.lua` | the optional voice add-on (kept on a data floppy or a storage helper, not on the computer) |
 | `spawn_speaker.lua` | the spawn relay computer (Speaker + Ender Modem) |
 | `CHANGELOG.md` | what changed in each release |
+| `COMMANDS.md` | every command with its usage |
 
 **Data files the program creates** (keep them; delete one only to reset that part):
 `waypoints.dat`, `drone_logs.dat`, `drone_charger.dat`, `chat_access.dat`,
