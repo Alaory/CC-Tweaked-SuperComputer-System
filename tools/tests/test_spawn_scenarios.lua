@@ -587,4 +587,56 @@ scenario("someone calls the speaker a god", function()
   CHECK(has(c2 .. sp2, "regular player"), "'is alaory a god' -> a regular player: " .. c2)
   setSetting("voice.spawnName", false)
 end)
+-- HALF STAYS (the owner: "items pulled from AE2 must not get below 50 % of their amount" + "non stackable items too")
+local function item(id, n)
+  for _, it in ipairs(state.me.items) do if it.name == id then it.count = n return end end
+  state.me.items[#state.me.items + 1] = { name = id, display = id:gsub("^minecraft:", ""):gsub("_", " "):gsub("^%l", string.upper), count = n }
+end
+scenario("half of every item stays in AE2", function()
+  world({ Kim = "spawn", Bob = "spawn", Ann = "spawn" })
+  SP.mem().peak = {}
+  item("minecraft:elytra", 3)
+  item("minecraft:totem_of_undying", 1)
+  item("minecraft:netherite_sword", 2)
+  item("minecraft:diamond", 5000)
+  -- non-stackable: 3 elytra -> 2 stay (half rounded up) -> 1 can be wished
+  local c = say("Kim", "base i wish for 5 elytra")
+  CHECK(has(c, "1 elytra") or has(c, "1 Elytra"), "3 elytra: a wish gets 1 (2 stay): " .. c)
+  say("Kim", "yes")
+  local c2 = say("Bob", "base i wish for an elytra")
+  CHECK(has(c2, "half", "low", "plenty", "stays"), "the one waiting for a drone counts as taken - no more elytra: " .. c2)
+  local ct = say("Ann", "base i wish for a totem of undying")
+  CHECK(has(ct, "half", "low", "plenty", "stays"), "1 totem: none (it is the half that stays): " .. ct)
+  local c3 = say("Ann", "base i wish for 2 netherite swords")
+  CHECK(has(c3, "1 Netherite sword") or has(c3, "1 netherite sword"), "2 netherite swords: 1: " .. c3)
+  -- plenty: the usual 64
+  CHECK(has(say("Bob", "base i wish for 64 diamonds"), "64 Diamonds"), "5000 diamonds: 64 as before")
+  say("Bob", "yes")
+  -- the stock drops (the owner used some): the PEAK still counts - 2600 left, 2500 stay, 64 waiting -> 36
+  item("minecraft:diamond", 2600)
+  local c4 = say("Ann", "base i wish for 64 diamonds")
+  CHECK(has(c4, "36 Diamonds"), "the most it had lately counts, not only now: 36 - " .. c4)
+  SP.wpend = {}
+  -- two players asking at once: the second "yes" is checked again
+  fresh()
+  SP.mem().peak = {}
+  world({ Kim = "spawn", Bob = "spawn" })
+  item("minecraft:elytra", 3)
+  say("Kim", "base i wish for an elytra")
+  say("Bob", "base i wish for an elytra")
+  say("Kim", "yes")
+  local c5 = say("Bob", "yes")
+  CHECK(has(c5, "half", "low", "plenty", "stays") and #V.giftQueue() == 1, "two asked at once: the second yes is refused (" .. #V.giftQueue() .. " queued): " .. c5)
+  -- an old peak (30+ days) is forgotten
+  SP.mem().peak["minecraft:totem_of_undying"] = { n = 100, at = os.epoch("utc") - 31 * 86400000 }
+  item("minecraft:totem_of_undying", 4)
+  local r = SP.wishRoom({ id = "minecraft:totem_of_undying", count = 4 })
+  CHECK(r == 2, "a peak older than 30 days is forgotten: 4 -> 2 (" .. tostring(r) .. ")")
+  -- the setting
+  V.command({ "voice", "spawn", "wish", "keep", "75" })
+  CHECK(SP.wishRoom({ id = "minecraft:totem_of_undying", count = 4 }) == 1, "voice spawn wish keep 75: 4 -> 1")
+  setSetting("voice.wishKeep", 0.5)
+  local src = io.open(SRC_DIR .. "/voice_lonely.lua"):read("a")
+  CHECK(src:find("SP.wishRoom", 1, true), "caretaker supplies follow the same rule")
+end)
 CHECK(#results >= 30, #results .. " scenarios")

@@ -359,7 +359,10 @@ return nil
 end
 if SP.never and SP.never(it.id) then return it.name .. " is not something I give out." end
 local max = math.min(64, tonumber(cfg("careMax", 64)) or 64)
-n = math.max(1, math.min(max, math.floor(tonumber(n) or 1), tonumber(it.count) or max))
+
+local room = SP.wishRoom and SP.wishRoom(it) or (tonumber(it.count) or max)
+if room < 1 then return it.name .. " is low - half of it always stays in storage. Not right now." end
+n = math.max(1, math.min(max, math.floor(tonumber(n) or 1), tonumber(it.count) or max, room))
 local r = LN.rec(who)
 r.care = (type(r.care) == "table" and r.care.d == today()) and r.care or { d = today(), n = 0 }
 local daily = tonumber(cfg("careDaily", 5)) or 5

@@ -538,6 +538,11 @@ SP.W_BUSY = { "Your last wish is still on its way. One at a time!", "Patience - 
 SP.W_NO = { "Okay, wish cancelled.", "No wish then. Your loss!", "Fine, I keep it.", "Wish cancelled. Make another one any time." }
 SP.W_NEVER = { "Not that one. Some things are not for wishing.", "Nope, {item} is not on the wish list.", "Sorry, I cannot give {item} away.",
   "That item stays in storage. Wish for something else." }
+SP.W_LOW = { "I only give {item} while the base has plenty - half of it always stays. Not enough right now.",
+  "{item}? The base is too low on that - half always stays in storage. Wish for something else?",
+  "Sorry, {item} is running low. I keep half of everything for {owner}.",
+  "Not {item} right now - half of every item stays in storage, and there is not enough above that.",
+  "The storage needs its {item}. I only share what is above half." }
 SP.W_OWNER = { "Boss, you own everything already.", "You do not need to wish, boss - it is all yours.", "Wishing for your own items? Cute." }
 
 more(SP.W_ASK, { "Ooh, {n} {item}.", "{n} {item}, coming up?", "Let me check... {n} {item}!", "Found it: {n} {item}.", "{n} {item} - I have that." },
@@ -556,6 +561,9 @@ more(SP.W_BUSY, { "Hold on! ", "Wait, {name}. ", "Patience! " },
 more(SP.W_NO, { "Okay. ", "Fine. ", "No problem. " }, { "Wish cancelled.", "Maybe another time.", "Changed your mind? That is allowed." })
 more(SP.W_NEVER, { "Not that, {name}. ", "Sorry. ", "Nope. " },
   { "{item} is not on the wish list.", "Some things cannot be wished for. {item} is one.", "{item} stays in the vault." })
+more(SP.W_LOW, { "Hmm. ", "Oh. ", "Sorry, {name}. ", "Not now: " },
+  { "{item} is low - half of it always stays in storage.", "the base keeps at least half of its {item}, and it is at that line.",
+    "I can only give {item} from above half the stock. There is none above it.", "{item} stays home for now. Ask me again later." })
 more(SP.W_OWNER, { "Boss, ", "{name}, " }, { "it is all yours already.", "just take it from AE2.", "you are the one who grants wishes here." })
 more(SP.WHERE, { "Far away. ", "Secret spot. ", "Hidden! " },
   { "The drones know the way, I do not tell.", "Only {owner} knows exactly where.", "If I told you, it would not be a secret.",
@@ -777,6 +785,37 @@ local function itemWord(name, n)
   return name .. "s"
 end
 -- a wish: nil = not a wish (the base answers it as usual); else the chat answer
+-- HALF STAYS (the owner: "items that get pulled from AE2 must not get below 50 % of their amount" + "apply that rule to
+-- non stackable items too"): a wish may only take what is ABOVE voice.wishKeep (0.5) of the MOST AE2 had of that item
+-- lately - SP.mem().peak[id] = {n, at}, the peak counts for 30 days (with only "now", wish after wish would halve the
+-- stock again and again). Gifts / wishes still waiting for a drone count as already taken. The half is rounded UP, so
+-- tools / armour / elytra too: 1 = none, 2 = 1, 3 = 1. Checked when asked and again at "yes". Caretaker supplies too.
+function SP.wishRoom(it)
+  local keep = tonumber(cfg("wishKeep", 0.5)) or 0.5
+  keep = math.max(0, math.min(1, keep))
+  local okS, s = pcall(smem)
+  local now = os.epoch("utc")
+  local have = math.max(0, math.floor(tonumber(it and it.count) or 0))
+  local id = tostring(it and it.id or "?")
+  local peak = have
+  if okS and type(s) == "table" then
+    s.peak = type(s.peak) == "table" and s.peak or {}
+    local p = s.peak[id]
+    if type(p) ~= "table" or not tonumber(p.n) or now - (tonumber(p.at) or 0) > 30 * 86400000 or have >= tonumber(p.n) then
+      p = { n = have, at = now }
+      s.peak[id] = p
+      trim(s.peak, 500)
+    end
+    peak = tonumber(p.n) or have
+  end
+  local waiting = 0
+  local okQ, q = pcall(function() return V.giftQueue and V.giftQueue() end)
+  for _, g in ipairs(okQ and type(q) == "table" and q or {}) do
+    if type(g) == "table" and g.item == id then waiting = waiting + (tonumber(g.n) or 0) end
+  end
+  local stays = math.ceil(peak * keep)
+  return math.max(0, have - waiting - stays), stays, peak, waiting
+end
 function SP.wish(who, raw)
   local t = low(raw):gsub("[^%w_' ]", " ")
   local word = low(cfg("name", "base"))
@@ -820,9 +859,11 @@ function SP.wish(who, raw)
     if low(g.who) == low(who) and g.why == "wish" then return fill(pick(SP.W_BUSY), who) end
   end
   local max = math.min(64, tonumber(cfg("wishMax", 64)) or 64)   -- (the owner: "max 64 - I don't want all my stuff gone")
-  n = math.max(1, math.min(n or 1, max, it.count))
+  local room = SP.wishRoom(it)
+  if room < 1 then return fill(pick(SP.W_LOW):gsub("{item}", tostring(it.name)), who) end
+  n = math.max(1, math.min(n or 1, max, it.count, room))
   SP.wpend = SP.wpend or {}
-  SP.wpend[low(who)] = { id = it.id, name = it.name, n = n, till = os.clock() + 90 }
+  SP.wpend[low(who)] = { id = it.id, name = it.name, n = n, count = it.count, till = os.clock() + 90 }
   return fill(pick(SP.W_ASK):gsub("{n}", tostring(n)):gsub("{item}", itemWord(it.name, n)), who)
 end
 -- yes / no to a wish
@@ -840,6 +881,10 @@ function SP.wishAnswer(who, raw)
   if NO[w1 or ""] then SP.wpend[low(who)] = nil return fill(pick(SP.W_NO), who) end
   if not YES[w1 or ""] then return nil end
   SP.wpend[low(who)] = nil
+  -- (again at "yes": another player may have wished for the same item meanwhile - waiting gifts count as taken)
+  local room = SP.wishRoom({ id = P.id, count = P.count or P.n })
+  if room < 1 then return fill(pick(SP.W_LOW):gsub("{item}", tostring(P.name)), who) end
+  if room < P.n then P.n = room end
   local ok, why = V.giftEarn(who, "wish", { { P.id, P.n } })
   if not ok then return "I could not send it: " .. tostring(why or "?") .. "." end
   local s = smem()
@@ -1454,6 +1499,7 @@ V.commands.spawn = function(words, say, who)
     elseif b == "daily" and tonumber(words[5]) then setSetting("voice.wishDaily", math.max(0, math.floor(tonumber(words[5]))))
     elseif b == "max" and tonumber(words[5]) then setSetting("voice.wishMax", math.max(1, math.min(64, math.floor(tonumber(words[5])))))
     elseif b == "all" and tonumber(words[5]) then setSetting("voice.wishAll", math.max(0, math.floor(tonumber(words[5]))))
+    elseif b == "keep" and tonumber(words[5]) then setSetting("voice.wishKeep", math.max(0, math.min(100, tonumber(words[5]))) / 100)
     elseif (b == "block" or b == "unblock") and words[5] then
       local list = {}
       for w in low(cfg("wishBlock", "") or ""):gmatch("[^,%s]+") do if w ~= low(words[5]) then list[#list + 1] = w end end
@@ -1461,9 +1507,10 @@ V.commands.spawn = function(words, say, who)
       setSetting("voice.wishBlock", table.concat(list, ","))
     end
     say("Wishes " .. (cfg("wish", true) == false and "OFF" or "ON") .. ": " .. tostring(cfg("wishDaily", 3)) .. " a player a day, " ..
-        tostring(cfg("wishAll", 40)) .. " for everybody, up to " .. tostring(cfg("wishMax", 64)) .. " per wish. Never: " ..
+        tostring(cfg("wishAll", 40)) .. " for everybody, up to " .. tostring(cfg("wishMax", 64)) .. " per wish, " ..
+        math.floor((tonumber(cfg("wishKeep", 0.5)) or 0.5) * 100 + 0.5) .. " % of every item always stays in AE2. Never: " ..
         (cfg("wishBlock", "") ~= "" and tostring(cfg("wishBlock", "")) or "(only the built-in list)") ..
-        "  (voice spawn wish on|off|daily <n>|all <n>|max <n>|block <item>|unblock <item>)")
+        "  (voice spawn wish on|off|daily <n>|all <n>|max <n>|keep <percent>|block <item>|unblock <item>)")
   else
     say("voice spawn [status|here|at x y z|pair <code>|unpair|name <word>|on|off|range <n>|voice <preset>|volume <0-3>|chatter <min>|greet on|off|say <text>|wish ...]")
   end

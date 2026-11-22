@@ -406,6 +406,7 @@ date set it counts down to the new world.
 | `voice spawn wish` | the wish rules |
 | `voice spawn wish on\|off` | item wishes by drone |
 | `voice spawn wish daily <n>` / `all <n>` / `max <n>` | wishes per player a day / for everyone a day / items per wish (64 at most) |
+| `voice spawn wish keep <percent>` | how much of every item always stays in AE2 (default 50; the most it had in the last 30 days counts, rounded up - 1 elytra = none, 3 = 1) |
 | `voice spawn wish block <item>` / `unblock <item>` | an item nobody may wish for / allowed again |
 
 ---

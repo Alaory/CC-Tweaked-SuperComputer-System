@@ -562,7 +562,7 @@ stories about you (`voice memory add <text>`) and reaches out to regular visitor
 Optional, needs the voice add-on: the base also talks **at spawn**, through a small relay computer
 there with a Speaker and an **Ender Modem**. It has its own voice and call word (`voice spawn name
 <word>`), helps players who have never seen it, plays games, and grants item wishes from AE2 by drone
-(at most 64 per wish, a few a day). With many players at spawn it switches to a crowd mode (it does
+(at most 64 per wish, a few a day; half of every item always stays in AE2). With many players at spawn it switches to a crowd mode (it does
 not talk over everyone, comments on fights, duels, group quiz, roast battles). No friendship or
 rewards at spawn.
 

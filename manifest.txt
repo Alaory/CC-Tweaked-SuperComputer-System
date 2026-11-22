@@ -60,9 +60,9 @@ voice voice_convo.lua 103313 6ad17024
 voice voice_staff.lua 39322 84e79b61
 voice voice_profile.lua 52866 c042e285
 voice voice_vary.lua 6358 41dbf3fa
-voice voice_spawn.lua 89366 098a223b
+voice voice_spawn.lua 92508 203aeb22
 voice voice_crowd.lua 27630 effa4204
-voice voice_lonely.lua 67635 325e6103
+voice voice_lonely.lua 67914 0c698b14
 spawn spawn_speaker.lua 10877 aa5378c2
 slim:base inventory.lua 2821 ad6e18b6 dist/inventory.lua
 slim:base startup.lua 833 00f3544b dist/startup.lua
@@ -126,7 +126,7 @@ slim:voice voice_convo.lua 90855 177992d3 dist/voice_convo.lua
 slim:voice voice_staff.lua 35010 a84814a9 dist/voice_staff.lua
 slim:voice voice_profile.lua 45132 695dbe75 dist/voice_profile.lua
 slim:voice voice_vary.lua 4619 8771d507 dist/voice_vary.lua
-slim:voice voice_spawn.lua 73250 6354c2e9 dist/voice_spawn.lua
+slim:voice voice_spawn.lua 75580 94127a45 dist/voice_spawn.lua
 slim:voice voice_crowd.lua 22630 1a77c693 dist/voice_crowd.lua
-slim:voice voice_lonely.lua 57879 2f5e6461 dist/voice_lonely.lua
+slim:voice voice_lonely.lua 58064 75ac2331 dist/voice_lonely.lua
 slim:spawn spawn_speaker.lua 8461 918a0774 dist/spawn_speaker.lua

@@ -1543,6 +1543,11 @@ PneumaticCraft drone rides, turtle mapping/surveys, and an AE2 ME network view.
   id whose name fits (before: only when the list was EMPTY); SP.freshME: the base reads AE2 (fetchME) only while the AE2 page
   / curios is open - after a restart the list was empty (the owner: "I have to load the AE2 tab first for players to be able to
   wish") -> a wish reads it itself when there is none or it is older than 5 min; SP.NOT_ITEM: "I want to play" is no wish; asks "yes?" (90 s)
+  HALF STAYS (the owner: "items pulled from AE2 must not get below 50 % of their amount" + "non stackable items too"):
+  SP.wishRoom(it) = have - waiting gifts of that item - ceil(peak x voice.wishKeep 0.5); peak = the most AE2 had
+  (smem().peak[id] {n, at}, forgotten after 30 days, 500 items) - using some up does not lower the line; checked at the
+  wish AND again at "yes" (two players asking at once); nothing above the line -> SP.W_LOW. Rounded UP: 1 elytra = none,
+  2 = 1, 3 = 1. `voice spawn wish keep <percent>`. Caretaker supplies (voice_lonely) use it too. test_spawn_scenarios.
   -> V.giftEarn(who, "wish", {{id, n}}) = the drone gift queue (anywhere in the overworld). voice.wishDaily 3 /
   wishAll 40 / wishMax 64 (and what AE2 has), one waiting wish per player, the owner none. mem["#spawn"] = met / gr
   (greeted) / wish / wall / log (500 names max). SP.tick (a tick hook): a newcomer = how to talk in chat + a greeting;
