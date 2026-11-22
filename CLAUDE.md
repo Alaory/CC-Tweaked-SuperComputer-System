@@ -1596,13 +1596,22 @@ PneumaticCraft drone rides, turtle mapping/surveys, and an AE2 ME network view.
   "fuuuck" caught; spawn temp records move to the saved memory at the base (300 max in memory); "hi" mid-chat = hello + the same
   question; likes said mid-chat saved; recall never says a rude saved word. FOUND IN THE CORE: VOICE.norm's "hellooooo" squash
   "(%a)%1%1+" never worked (Lua cannot repeat a back-reference - it wanted a literal "+"): now a repeat-until loop.
-  STAFF (the owner: "variant speeches for admins / moderators"): the game does not tell a computer who is staff, so a list -
-  voice.staff {[name] = admin|mod|helper|builder|staff}; `voice staff [add <name> <role>|remove <name>]`; the owner in chat
-  "base, Steve is a moderator" (a player it knows) / "make Bob an admin" / "Steve is not staff" (others: "only <owner> can").
-  C.STAFF_HELLO[role] (combos, 100+ for admin / mod) when they arrive at the base (V.greet wrapped: visit counted, never the
-  stranger alarm), at spawn (SP greeting, every 30 min), starting a chat or calling its name; the STAFF topic first in a chat
-  ("any troublemakers today?"); "who are the admins?" for anyone; "am I a mod?"; "I am an admin" from someone not on it = a
-  friendly no (C.NOT_STAFF). test_voice_convo 23, test_spawn_scenarios "a moderator walks up to spawn".
+  STAFF -> voice_staff.lua (below).
+- SERVER STAFF (voice_staff.lua = VOICE_FILES right after voice_convo - it uses V.CONVO; split off so each file fits a floppy; the
+  owner: "variant speeches for admins / moderators", "builders / moderators / maintainers / admins - they could be both a builder /
+  moderator and an admin at the same time - do add roasting too"). The game does not tell a computer who is staff (no op / rank
+  on the Player Detector), so a list: voice.staff = {[name lower] = "admin,builder"} (several roles; an old single role / true
+  still reads; C.rolesOf in rank order admin, maintainer, mod, builder, helper, staff; C.roleOf = the top one). `voice staff [add
+  <name> <role> [<role>...]|remove <name> [<role>]]`; the owner in chat: "base, Steve is a builder" (a player it knows), "Steve is
+  also a moderator", "make Bob an admin", "add Kim as maintainer", "Steve is not a builder anymore", "Steve is not staff" (others:
+  "only <owner> can"). GREETINGS C.STAFF_HELLO[role] (openers x closers, 100+ per role) - two+ roles: C.MULTI_A "{titles}" ("admin
+  and builder") + a closer of one role or a C.PAIR line ("You build the server AND you run it"); at the base (V.greet wrapped:
+  visit counted, never the stranger alarm), at spawn (SP greeting, 30 min), saying hi / calling its name. TOPICS staff_<role>
+  (3 steps each) first in a chat, the others later (C.nextTopic wrapped). ROASTS C.ROASTS_STAFF[role] (20 x endings, 100+ per
+  role) + C.ROAST_PAIR: "roast me" from staff, "roast the admins / builders ..." from anyone (a named one of them; none = says so),
+  "roast <staff name>". "who are the admins / who is staff" (whole questions only - "is there a mod for that?" is not), "am I a
+  mod?" ("not a moderator - you are an admin and builder"), "I am an admin / a maintainer" from someone not on it = a friendly no
+  per role (C.NOT_STAFF). test_voice_convo 23, test_spawn_scenarios "a moderator walks up to spawn".
 - NAMES WITHOUT NUMBERS (the owner: "stop it from mentioning numbers in players' names - deadman213, 125steve1, 1alex2steve"):
   VOICE.cleanName (digits and _ out, parts kept: "1alex2steve" -> "alex steve"; only digits -> "friend") in fill() ({name},
   {owner}; a nickname chosen with "call me ..." stays as it is), VOICE.cleanNames(text) (every known player name with digits,
@@ -1727,6 +1736,7 @@ The old Block UI (stone buttons, bedrock theme) is gone.
 | voice_talk3.lua | TALK PACK 3: free drone TAXI for friends (base <-> their bed), visit streaks, mail between players, Minecraft glossary + recipes, jokes on a topic, spirit mob, ship, rematches, milestones |
 | voice_lines.lua / voice_idle.lua | LINES PACKS: 100+ ways to say each thing (asked for / idle, greetings, reactions) |
 | voice_convo.lua | CONVERSATIONS: hi / how are you / just its name start a long chat (topics, reactions, its own answers), remembers what each player likes and the mods they talk about |
+| voice_staff.lua | SERVER STAFF: admins / moderators / maintainers / builders (one or more roles each) get their own greetings, chat topics and roasts; the owner keeps the list |
 | voice_vary.lua | VARIETY PACK: every other answer said 50+ ways (openers / closers by the kind of answer) |
 | voice_lore.lua | LORE PACK: why drones and not /tp and other questions about the base, modpack tips, mod glossary |
 | voice_spawn.lua / spawn_speaker.lua | the SPAWN SPEAKER: the base talks at spawn through a relay computer (Speaker + ender modem) - own voice and lines, no rewards, item wishes by drone, how-to help |

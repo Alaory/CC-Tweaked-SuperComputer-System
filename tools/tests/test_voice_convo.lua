@@ -404,50 +404,118 @@ end
 for _, p in ipairs(C.PAIRS) do if not p[1]:find("%?%s*$") then notQ[#notQ + 1] = "pair: " .. p[1] end end
 CHECK(#notQ == 0, "every question ends in '?': " .. table.concat(notQ, " | "))
 CHECK(table.concat(V.norm("hellooooo yesssss hiiiii"), " ") == "helloo yess hi", "stretched words squashed: " .. table.concat(V.norm("hellooooo yesssss hiiiii"), " "))
--- 23) STAFF (the owner: "variant speeches for admins / moderators"): a list the owner keeps
+-- 23) STAFF (the owner: "variant speeches for admins / moderators", then "builders / moderators / maintainers / admins - they could be
+-- both a builder / moderator and an admin at the same time - do add roasting too"): a list the owner keeps
+CHECK(V.packs["voice_staff.lua"], "the staff pack loads")
 local slog = {}
-V.commands.staff({ "voice", "staff", "add", "ModMax", "mod" }, function(x) slog[#slog + 1] = x end)
-V.commands.staff({ "voice", "staff", "add", "AdminAnna", "admin" }, function(x) slog[#slog + 1] = x end)
-CHECK(C.roleOf("modmax") == "mod" and C.roleOf("AdminAnna") == "admin" and not C.roleOf("Steve"), "voice staff add: roles kept")
--- a staff member saying hi: their own greeting + the staff topic
+local function cmd(...) V.commands.staff({ "voice", "staff", ... }, function(x) slog[#slog + 1] = x end) end
+cmd("add", "ModMax", "mod")
+cmd("add", "AdminAnna", "admin", "builder")
+cmd("add", "FixFred", "maintainer")
+CHECK(C.roleOf("modmax") == "mod" and C.hasRole("AdminAnna", "admin") and C.hasRole("AdminAnna", "builder") and C.roleOf("FixFred") == "maintainer"
+      and not C.roleOf("Steve"), "voice staff add: one or more roles")
+cmd("add", "ModMax", "builder")
+CHECK(C.hasRole("ModMax", "mod") and C.hasRole("ModMax", "builder"), "adding a 2nd role keeps the 1st")
+-- a staff member saying hi: their own greeting + a topic of their role
 fresh("ModMax")
 local cs1 = say("ModMax", "hi")
-CHECK(asks(cs1) and (lowc(cs1):find("mod", 1, true)) and C.state.modmax.topic == "staff", "a moderator saying hi: a moderator greeting + the staff topic: " .. cs1)
+CHECK(asks(cs1) and (lowc(cs1):find("mod", 1, true) or lowc(cs1):find("build", 1, true)) and tostring(C.state.modmax.topic):find("^staff_"),
+      "a moderator + builder saying hi: a staff greeting + a staff topic: " .. cs1 .. " [" .. tostring(C.state.modmax.topic) .. "]")
+fresh("FixFred")
+local cs2 = say("FixFred", "base")
+CHECK(asks(cs2) and (lowc(cs2):find("maint", 1, true) or lowc(cs2):find("fix", 1, true) or lowc(cs2):find("server", 1, true) or
+      lowc(cs2):find("tps", 1, true) or lowc(cs2):find("config", 1, true) or lowc(cs2):find("crash", 1, true)), "a maintainer calling its name: " .. cs2)
+-- two roles: greetings name both now and then
+local both = false
+for _ = 1, 40 do fresh("AdminAnna") local g = say("AdminAnna", "hello") if lowc(g):find("admin and builder", 1, true) then both = true break end end
+CHECK(both, "an admin + builder: a greeting with both titles")
+-- variety
+for _, who in ipairs({ "FixFred", "AdminAnna" }) do
+  local sv, nsv = {}, 0
+  for _ = 1, 50 do fresh(who) local g = say(who, "hello") if not sv[g] then sv[g] = true nsv = nsv + 1 end end
+  CHECK(nsv >= 40, who .. ": 50 greetings, " .. nsv .. " different")
+end
+for _, r in ipairs({ "admin", "mod", "maintainer", "builder" }) do
+  CHECK(#C.STAFF_HELLO[r] >= 100, r .. ": 100+ greetings (" .. #C.STAFF_HELLO[r] .. ")")
+  CHECK(#C.ROASTS_STAFF[r] >= 100, r .. ": 100+ roasts (" .. #C.ROASTS_STAFF[r] .. ")")
+  CHECK(C.TOPICS["staff_" .. r] ~= nil, r .. ": its own chat topic")
+end
+-- a long chat with an admin + builder: both role topics come up
 fresh("AdminAnna")
-local cs2 = say("AdminAnna", "base")
-CHECK(asks(cs2) and lowc(cs2):find("admin", 1, true), "an admin calling its name: an admin greeting: " .. cs2)
--- 50 greetings for a moderator: many different ones
-local sv, nsv = {}, 0
-for _ = 1, 50 do fresh("ModMax") local g = say("ModMax", "hello") if not sv[g] then sv[g] = true nsv = nsv + 1 end end
-CHECK(nsv >= 40, "50 moderator greetings: " .. nsv .. " different")
-CHECK(#C.STAFF_HELLO.admin >= 100 and #C.STAFF_HELLO.mod >= 100, "100+ admin / moderator greetings")
+say("AdminAnna", "hi")
+local seenT = {}
+for _ = 1, 25 do
+  if C.state.adminanna and C.state.adminanna.topic then seenT[C.state.adminanna.topic] = true end
+  say("AdminAnna", "pretty good")
+end
+CHECK(seenT.staff_admin and seenT.staff_builder, "a long chat with an admin + builder: the admin AND the builder topic")
+-- ROASTS: "roast me" from staff = a staff roast; "roast the admins" / "roast the builders" from anyone; "roast <staff name>"
+fresh("FixFred")
+local rf = say("FixFred", "base roast me")
+local isMaint = false
+for _, l in ipairs(C.ROASTS_STAFF.maintainer) do if rf == V.fill(l, "FixFred") then isMaint = true end end
+CHECK(isMaint, "a maintainer: 'roast me' = a maintainer roast: " .. rf)
+local rset, nr = {}, 0
+for _ = 1, 40 do fresh("FixFred") local x = say("FixFred", "base roast me") if not rset[x] then rset[x] = true nr = nr + 1 end end
+CHECK(nr >= 30, "40 roasts: " .. nr .. " different")
+fresh("Steve")
+local ra = say("Steve", "base roast the admins")
+CHECK(ra:find("AdminAnna", 1, true) or ra:find("adminanna", 1, true), "anyone: roast the admins -> an admin roast with the admin's name: " .. ra)
+local rb = say("Steve", "base roast modmax")
+CHECK(lowc(rb):find("modmax", 1, true), "roast <staff name>: " .. rb)
+local rn0 = say("Steve", "base roast the helpers")
+CHECK(lowc(rn0):find("helpers", 1, true), "roast the helpers (none): says there are none: " .. rn0)
 -- arriving at the base: the staff greeting, never the stranger alarm
 fresh("ModMax")
 spoken = {}
 V.say = function(text) spoken[#spoken + 1] = tostring(text) return true end
 V.greet("ModMax")
-CHECK(#spoken == 1 and lowc(spoken[1]):find("mod", 1, true) and not lowc(spoken[1]):find("intruder", 1, true), "arriving: the moderator greeting: " .. table.concat(spoken, " | "))
+CHECK(#spoken == 1 and not lowc(spoken[1]):find("intruder", 1, true) and (lowc(spoken[1]):find("mod", 1, true) or lowc(spoken[1]):find("build", 1, true)),
+      "arriving: the staff greeting: " .. table.concat(spoken, " | "))
 -- who are the staff / am I staff / I am an admin
 fresh("Steve")
 local cw1 = say("Steve", "base who are the admins?")
-CHECK(cw1:find("AdminAnna", 1, true) or cw1:find("adminanna", 1, true), "who are the admins: " .. cw1)
+CHECK(cw1:find("adminanna", 1, true) or cw1:find("AdminAnna", 1, true), "who are the admins: " .. cw1)
+local cw1b = say("Steve", "base who is staff")
+CHECK(lowc(cw1b):find("fixfred", 1, true) and lowc(cw1b):find("modmax", 1, true) and lowc(cw1b):find("maintainer", 1, true), "who is staff (every role): " .. cw1b)
+local cw1c = say("Steve", "base is there a mod for that?")
+CHECK(not lowc(cw1c):find("modmax", 1, true), "'is there a mod for that' is not about moderators: " .. cw1c)
 fresh("Steve")
 local cw2 = say("Steve", "base i am an admin")
-CHECK(not lowc(cw2):find("i know", 1, true) and (lowc(cw2):find("list", 1, true) or lowc(cw2):find("try", 1, true) or lowc(cw2):find("no", 1, true)), "a stranger claiming admin: nice try: " .. cw2)
-fresh("ModMax")
-local cw3 = say("ModMax", "base am i a mod")
-CHECK(lowc(cw3):find("moderator", 1, true), "am I a mod: " .. cw3)
--- the owner in chat: "Steve is a moderator" (a known player), "make Bob an admin", "Steve is not staff"; others cannot
+CHECK(not lowc(cw2):find("i know", 1, true) and not lowc(cw2):find("confirmed", 1, true), "a stranger claiming admin: nice try: " .. cw2)
+local cw2b = say("Steve", "base i am a maintainer")
+CHECK(not lowc(cw2b):find("i know", 1, true), "a stranger claiming maintainer: nice try: " .. cw2b)
+fresh("AdminAnna")
+local cw3 = say("AdminAnna", "base am i an admin")
+CHECK(lowc(cw3):find("admin and builder", 1, true), "am I an admin (two roles): " .. cw3)
+local cw4 = say("AdminAnna", "base am i a mod")
+CHECK(lowc(cw4):find("not a moderator", 1, true), "am I a mod - no, admin and builder: " .. cw4)
+-- the owner in chat; others cannot
 fresh("Alaory", "Steve")
 local co1 = say("Alaory", "base steve is a moderator")
 CHECK(C.roleOf("Steve") == "mod" and co1:find("Steve", 1, true), "the owner: 'steve is a moderator': " .. co1)
+local co1b = say("Alaory", "base steve is also a builder")
+CHECK(C.hasRole("Steve", "mod") and C.hasRole("Steve", "builder"), "the owner: 'steve is also a builder' - both: " .. co1b)
+local co1c = say("Alaory", "base steve is not a builder anymore")
+CHECK(C.hasRole("Steve", "mod") and not C.hasRole("Steve", "builder"), "'not a builder anymore' drops that role only: " .. co1c)
 local co2 = say("Alaory", "base this is a mod")
 CHECK(not C.roleOf("this"), "'this is a mod' adds nobody: " .. co2)
+local co2b = say("Alaory", "base make me happy")
+CHECK(not C.roleOf("me"), "'make me happy' adds nobody")
 local co3 = say("Alaory", "base steve is not staff")
 CHECK(not C.roleOf("Steve"), "the owner: 'steve is not staff': " .. co3)
 fresh("Steve", "Alex")
 local co4 = say("Steve", "base alex is an admin")
 CHECK(not C.roleOf("Alex") and lowc(co4):find("only", 1, true), "a player cannot add staff: " .. co4)
-V.commands.staff({ "voice", "staff", "remove", "ModMax" }, function() end)
-CHECK(not C.roleOf("ModMax"), "voice staff remove")
+cmd("remove", "AdminAnna", "builder")
+CHECK(C.roleOf("AdminAnna") == "admin" and not C.hasRole("AdminAnna", "builder"), "voice staff remove <name> <role>")
+cmd("remove", "ModMax")
+CHECK(not C.roleOf("ModMax"), "voice staff remove <name>")
+slog = {}
+cmd()
+CHECK(table.concat(slog, " "):find("fixfred - maintainer", 1, true), "voice staff lists them: " .. table.concat(slog, " | "))
+-- an old saved list (one role, or true) still reads
+setSetting("voice.staff", { old1 = "mod", old2 = true })
+CHECK(C.roleOf("old1") == "mod" and C.roleOf("old2") == "staff", "an old staff list still reads")
+setSetting("voice.staff", {})
 V.say = say0

@@ -23,7 +23,7 @@ base base_state.lua 5331 2a808592
 base base_storage.lua 11536 e6593881
 base base_store.lua 11756 2a26c1dc
 base base_supply.lua 19688 1390bb7a
-base base_theme.lua 38085 b36a0295
+base base_theme.lua 38104 08719b66
 base base_turtles.lua 136588 65ddb4df
 base base_ui_chat.lua 5324 057af588
 base base_ui_core.lua 37253 975b9066
@@ -56,7 +56,8 @@ voice voice_talk3.lua 40998 26dd2c78
 voice voice_lines.lua 85751 8efbb81c
 voice voice_idle.lua 37786 f3808b3f
 voice voice_lore.lua 29210 522540d6
-voice voice_convo.lua 117486 1d09b7a5
+voice voice_convo.lua 103313 6ad17024
+voice voice_staff.lua 39046 1fd677e3
 voice voice_vary.lua 6374 1ce0f7a6
 voice voice_spawn.lua 88085 f3c0465a
 spawn spawn_speaker.lua 10877 aa5378c2
@@ -85,7 +86,7 @@ slim:base base_state.lua 2184 53b39d2a dist/base_state.lua
 slim:base base_storage.lua 8505 9bb686f2 dist/base_storage.lua
 slim:base base_store.lua 7814 38b89a07 dist/base_store.lua
 slim:base base_supply.lua 14825 3e655c85 dist/base_supply.lua
-slim:base base_theme.lua 23846 da2448a4 dist/base_theme.lua
+slim:base base_theme.lua 23865 201efd25 dist/base_theme.lua
 slim:base base_turtles.lua 94402 fe5bdabc dist/base_turtles.lua
 slim:base base_ui_chat.lua 4262 56e2d3cf dist/base_ui_chat.lua
 slim:base base_ui_core.lua 27506 80fb885a dist/base_ui_core.lua
@@ -118,7 +119,8 @@ slim:voice voice_talk3.lua 35246 ee4c0f62 dist/voice_talk3.lua
 slim:voice voice_lines.lua 80953 7bef63ed dist/voice_lines.lua
 slim:voice voice_idle.lua 35127 f5baeb0c dist/voice_idle.lua
 slim:voice voice_lore.lua 27047 ac5fcf6a dist/voice_lore.lua
-slim:voice voice_convo.lua 102992 91afadce dist/voice_convo.lua
+slim:voice voice_convo.lua 90855 177992d3 dist/voice_convo.lua
+slim:voice voice_staff.lua 34853 70843cb8 dist/voice_staff.lua
 slim:voice voice_vary.lua 4635 32d164db dist/voice_vary.lua
 slim:voice voice_spawn.lua 72411 b803cbce dist/voice_spawn.lua
 slim:spawn spawn_speaker.lua 8461 918a0774 dist/spawn_speaker.lua
