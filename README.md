@@ -7,6 +7,9 @@ mapping turtles and a map of the world.
 > Made for **CC:Tweaked 1.120.2** on **Minecraft 1.21.1 (NeoForge)** with
 > **Advanced Peripherals** · optional: **PneumaticCraft**, **AE2 / Refined Storage**, **Curios**
 
+**Version 1.0.0** - see [CHANGELOG.md](CHANGELOG.md) for what is new. The base shows its version on
+SYSTEM > Status and with the console command `version`.
+
 ---
 
 ## Contents
@@ -24,6 +27,8 @@ mapping turtles and a map of the world.
 - [Pocket remote](#pocket-remote)
 - [Schematics (builder turtles)](#schematics-builder-turtles)
 - [Mining dimension teams](#mining-dimension-teams)
+- [The voice add-on](#the-voice-add-on)
+- [The spawn speaker](#the-spawn-speaker)
 - [The map](#the-map)
 - [Chat commands](#chat-commands)
 - [Console commands](#console-commands)
@@ -45,9 +50,9 @@ The top row has the tab groups; a group with several pages shows them as small t
 |---|---|---|
 | **HOME** | | Everything at a glance, every page one tap away, quick actions. |
 | **YOU** | Inventory · Backpacks · Curios | Your inventory, armour and item list · what is inside your backpacks and tanks · your curios: store in ME, put on from ME, **auto-equip** (keep one on). |
-| **AE2** (or **RS**) | | Network status, item / fluid browser, take and store items, fill fluid containers, craft. |
-| **PLAYERS** | Players · Chat & rides | A card per online player (dimension, health, position) · who may use the `$drone` chat commands, ride requests, the base's messages in your chat. |
-| **DRONES** | | PneumaticCraft drones: air, mission steps, log. Pick a passenger and a destination, then fly, pick up, drop or ferry. |
+| **AE2** (or **RS**) | Storage · System | Network status, item / fluid browser, take and store items, fill fluid containers, craft, keep a storage filled · crafting CPUs, running jobs (cancel), your craft requests, drives, patterns you can craft from. |
+| **PLAYERS** | Players · World · Chat & rides · Gifts | Every player ever seen (where they are, health, visits, time on the server) · game time, weather, moon, mobs around the base · who may use the `$drone` chat commands, ride requests, the base's messages in your chat · AE2 items sent to players by drone (with the voice add-on). |
+| **DRONES** | Drones · Drone work | PneumaticCraft drones: air, mission steps, log. Pick a passenger and a destination, then fly, pick up, drop or ferry · the drones' work chest, fuel runs to turtles, saved places, schematic builds. |
 | **TURTLES** | Turtles · Drive · Map · Mining | Every turtle with status, fuel, gear, log and a control pad; the **FLEET** card when none is selected · **steer one turtle by hand** and see the blocks around it · the terrain map: zoom 1-512 blocks per cell, surveys, **AUTO-MAP** · the mining teams. |
 | **SYSTEM** | Status · Messages · Settings | How the base is doing, a **system log**, the times it was off, UPGRADE PROGRAM · every message (kept after restarts) · **settings** you change by tapping (saved in `settings.dat`; your `base_config.lua` stays as it is). |
 
@@ -72,7 +77,8 @@ If you want, messages are also sent to you privately in chat.
 | Block | Adds |
 |---|---|
 | Player Detector | PLAYERS tab, finding players for drone rides |
-| Environment Detector | which dimension the base is in |
+| Environment Detector | WORLD page (time, weather, moon, mobs), who is at the base for the voice add-on |
+| Speaker | the voice add-on (the base talks) |
 | ME Bridge / RS Bridge + a buffer chest | ME / RS tab |
 | Drone Interface (one per drone) + Charging Station | DRONES tab |
 | Chat Box | `$drone` chat commands, CHAT tab, messages in chat |
@@ -101,9 +107,9 @@ upgrade
 
 `upgrade` downloads every program file, checks each one and restarts the computer. The turtle
 program (`node.lua`) is NOT kept on the computer: it goes onto a storage helper or a data floppy.
-(No internet on the server? Copy `inventory.lua`, every `base_*.lua`, `node.lua`, `store.lua`
-and `startup.lua` by hand instead - drag the files onto the computer's screen. The base moves
-`node.lua` off the computer by itself.)
+(No internet on the server? Take the zips from the [GitHub release](https://github.com/Alaory/CC-Tweaked-SuperComputer-System/releases):
+drag the files of `base-control-<version>.zip` onto the computer's screen, and put `node.lua` from
+`turtle-program-<version>.zip` onto a floppy in one of the base's disk drives - the base finds it there.)
 
 1. Open `base_config.lua` and set at least:
    - `turtles.key`: a secret word of your own (not `"change-me"`). Turtles
@@ -176,6 +182,8 @@ connected. After each mission it parks on its Charging Station.
 | Turtles | They get the new `node.lua` from the base by themselves - while you are **offline** (an update restarts them), or at once with **UPDATE TURTLES**. A busy turtle installs it after its job. A full disk never breaks a turtle: the update is then refused and the old program keeps running. |
 | Pocket | Type `upgrade` on the pocket computer. |
 | Storage helpers | By themselves, a few minutes after the base was upgraded (`store update` does it at once). |
+| Voice add-on | `voice update` (also run by itself about 15 s after an `upgrade` restart). |
+| Spawn relay | Copy the new `spawn_speaker.lua` onto it as `startup.lua` by hand when a release says it changed (it stays paired). |
 | Mining turtles | Copy `miner.lua` onto them by hand **once** (m21 or newer). After that: `mine update` on the base computer (or **UPDATE MINERS** on TURTLES > MINING). The base downloads `miner.lua`, keeps it on a data floppy (not on the computer's 1 MB), pauses each running team, sends the program to every loader and miner, and starts the team again once all of them run it. Each turtle installs it only while paused and keeps its team, field, job and unload station. |
 
 The files you get have their comments removed (about 30% smaller - a computer has only 1 MB);
@@ -486,6 +494,35 @@ mining = {
 
 ---
 
+## The voice add-on
+
+Optional: the base talks through **Speakers** next to the computer (and answers in chat). It
+greets you and visitors, reads out warnings, answers questions ("base, status?", "base, where is
+turtle 5?"), plays games and quizzes, tells jokes, has long conversations and remembers what each
+player likes. It never takes orders from other players.
+
+- Install: `voice install` on the base computer (needs http on). The files go onto a DATA floppy
+  (`disks data` makes one) or a storage helper - never onto the computer's own 1 MB.
+- Update: `voice update` (also done by itself after `upgrade`). Remove: `voice remove`.
+- Settings: `voice` lists them - `voice on|off`, `voice name <word>` (what players call it),
+  `voice preset <name>` (ready-made voices, try them with `voice try`), `voice speed`, `voice volume`.
+- The speech comes from the free CC text-to-speech service (music.madefor.cc) - the server needs
+  http to that site.
+
+## The spawn speaker
+
+Optional, needs the voice add-on: the base also talks **at spawn**, through a small relay computer
+there with a Speaker and an **Ender Modem**. It has its own voice and call word (`voice spawn name
+<word>`), helps players who have never seen it, plays games, and grants item wishes from AE2 by drone
+(at most 64 per wish, a few a day). With many players at spawn it switches to a crowd mode (it does
+not talk over everyone, comments on fights, duels, group quiz, roast battles). No friendship or
+rewards at spawn.
+
+1. On the relay computer: copy `spawn_speaker.lua` there as `startup.lua` and start it. It shows a
+   6-digit code.
+2. Stand at spawn and type `$drone spawn pair <code>` in chat, then `$drone spawn here`.
+3. `voice spawn` shows its state and settings.
+
 ## Chat commands
 
 These start with `$`, which hides the message from other players. The replies are
@@ -588,6 +625,13 @@ Type these on the base computer. `help` lists them all.
 | `miner.lua` | the mining dimension team program (miner + loader) |
 | `base_mining.lua` / `base_ui_mining.lua` | the mining teams on the base / the MINING tab |
 | `store.lua` | the storage helper program (for extra computers) |
+| `base_dronework.lua` · `base_ui_work.lua` | drone jobs: work chest, fuel runs, schematic builds · the DRONE WORK page |
+| `base_meplus.lua` · `base_ui_mesys.lua` | crafting CPUs, jobs, drives, patterns · the AE2 SYSTEM page |
+| `base_env.lua` · `base_ui_env.lua` | the Environment Detector · the WORLD page |
+| `base_ui_gifts.lua` | the GIFTS page (needs the voice add-on) |
+| `voice_*.lua` | the optional voice add-on (kept on a data floppy or a storage helper, not on the computer) |
+| `spawn_speaker.lua` | the spawn relay computer (Speaker + Ender Modem) |
+| `CHANGELOG.md` | what changed in each release |
 
 **Data files the program creates** (keep them; delete one only to reset that part):
 `waypoints.dat`, `drone_logs.dat`, `drone_charger.dat`, `chat_access.dat`,
@@ -613,3 +657,8 @@ live on data floppies (`disks data` / `disks move`).
   base test, every page drawn, the turtle tests and the mining simulator. Run it after every change.
 - `python3 tools/make_manifest.py`: rebuilds `manifest.txt` and `dist/` - run it after every
   change too (`upgrade` downloads what it lists; the tests fail when it is stale).
+- `python3 tools/make_release.py`: builds `release/` for a GitHub release (zips for servers
+  without internet, the release notes, checksums). It refuses when `BASE_VERSION`
+  (`base_state.lua`) is not the newest entry in `CHANGELOG.md` or the manifest is stale.
+  To release: raise `BASE_VERSION`, add the `CHANGELOG.md` entry, run the tests, merge into
+  `main`, then make the release with the tag `v<version>` and attach the files from `release/`.

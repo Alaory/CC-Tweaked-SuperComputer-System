@@ -36,6 +36,7 @@ HELP = {
 " survey auto [on|off] auto-map: turtles keep surveying from the base outward",
 " theme [name|random]  the monitor's colours (random = a different one each start)",
 " uptime               how long the base runs, and when it was off (and why)",
+" version              the program's release number and the commit upgrade installed",
 " store [find|update]  storage helper computers (store.lua): free space, update them now",
 " events [n] [errors]  the last n saved messages (also after a restart)",
 "      sethome [x y z], setpos x y z north, locate, move up 3, stop",
@@ -1143,6 +1144,9 @@ say("  offline (seen by this run) for " .. fmtSpan((os.epoch("utc") - AWAY.offSi
 " - away mode after " .. fmtSpan(tonumber(AWAY.cfg("after", 300)) or 300) .. (MAP.loaded and "" or ", the map is still being read"))
 end
 if AWAY.cfg("enabled", true) == false then say("  away mode is switched OFF (SETTINGS > AWAY)") end
+
+elseif cmd == "version" then
+say("Base program " .. versionText() .. "   (type  upgrade check  for a newer one)")
 
 elseif cmd == "uptime" then
 local a = BASE_ALIVE or {}

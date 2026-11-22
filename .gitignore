@@ -1,1 +1,3 @@
 tools/preview/out/
+release/
+__pycache__/

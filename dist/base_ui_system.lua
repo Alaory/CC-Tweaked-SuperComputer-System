@@ -63,6 +63,7 @@ local np, lastP = 0, nil
 for _, p in pairs(POCKET.pockets) do np = np + 1 if p.seen and (not lastP or p.seen > lastP) then lastP = p.seen end end
 kv(ix, r + 12, iw, "Pocket remote", np == 0 and "none paired (pocket.lua on a pocket computer)"
 or (np .. " paired" .. (lastP and ("   last used " .. TT.ago(lastP)) or "")), np > 0 and C.text or C.dim)
+kv(ix, r + 14, iw, "Program", s.version or ("v" .. tostring(BASE_VERSION)))
 kv(ix, r + 13, iw, "Schematics", (s.schematics or 0) .. " stored" .. ((s.schematics or 0) == 0
 and "   (drag a Create .nbt onto the computer's screen)" or "   (type  schem)"), (s.schematics or 0) > 0 and C.text or C.dim)
 

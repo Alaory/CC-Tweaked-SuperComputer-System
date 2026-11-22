@@ -1701,6 +1701,15 @@ PneumaticCraft drone rides, turtle mapping/surveys, and an AE2 ME network view.
   slim` back; an older upgrade.lua only reads the plain groups -> full files + the new
   upgrade.lua, the next run goes slim). Base files 904 KB -> 656 KB. run_tests: every dist
   file compiles (luac -s) to the SAME bytes as the full one, same line count.
+- RELEASES (the owner: "get stuff ready for a github release"): BASE_VERSION (base_state.lua, x.y.z) = the newest
+  entry in CHANGELOG.md (test_version.lua fails otherwise); versionText() = "v<x.y.z> (<commit>) [from <branch>]" from
+  upgrade.dat - console `version`, SYSTEM > Status "Program" (state.sys.version from sysRefresh). tools/make_release.py
+  [--check]: refuses when the version / changelog / manifest disagree or a file does not compile; builds release/
+  (gitignored): base-control / turtle-program (node.lua onto a FLOPPY - the base's TT.codePath finds it on a mounted
+  disk; next to 839 KB of base files it hardly fits the 1 MB computer) / pocket / miner / voice-addon / spawn-speaker
+  zips from the slim dist/ copies, RELEASE_NOTES.md (the changelog entry + install), SHA256SUMS.txt. To release: raise
+  BASE_VERSION + a CHANGELOG entry, tests, merge into main, tag v<x.y.z>, attach release/. The old base_control.zip
+  (Nov 1, a 91 KB node.lua) is gone.
 - Autostart: `startup.lua` (top level of the computer) finds inventory.lua
   in any folder and restarts it after a crash (inventory.lua raises an error
   on a crash, returns normally on Ctrl+T). inventory.lua turns off
@@ -1795,6 +1804,7 @@ The old Block UI (stone buttons, bedrock theme) is gone.
 | voice_lore.lua | LORE PACK: why drones and not /tp and other questions about the base, modpack tips, mod glossary |
 | voice_spawn.lua / spawn_speaker.lua | the SPAWN SPEAKER: the base talks at spawn through a relay computer (Speaker + ender modem) - own voice and lines, no rewards, item wishes by drone, how-to help |
 | voice_crowd.lua | A CROWD AT SPAWN: does not talk over a crowd, comments on fights / knockouts / laughter, duels, group quiz, roast battles, scoreboard |
+| CHANGELOG.md / tools/make_release.py | release notes per version (newest = BASE_VERSION) / builds release/ for a GitHub release |
 | voice_talk2.lua | TALK PACK 2: friendship + titles, badges, player memory, daily secret word, more games, ideas, guides, styles, holidays, diary, FRIENDSHIP GIFTS by drone |
 
 ## The owner's setup (found out the hard way)

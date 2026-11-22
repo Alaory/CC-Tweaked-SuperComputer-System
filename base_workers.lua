@@ -71,6 +71,8 @@ function sysRefresh()
     for _ in pairs(SCHEM.list()) do n = n + 1 end
     s.schematics = n
   end
+  local okV, vt = pcall(versionText)
+  s.version = okV and vt or ("v" .. tostring(BASE_VERSION))
   state.sys = s
 end
 
