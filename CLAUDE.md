@@ -1491,7 +1491,10 @@ PneumaticCraft drone rides, turtle mapping/surveys, and an AE2 ME network view.
   V.badge / V.giftEarn (not "wish") do nothing, VOICE.noPoints (the core quiz: "Correct!" without points). Reactions
   at spawn once a minute. WISHES (SP.wish: "i wish for / i want / can i have / give me ... " + amount - "a stack of" 64,
   numbers, words - + an item in state.me.items (SP.findItem: display / id path, singular, the plain Minecraft id with a
-  partial AE2 view), never SP.NEVER / voice.wishBlock; SP.NOT_ITEM: "I want to play" is no wish; asks "yes?" (90 s)
+  partial AE2 view), never SP.NEVER / voice.wishBlock;
+  NOT IN THE LIST (the owner: "asked for a diamond - not in storage - I have 13m": the PARTIAL VIEW list holds only what
+  the tag sweeps / name lookups found so far) -> callx(bridge, "getItem") for minecraft:<words> + every ME_NAMES / list
+  id whose name fits (before: only when the list was EMPTY); SP.NOT_ITEM: "I want to play" is no wish; asks "yes?" (90 s)
   -> V.giftEarn(who, "wish", {{id, n}}) = the drone gift queue (anywhere in the overworld). voice.wishDaily 3 /
   wishAll 40 / wishMax 64 (and what AE2 has), one waiting wish per player, the owner none. mem["#spawn"] = met / gr
   (greeted) / wish / wall / log (500 names max). SP.tick (a tick hook): a newcomer = how to talk in chat + a greeting;

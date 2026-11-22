@@ -553,11 +553,29 @@ function SP.findItem(name)
     if s and (tonumber(it.count) or 0) > 0 and (not bs or s > bs) then best, bs = it, s end
   end
   if best then return { id = best.name, name = best.display or best.displayName or best.name, count = tonumber(best.count) or 0 } end
-  -- (a partial AE2 view: no list - try the plain Minecraft id)
-  if #items == 0 and FACTORY and FACTORY.variants then
-    local id = "minecraft:" .. want:gsub(" ", "_")
-    local okV, v = pcall(FACTORY.variants, id)
-    if okV and type(v) == "table" and (tonumber(v.plain) or 0) > 0 then return { id = id, name = want, count = tonumber(v.plain) } end
+  -- NOT IN THE LIST (the owner: "someone asked for a diamond and it said it is not in the storage - I have 13m"): the
+  -- owner's AE2 is read in PARTIAL VIEW (getItems breaks on one modded item), the list there holds only what the tag
+  -- sweeps / the rotating name lookups found so far. Ask the bridge for the item itself: the plain Minecraft id, then
+  -- every known id (ME_NAMES, the list) whose name fits. (Before: only when the list was EMPTY.)
+  if not bridge or not callx then return nil end
+  local cands, seenC = {}, {}
+  local function addC(id) if type(id) == "string" and not seenC[id] and #cands < 8 then seenC[id] = true cands[#cands + 1] = id end end
+  addC("minecraft:" .. want:gsub(" ", "_"))
+  addC("minecraft:" .. name:gsub(" ", "_"))
+  local function fits(id)
+    local path = low(tostring(id):gsub("^.-:", ""):gsub("_", " "))
+    local ps = {}
+    for w in path:gmatch("%S+") do ps[#ps + 1] = singular(w) end
+    return table.concat(ps, " ") == want
+  end
+  for n in pairs(ME_NAMES or {}) do if fits(n) then addC(n) end end
+  for _, it in ipairs(items) do if fits(it.name) then addC(it.name) end end
+  for _, id in ipairs(cands) do
+    local okP, okI, it = pcall(callx, bridge, "getItem", { name = id })
+    if okP and okI and type(it) == "table" and it.name then
+      local n = tonumber(it.count or it.amount) or 0
+      if n > 0 then return { id = it.name, name = it.displayName or (prettify and prettify(it.name)) or want, count = n } end
+    end
   end
   return nil
 end

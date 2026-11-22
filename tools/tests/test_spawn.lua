@@ -226,6 +226,28 @@ wish("yes")
 for i = #VOICE.giftQueue(), 1, -1 do table.remove(VOICE.giftQueue(), i) end
 a = wish("base i wish for a diamond")
 CHECK(a:lower():find("tomorrow", 1, true), "3 wishes a day, then: " .. a)
+-- PARTIAL VIEW (the owner: "someone asked for a diamond and it said it is not in storage - I have 13m"): the item
+-- list has no diamonds (the tag sweeps / name lookups did not reach them yet) - the bridge itself is asked
+do
+  local items0, bridge0, wish0 = state.me.items, bridge, CONFIG.voice.wishDaily
+  state.me.items = { { name = "minecraft:dirt", display = "Dirt", count = 9000 } }
+  state.me.partial = true
+  bridge = { getItem = function(f)
+    if type(f) == "table" and f.name == "minecraft:diamond" then return { name = "minecraft:diamond", displayName = "Diamond", count = 13000000 } end
+    return nil
+  end }
+  setSetting("voice.wishDaily", 100)
+  for i = #VOICE.giftQueue(), 1, -1 do table.remove(VOICE.giftQueue(), i) end
+  SP.wpend = {}
+  a = wish("base can i have a diamond")
+  CHECK(a:find("1 Diamond", 1, true) and a:lower():find("yes", 1, true), "partial view, diamonds not in the list: AE2 is asked - " .. a)
+  SP.wpend = {}
+  a = wish("base i wish for 5 unobtainiums")
+  CHECK(a:lower():find("unobtainium", 1, true) and not SP.wpend.steve, "... a thing AE2 really does not have: still says so - " .. a)
+  state.me.items, bridge, state.me.partial = items0, bridge0, nil
+  setSetting("voice.wishDaily", wish0 or 3)
+  SP.wpend = {}
+end
 -- the owner wishes nothing
 state.players[1].p = { x = SPAWN.x, y = 70, z = SPAWN.z }
 told = {}
