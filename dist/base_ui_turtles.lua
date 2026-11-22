@@ -283,7 +283,7 @@ else info = "No exit route: put a turtle at home, RECORD, drive it out, SAVE" en
 text(ix, r5 + 3, trunc(info, iw), t.rec and C.warn or C.dim, C.panel)
 
 local r6 = r5 + 4
-if (not TT.online(t)) or t.stuck then
+if (not TT.online(t)) or TT.isStuck(t) then
 local hw2 = math.floor((iw - 1) / 2)
 actButton(ix, r6, hw2, 2, t.rescuer and "RESCUE ON ITS WAY" or "SEND RESCUE TURTLE",
 { kind = "trescue", name = tostring(t.id), count = 0 }, true, C.warn)

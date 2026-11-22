@@ -501,7 +501,17 @@ end
 
 
 local memFree
+
+
+
+MOVE_FAIL = { "blocked", "could not reach", "no progress", "going in circles", "out of fuel", "gave up after", "no way" }
+function isMoveFail(msg)
+msg = tostring(msg or ""):lower()
+for _, w in ipairs(MOVE_FAIL) do if msg:find(w, 1, true) then return true end end
+return false
+end
 function moved(dx, dy, dz)
+S.stuck = nil
 if S.pos and S.pos.x then
 S.pos.x, S.pos.y, S.pos.z = S.pos.x + dx, S.pos.y + dy, S.pos.z + dz
 save()
@@ -3787,8 +3797,8 @@ S.job = nil
 trailSave()
 if ok or tostring(msg):find("^stopped") then
 S.stuck = nil
-elseif j.cmd == "goto" or j.cmd == "home" or j.cmd == "move" or j.cmd == "survey"
-or j.cmd == "surveypts" or j.cmd == "rescue" then
+elseif (j.cmd == "goto" or j.cmd == "home" or j.cmd == "move" or j.cmd == "survey"
+or j.cmd == "surveypts" or j.cmd == "rescue") and isMoveFail(msg) then
 S.stuck = msg
 local fix = gpsCheck()
 if fix then msg = msg .. " (" .. fix .. ")" end

@@ -451,6 +451,17 @@ PneumaticCraft drone rides, turtle mapping/surveys, and an AE2 ME network view.
   counts, fuel total + lowest, program, survey progress, mining teams, NEEDS A
   LOOK list - tap = select); tapping the selected turtle again deselects. List
   fuel colours by amount (<1000 red, <5000 yellow), not by share of the tank.
+  STUCK MEANS COULD NOT MOVE (the owner: "some turtles report that they cannot move when they can"): node.lua set
+  S.stuck for ANY failed goto / home / move / survey / surveypts / rescue - "fuel only for the way home", "low fuel",
+  "position/facing unknown", "the offered home is not free", "no home set", "area too big" - so the base showed STUCK,
+  left the turtle out of fuel / home trips (homeTick) and sent the rescuer (problemOf). Now MOVE_FAIL / isMoveFail
+  (node.lua; the SAME list as TT.MOVE_FAIL: blocked, could not reach, no progress, going in circles, out of fuel, gave up
+  after, no way) decides; moved() clears S.stuck at any step; a non-move failure leaves it as it was. Base TT.isStuck(t)
+  (the words - also for turtles on an older program - and not moved > 3 blocks from stuckPos, y too) everywhere: status,
+  problemOf (TT.problemOf for tests), homeTick fuel / home / home-dig, map marker, the RESCUE button. NOT MOVING: QUIET_TASK
+  also building / starting the new turtle / crafting / scanning / looking around / checking the core / driven by hand /
+  restarted / duplicate (they stand still on purpose - stallTick STOPPED them after 3 min). FINDING A WAY says "going
+  round something in its way". test_turtle_status.lua, tools/tests/node_stuck.lua.
 - Route planner (node.lua astar): a sideways direction change costs 0.4 (a
   turn), opposite 0.8 (HD[k] = last sideways direction); h weighted 1.001
   (tie-break). tools/navsim/world.lua: turns cost time and are counted; maze /

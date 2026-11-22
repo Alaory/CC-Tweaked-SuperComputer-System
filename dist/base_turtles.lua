@@ -300,7 +300,28 @@ local minFuel = tonumber(CONFIG.map.surveyMinFuel) or 500
 if t and t.endless then return minFuel end
 return math.max(minFuel, TT.homeCost(t) + (tonumber(CONFIG.map.batchFuel) or 800))
 end
-local QUIET_TASK = { "waiting", "refuel", "gps", "install" }
+
+
+local QUIET_TASK = { "waiting", "refuel", "gps", "install", "building", "starting the new turtle", "crafting", "scanning",
+"looking around", "checking the end automata", "driven by hand", "restarted", "duplicate" }
+
+
+
+
+TT.MOVE_FAIL = { "blocked", "could not reach", "no progress", "going in circles", "out of fuel", "gave up after", "no way" }
+function TT.isStuck(t)
+if not (t and t.stuck) then return false end
+local s = tostring(t.stuck):lower()
+local mv = false
+for _, w in ipairs(TT.MOVE_FAIL) do if s:find(w, 1, true) then mv = true break end end
+if not mv then return false end
+
+local sp, p = t.stuckPos, t.pos
+if sp and sp.x and p and p.x and math.abs(p.x - sp.x) + math.abs((p.y or 0) - (sp.y or 0)) + math.abs(p.z - sp.z) > 3 then
+return false
+end
+return true
+end
 local TROUBLE_TASK = { "backing up", "retracing", "planning a route", "following a planned route" }
 function TT.stillFor(t)
 return os.clock() - math.max(t.movedAt or os.clock(), t.taskAt or 0)
@@ -387,15 +408,11 @@ local low = task:lower()
 local fuel = tonumber(t.fuel)
 if fuel and fuel < 20 then return "nofuel", "NO FUEL", C.bad, "fuel " .. fuel .. " - it cannot move" end
 
-if t.stuck and not busy then
-local sp, p = t.stuckPos, t.pos
-local moved = sp and p and p.x and (math.abs(p.x - sp.x) + math.abs(p.z - sp.z) > 3)
-if not moved then return "stuck", "STUCK", C.bad, tostring(t.stuck) end
-end
+if not busy and TT.isStuck(t) then return "stuck", "STUCK", C.bad, tostring(t.stuck) end
 if t.held then return "held", "STOPPED", C.warn, "stopped by you - any button (e.g. PING) releases it" end
 if busy then
 for _, w in ipairs(TROUBLE_TASK) do
-if low:find(w, 1, true) then return "trouble", "FINDING A WAY", C.warn, "blocked - " .. task end
+if low:find(w, 1, true) then return "trouble", "FINDING A WAY", C.warn, "going round something in its way - " .. task end
 end
 local quiet = false
 for _, w in ipairs(QUIET_TASK) do if low:find(w, 1, true) then quiet = true end end
@@ -1975,7 +1992,7 @@ t.offlineNoted = nil
 local idle = (t.task == nil or t.task == "idle")
 local fuel = tonumber(t.fuel)
 if fuel and fuel < 20 then t.lowFuelSince = t.lowFuelSince or now else t.lowFuelSince = nil end
-if t.stuck and idle then t.stuckSince = t.stuckSince or now else t.stuckSince = nil end
+if idle and TT.isStuck(t) then t.stuckSince = t.stuckSince or now else t.stuckSince = nil end
 
 if t.lowFuelSince and now - t.lowFuelSince > 60 and not (DW and DW.fuelBusy and DW.fuelBusy(t)) then return "fuel" end
 
@@ -1991,6 +2008,7 @@ local after = tonumber(CONFIG.turtles.rescueAfter) or 180
 if (os.epoch("utc") - t.seenEpoch) / 1000 < after then return nil end
 return "lost"
 end
+TT.problemOf = problemOf
 
 
 function TT.patrolTick()
@@ -2311,7 +2329,7 @@ TT.log(t, "A COPY on a trip ('" .. tostring(t.task) .. "') - stopped: moving it 
 TT.stayTwin(t) .. "'s chunk")
 end
 end
-if low and fc and fc.x and idle and on and t.pos and t.pos.x and not t.held and not t.anchor and not t.stuck
+if low and fc and fc.x and idle and on and t.pos and t.pos.x and not t.held and not t.anchor and not TT.isStuck(t)
 and not t.rescuer and not TT.fuelTrip and now - t.idleSince > 10
 and (not t.fuelTripAt or now - t.fuelTripAt > 600) then
 t.fuelTripAt = now
@@ -2326,7 +2344,7 @@ end
 local wait = low and 10 or idleHome
 if low ~= "wait" and idleHome > 0 and idle and t.home and t.pos and t.pos.x and not t.held and not t.anchor and not t.party and not t.dwAnchor
 and not TT.copyStays(t)
-and not t.stuck and not t.rescuer and now - t.idleSince > wait
+and not TT.isStuck(t) and not t.rescuer and now - t.idleSince > wait
 and (not t.idleHomeAt or now - t.idleHomeAt > 600) then
 local away = math.abs(t.pos.x - t.home.x) + math.abs(t.pos.y - t.home.y) + math.abs(t.pos.z - t.home.z)
 local needed = false
@@ -2346,8 +2364,9 @@ end
 
 
 
-if not t.stuck then t.digOutTries = nil end
-if on and idle and t.stuck and t.home and not t.held and not t.anchor and not t.missing
+local stuckNow = TT.isStuck(t)
+if not stuckNow then t.digOutTries = nil end
+if on and idle and stuckNow and t.home and not t.held and not t.anchor and not t.missing
 and tostring(t.gear or ""):find("pick", 1, true)
 and now - (t.idleSince or now) > 30 and (t.digOutTries or 0) < 3
 and (not t.digOutAt or now - t.digOutAt > 600) then

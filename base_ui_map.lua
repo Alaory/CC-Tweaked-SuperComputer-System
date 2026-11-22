@@ -31,7 +31,7 @@ end
 -- a trip / idle / offline = its LAST known spot / stuck)
 function mapMarker(t)
   if TT and TT.online and not TT.online(t) then return "x", colors.purple end   -- (grey slots are theme colours)
-  if t.stuck then return "!", C.bad end
+  if TT and TT.isStuck and TT.isStuck(t) then return "!", C.bad end
   local task = tostring(t.task or "idle")
   if task:find("^survey") or task:find("^scann") then return "T", C.good end
   if task == "idle" or task == "" or task:find("^waiting") then return "T", colors.orange end

@@ -283,7 +283,7 @@ local function drawCard(x, y, w, t)
   text(ix, r5 + 3, trunc(info, iw), t.rec and C.warn or C.dim, C.panel)
   -- rescue
   local r6 = r5 + 4
-  if (not TT.online(t)) or t.stuck then
+  if (not TT.online(t)) or TT.isStuck(t) then
     local hw2 = math.floor((iw - 1) / 2)
     actButton(ix, r6, hw2, 2, t.rescuer and "RESCUE ON ITS WAY" or "SEND RESCUE TURTLE",
               { kind = "trescue", name = tostring(t.id), count = 0 }, true, C.warn)

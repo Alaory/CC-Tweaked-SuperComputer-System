@@ -203,6 +203,11 @@ def _():
     rc, out = run(["lua5.3", "tools/tests/node_fuelhome.lua", "node.lua"])
     return rc == 0, out.strip()
 
+@check("node", "STUCK only when a trip could not move (node_stuck.lua)")
+def _():
+    rc, out = run(["lua5.3", "tools/tests/node_stuck.lua", "node.lua"])
+    return rc == 0, out.strip()
+
 @check("node", "your commands pause a job, back after 2 min (node_hand.lua)")
 def _():
     rc, out = run(["lua5.3", "tools/tests/node_hand.lua", "node.lua"])
