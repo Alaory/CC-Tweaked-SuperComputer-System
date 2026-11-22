@@ -2097,12 +2097,22 @@ local b = VOICE.base()
 local on = ownerOnline()
 local nowE = os.epoch("utc")
 if on then
-if VOICE.ownerWasOn == false or (VOICE.ownerWasOn == nil and b.lastOff and nowE - b.lastOff > 60000) then
+
+
+
+
+
+local returned = VOICE.ownerWasOn == false or (VOICE.ownerWasOn == nil and b.lastOff and nowE - b.lastOff > 60000 and
+(tonumber(b.ownerSeen) or 0) <= b.lastOff)
+if returned then
 b.backAt = nowE
 local since = b.lastOff or 0
+b.reportFrom = since
 local n = 0
 for _, v in pairs(b.visitors) do if (v.last or 0) > since then n = n + 1 end end
-if n > 0 or #b.msgs > 0 then b.report = true end
+local newMsgs = 0
+for _, m in ipairs(b.msgs) do if (tonumber(m.at) or 0) > since then newMsgs = newMsgs + 1 end end
+if n > 0 or newMsgs > 0 then b.report = true end
 local heard, people = VOICE.heardSince(since)
 if #heard > 0 then
 b.report = true
@@ -2442,7 +2452,9 @@ for _, v in pairs(b.visitors) do if (v.last or 0) > since then list[#list + 1] =
 VOICE.saveMem()
 local line = "Welcome back, " .. name .. "."
 if #list > 0 then line = line .. " While you were away, " .. plural(#list, "visitor", "visitors") .. " came: " .. table.concat(list, ", ") .. "." end
-if #b.msgs > 0 then line = line .. " " .. plural(#b.msgs, "message", "messages") .. " for you. Ask me: " .. VOICE.botName():lower() .. ", messages." end
+local newMsgs = 0
+for _, m in ipairs(b.msgs) do if (tonumber(m.at) or 0) > (b.reportFrom or since) then newMsgs = newMsgs + 1 end end
+if newMsgs > 0 then line = line .. " " .. plural(newMsgs, "new message", "new messages") .. " for you. Ask me: " .. VOICE.botName():lower() .. ", messages." end
 local heard, people = VOICE.heardSince(b.heardFrom or since)
 if #heard > 0 then
 local names, seenN = {}, {}

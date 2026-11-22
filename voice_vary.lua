@@ -30,7 +30,7 @@ local SKIP = { "menu", "games", "joke", "story", "fact", "roast", "compliment", 
   "madlibs", "countgame", "hackgame", "pirate", "robotmode", "cowboy", "knight", "normal", "taxi", "taxihome", "taxibase",
   "lore_modtip", "poem", "wotd", "qotd", "dailyfortune", "realfact", "secretword", "random", "petname", "basename", "teamname",
   "heroname", "buildidea", "whattodo", "motto", "randommob", "randomitem", "love", "alive", "spirit", "tellsomeone", "sign",
-  "book", "rate", "wish2", "favnumber", "joketoo", "talktome" }
+  "book", "rate", "wish2", "favnumber", "joketoo", "talktome", "diss" }
 local KIND = {}
 for _, id in ipairs(DATA) do KIND[id] = "data" end
 for _, id in ipairs(INFO) do KIND[id] = "info" end

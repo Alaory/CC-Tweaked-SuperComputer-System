@@ -453,7 +453,7 @@ ENV.data.ents = { { kind = "player", name = owner, dist = 2, hp = 20, max = 20 }
 VOICE.greeted, VOICE.seenNear = {}, {}               -- (away for days: not seen near the base since)
 CLOCK = CLOCK + 2
 VOICE.tick()
-CHECK(said():find("While you were away, 1 visitor came: Alex", 1, true) and said():find("1 message for you", 1, true),
+CHECK(said():find("While you were away, 1 visitor came: Alex", 1, true) and said():find("1 new message for you", 1, true),
       "the owner is told who came and that there are messages: " .. said())
 CHECK(askAs(owner, "base messages"):find("Alex", 1, true) and told[1]:find("bread", 1, true), "base, messages -> the visitor's message")
 CHECK(askAs(owner, "base clear messages"):find("gone", 1, true) and #B.msgs == 0, "clear messages")

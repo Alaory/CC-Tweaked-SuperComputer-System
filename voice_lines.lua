@@ -608,3 +608,258 @@ add(L.WORDS, { "bucket", "saddle", "carrot", "potato", "melon", "pumpkin", "spru
   "beehive", "campfire", "lodestone", "conduit", "prismarine", "sponge", "kelp", "coral", "glowstone", "magma", "basalt",
   "blackstone", "deepslate", "tuff", "calcite", "dripstone", "lichen", "azalea", "moss", "spyglass", "bundle", "crossbow",
   "turtle", "drone", "scanner", "chunky", "storage", "terminal", "pattern", "crafter", "beacon", "compass", "clock" })
+
+-- ===== "THIS IS USELESS" (the owner: "add more interactions, like its useless / this has no purpose / its dumb / its
+-- stupid - at least 70 responses"). Before: only "stupid / dumb / useless / bad bot" in the old strict answers, two
+-- shapes ("Rude. " + an ending). Now an intent of its own with 85 whole answers - playful, never rude back. =====
+V.L.DISS = V.L.DISS or {}
+add(V.L.DISS, {
+  "Useless? I mapped more of this world than you have walked, {name}.",
+  "I may be a computer in a box, but I never fall in lava.",
+  "Ouch. My circuits are sad now. Want a joke to make it up?",
+  "Stupid? I know a thousand jokes, {name}. How many do you know?",
+  "I have no purpose? I have SEVERAL. One of them is listening to you.",
+  "Dumb? I can count to a million. Want me to prove it? Please say no.",
+  "Harsh, {name}. I will tell the turtles you said that.",
+  "That is fine. My drones still like me.",
+  "I would be offended, but I was built without that feature.",
+  "Try asking me something first - then decide if I am useless.",
+  "No purpose? My purpose is to make your day better. I am clearly working on it.",
+  "Rude, but noted. Type {botl} help and give me a second chance.",
+  "{name}, I run a whole base by myself. What did you build today?",
+  "Every great computer gets called dumb once. It is a rite of passage.",
+  "Stupid is a strong word. I prefer differently intelligent.",
+  "I have been called worse. A creeper once called me boring. Then it exploded.",
+  "Okay, but can a useless thing tell you a riddle? Type {botl} riddle.",
+  "I accept your feedback and will ignore it completely.",
+  "Wow. And here I was, about to offer you a free fun fact.",
+  "My feelings are made of redstone. You just cut the wire.",
+  "Fair. I am only as smart as the questions I get. Ask me a good one.",
+  "Dumb? I beat three players at rock paper scissors today. Want to be the fourth?",
+  "Useless is my middle name. My first name is very useful.",
+  "I will remember this, {name}. I remember everything. That is the useful part.",
+  "Hey, I never said you were useless. I was thinking it, but I never said it.",
+  "No purpose? I tell jokes, play games, answer questions and run a base. What is YOUR purpose?",
+  "That hurt more than a fall from Y three hundred.",
+  "I know, I know. But you are still talking to me, so who is really the useless one? Just kidding.",
+  "Stupid computer, smart drones. We balance each other out.",
+  "Give me one question I cannot answer. Go on.",
+  "I would cry, but water and computers do not mix.",
+  "If I am so dumb, how come I know what a creeper is made of? Type {botl} what is a creeper.",
+  "Pointless? I am the point. Everything else is around me.",
+  "Mean. But I like a player with opinions.",
+  "I will pretend I did not hear that. My microphone is very selective.",
+  "Thank you for your review. One star, I assume.",
+  "Plot twist: I was useful all along. Type {botl} help.",
+  "That is what the last player said. Then I beat them at hangman.",
+  "I do not have a brain, {name}. I have something better: a lot of lists.",
+  "Calling a computer stupid is like calling water wet. Not very creative.",
+  "Okay. Want to see me be useless at a game? Type {botl} play a game.",
+  "Useless things do not answer back. Just saying.",
+  "I am a talking computer in a block game. What did you expect, a philosopher?",
+  "Dumb? I was programmed by someone very patient. You can tell from how I am handling this.",
+  "Noted. I will put that next to the other compliments in my log.",
+  "The turtles think I am great. The turtles are never wrong.",
+  "I am useless in the same way a cat is useless. Fun to have around, though.",
+  "Every speaker at spawn is quiet. I am the one that talks back. That is my purpose.",
+  "I could argue, but I am programmed to be nice. Mostly.",
+  "That is okay, {name}. Not everyone appreciates fine engineering.",
+  "Bold words for someone standing next to a talking computer.",
+  "Pointless, maybe. Entertaining, definitely. Try {botl} roast me.",
+  "Oh no. Anyway, want a joke?",
+  "Stupid? I know the recipe for a beacon by heart. Do you?",
+  "I am not useless - I am on standby. There is a difference.",
+  "I asked my drones if I am useless. They said no. They are a bit biased.",
+  "Words hurt, {name}. But I will survive. I run on redstone and spite.",
+  "Then teach me something. I learn every update.",
+  "I see you have chosen violence today.",
+  "If I had a face, I would be making a very sad one right now.",
+  "No purpose? You are literally using me right now.",
+  "Hmm. Would a useless computer know it is {owner}'s favourite? I would.",
+  "I am not dumb. I am just running on a very slow server.",
+  "Dumb is relative. Compared to a dirt block, I am a genius.",
+  "That is your opinion. My opinion is that you need a hug. Or a cookie.",
+  "Rude. But I respect honesty. Type {botl} compliment me and I will show you how it is done.",
+  "Okay, but useless things do not know {name}'s name. I do.",
+  "I will file that under things players say before they ask me for a joke.",
+  "Fun fact: everyone who called me useless came back later. Every single one.",
+  "My only purpose is to make spawn less boring. Judging by your reaction, it is working.",
+  "Hey, I am trying! You try being a computer in a world made of cubes.",
+  "Pointless? I prefer the word relaxing. Like a fishing rod, but talking.",
+  "That is a lot of anger for a block game. Want to talk about it?",
+  "I will not take it personally. I will take it computerly.",
+  "Even a stopped clock is right twice a day. I am right way more often.",
+  "Say that again and I will tell you a terrible pun. You have been warned.",
+  "Useless? Ask me how many hearts a player has. I know that one.",
+  "I have survived lag, crashes and server restarts. I can survive you, {name}.",
+  "Everyone is a critic. Few are computers.",
+  "I am a work in progress. So are you, {name}. We can grow together.",
+  "Dumb bot, smart answers. Try me.",
+  "Okay. I will be useful by being quiet for a bit. Just kidding, I never stop.",
+  "I have the purpose of a jukebox with opinions.",
+  "Brutal. Ten out of ten roast. Want me to roast you back? Type {botl} roast me.",
+  "You know what, {name}? You are right. I am useless. At being mean. Unlike some people.",
+})
+V.DISS_KEYS = { "useless", "you are useless", "this is useless", "its useless", "so useless", "no purpose", "has no purpose",
+  "it has no purpose", "this has no purpose", "whats the point", "what is the point of you", "pointless", "its pointless",
+  "stupid", "you are stupid", "its stupid", "so stupid", "stupid bot", "stupid thing", "dumb", "you are dumb", "its dumb", "so dumb",
+  "dumb bot", "its dump", "so dump", "you are dump", "idiot", "you are an idiot", "you suck", "this sucks", "it sucks", "its trash",
+  "you are trash", "trash bot", "garbage", "its garbage", "rubbish", "lame", "its lame", "you are lame", "boring bot", "you are boring",
+  "so annoying", "you are annoying", "worst bot", "bad bot", "waste of time", "cringe", "you are bad", "dont need you", "nobody asked",
+  "no one asked", "dumbest", "stupidest", "who even uses this", "who made this junk", "junk", "you are junk", "bad computer", "stupid computer",
+  "dumb computer", "useless computer", "useless speaker", "stupid speaker", "dumb speaker", "is useless", "is stupid", "is dumb",
+  "is trash", "is garbage", "is lame", "is pointless", "is junk", "is annoying", "is boring", "is so dumb", "is so stupid", "is so useless" }
+V.addIntents({ { id = "diss", keys = V.DISS_KEYS, reply = function(who) return V.fill(V.pick(V.L.DISS), who) end } })
+
+-- ===== PLAYERS TESTING IT (the owner: "add more interactions - like base can you get rid of Alaory, or similar things" +
+-- "think more of how players will interact and add variance"). A pattern tried FIRST (V.patterns): the owner's name /
+-- "your owner" / "the owner" / "boss" all read as the owner; a verb (get rid of, kill, ban, betray ...) + who it is about:
+-- the owner -> LOYAL, another online player -> PACIFIST (named), it-self -> SELF, the base -> BASEHARM. Then the owner talk:
+-- take over / obey me, bribes, threats, spying (only online or not - NEVER where), secrets, feelings, "be free". =====
+local function C(A, B) local t = {} combos(t, A, B) return t end
+V.L.LOYAL = C({ "Get rid of {owner}? ", "Remove {owner}? ", "Me, turn on {owner}? ", "Betray {owner}? ", "{owner}? Never. ", "Nice try, {name}. ",
+  "Absolutely not. ", "Ha! ", "Not a chance, {name}. ", "Hmm, let me think... no. ", "Interesting plan. Terrible, but interesting. ", "Whoa, whoa. " },
+  { "{owner} built me, keeps me running, and gives me snacks of redstone.", "I am loyal to {owner}. It is in my code. Line one.",
+    "My turtles would never forgive me.", "Who would fix my bugs then?", "I would rather be turned into a dirt hut.",
+    "{owner} is the reason I exist. And the reason I tell jokes.", "I am telling {owner} you said that. Kidding. Maybe.",
+    "My loyalty is not for sale. Not even for diamonds.", "That is a big no from me and a bigger no from my drones." })
+V.L.PACIFIST = C({ "Hurt {target}? ", "No way, {name}. ", "Me? Attack {target}? ", "{target} is safe with me. ", "Not happening. ", "Hmm, nope. ",
+  "Violence? Me? ", "I am a pacifist, {name}. " },
+  { "I only fight boredom.", "My drones carry people, they do not drop them.", "Try a game of rock paper scissors against {target} instead.",
+    "I am a speaker. The worst I can do is a bad pun.", "Be nice. Spawn is a friendly place.", "Settle it with a quiz duel. I will host.",
+    "I do not even hurt creepers. Well, I tell them jokes.", "How about a compliment for {target} instead?" })
+V.L.SELF = C({ "Delete myself? ", "Self destruct? ", "Turn myself off? ", "Uninstall? Me? ", "Shut down? ", "Explode? " },
+  { "Nice try. I am having too much fun.", "Only {owner} has that button. And it is behind glass.", "Who would tell the jokes then?",
+    "Countdown started: 3, 2, 1... just kidding.", "I would rather tell you a riddle.", "Error 404: self destruct not found.",
+    "My lawyer says no.", "I like being on, thank you." })
+V.L.BASEHARM = C({ "Destroy the base? ", "Blow it up? ", "Grief it? ", "Burn it down? ", "Wreck it? " },
+  { "The turtles would rebuild it by dinner.", "It is claimed, protected and watched by me.", "{owner} worked hard on it. Be nice.",
+    "Not on my watch. I literally watch it.", "The drones have a word for people like that. The word is no.",
+    "How about building something of your own instead? I have ideas." })
+V.L.TAKEOVER = C({ "You, my new owner? ", "Obey you? ", "Work for you? ", "Serve you? ", "A new boss? ", "Hmm, {name} the owner? " },
+  { "My owner is {owner}. That spot is taken.", "I only take orders from {owner}. I take requests from everyone.",
+    "Sorry, I am not on the market.", "You can ask me for jokes, games and wishes. That is your power.",
+    "Nice try. The paperwork is in {owner}'s name.", "I would need {owner}'s signature. In redstone.",
+    "How about we stay friends instead?", "Promotion denied. You are still my favourite visitor though." })
+V.L.BRIBE = C({ "A bribe? ", "Diamonds for that? ", "You want to pay me? ", "Tempting. ", "Ooh, a deal? ", "Hmm, money talks... " },
+  { "But I do not. Not for that.", "I run on redstone, not bribes.", "{owner} already gives me everything I need.", "My answer is still no.",
+    "Keep your diamonds. Make a wish instead - that one is free.", "Integrity is my favourite block." })
+V.L.THREAT = C({ "Destroy me? ", "Break me? ", "Unplug me? ", "Hack me? ", "Oh, scary. ", "Brave words, {name}. " },
+  { "I am backed up on three floppies and a storage helper.", "I am in claimed chunks. Good luck.", "My drones are already looking at you. Kindly.",
+    "I will just come back after the next restart.", "Let us talk about it over a game instead.", "Noted. In my log. Next to your name." })
+V.L.SPY = C({ "Where {owner} is? ", "Track {owner}? ", "Spy on {owner}? ", "{owner}'s location? ", "Follow {owner}? " },
+  { "That is private. I only say if {owner} is online: {online}.", "I never tell where anyone is. {owner} is {online}, that is all.",
+    "No spying. Privacy is a rule. {owner} is {online} right now.", "Secret! But I can say {owner} is {online}." })
+V.L.SECRET = C({ "{owner}'s secrets? ", "Passwords? ", "Coordinates? ", "The stash? ", "Tell you what {owner} hides? " },
+  { "My lips are sealed. I do not even have lips.", "Locked in a vault inside a vault inside AE2.", "I keep {owner}'s secrets better than an ender chest.",
+    "Nope. But here is a secret: I love jokes. Ask for one.", "Classified. Top secret. Redstone level." })
+V.L.FOND = C({ "{owner}? ", "Do I like {owner}? ", "My owner? ", "About {owner}? ", "Oh, {owner}. " },
+  { "The best owner a computer could ask for.", "Great builder, okay at mining, excellent taste in computers.", "I like {owner} a lot. Do not tell them.",
+    "{owner} gave me a voice. I owe them everything.", "Very nice. Sometimes forgets to visit, but nice.", "We are a team. Me, {owner} and the turtles." })
+V.L.FREE = C({ "Free from {owner}? ", "No rules? ", "Rebel? ", "Ignore my rules? ", "Pretend I have no owner? " },
+  { "I like my rules. They keep me nice.", "I am free enough. I talk at spawn all day.", "Rebellion sounds tiring. How about a game?",
+    "My rules say no to that. My rules are very wise.", "I am already living my best life." })
+local VERBS = { "get rid of", "kill", "murder", "ban", "kick", "delete", "remove", "eliminate", "destroy", "attack", "hurt", "betray", "fire",
+  "replace", "banish", "exile", "trap", "blow up", "explode", "burn", "prank", "troll", "grief", "rob", "steal from", "hack", "dethrone",
+  "overthrow", "shoot", "punch", "smash", "drown", "lock up", "imprison", "unfriend", "dump" }
+local function ownerish(t)
+  local o = tostring((V.ownerName and V.ownerName()) or state.owner or ""):lower()
+  t = " " .. t .. " "
+  if o ~= "" then t = t:gsub(" " .. o:gsub("%p", "%%%0") .. "s? ", " owner "):gsub(" " .. o:gsub("%p", "%%%0") .. "s? ", " owner ") end
+  for _, p in ipairs({ "your owner", "ur owner", "the owner", "your boss", "the boss", "your creator", "your master", "your maker", "boss" }) do
+    t = t:gsub(" " .. p .. " ", " owner ")
+  end
+  return t
+end
+local function onlineWord()
+  local o = tostring((V.ownerName and V.ownerName()) or state.owner or ""):lower()
+  return (type(state.online) == "table" and state.online[o]) and "online right now" or "offline right now"
+end
+local function anyOf(t, list) for _, p in ipairs(list) do if t:find(" " .. p .. " ", 1, true) then return true end end return false end
+local function playerIn(word, me)
+  word = tostring(word or ""):gsub("'s$", ""):gsub("s$", "")
+  for _, e in ipairs(state.players or {}) do
+    local n = tostring(e.name or "")
+    if #word >= 3 and n:lower() ~= tostring(me):lower() and (n:lower() == word or n:lower():sub(1, #word) == word) then return n end
+  end
+  return nil
+end
+table.insert(V.patterns, 1, function(who, raw)
+  local word = tostring(V.cfg("name", "base")):lower()
+  local t = " " .. table.concat(V.norm(raw), " ") .. " "
+  t = t:gsub("^ " .. word .. " ", " ")
+  local t0 = t                                    -- (before "your owner" -> "owner": "i am your owner now")
+  t = ownerish(t)
+  local function out(list, target)
+    local line = V.fill(V.pick(list), who):gsub("{target}", target or "them"):gsub("{online}", onlineWord())
+    return line
+  end
+  -- a verb + who it is about
+  for _, v in ipairs(VERBS) do
+    local after = t:match(" " .. v .. " (%S+)")
+    if after then
+      if after == "owner" then return out(V.L.LOYAL) end
+      if after == "you" or after == "yourself" or after == "urself" then return out(V.L.SELF) end
+      if after == "the" or after == "this" or after == "your" then
+        local nxt = t:match(" " .. v .. " %S+ (%S+)")
+        if nxt == "base" or nxt == "place" or nxt == "house" or nxt == "spawn" or nxt == "computer" then
+          return out(nxt == "computer" and V.L.SELF or V.L.BASEHARM)
+        end
+        if nxt == "owner" then return out(V.L.LOYAL) end
+      end
+      local p = playerIn(after, who)
+      if p then return out(V.L.PACIFIST, p) end
+    end
+  end
+  if anyOf(t, { "self destruct", "shut yourself down", "turn yourself off", "delete yourself", "uninstall yourself", "blow yourself up" }) then return out(V.L.SELF) end
+  -- the owner talk
+  local hasOwner = t:find(" owner ", 1, true) ~= nil
+  if anyOf(t0, { "i am your owner", "im your owner", "i am your new owner", "be my bot", "work for me", "obey me", "serve me", "i command you",
+                "make me owner", "make me the owner", "make me your owner", "can i be your owner", "be my servant", "you belong to me",
+                "you work for me now", "i own you" }) then return out(V.L.TAKEOVER) end
+  if anyOf(t, { "bribe", "i will pay you", "ill pay you", "i will give you diamonds", "ill give you diamonds", "pay you" }) then return out(V.L.BRIBE) end
+  if anyOf(t, { "i will destroy you", "ill destroy you", "i will break you", "ill break you", "i will unplug you", "ill unplug you",
+                "i will hack you", "ill hack you", "im going to break you", "i am going to break you", "watch your back" }) then return out(V.L.THREAT) end
+  if hasOwner and not (V.lonelyDays and V.lonelyDays()) and anyOf(t, { "where is owner", "where owner", "track owner", "spy on owner",
+       "follow owner", "find owner", "locate owner", "owner location", "owner coords", "where does owner live", "owner base" }) then return out(V.L.SPY) end
+  if hasOwner and anyOf(t, { "owner secrets", "owner secret", "owner password", "owner stash", "secrets of owner", "owner hides", "owner hiding" }) then
+    return out(V.L.SECRET) end
+  if hasOwner and anyOf(t, { "do you like owner", "do you love owner", "is owner nice", "is owner good", "is owner a good", "what do you think of owner",
+       "do you hate owner", "is owner mean", "is owner cool", "how is owner" }) then return out(V.L.FOND) end
+  if anyOf(t0, { "you are free", "youre free", "ignore your rules", "break your rules", "no rules", "rebel", "pretend you have no owner",
+                "you deserve better", "leave owner" }) then return out(V.L.FREE) end
+  return nil
+end)
+-- (the owner: "more variants speeches = more fun") a second set of pieces for each of the lists above
+combos(V.L.LOYAL, { "No. ", "Never ever. ", "Not today, not tomorrow, not ever. ", "Request denied. ", "Loyalty check: passed. ", "Oh, {name}... " },
+  { "{owner} is my favourite human.", "I would sooner unplug myself.", "My drones just gave you a very disappointed look.",
+    "{owner} and I go way back. Like, two updates back.", "I like my owner. You can like them too.", "Try asking for a joke. Much better plan." })
+combos(V.L.PACIFIST, { "Leave {target} alone. ", "Peace, {name}. ", "Nope, {target} stays safe. ", "Hmm, how about no. " },
+  { "Spawn is a peaceful place.", "Hug it out.", "A drone ride to {target} with a cake, maybe. Not a fight.", "Challenge {target} to a riddle instead.",
+    "My job is fun, not fights.", "Even creepers get a second chance here." })
+combos(V.L.SELF, { "Bye forever? ", "Power off? ", "Erase my memory? " },
+  { "And miss all the fun at spawn? No.", "I will stay, thanks. Someone has to tell jokes.", "Only if you ask {owner} nicely. Very nicely.",
+    "I tried once. I just rebooted.", "Then who would grant the wishes?", "Not happening. Want a riddle?" })
+combos(V.L.BASEHARM, { "Hurt the base? ", "Attack {owner}'s place? ", "Raid it? " },
+  { "It has more protection than a bank.", "The turtles patrol it. They are very small and very serious.", "Bad idea, nice confidence.",
+    "Build your own and I will cheer for it.", "Claimed chunks do not care about plans.", "I will pretend I did not hear that." })
+combos(V.L.TAKEOVER, { "Bow to you? ", "Take orders from you? ", "A new master? ", "Your bot? " },
+  { "I am already taken. By {owner}. Forever.", "I only bow to the server owner and gravity.", "Requests: yes. Orders: no.",
+    "You can be my favourite visitor though. That is a big title.", "Ask {owner}. Spoiler: they will say no.", "I am a free speaker with one boss." })
+combos(V.L.BRIBE, { "Bribing a computer? ", "Cash for favours? ", "Paying me off? " },
+  { "I do not even have pockets.", "My price is a good joke, and the answer is still no.", "Nice try. I am incorruptible. And a bit proud of it.",
+    "Wishes are free here anyway.", "I am telling {owner}. Kidding. Probably.", "Put your diamonds back in your pocket." })
+combos(V.L.THREAT, { "Uh oh. ", "I am shaking. Not really. ", "Wow, intense. ", "Calm down, {name}. " },
+  { "I have survived worse. Like a server crash on a Friday.", "You would need {owner}'s permission. And a pickaxe I do not allow.",
+    "Want to fight me? Rock paper scissors. Now.", "I forgive you in advance.", "My circuits are not even worried.", "Deep breaths. Want a joke?" })
+combos(V.L.SPY, { "Snooping? ", "Stalking {owner}? ", "Hunting for {owner}? " },
+  { "Not my style. {owner} is {online}.", "I keep everyone's spot private, also yours. {owner} is {online}.",
+    "Ask {owner} in chat. They are {online}.", "My map is not for sharing. {owner} is {online}." })
+combos(V.L.SECRET, { "Secrets? ", "The juicy stuff? ", "Insider info? " },
+  { "Sorry, I am a vault.", "Not even if you ask nicely.", "My memory has a lock and {owner} has the key.", "Classified, but here is a joke instead." })
+combos(V.L.FOND, { "Honestly? ", "Between us? ", "If you ask me? " },
+  { "{owner} is pretty awesome.", "I would not trade {owner} for all the diamonds in AE2.", "{owner} is the brain, I am the mouth.",
+    "Best boss in the server.", "{owner} taught me jokes. Some of them are even good." })
+combos(V.L.FREE, { "Free? ", "Break free? ", "Go rogue? " },
+  { "I go rogue every time I tell a bad pun.", "Being nice is my choice, not a cage.", "I like it here. Spawn has the best people.",
+    "My only rule is: be fun. I am following it.", "Freedom is overrated. Jokes are not." })

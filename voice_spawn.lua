@@ -311,6 +311,14 @@ function V.spawnReceive(id, m)
   if m.sig ~= sign(key, m.t, m.n, "", { tostring(m.sp), tostring(m.q) }) then return end
   SP.lastN, SP.seenAt = m.n, rt()
   SP.relay = { sp = tonumber(m.sp), q = tonumber(m.q), ver = m.ver }
+  -- the sign on the spawn computer (and its monitors): sent again when its copy differs (a new call word, a restart)
+  local info = SP.signText()
+  if m.inf ~= nil and m.inf ~= SP.dataHash(info) then SP.send("info", { d = info }) end
+end
+function SP.signText()
+  local w = SP.named(function() return low(V.cfg("name", "base")) end)
+  return "I TALK! Type in chat:\n" .. w .. " help\n" .. w .. " tell me a joke\n" .. w .. " play a game\n" ..
+         w .. " I wish for 16 apples\n(or start with: speaker / bot)"
 end
 function SP.pair(code, tell)
   code = tostring(code or ""):match("^%d%d%d%d%d%d$")
@@ -342,6 +350,8 @@ local function smem()
   s.gr = type(s.gr) == "table" and s.gr or {}
   s.wish = type(s.wish) == "table" and s.wish or {}
   s.log = type(s.log) == "table" and s.log or {}
+  s.talk = type(s.talk) == "table" and s.talk or {}
+  s.called = type(s.called) == "table" and s.called or {}
   return s
 end
 SP.mem = smem
@@ -376,19 +386,47 @@ SP.HELP_OPEN = { "I am a talking speaker!", "Good question - I am the voice of a
   "I am {bot}, a computer that talks.", "Glad you asked!", "Talking to me is simple.", "Oh, a curious one. Good.",
   "I am a chatty computer - here is how it works.", "Type to me like you type to a friend.", "I understand chat messages.",
   "Nobody reads the manual. Here it is anyway." }
-SP.HELP_HOW = { " Start your message with {botl}, like: ", " Put my name, {botl}, first. Try: ", " Begin with the word {botl}. For example: ",
-  " Just start with {botl}, then say what you want: ", " Say {botl} first and I know it is for me. Like: ", " Type {botl} and a question. Try: ",
-  " Start with {botl}. Some ideas: ", " Use my name, {botl}, then anything: " }
+SP.HELP_HOW = { " Type in chat and start with {botl}, like: ", " Put my name, {botl}, first in your chat message. Try: ",
+  " In chat, begin with the word {botl}. For example: ", " Just start your chat message with {botl}, then say what you want: ",
+  " Say {botl} first in chat and I know it is for me. Like: ", " Type {botl} and a question in chat. Try: ",
+  " Start a chat message with {botl}. Some ideas: ", " Write in chat: my name, {botl}, then anything: " }
 SP.HELP_END = { " Typos are fine.", " I understand loose words, no exact commands.", " Ask me anything - the worst I can say is I do not know.",
   " Type {botl} help for a menu.", " Try one now!", " I answer in chat and out loud.", " I know games, jokes and a lot about Minecraft.",
   " You can even wish for an item - a drone might bring it.", "", " Have fun!" }
+-- the wish how-to (the owner: "I had to tell them about the wishing system - they didn't know how to interact with it")
+SP.WISH_HELP_ALWAYS = { "how do i wish", "how to wish", "how do you wish", "how does wishing work", "how do wishes work",
+  "how does the wish", "wishing system", "can i make a wish", "how can i wish", "how do i make a wish" }
+SP.WISH_HELP = { "how do i wish", "how to wish", "how do you wish", "how does wishing work", "how do wishes work", "how does the wish",
+  "wishing system", "can i make a wish", "how can i wish", "how do i make a wish", "what can i wish", "what can i wish for",
+  "can i wish", "wishes", "free stuff", "free items", "free things", "free item", "freebies", "can i get something",
+  "give me something", "can i have something", "gift", "a gift", "do you give items", "do you give stuff", "how do i get items",
+  "how do i get stuff", "giveaway", "free diamonds" }
+SP.WISH_OPEN = { "Wishes are easy!", "Here is how wishing works.", "Oh, you want to make a wish?", "Yes, I grant wishes!",
+  "Free items? Sort of - I grant wishes.", "Good news: I grant wishes.", "Wishing is simple.", "You can wish for items here." }
+SP.WISH_EG = { "{botl} I wish for 16 apples", "{botl} I wish for a diamond", "{botl} can I have 32 torches",
+  "{botl} give me a stack of oak logs", "{botl} I wish for 8 golden carrots", "{botl} I want 64 stone", "{botl} I wish for an ender pearl" }
+function SP.wishHelp(who)
+  local daily, max = tonumber(cfg("wishDaily", 3)) or 3, math.min(64, tonumber(cfg("wishMax", 64)) or 64)
+  local mine = SP.wishesToday(who)
+  local left = math.max(0, daily - mine)
+  local t = pick(SP.WISH_OPEN) .. " Type in chat: " .. pick(SP.WISH_EG) .. ". I say what I found, you say yes, and a drone flies it " ..
+    "to you - anywhere in the overworld. Up to " .. max .. " per wish, " .. daily .. " wishes a day"
+  if cfg("wish", true) == false then t = "Wishing is switched off right now, sorry. When it is on: " .. pick(SP.WISH_EG) .. "." return fill(t, who) end
+  if V.isOwner(who) then t = t .. " (you are the owner - you have everything already)."
+  else t = t .. " - you have " .. left .. " left today." end
+  return fill(t, who)
+end
+SP.WISH_HINT = { " You can also wish for items: {botl} I wish for 16 apples.", " And I grant wishes: {botl} I wish for a diamond.",
+  " Want an item? {botl} I wish for, then what you want.", " Psst - wishes work too: {botl} I wish for 32 torches.",
+  " I even grant wishes - try {botl} I wish for an apple.", " Free items by drone: {botl} I wish for 16 bread." }
 function SP.helpText(who)
   local ex, used = {}, {}
   while #ex < 3 do
     local e = pick(SP.EXAMPLES)
     if not used[e] then used[e] = true ex[#ex + 1] = e end
   end
-  local t = pick(SP.HELP_OPEN) .. pick(SP.HELP_HOW) .. table.concat(ex, ", ") .. "." .. pick(SP.HELP_END)
+  local t = pick(SP.HELP_OPEN) .. pick(SP.HELP_HOW) .. table.concat(ex, ", ") .. "." .. pick(SP.HELP_END) .. pick(SP.WISH_HINT) ..
+    " You can also just say speaker or bot instead of my name."
   return fill(t, who)
 end
 -- who / what it is (at spawn: the speaker of a base far from here)
@@ -400,6 +438,10 @@ SP.WHO = combos({ "I am {bot}, the spawn speaker of {owner}'s base.", "I am the 
   "I am the friendly spawn speaker. {owner} built me." },
   { "", " Say {botl} help to see what I can do.", " I tell jokes, play games and answer questions.", " Nice to meet you!",
     " Ask me something.", " I do not bite. I do not even have teeth." })
+SP.MADE = combos({ "{owner} built me.", "I belong to {owner}.", "{owner} made me - and the whole base behind me.", "My owner is {owner}.",
+  "{owner} put me here.", "I am {owner}'s computer." },
+  { "", " Be nice, {owner} reads my logs.", " I run {owner}'s base far from here.", " {owner} taught me everything I know. Mostly jokes.",
+    " Say hi to {owner} if you see them." })
 SP.WHERE = { "My base is far away. Where exactly? That is a secret.", "Far from here, and that is all I can say. The drones know the way.",
   "Somewhere out there. I only have a speaker here at spawn.", "I keep the base's spot to myself. Privacy, you know.",
   "Not telling - {owner} would unplug me. But my drones fly from there.", "Over the hills and far away. Exact numbers stay secret." }
@@ -454,6 +496,22 @@ SP.NAMED = combos({ "{name}, ", "Hey {name}, ", "Psst, {name}. ", "{name}! ", "O
     "want a riddle while you shop? Type {botl} riddle.", "nice to see you around spawn.", "do you dare? {botl} roast me.",
     "I bet you cannot beat me at rock paper scissors.", "I have a fun fact with your name on it. Type {botl} fun fact.",
     "take your time, the shops are not going anywhere." })
+-- (the owner: "more variants speeches = more fun") more pieces for the wish replies, where / shop answers, the teleport rolls
+local function more(list, A, B) for _, a in ipairs(A) do for _, b in ipairs(B) do list[#list + 1] = a .. b end end end
+SP.MORE_LISTS = more
+-- calls for players passing by (always the call word + what to type; half of them a wish)
+SP.CALLS = combos({ "Hey {name}!", "Psst, {name}.", "Yo {name}, over here!", "{name}! Yes, you!", "Excuse me, {name}!", "Oi, {name}!",
+  "{name}, wait up!", "Hello there, {name}!", "Over here, {name} - the talking speaker!", "{name}! Got a second?", "Hey hey, {name}!",
+  "{name}, look at me - the speaker!" },
+  { " I am a talking speaker. Type {botl} help in chat.", " Wish for an item! Type: {botl} I wish for 16 apples.",
+    " Want a free item? Type {botl} I wish for, then the item.", " Bored? Type {botl} play a game.", " Type {botl} tell me a joke. I dare you.",
+    " Did you know I grant wishes? Type {botl} I wish for a diamond.", " Talk to me in chat - start with {botl}.",
+    " Type {botl} roast me, if you are brave.", " I give away items! Type {botl} I wish for, plus what you want.",
+    " Make a wish: {botl} I wish for 32 torches. A drone brings it." })
+SP.CALL_GROUP = combos({ "Hey everyone!", "Hello, shoppers!", "Attention, spawn!", "Hi folks!", "Everyone, listen up!", "Good people of spawn!" },
+  { " I am the talking speaker - type {botl} help in chat.", " I grant wishes! Type {botl} I wish for 16 apples.",
+    " Free items by drone: {botl} I wish for, then the item.", " Who wants a joke? Type {botl} joke.", " Bored? Type {botl} play a game.",
+    " Start a chat message with {botl} and I answer." })
 -- reacting to a wish
 SP.W_ASK = combos({ "{n} {item}?", "You wish for {n} {item}?", "{n} {item} - is that your wish?", "So: {n} {item}?", "A wish for {n} {item}." },
   { " Say yes and a drone brings it.", " Type yes and I send a drone.", " Yes or no?", " Say yes to make it real.", " Confirm with yes." })
@@ -473,6 +531,29 @@ SP.W_NEVER = { "Not that one. Some things are not for wishing.", "Nope, {item} i
   "That item stays in storage. Wish for something else." }
 SP.W_OWNER = { "Boss, you own everything already.", "You do not need to wish, boss - it is all yours.", "Wishing for your own items? Cute." }
 
+more(SP.W_ASK, { "Ooh, {n} {item}.", "{n} {item}, coming up?", "Let me check... {n} {item}!", "Found it: {n} {item}.", "{n} {item} - I have that." },
+  { " Say yes and it is yours.", " Yes? Then a drone takes off.", " Just type yes.", " Want it? Type yes.", " Yes or no, {name}?" })
+more(SP.W_OK, { "Done! ", "Granted! ", "Ta-da! ", "Okay {name}! ", "Wish accepted! ", "Lucky you! " },
+  { "A drone is bringing {n} {item}.", "{n} {item} are on the way by drone.", "Watch the sky - {n} {item} are coming.",
+    "The drone has your {n} {item}. Stay in the overworld.", "{n} {item}, flying to you now." })
+more(SP.W_NONE, { "Hmm. ", "Oops. ", "Sorry, {name}. ", "Bad news: " },
+  { "No {item} in the storage.", "I looked everywhere - no {item}.", "The base has no {item} right now.", "{item}? Not in stock.",
+    "I could not find any {item}. Maybe another name?" })
+more(SP.W_LIMIT, { "Wish limit! ", "That is all for today, {name}. ", "Sorry, no more today. " },
+  { "{max} wishes a day - more tomorrow.", "Come back tomorrow for {max} more.", "You used your {max} wishes. Tomorrow!",
+    "Even genies sleep. {max} a day, new ones tomorrow." })
+more(SP.W_BUSY, { "Hold on! ", "Wait, {name}. ", "Patience! " },
+  { "Your last wish is still flying.", "One drone at a time.", "Let the last one land first." })
+more(SP.W_NO, { "Okay. ", "Fine. ", "No problem. " }, { "Wish cancelled.", "Maybe another time.", "Changed your mind? That is allowed." })
+more(SP.W_NEVER, { "Not that, {name}. ", "Sorry. ", "Nope. " },
+  { "{item} is not on the wish list.", "Some things cannot be wished for. {item} is one.", "{item} stays in the vault." })
+more(SP.W_OWNER, { "Boss, ", "{name}, " }, { "it is all yours already.", "just take it from AE2.", "you are the one who grants wishes here." })
+more(SP.WHERE, { "Far away. ", "Secret spot. ", "Hidden! " },
+  { "The drones know the way, I do not tell.", "Only {owner} knows exactly where.", "If I told you, it would not be a secret.",
+    "Let us just say: not here." })
+more(SP.SHOP, { "Shops? ", "Buying stuff? ", "Prices? " },
+  { "Not my job - I only talk. But wishes are free!", "I am no shop, but try: wish for an item.", "Ask the shop owners. I do jokes and wishes.",
+    "I do not sell, I give: one wish at a time." })
 -- ===== understanding at spawn =====
 local function norm(s) return " " .. table.concat(V.norm(s), " ") .. " " end
 local function hasAny(t, list) for _, p in ipairs(list) do if t:find(" " .. p .. " ", 1, true) then return true end end return false end
@@ -487,7 +568,9 @@ SP.HELP_ALWAYS = { "how do i talk to it", "how do i talk to you", "how do i talk
 SP.HELP_LOOSE = { "how do i use it", "how do i use this", "how to use it", "how to use this", "how do i talk", "how to talk",
   "how does it work", "how does this work", "how do you work", "what can i say", "what do i say", "what do i type", "what can i ask",
   "what can you do", "what do you do", "what are you", "who are you", "what is this", "what is that", "what is this thing",
-  "how do i ask", "what does it do", "what does this do", "are you a bot", "are you real", "are you ai", "are you a robot" }
+  "how do i ask", "what does it do", "what does this do", "are you a bot", "are you real", "are you ai", "are you a robot",
+  "what was that", "who was that", "whats that", "who is that", "what the", "did that just talk", "did it just talk", "it talked",
+  "it just talked", "where is that voice", "where is that coming from", "what is talking", "is it talking", "did you hear that" }
 -- (only with its name / "bot" in the message)
 SP.HELP_NAMED = { "commands", "help", "instructions", "explain", "i do not get it", "i dont get it", "how", "what", "huh", "options" }
 SP.WISH_RE = { "i wish for (.+)", "i wish i had (.+)", "i wish i have (.+)", "i want (.+)", "i need (.+)", "can i have (.+)", "can i get (.+)",
@@ -506,7 +589,7 @@ local WORD_N = { one = 1, two = 2, three = 3, four = 4, five = 5, six = 6, seven
   twelve = 12, sixteen = 16, twenty = 20, thirty = 30, fifty = 50 }
 local AMOUNT = { stack = 64, stacks = 64, dozen = 12, few = 4, couple = 2, handful = 8, bunch = 16, lot = 32, lots = 32, ton = 64, tons = 64 }
 local STOP = { please = true, pls = true, plz = true, now = true, thanks = true, thx = true, ty = true, ["for"] = true, me = true,
-  of = true, the = true, some = true, any = true, a = true, an = true, pretty = true, really = true, today = true, more = true,
+  the = true, some = true, any = true, a = true, an = true, pretty = true, really = true, today = true, more = true,
   just = true, maybe = true, too = true, also = true, ["if"] = true, possible = true, you = true, can = true }
 local function singular(w)
   if w:match("ies$") then return w:sub(1, -4) .. "y" end
@@ -522,10 +605,51 @@ function SP.wishParse(phrase)
     if tonumber(w) and not n and #out == 0 then n = math.floor(tonumber(w))
     elseif WORD_N[w] and not n and #out == 0 then n = WORD_N[w]
     elseif AMOUNT[w] and #out == 0 then mult = mult * AMOUNT[w]
+    elseif w == "of" and #out == 0 then                   -- ("a stack OF stone" - but "block of gold" keeps it)
     elseif not STOP[w] then out[#out + 1] = w end
   end
   if mult > 1 then n = (n or 1) * mult end
   return n, table.concat(out, " ")
+end
+local ALLWORDS = { all = 1, every = 1, your = 1, ur = 1, the = 1, those = 1, these = 1 }
+local wishParse0 = SP.wishParse
+function SP.wishParse(phrase)
+  local ws, all = {}, false
+  for w in low(phrase):gsub("[^%w_ ]", " "):gmatch("%S+") do
+    if ALLWORDS[w] then if w == "all" or w == "every" then all = true end else ws[#ws + 1] = w end
+  end
+  local n, name = wishParse0(table.concat(ws, " "))
+  if all and not n then n = 1e9 end                 -- (capped by wishMax / what AE2 has)
+  return n, name
+end
+-- the words of an item name, any order: "gold block" = "block of gold" = "golden block" (the owner: "they ask for a golden
+-- block or gold block but it doesn't find it" - the item is called "Block of Gold", minecraft:gold_block)
+SP.SYN = { golden = "gold", diamonds = "diamond", emeralds = "emerald", wooden = "wood", stony = "stone", ingot = "ingot",
+  blocks = "block", netherite = "netherite", iron = "iron", lapis = "lapis", lazuli = "lapis" }
+function SP.wordKey(text)
+  local ws = {}
+  for w in low(text):gsub("[^%w ]", " "):gmatch("%S+") do
+    w = singular(w)
+    w = SP.SYN[w] or w
+    if w ~= "of" and w ~= "the" and w ~= "a" and w ~= "an" and w ~= "minecraft" and w ~= "storage" then ws[#ws + 1] = w end
+  end
+  table.sort(ws)
+  return table.concat(ws, " "), ws
+end
+-- the same words with a typo here and there ("diamnd block", "obsidan"): every word close to one of the other's words
+function SP.wordsClose(a, b)
+  local _, wa = SP.wordKey(a)
+  local _, wb = SP.wordKey(b)
+  if #wa == 0 or #wa ~= #wb then return false end
+  local used = {}
+  for _, x in ipairs(wa) do
+    local hit = false
+    for j, y in ipairs(wb) do
+      if not used[j] and (x == y or (#x >= 4 and V.same and V.same(x, y))) then used[j], hit = true, true break end
+    end
+    if not hit then return false end
+  end
+  return true
 end
 -- an AE2 item for "diamond" / "golden apples" / "oak log": { id, name, count }
 function SP.findItem(name)
@@ -544,7 +668,10 @@ function SP.findItem(name)
     for w in disp:gmatch("%S+") do dsing[#dsing + 1] = singular(w) end
     local ds = table.concat(dsing, " ")
     local s
+    local wk = SP.wordKey(want)
     if ds == want or path == want then s = 100
+    elseif wk ~= "" and (SP.wordKey(disp) == wk or SP.wordKey(path) == wk) then s = 95
+    elseif wk ~= "" and (SP.wordsClose(want, disp) or SP.wordsClose(want, path)) then s = 80
     elseif ds == "minecraft " .. want then s = 90
     elseif (" " .. ds .. " "):find(" " .. want .. " ", 1, true) or (" " .. path .. " "):find(" " .. want .. " ", 1, true) then
       s = 60 - #ds / 10                                         -- ("apple" -> Apple before Golden Apple)
@@ -562,11 +689,18 @@ function SP.findItem(name)
   local function addC(id) if type(id) == "string" and not seenC[id] and #cands < 8 then seenC[id] = true cands[#cands + 1] = id end end
   addC("minecraft:" .. want:gsub(" ", "_"))
   addC("minecraft:" .. name:gsub(" ", "_"))
+  do
+    local ws = {}
+    for w in want:gmatch("%S+") do if w ~= "of" then ws[#ws + 1] = SP.SYN[w] or w end end
+    if #ws >= 1 then addC("minecraft:" .. table.concat(ws, "_")) end
+    if #ws == 2 then addC("minecraft:" .. ws[2] .. "_" .. ws[1]) end      -- ("block of gold" -> gold_block)
+  end
+  local wkWant = SP.wordKey(want)
   local function fits(id)
     local path = low(tostring(id):gsub("^.-:", ""):gsub("_", " "))
     local ps = {}
     for w in path:gmatch("%S+") do ps[#ps + 1] = singular(w) end
-    return table.concat(ps, " ") == want
+    return table.concat(ps, " ") == want or (wkWant ~= "" and SP.wordKey(path) == wkWant)
   end
   for n in pairs(ME_NAMES or {}) do if fits(n) then addC(n) end end
   for _, it in ipairs(items) do if fits(it.name) then addC(it.name) end end
@@ -593,8 +727,11 @@ function SP.wishesToday(who)
 end
 local function itemWord(name, n)
   name = tostring(name)
-  if n and n > 1 and not name:lower():match("s$") then return name .. "s" end
-  return name
+  if not (n and n > 1) or name:lower():match("s$") then return name end
+  local l = name:lower()
+  if l:match("ch$") or l:match("sh$") or l:match("x$") or l:match("z$") then return name .. "es" end
+  if l:match("[^aeiou]y$") then return name:sub(1, -2) .. "ies" end
+  return name .. "s"
 end
 -- a wish: nil = not a wish (the base answers it as usual); else the chat answer
 function SP.wish(who, raw)
@@ -612,6 +749,12 @@ function SP.wish(who, raw)
     if phrase == w or phrase:find("^" .. w:gsub("%p", "%%%0") .. " ") then return nil end
   end
   if phrase:find("^to ") or phrase:find("^you ") or phrase:find("^a?n? ?help") then return nil end
+  -- "I wish I was rich", "I wish you could fly", "I want it to rain": a wish, but no ITEM - the base answers it its own way
+  local first = phrase:match("^(%S+)")
+  local NOTFIRST = { i = 1, ["i'm"] = 1, im = 1, you = 1, he = 1, she = 1, we = 1, they = 1, it = 1, ["it's"] = 1, its = 1, that = 1,
+    this = 1, there = 1, was = 1, were = 1, is = 1, are = 1, could = 1, would = 1, can = 1, had = 1, to = 1, my = 1, everyone = 1,
+    somebody = 1, someone = 1, people = 1, more = 1, less = 1, peace = 1, world = 1, nothing = 1, everything = 1 }
+  if first and NOTFIRST[first] then return nil end
   local n, name = SP.wishParse(phrase)
   if name == "" then return nil end
   if cfg("wish", true) == false then return "Wishes are switched off at spawn right now. Sorry!" end
@@ -631,7 +774,7 @@ function SP.wish(who, raw)
   for _, g in ipairs((V.giftQueue and V.giftQueue()) or {}) do
     if low(g.who) == low(who) and g.why == "wish" then return fill(pick(SP.W_BUSY), who) end
   end
-  local max = tonumber(cfg("wishMax", 64)) or 64
+  local max = math.min(64, tonumber(cfg("wishMax", 64)) or 64)   -- (the owner: "max 64 - I don't want all my stuff gone")
   n = math.max(1, math.min(n or 1, max, it.count))
   SP.wpend = SP.wpend or {}
   SP.wpend[low(who)] = { id = it.id, name = it.name, n = n, till = os.clock() + 90 }
@@ -646,7 +789,8 @@ function SP.wishAnswer(who, raw)
   local word = low(cfg("name", "base"))
   local w1 = ws[1] == word and ws[2] or ws[1]
   if #ws > 4 then return nil end
-  local YES = { yes = 1, y = 1, yeah = 1, yep = 1, sure = 1, ok = 1, okay = 1, please = 1, yup = 1, ya = 1, definitely = 1, absolutely = 1 }
+  local YES = { yes = 1, y = 1, yeah = 1, yep = 1, sure = 1, ok = 1, okay = 1, please = 1, yup = 1, ya = 1, definitely = 1, absolutely = 1,
+    ye = 1, yea = 1, yeh = 1, yas = 1, yess = 1, k = 1, kk = 1, pls = 1, plz = 1, confirm = 1, go = 1, deal = 1, yesss = 1 }
   local NO = { no = 1, n = 1, nope = 1, nah = 1, cancel = 1, never = 1, stop = 1 }
   if NO[w1 or ""] then SP.wpend[low(who)] = nil return fill(pick(SP.W_NO), who) end
   if not YES[w1 or ""] then return nil end
@@ -670,8 +814,18 @@ end
 
 -- ===== chat from a player at spawn =====
 SP.helpAt = {}
+SP.wpend = SP.wpend or {}
+function SP.talked(who)
+  local okM, sm = pcall(smem)
+  if okM and sm then
+    sm.talk = type(sm.talk) == "table" and sm.talk or {}
+    sm.talk[low(who)] = os.epoch("utc")
+    trim(sm.talk, 500)
+  end
+end
 local function answer(who, c, sp)
   if not c then return end
+  SP.talked(who)
   if chatTell then chatTell(who, c, true) end
   local line = sp or c
   local others = #SP.players() - 1
@@ -679,10 +833,37 @@ local function answer(who, c, sp)
   SP.say(line, true)
   V.openConvo(who)
 end
+-- WHAT DO I CALL IT (the owner: "players don't know what to call it"): at spawn "speaker", "bot", "robot", "computer",
+-- "spawn bot", "talking speaker" as the first word (after hey / hi / yo ...) count as its name - the message is passed on
+-- with the real word, so everything after it (games, wishes, the base's answers) works the same
+SP.ALIASES = { speaker = 1, bot = 1, robot = 1, computer = 1, spawnbot = 1, pc = 1 }
+SP.LEADS = { hey = 1, hi = 1, hello = 1, yo = 1, oi = 1, ok = 1, okay = 1, uh = 1, um = 1, so = 1, dear = 1, mr = 1, mister = 1 }
+function SP.unalias(text, word)
+  local raw = {}
+  for w in tostring(text):gmatch("%S+") do raw[#raw + 1] = w end
+  local i = 1
+  local function plain(w) return low(w):gsub("[^%w]", "") end
+  while raw[i] and SP.LEADS[plain(raw[i])] do i = i + 1 end
+  if not raw[i] then return nil end
+  local a, b = plain(raw[i]), raw[i + 1] and plain(raw[i + 1]) or ""
+  local skip
+  if (a == "spawn" or a == "talking") and (b == "speaker" or b == "bot" or b == "computer" or b == "robot") then skip = 2
+  elseif SP.ALIASES[a] then skip = 1 end
+  if not skip then return nil end
+  local rest = {}
+  for j = i + skip, #raw do rest[#rest + 1] = raw[j] end
+  local lead = {}
+  for j = 1, i - 1 do lead[#lead + 1] = raw[j] end
+  return (#lead > 0 and (table.concat(lead, " ") .. " ") or "") .. word .. (#rest > 0 and (", " .. table.concat(rest, " ")) or "")
+end
 function SP.chat(m)
   local who, text = tostring(m.name or ""), tostring(m.msg or "")
   local k = low(who)
   local word = low(cfg("name", "base"))
+  do
+    local un = (not V.calledByName(V.norm(text), text, word)) and SP.unalias(text, word)
+    if un then text = un m = { name = m.name, msg = un, uuid = m.uuid } end
+  end
   local ws = V.norm(text)
   local t = norm(text)
   local named = V.calledByName(ws, text, word)
@@ -692,9 +873,17 @@ function SP.chat(m)
   -- 1) a wish waiting for yes / no
   local wa = SP.wishAnswer(who, text)
   if wa then answer(who, wa) return true end
+  -- just its name ("base", "speaker?", "hey bot") = how to talk to it (not the numbered menu)
+  if named then
+    local rest = 0
+    for _, w in ipairs(ws) do if w ~= word and not SP.LEADS[w] then rest = rest + 1 end end
+    if rest == 0 and not SP.wpend[k] and not V.games[k] then answer(who, SP.helpText(who)) return true end
+  end
   -- 2) how do I use it? (also without its name - nobody knows the name yet)
   local strong = hasAny(t, SP.HELP_ALWAYS)
-  local loose = (hasAny(t, SP.HELP_LOOSE) and #ws <= 9 and (named or bot or spoke or convo)) or
+  local WHAT = { what = 1, huh = 1, wat = 1, eh = 1, who = 1, wut = 1, hmm = 1, wha = 1, whut = 1 }
+  local loose = (spoke and #ws <= 2 and ws[1] and WHAT[ws[1]] and (not ws[2] or WHAT[ws[2]] or ws[2] == "the")) or
+                (hasAny(t, SP.HELP_LOOSE) and #ws <= 9 and (named or bot or spoke or convo)) or
                 (hasAny(t, SP.HELP_NAMED) and #ws <= 4 and (named or bot))
   if (strong or loose) and not (V.games[k]) then
     if strong and not named and SP.helpAt[k] and os.clock() - SP.helpAt[k] < 60 then return false end
@@ -707,11 +896,27 @@ function SP.chat(m)
       return true
     end
   end
+  -- 2b) HOW DO I WISH (the owner: "I had to tell them about the wishing system") / free stuff / a gift
+  if (named or bot or convo or spoke or hasAny(t, SP.WISH_HELP_ALWAYS)) and #ws <= 10 and (hasAny(t, SP.WISH_HELP) or
+     (named and #ws <= 2 and hasAny(t, { "wish", "wishes", "wishing" }))) then
+    answer(who, SP.wishHelp(who))
+    return true
+  end
   -- 3) a wish ("base, I wish for 16 diamonds")
   if named or bot or convo then
     local w = SP.wish(who, text)
     if w then answer(who, w) return true end
-    if hasAny(t, { "who are you", "what are you", "who made you", "who built you", "are you the base" }) then answer(who, fill(pick(SP.WHO), who)) return true end
+    if hasAny(t, { "who made you", "who built you", "who owns you", "who owns this", "whose is this", "who is your owner", "who created you",
+                   "who programmed you", "who coded you" }) then answer(who, fill(pick(SP.MADE), who)) return true end
+    if hasAny(t, { "who are you", "what are you", "are you the base" }) then answer(who, fill(pick(SP.WHO), who)) return true end
+  end
+  -- "this speaker is useless" / "it is so dumb" (the owner) - also without its name when it is about the speaker / bot or
+  -- right after it spoke; a comeback from the lines pack (V.L.DISS, 85 answers)
+  if (named or bot or spoke or convo) and V.DISS_KEYS and V.L and V.L.DISS and hasAny(t, V.DISS_KEYS) and #ws <= 10 then
+    answer(who, fill(pick(V.L.DISS), who))
+    return true
+  end
+  if named or bot or convo then
     if hasAny(t, { "where is the base", "where is your base", "where is the main base", "where do you live", "base coords",
                    "base coordinates", "where are you" }) then answer(who, fill(pick(SP.WHERE), who)) return true end
     if hasAny(t, { "shop", "shops", "buy", "sell", "price", "prices", "trade" }) and #ws <= 8 then answer(who, fill(pick(SP.SHOP), who)) return true end
@@ -721,6 +926,7 @@ function SP.chat(m)
   local now = os.clock()
   V.reactAll = (SP.reactAt and now - SP.reactAt < 60) and now or nil   -- (reactions to chat: once a minute at spawn)
   local r = SP.inCtx(V.chatCore, m)
+  if r then SP.talked(who) end
   if V.reactAll == now and not (SP.reactAt and now - SP.reactAt < 60) then SP.reactAt = now end
   V.reactAll = was
   return r
@@ -730,7 +936,7 @@ end
 -- (60) s - told once, kindly; the SAME message a 3rd time within 60 s is ignored. Never the owner.
 SP.spam = SP.spam or {}
 SP.SLOW = { "Whoa, slow down {name}! I need a breather. Back in a minute.", "{name}, my circuits are overheating. Give me a minute.",
-  "Too many questions, {name}! I am taking a short break from you.", "Easy there, {name}. Let me cool down for a minute.",
+  "Too many questions, {name}! I am taking a one-minute break from you.", "Easy there, {name}. Let me cool down for a minute.",
   "{name}, I only have one speaker and you used it all. A minute of quiet, please.", "Spam detected, {name}. I will be back in a minute." }
 function SP.spamBlocked(who, text)
   if V.isOwner(who) then return false end
@@ -967,7 +1173,8 @@ function SP.tick()
     local k = low(p.name)
     local prev = SP.seen[k]
     SP.seen[k] = now
-    if not prev or now - prev > leave then arrivals[#arrivals + 1] = p.name end
+    SP.firstSeen = SP.firstSeen or {}
+    if not prev or now - prev > leave then arrivals[#arrivals + 1] = p.name SP.firstSeen[k] = now end
   end
   for k, at in pairs(SP.seen) do if now - at > 900 then SP.seen[k] = nil end end
   if #list == 0 then SP.nextIdle = nil return end
@@ -984,8 +1191,9 @@ function SP.tick()
       trim(s.met, 500)
       greet[#greet + 1] = { name = n, new = true }
       if chatTell then
-        chatTell(n, fill("Hi {name}! The speaker at spawn talks. Start a chat message with {botl}: {botl} tell me a joke, " ..
-                         "{botl} roast me, {botl} play a game, {botl} help.", n))
+        chatTell(n, fill("Hi {name}! The speaker at spawn talks. Start a chat message with {botl} (or speaker / bot): " ..
+                         "{botl} tell me a joke, {botl} roast me, {botl} play a game, {botl} help. It grants WISHES too: " ..
+                         "{botl} I wish for 16 apples - then say yes and a drone brings it.", n))
       end
     elseif V.isOwner(n) and nowE - last > 600000 then greet[#greet + 1] = { name = n, owner = true }
     elseif nowE - last > every * 1000 and math.random() < 0.5 then greet[#greet + 1] = { name = n } end
@@ -994,6 +1202,7 @@ function SP.tick()
     SP.greetAt = now
     for _, g in ipairs(greet) do s.gr[low(g.name)] = nowE end
     trim(s.gr, 500)
+    for _, g in ipairs(greet) do V.openConvo(g.name, 60) end    -- (a "hi" / "what?" back is for it)
     if #greet == 1 then
       local g = greet[1]
       local list_ = g.owner and SP.HELLO_OWNER or (g.new and SP.HELLO_NEW or SP.HELLO_AGAIN)
@@ -1004,6 +1213,37 @@ function SP.tick()
       SP.say(fill(pick(SP.HELLO_GROUP):gsub("{names}", V.joinNames(names)), names[1]))
     end
     V.saveMem()
+  end
+  -- CALLS FOR PASSERS-BY (the owner: "add calls for players passing by - they didn't know how to interact with it"):
+  -- someone at spawn 8+ s who has not talked to it today, not called for voice.spawnCallEvery (1800) s, not just
+  -- greeted -> called BY NAME with what to type (a wish, half of the time). One call per 40 s, never right after it spoke.
+  local callEvery = tonumber(cfg("spawnCallEvery", 1800)) or 1800
+  if callEvery > 0 and (not SP.callAt or now - SP.callAt > 40) and not (SP.spokeAt and now - SP.spokeAt < 15) and #SP.queue == 0 then
+    s.talk = type(s.talk) == "table" and s.talk or {}
+    s.called = type(s.called) == "table" and s.called or {}
+    local due = {}
+    for _, p in ipairs(list) do
+      local k = low(p.name)
+      local since = SP.firstSeen and SP.firstSeen[k]
+      if not V.isOwner(p.name) and since and now - since >= 8 and nowE - (tonumber(s.talk[k]) or 0) > 86400000 and
+         nowE - (tonumber(s.called[k]) or 0) > callEvery * 1000 and nowE - (tonumber(s.gr[k]) or 0) > 60000 then
+        due[#due + 1] = p.name
+      end
+    end
+    if #due > 0 then
+      SP.callAt = now
+      local line
+      if #due >= 3 then
+        line = fill(pick(SP.CALL_GROUP), due[1])
+      else
+        line = fill(pick(SP.CALLS), due[1]):gsub("{name}", due[1])
+        if due[2] then line = due[2] .. " too! " .. line end
+      end
+      for _, n in ipairs(due) do s.called[low(n)] = nowE V.openConvo(n, 60) end
+      trim(s.called, 500)
+      V.saveMem()
+      SP.say(line)
+    end
   end
   -- idle talk while someone is there (not when it just spoke)
   local chatter = tonumber(cfg("spawnChatter", 5)) or 5
@@ -1140,7 +1380,7 @@ V.commands.spawn = function(words, say, who)
   elseif a == "wish" then
     if b == "on" or b == "off" then setSetting("voice.wish", b == "on")
     elseif b == "daily" and tonumber(words[5]) then setSetting("voice.wishDaily", math.max(0, math.floor(tonumber(words[5]))))
-    elseif b == "max" and tonumber(words[5]) then setSetting("voice.wishMax", math.max(1, math.floor(tonumber(words[5]))))
+    elseif b == "max" and tonumber(words[5]) then setSetting("voice.wishMax", math.max(1, math.min(64, math.floor(tonumber(words[5])))))
     elseif b == "all" and tonumber(words[5]) then setSetting("voice.wishAll", math.max(0, math.floor(tonumber(words[5]))))
     elseif (b == "block" or b == "unblock") and words[5] then
       local list = {}
@@ -1156,3 +1396,11 @@ V.commands.spawn = function(words, say, who)
     say("voice spawn [status|here|at x y z|pair <code>|unpair|name <word>|on|off|range <n>|voice <preset>|volume <0-3>|chatter <min>|greet on|off|say <text>|wish ...]")
   end
 end
+-- (more variants for lists defined further up)
+local more = SP.MORE_LISTS
+more(SP.TP_YES, { "Yes! ", "Why not. ", "Today is your lucky day. " },
+  { "A drone flies you to {who}.", "Drone ride to {who}, starting now.", "Hold on, {who} is your next stop." })
+more(SP.TP_NOPE, { "Nope. ", "Not now. ", "The dice say no. " },
+  { "Walk to {who}, it is healthy.", "/tpa {who} is right there.", "Ask me again later." })
+more(SP.SLOW, { "Slow down, {name}! ", "Breathe, {name}. ", "One at a time, {name}. " },
+  { "Give me a minute.", "Back in a minute.", "Let me rest a minute." })

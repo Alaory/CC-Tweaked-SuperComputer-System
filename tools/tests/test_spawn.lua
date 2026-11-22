@@ -133,6 +133,11 @@ R.sendBase("hello")
 deliver()
 CHECK(SP.online() and SP.ready(), "a signed hello: the spawn speaker is online + ready")
 CHECK(SP.isAt("Steve") and not SP.isAt("Alaory"), "Steve is at spawn, the owner at the base")
+-- THE SIGN: the base sends what to type; the relay shows it (screen + monitors)
+R.sendBase("hello")
+deliver()
+CHECK(type(R.S.info) == "string" and R.S.info:find("I TALK", 1, true) and R.S.info:find("base I wish for", 1, true),
+      "the spawn computer got its sign: " .. tostring(R.S.info))
 
 -- 2) chat at spawn
 SP.queue = {}
@@ -401,6 +406,9 @@ CHECK(toldTo("Steve"):find("has not told me", 1, true), "Cat told nothing: says 
 SP.spam = {}
 VOICE.command({ "voice", "spawn", "name", "sparky" })
 CHECK(CONFIG.voice.spawnName == "sparky", "voice spawn name sparky is saved")
+R.sendBase("hello")
+deliver()
+CHECK(tostring(R.S.info):find("sparky help", 1, true), "... the sign follows the new word: " .. tostring(R.S.info))
 told = {}
 SP.queue = {}
 VOICE.chat({ name = "Steve", msg = "sparky tell me a joke" })
@@ -420,6 +428,84 @@ VOICE.chat({ name = "Alaory", msg = "base tell me a joke" })
 CHECK(#told >= 1, "the owner at the base still says base")
 VOICE.command({ "voice", "spawn", "name", "off" })
 CHECK(SP.named(function() return VOICE.cfg("name", "base") end) == "base", "voice spawn name off: base again")
+
+-- 8c) "it is useless / has no purpose / dumb / stupid" (the owner: "at least 70 responses")
+do
+  local DISS = {}
+  for _, l in ipairs(VOICE.L.DISS or {}) do DISS[VOICE.fill(l, "Steve")] = true end
+  CHECK(#(VOICE.L.DISS or {}) >= 80, "80+ answers to 'useless' (" .. #(VOICE.L.DISS or {}) .. ")")
+  local function isDiss(t) for l in pairs(DISS) do if t:find(l, 1, true) then return true end end return false end
+  SP.spam = {}
+  for _, msg in ipairs({ "base its useless", "base this has no purpose", "base you are dumb", "base its stupid", "base its dump",
+                         "this speaker is useless", "base whats the point", "base you suck", "base stupid bot", "the bot is trash" }) do
+    told = {}
+    SP.helpAt, VOICE.convo = {}, {}
+    VOICE.chat({ name = "Steve", msg = msg })
+    CHECK(isDiss(toldTo("Steve")), "'" .. msg .. "' -> a comeback: " .. toldTo("Steve"))
+  end
+  local seen, n = {}, 0
+  for i = 1, 100 do
+    told = {}
+    SP.spam = {}
+    VOICE.chat({ name = "Steve", msg = "base you are useless" })
+    local a = toldTo("Steve")
+    if a ~= "" and not seen[a] then seen[a] = true n = n + 1 end
+  end
+  CHECK(n >= 70, "asked 100 times: " .. n .. " different answers")
+  told = {}
+  VOICE.convo, SP.spokeAt = {}, nil
+  VOICE.chat({ name = "Steve", msg = "this sword is useless" })
+  CHECK(#told == 0, "'this sword is useless' (not about it, no name) gets nothing: " .. toldTo("Steve"))
+  SP.spam = {}
+end
+
+-- 8d) WHAT DO I CALL IT / HOW DO I WISH / CALLS (the owner: "players don't know what to call it", "add calls for players
+-- passing by", "I had to tell them about the wishing system")
+do
+  SP.spam, SP.helpAt, VOICE.convo, SP.spokeAt = {}, {}, {}, nil
+  for _, msg in ipairs({ "speaker tell me a joke", "hey bot roast me", "spawn bot flip a coin", "hey speaker, tell me a joke", "robot fun fact" }) do
+    told = {}
+    VOICE.chat({ name = "Steve", msg = msg })
+    CHECK(#told >= 1, "'" .. msg .. "' - another name for it works: " .. toldTo("Steve"))
+  end
+  told = {}
+  VOICE.convo, SP.spokeAt = {}, nil
+  VOICE.chat({ name = "Steve", msg = "the speaker is loud" })
+  CHECK(#told == 0, "talking ABOUT the speaker is not a call: " .. toldTo("Steve"))
+  for _, msg in ipairs({ "how do i wish", "base free stuff", "speaker can i get something", "base how does wishing work", "base wish" }) do
+    told = {}
+    SP.spam, VOICE.convo = {}, {}
+    VOICE.chat({ name = "Steve", msg = msg })
+    CHECK(toldTo("Steve"):find("I wish for", 1, true) or toldTo("Steve"):find("can I have", 1, true) or toldTo("Steve"):find("give me a stack", 1, true)
+          or toldTo("Steve"):find("I want 64", 1, true), "'" .. msg .. "' -> how to wish: " .. toldTo("Steve"))
+  end
+  CHECK(SP.helpText("Steve"):lower():find("wish", 1, true), "the help always tells about wishes")
+  CHECK(SP.helpText("Steve"):lower():find("speaker or bot", 1, true), "... and that 'speaker' / 'bot' work too")
+  -- calls: Dan stands at spawn 10 s and never talked to it
+  state.players[#state.players + 1] = { name = "Dan", p = { x = SPAWN.x + 5, y = 70, z = SPAWN.z }, dim = DRONE_DIM }
+  state.online.dan = true
+  SP.tick()                                   -- (Dan arrives: greeted, not called)
+  SP.queue = {}
+  SP.firstSeen.dan = os.clock() - 10
+  SP.mem().gr.dan = os.epoch("utc") - 120000
+  SP.callAt, SP.spokeAt = nil, nil
+  for k in pairs(SP.firstSeen) do if k ~= "dan" then SP.firstSeen[k] = os.clock() end end
+  SP.tick()
+  local q = SP.queue[1]
+  CHECK(q and q.text:find("Dan", 1, true) and (q.text:find("base", 1, true)), "a passer-by is CALLED by name with what to type: " .. tostring(q and q.text))
+  SP.queue = {}
+  SP.callAt = nil
+  SP.tick()
+  CHECK(#SP.queue == 0 or not SP.queue[1].text:find("Dan", 1, true), "... not again for a while")
+  local calls, cw = {}, 0
+  for i = 1, 120 do local l = VOICE.fill(VOICE.pick(SP.CALLS), "Dan") if not calls[l] then calls[l] = true cw = cw + 1 end end
+  CHECK(cw >= 100 and #SP.CALLS >= 100, "100+ different calls (" .. cw .. ")")
+  local wishCalls = 0
+  for _, l in ipairs(SP.CALLS) do if l:find("wish", 1, true) then wishCalls = wishCalls + 1 end end
+  CHECK(wishCalls >= #SP.CALLS * 0.4, "4 in 10 calls tell about wishes (" .. wishCalls .. " of " .. #SP.CALLS .. ")")
+  SP.queue = {}
+  SP.spam = {}
+end
 
 -- 9) NO SPAMMING: 8 answers in 30 s -> a minute of quiet for that player (told once); the same message 3 times: ignored
 resetSetting("voice.spamBurst")

@@ -1523,6 +1523,32 @@ PneumaticCraft drone rides, turtle mapping/surveys, and an AE2 ME network view.
   NO SPAMMING (V.chat wrapper, spawn AND base; never the owner): voice.spamBurst 8 answers within voice.spamWindow 30 s
   -> not answered for voice.spamMute 60 s, told once (SP.SLOW); the same message of 3+ words voice.spamSame 3rd time in
   60 s = ignored; messages during a running game do not count. (test_voice sets spamBurst / spamSame off.)
+  FINDING IT (the owner: "players don't know what to call it", "add calls for players passing by", "I had to tell them about the
+  wishing system", "think of 30+ scenarios"): OTHER NAMES - "speaker / bot / robot / computer / spawn bot / talking speaker" first
+  (after hey / hi ...; SP.unalias rewrites the message with the real word; "the speaker is loud" is NOT a call). CALLS (SP.tick):
+  a player at spawn 8+ s who did not talk to it today (s.talk via SP.talked), not called for voice.spawnCallEvery 1800 s, not
+  just greeted -> SP.CALLS (120, 4 in 10 about wishes) by name; 3+ -> SP.CALL_GROUP; one per 40 s. A greeting / call opens a 60-s
+  conversation (a "hi" back is for it). WISH HOW-TO (SP.wishHelp: example + yes + drone + per wish / a day / left today) for "how
+  do I wish", "free stuff", "gift", "can I get something", just "wish"; the help ALWAYS says "in chat", ends with a wish hint and
+  "speaker or bot"; just its name = the help (no menu); "what?" / "huh?" right after it spoke = the help. THE SIGN: hello carries
+  inf = dataHash(the relay's sign text); the base sends "info" {d = SP.signText()} when it differs (its call word) -> the relay
+  (VER 2, spawn_info.txt) shows it on its screen + every monitor. WISH FIXES: "I wish I was rich" (a pronoun / verb first) is no
+  item; "all / every / your" = the most; at most 64 per wish HARD (the owner: "max 64 - I don't want all my stuff gone"; voice spawn
+  wish max clamps); ITEM NAMES BY THEIR WORDS (SP.wordKey: any order, singular, golden = gold, "of" / "storage" / "minecraft"
+  ignored - "gold block" = "block of gold" = "golden block", Block of Osmium, Brass Block, modded too) + one typo a word
+  (SP.wordsClose) + AE2 asked for both word orders; plurals (torches, berries). "who made you" always names the owner (SP.MADE).
+  "IT IS USELESS" (voice_lines V.L.DISS 85 + intent "diss", base + spawn; at spawn also without the name about the speaker / bot).
+  PLAYERS TESTING IT (voice_lines pattern FIRST; the owner: "base can you get rid of Alaory"): the owner's name / your owner /
+  boss = "owner"; a VERB (get rid of, kill, ban, betray ...) + the owner -> V.L.LOYAL, another online player -> PACIFIST (named),
+  you / yourself -> SELF, the base -> BASEHARM; I am your owner / obey me -> TAKEOVER, bribes, threats, where is the owner -> SPY
+  (ONLY online or not, never where), secrets, do you like the owner -> FOND, ignore your rules / you deserve better -> FREE; every
+  list 50+ (combos). test_spawn_scenarios.lua: 44 scenarios (newcomer, what was that, two at once, players chatting, spam, wishes
+  every way, gold / modded blocks, turning it against the owner ...); every answer checked for errors / "{name}" left in.
+- WELCOME BACK ONLY ONCE (the owner: "the reminders when I join never get cleared - I keep hearing them"): VOICE.watchOwner - a
+  base RESTART while the owner plays (upgrade / crash) counted as coming back (the report + "players talked about you" again after
+  every restart): a return now also needs b.ownerSeen <= b.lastOff (not seen online since the log-off); "N messages for you" came
+  on EVERY return while any was unread - now only messages since the log-off ("1 new message"; b.reportFrom).
+  test_voice_return.lua (the old code fails 3).
 - REMOVED AGAIN: remote access in a web browser (Cloud Catcher; base_remote.lua / remote.lua / pocket.lua
   in local mode on the base) - the owner: "taking space and seems useless". removeOldFiles (base_theme.lua,
   run by inventory.lua at start) deletes its files (remote.lua, base_remote.lua, cloud.lua on the computer

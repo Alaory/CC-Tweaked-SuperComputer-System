@@ -11,7 +11,7 @@
 -- The spawn area does not have to stay loaded: when nobody is near, nobody needs to hear it.
 
 local PROTO = "basespawn"
-local VER = 1
+local VER = 2
 local KEYFILE = "spawn_key.dat"
 
 -- the same keyed checksum the base uses (TT.sign)
@@ -72,6 +72,41 @@ local function save()
   end
 end
 local function newCode() S.code = string.format("%06d", math.random(0, 999999)) end
+-- THE SIGN (the owner: "players don't know what to call it / how to interact with it"): what to type in chat, sent by the
+-- base (its call word can change) - on this screen and on every monitor next to the computer
+local INFOFILE = "spawn_info.txt"
+local function loadInfo()
+  local h = fs.open(INFOFILE, "r")
+  if h then S.info = h.readAll() h.close() end
+end
+local function saveInfo()
+  local h = fs.open(INFOFILE, "w")
+  if h then h.write(S.info or "") h.close() end
+end
+local function drawSign()
+  if not S.info or S.info == "" then return end
+  local lines = {}
+  for l in (S.info .. "\n"):gmatch("([^\n]*)\n") do lines[#lines + 1] = l end
+  for _, n in ipairs(peripheral.getNames()) do
+    if peripheral.hasType(n, "monitor") then
+      local mon = peripheral.wrap(n)
+      pcall(function()
+        mon.setTextScale(1)
+        local w, h = mon.getSize()
+        if w < 24 then mon.setTextScale(0.5) w, h = mon.getSize() end
+        mon.setBackgroundColor(colors.black)
+        mon.clear()
+        local y0 = math.max(1, math.floor((h - #lines) / 2) + 1)
+        for i, l in ipairs(lines) do
+          local col = (i == 1 and colors.yellow) or (l:find("wish", 1, true) and colors.lime) or (i == 2 and colors.lightGray) or colors.white
+          mon.setTextColor(col)
+          mon.setCursorPos(math.max(1, math.floor((w - #l) / 2) + 1), y0 + i - 1)
+          mon.write(l)
+        end
+      end)
+    end
+  end
+end
 
 local function speakers()
   local out = {}
@@ -106,6 +141,7 @@ local function sendBase(t, fields)
   m.t, m.n, m.ver = t, nextN(), VER
   m.sp = #speakers()
   m.q = #S.queue
+  m.inf = S.info and dataHash(S.info) or ""                 -- (the base sends the sign text when this differs)
   if S.key then
     m.sig = sign(S.key, t, m.n, "", { m.sp, m.q })
     pcall(rednet.send, S.base, m, PROTO)
@@ -126,6 +162,12 @@ local function draw()
   print("Ender / wireless modems: " .. m .. (m == 0 and "  <- PUT ONE ON" or ""))
   print("Speakers: " .. sp .. (sp == 0 and "  <- PUT ONE NEXT TO IT" or ""))
   print("")
+  if S.key and S.info and S.info ~= "" then
+    term.setTextColor(colors.yellow)
+    for l in (S.info .. "\n"):gmatch("([^\n]*)\n") do print(l) end
+    term.setTextColor(colors.white)
+    print("")
+  end
   if S.key then
     term.setTextColor(colors.lime)
     print("Paired with the base #" .. S.base)
@@ -176,6 +218,11 @@ local function receive(id, m)
     os.queueEvent("spawn_play")
   elseif m.t == "cut" then
     stopAll()
+  elseif m.t == "info" then
+    S.info = d
+    saveInfo()
+    draw()
+    drawSign()
   elseif m.t == "ping" then
     sendBase("pong")
   elseif m.t == "unpair" then
@@ -198,6 +245,7 @@ local function hello()
     openModems()
     sendBase("hello")
     draw()
+    drawSign()
     sleep(S.key and 20 or 8)
   end
 end
@@ -235,6 +283,7 @@ end
 
 math.randomseed(os.epoch("utc") + os.getComputerID())
 load()
+loadInfo()
 if not S.key then newCode() end
 if os.setComputerLabel and not os.getComputerLabel() then pcall(os.setComputerLabel, "Spawn speaker") end
 draw()
