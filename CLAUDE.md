@@ -1722,7 +1722,8 @@ PneumaticCraft drone rides, turtle mapping/surveys, and an AE2 ME network view.
   SUBJ", "ur a", next to bot / owner ("lord alaory"); WORSHIP (worship hail praise bow kneel) + SUBJ; "my lord" / "your
   majesty" when called = bot; never with NOT_AFTER (god apple / tier / mode / armor ...) or no subject ("oh my god", "thank
   god"). V.L.HUMBLE_BOT ("I am just a bot ..."), HUMBLE_OWNER ("{owner} is just a regular player who had time to waste"),
-  HUMBLE_SELF / HUMBLE_OWNER_SELF ("I am a god"), 100+ / 50+ each (combos). A pattern inserted first (called by name) + a
+  HUMBLE_SELF ("I am a god" from a player), HUMBLE_OWNER_SELF = the owner saying it: ONLY "No, you are just wasting your time."
+  (the owner: "simply that"), the others 100+ each (combos). A pattern inserted first (called by name) + a
   chat hook (NOT called: needName - "you" is then another player; once per 10 min per player, spoken when at the base). FOND
   lines toned down ("Best boss in the server" -> "Just a regular player. A kind one, though."). SPAWN WISH FIX (the owner's
   screenshot: "sparky give me a mod tip" -> "you are the one who grants wishes here"): SP.NOT_ITEM_WORDS (tip joke fact advice

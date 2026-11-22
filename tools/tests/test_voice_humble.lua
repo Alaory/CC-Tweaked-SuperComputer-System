@@ -91,7 +91,8 @@ local ts = 0
 for _, l in ipairs(V.L.HUMBLE_OWNER) do if l:find("time to waste", 1, true) then ts = ts + 1 end end
 CHECK(ts >= 20, "'time to waste' said often enough (" .. ts .. ")")
 local c3 = say("Alaory", "sparky i am a god")
-CHECK(c3:lower():find("player", 1, true) or c3:lower():find("boss", 1, true), "the owner saying 'I am a god': " .. c3)
+CHECK(c3 == "No, you are just wasting your time.", "the owner saying 'I am a god': simply 'No, you are just wasting your time.' - " .. c3)
+CHECK(say("Alaory", "sparky im a god") == "No, you are just wasting your time.", "... 'im a god' too")
 local c4 = say("Kim", "sparky i am a god")
 CHECK(c4:lower():find("player", 1, true) or c4:lower():find("bot", 1, true) or c4:lower():find("creeper", 1, true), "a visitor saying 'I am a god': " .. c4)
 

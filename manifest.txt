@@ -53,7 +53,7 @@ voice voice_addon.lua 167244 57f74cd2
 voice voice_talk.lua 72213 8dd9df24
 voice voice_talk2.lua 102482 a9048beb
 voice voice_talk3.lua 40998 26dd2c78
-voice voice_lines.lua 94302 b871b320
+voice voice_lines.lua 93899 7c5e97a6
 voice voice_idle.lua 36489 bb1ef145
 voice voice_lore.lua 29210 522540d6
 voice voice_convo.lua 103313 6ad17024
@@ -119,7 +119,7 @@ slim:voice voice_addon.lua 124046 7477d15b dist/voice_addon.lua
 slim:voice voice_talk.lua 66189 e9a962dc dist/voice_talk.lua
 slim:voice voice_talk2.lua 89230 0fd11cd5 dist/voice_talk2.lua
 slim:voice voice_talk3.lua 35246 ee4c0f62 dist/voice_talk3.lua
-slim:voice voice_lines.lua 87820 daff8ded dist/voice_lines.lua
+slim:voice voice_lines.lua 87395 06db4255 dist/voice_lines.lua
 slim:voice voice_idle.lua 33866 aade0b76 dist/voice_idle.lua
 slim:voice voice_lore.lua 27047 ac5fcf6a dist/voice_lore.lua
 slim:voice voice_convo.lua 90855 177992d3 dist/voice_convo.lua

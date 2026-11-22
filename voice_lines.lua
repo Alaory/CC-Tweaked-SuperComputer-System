@@ -898,10 +898,7 @@ V.L.HUMBLE_SELF = C({ "A god? ", "Ha! ", "Nice try, {name}. ", "Hmm. ", "Sure, {
   { "Here we are all regular players. Me, I am just a bot.", "Gods do not need to ask a bot for help. Welcome, regular player.",
     "No gods on this server, just players and one chatty bot.", "Then I am a toaster. We are both just playing a game.",
     "Everyone here is a regular player. That is the fun part.", "A god would not die to a creeper. Just saying." })
-V.L.HUMBLE_OWNER_SELF = C({ "Boss, ", "{name}, ", "Ha! ", "Come on, {name}. " },
-  { "you are a regular player who had time to waste. Me, I am the result.", "you are just a player who wrote a lot of code. Stay humble.",
-    "you are a normal player with a lot of free time. I love you anyway.", "you are a regular player. Gods do not forget to refuel their turtles.",
-    "you are one regular player on this server. A busy one.", "you are a regular player who bosses a computer around, not a god." })
+V.L.HUMBLE_OWNER_SELF = { "No, you are just wasting your time." }   -- (the owner: "simply that")
 local GODS = { god = 1, gods = 1, godlike = 1, goddess = 1, deity = 1, lord = 1, lords = 1, overlord = 1, almighty = 1, divine = 1,
   omnipotent = 1, omniscient = 1, king = 1, emperor = 1, supreme = 1, holy = 1, immortal = 1 }
 local NOT_AFTER = { tier = 1, mode = 1, armor = 1, armour = 1, apple = 1, apples = 1, sword = 1, pick = 1, pickaxe = 1, set = 1, gear = 1,
