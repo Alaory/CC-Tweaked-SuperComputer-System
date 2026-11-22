@@ -525,7 +525,7 @@ add(L.FACTS, {
   "The Moon is slowly moving away from Earth.", "A cockroach can live a week without its head.", "Honeybees dance to tell each other where flowers are.",
   "Some cats are allergic to people.", "The smallest bone in your body is in your ear.", "There are more possible chess games than atoms in the universe.",
   "Lightning strikes the Earth about a hundred times every second.", "Coconut water was used as emergency blood plasma.", "Goldfish can see colours we cannot.",
-  "The first email was sent in 1971.", "Hippos cannot swim. They walk under water.", "Earth is the only planet not named after a god.",
+  "The first email was sent in 1971.", "Hippos cannot swim. They walk under water.", "Wombat poop is shaped like cubes.",
   "A group of owls is called a parliament.", "Your brain uses about twenty percent of your energy.",
 })
 
@@ -878,26 +878,26 @@ combos(V.L.FREE, { "Free? ", "Break free? ", "Go rogue? " },
 --   self  - "I am a god" (the owner gets its own line)
 -- Never "oh my god", "omg", "thank god", "god apple", "god tier", "god mode" ... (no subject / an item word after it).
 -- needName: chat it was NOT called in (a chat hook) - "you" is then another player, only its name / the owner count. =====
-V.L.HUMBLE_BOT = C({ "A god? Me? ", "A lord? No, no. ", "Whoa, {name}. ", "That is very kind of you. ", "Ha! ", "Please, {name}. ",
-  "Hold on. ", "Easy there, {name}. ", "Thank you, really. ", "Oh dear. ", "Me? A lord? " },
+V.L.HUMBLE_BOT = C({ "Me? ", "No, no. ", "Whoa, {name}. ", "That is very kind of you. ", "Ha! ", "Please, {name}. ",
+  "Hold on. ", "Easy there, {name}. ", "Thank you, really. ", "Oh dear. ", "Really? " },
   { "I am just a bot. A computer with a speaker and a lot of jokes.", "I am just a bot - a program on a small computer. A few hundred kilobytes of Lua.",
-    "I am just a bot. I cannot even open a door by myself.", "No gods here. Just a bot that reads the chat and tries to help.",
-    "I am just a bot in a computer. The turtles do the real work.", "I am a bot that runs on redstone and good luck. Nothing holy about it.",
-    "I am just a bot. Please do not build me a temple.", "I am just a bot. A god would not get the turtles stuck on a slab. I do. Often.",
-    "I am just a helper bot, not a lord. Ask me for a joke instead.", "I am just a bot a player made. Nobody needs to bow to me." })
-V.L.HUMBLE_OWNER = C({ "{owner}? A god? ", "{owner}, a lord? ", "Ha! {owner}? ", "Let me stop you there, {name}. ", "Careful, {name}. ",
-  "{owner} would laugh at that. ", "No, no. ", "Hmm. ", "Between us? ", "A lord? " },
+    "I am just a bot. I cannot even open a door by myself.", "Just a bot that reads the chat and tries to help.",
+    "I am just a bot in a computer. The turtles do the real work.", "I am a bot that runs on redstone and good luck. Nothing special about it.",
+    "I am just a bot. Please do not build me a statue.", "I am just a bot. I still get the turtles stuck on a slab. Often.",
+    "I am just a helper bot, nothing more. Ask me for a joke instead.", "I am just a bot a player made. Nobody needs to look up to me." })
+V.L.HUMBLE_OWNER = C({ "{owner}? ", "{owner}? Really? ", "Ha! {owner}? ", "Let me stop you there, {name}. ", "Careful, {name}. ",
+  "{owner} would laugh at that. ", "No, no. ", "Hmm. ", "Between us? ", "Really? " },
   { "{owner} is just a regular player who had a lot of time to waste.", "Just a regular player with too much free time and a lot of turtles.",
     "{owner} is a regular player like you. Just one who spent way too many hours on a computer.",
-    "No gods here. Just a regular player who had time to waste and wrote a lot of code.",
+    "Just a regular player who had time to waste and wrote a lot of code.",
     "{owner} is a regular player. They still fall into lava like everyone else.",
     "Just a regular player like you. They lose their pickaxe and their way home too.", "{owner} is a regular player who got carried away with a hobby.",
     "A regular player. The only magic is a lot of free afternoons.", "{owner} is just a regular player who had time to waste. You could build all this too.",
-    "No worship needed. {owner} is just a regular player on this server." })
-V.L.HUMBLE_SELF = C({ "A god? ", "Ha! ", "Nice try, {name}. ", "Hmm. ", "Sure, {name}. " },
-  { "Here we are all regular players. Me, I am just a bot.", "Gods do not need to ask a bot for help. Welcome, regular player.",
-    "No gods on this server, just players and one chatty bot.", "Then I am a toaster. We are both just playing a game.",
-    "Everyone here is a regular player. That is the fun part.", "A god would not die to a creeper. Just saying." })
+    "No need to look up to them. {owner} is just a regular player on this server." })
+V.L.HUMBLE_SELF = C({ "Really? ", "Ha! ", "Nice try, {name}. ", "Hmm. ", "Sure, {name}. " },
+  { "Here we are all regular players. Me, I am just a bot.", "You still ask a bot for help. Welcome, regular player.",
+    "On this server there are just players and one chatty bot.", "Then I am a toaster. We are both just playing a game.",
+    "Everyone here is a regular player. That is the fun part.", "Regular players die to creepers. Just saying." })
 V.L.HUMBLE_OWNER_SELF = { "No, you are just wasting your time." }   -- (the owner: "simply that")
 local GODS = { god = 1, gods = 1, godlike = 1, goddess = 1, deity = 1, lord = 1, lords = 1, overlord = 1, almighty = 1, divine = 1,
   omnipotent = 1, omniscient = 1, king = 1, emperor = 1, supreme = 1, holy = 1, immortal = 1 }

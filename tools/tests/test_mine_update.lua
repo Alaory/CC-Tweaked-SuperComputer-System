@@ -156,3 +156,31 @@ do
   local c2 = MINE.loadCode(false)
   CHECK(c2 and c2.text == newest, "a newer dragged miner.lua wins")
 end
+-- KEPT ON A STORAGE HELPER (the owner's `disks`: "disk13/miner_code.lua not saved (45 KB free, needs 82 KB)" with ~2.5 MB
+-- free on the helpers): like node.lua - a helper first, the floppy copy goes
+do
+  local REMOTE = { [121] = {} }
+  STORE.call = function(id, req)
+    local h = REMOTE[id]
+    if not h then return nil, "no answer" end
+    if req.op == "put" then h[req.name] = req.data return { ok = true, free = 600000 }
+    elseif req.op == "get" then local o = {} for _, n in ipairs(req.names) do o[n] = h[n] end return { ok = true, files = o }
+    elseif req.op == "del" then h[req.name] = nil return { ok = true }
+    elseif req.op == "list" then return { ok = true, files = {} } end
+    return nil, "bad op"
+  end
+  STORE.helpers = { [121] = { id = 121, free = 650000, cap = 1000000 } }
+  local floppyCopy = dataFile(MINE.CODE_FILE)
+  local newer = SRC:gsub('MYVER = "m(%d+)"', function(n) return 'MYVER = "m' .. (tonumber(n) + 20) .. '"' end, 1)
+  local f4 = fs.open(fs.combine(BASE_DIR or "", "miner.lua"), "wb") f4.write(newer) f4.close()
+  local c = MINE.loadCode(false)
+  local w = MINE.codeWhere()
+  CHECK(c and c.text == newer and w and w.path:find("^store:121/"), "the program is kept on the storage helper (" .. tostring(w and w.path) .. ")")
+  local inHelper = false
+  for _, v in pairs(REMOTE[121]) do if v == newer then inHelper = true end end
+  CHECK(inHelper, "... really written there")
+  CHECK(not fs.exists(floppyCopy), "... and the floppy / computer copy is gone (its room is free again)")
+  local c2 = MINE.loadCode(false)
+  CHECK(c2 and c2.text == newer and c2.from == "the stored copy", "read back from the helper next time")
+  STORE.helpers = {}
+end

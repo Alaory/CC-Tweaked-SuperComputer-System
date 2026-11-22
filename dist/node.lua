@@ -124,7 +124,7 @@ local UPD_READY = nil
 if MYPATH ~= "startup.lua" and MYPATH ~= "/startup.lua" and fs.exists(MYPATH)
 and not fs.exists("startup.lua") then
 fs.copy(MYPATH, "startup.lua")
-print("Installed myself as startup.lua - I start by myself from now on.")
+print("Installed myself as startup.lua.")
 end
 
 
@@ -423,6 +423,7 @@ m.t, m.n = t, n
 m.sig = sign(CONFIG.key, t, n)
 m.ses = SESSION
 m.copy = COPY
+m.refused = REFUSED
 if DUP then m.dup = true end
 m.label = os.getComputerLabel() or ("Turtle " .. os.getComputerID())
 local fuel = turtle.getFuelLevel()
@@ -738,7 +739,7 @@ local ok, got = pcall(p.chargeTurtle, target - f0)
 got = ok and tonumber(got) or 0
 if got > 0 then
 if not S.cellUsed then S.cellUsed = true send("result", { cmd = "fuel", ok = true,
-msg = "charged " .. got .. " fuel from an energy cell (FE) - cells are used first from now on" }) end
+msg = "charged " .. got .. " fuel from an energy cell (FE)" }) end
 return got
 end
 end
@@ -910,7 +911,7 @@ if not gpsWarned and (math.abs(x - round(x)) > 0.15 or math.abs(y - round(y)) > 
 or math.abs(z - round(z)) > 0.15) then
 gpsWarned = true
 send("result", { cmd = "gps", ok = false, msg = string.format(
-"GPS gives uneven numbers (%.2f %.2f %.2f) - check the gps hosts' coordinates", x, y, z) })
+"GPS gives uneven numbers (%.2f %.2f %.2f) - check the gps hosts", x, y, z) })
 end
 return round(x), round(y), round(z)
 end
@@ -1977,7 +1978,7 @@ save()
 send("result", { cmd = "core", ok = true, msg = "End Automata Core (" .. (carried and "carried" or "equipped") ..
 ") functions: " .. table.concat(S.coreMethods or { "?" }, ", ") })
 if carried and keeps == false then
-send("result", { cmd = "core", ok = false, msg = "a carried Automata Core forgets its points when taken off - cannot warp carried" })
+send("result", { cmd = "core", ok = false, msg = "a carried Automata Core loses its points - cannot warp" })
 elseif carried and keeps then
 send("result", { cmd = "core", ok = true, msg = "the carried End Automata Core keeps its warp points - it is " ..
 "swapped in for every warp" })
@@ -2578,7 +2579,7 @@ function sweep(cx, cy, cz, radius, skip)
 if S.anchor then return false, "I am the ANCHOR - send another turtle" end
 if not findItem(CONFIG.geoItem) then return false, "I need a Geo Scanner to search" end
 if not (slotOf(isDrive) and slotOf(isFloppy)) then
-return false, "I need a Disk Drive and the install floppy to reinstall lost turtles"
+return false, "I need a Disk Drive + the install floppy"
 end
 radius = math.max(16, math.min(160, math.floor(tonumber(radius) or 96)))
 local skipSet, handled, rescued = {}, {}, {}
@@ -3209,7 +3210,7 @@ elseif cmd == "setting" then
 
 local name, raw = tostring(a[1] or ""), a[2]
 if name == "" or name == "key" or name == "protocol" or name == "baseName" then
-return false, "usage: setting <name> <value>  (key/protocol/baseName cannot be changed)"
+return false, "usage: setting <name> <value>"
 end
 if CONFIG[name] == nil then return false, "no setting called '" .. name .. "'" end
 local v = raw
@@ -3245,7 +3246,7 @@ elseif cmd == "exitrec" then
 if not (S.pos and S.pos.x) then return false, "position unknown - use GPS LOCATE first" end
 recStart()
 S.recording = true
-return true, "recording the exit route: drive me out of the base into the open, then SAVE"
+return true, "recording the exit route: drive me out, then SAVE"
 elseif cmd == "exitsave" then
 if not S.recording then return false, "not recording - press START first" end
 S.recording = false
@@ -3345,7 +3346,7 @@ S.home = { x = math.floor(x), y = math.floor(y), z = math.floor(z) }
 S.homeAuto = true
 save()
 return true, "home set to " .. S.home.x .. " " .. S.home.y .. " " .. S.home.z ..
-" (next to another turtle's home - checked the first time I go there)"
+" (checked the first time I go there)"
 elseif cmd == "sethome" then
 S.homeAuto = nil
 local x, y, z = tonumber(a[1]), tonumber(a[2]), tonumber(a[3])
@@ -3368,7 +3369,7 @@ elseif cmd == "drive" then
 if job then
 if not HAND then return false, "busy: " .. tostring(task) .. " - press STOP first" end
 if not canPause() then
-return false, "busy: " .. tostring(task) .. " - it finishes this first (it cannot stop halfway), then try again"
+return false, "busy: " .. tostring(task) .. " - it finishes this first, then try again"
 end
 local was = task
 pauseForHand()
@@ -3682,6 +3683,7 @@ and m.n > (S.lastN or 0) and m.sig == sign(CONFIG.key, m.t, m.n, m.cmd, m.args) 
 S.lastN = m.n
 save()
 baseId = id
+REFUSED = nil
 local a = type(m.args) == "table" and m.args or {}
 HAND = m.hand == true and m.cmd ~= "stop"
 if HAND then LAST_HAND = os.clock() end
@@ -3705,13 +3707,17 @@ pauseForHand()
 NEXT_JOB = { cmd = m.cmd, args = a }
 reply(m.cmd, true, "paused '" .. tostring(was) .. "' - doing your " .. m.cmd .. " now")
 elseif job then
-reply(m.cmd, false, "busy: " .. task .. (m.hand == true and " - it finishes this first (it cannot stop halfway), then try again"
+reply(m.cmd, false, "busy: " .. task .. (m.hand == true and " - it finishes this first, then try again"
 or " (press STOP first)"))
 else
 if m.hand ~= true then S.paused = nil end
 stopFlag = false
 job = { cmd = m.cmd, args = a }
 end
+elseif type(m) == "table" and m.t == "cmd" and type(m.n) == "number" and (tonumber(m.copy) or 0) == (COPY or 0)
+and m.sig == sign(CONFIG.key, m.t, m.n, m.cmd, m.args) then
+
+REFUSED = m.cmd .. ((m.ses and m.ses ~= SESSION) and ":ses" or DUP and ":dup" or (":n" .. tostring(S.lastN)))
 end
 end
 end

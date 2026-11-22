@@ -817,7 +817,7 @@ function SP.wishRoom(it)
   local stays = math.ceil(peak * keep)
   return math.max(0, have - waiting - stays), stays, peak, waiting
 end
-function SP.wish(who, raw)
+function SP.wish(who, raw, needItem)
   local t = low(raw):gsub("[^%w_' ]", " ")
   local word = low(cfg("name", "base"))
   t = (" " .. t .. " "):gsub(" " .. word .. " ", " "):gsub("%s+", " ")
@@ -841,6 +841,7 @@ function SP.wish(who, raw)
   for w in phrase:gmatch("%S+") do if SP.NOT_ITEM_WORDS[w] then return nil end end
   local n, name = SP.wishParse(phrase)
   if name == "" then return nil end
+  if needItem and not SP.findItem(name) then return nil end      -- (at the base: only a REAL item is a wish)
   if cfg("wish", true) == false then return "Wishes are switched off at spawn right now. Sorry!" end
   -- (the owner: only when it IS an item - anything else goes on to the normal answers)
   if V.isOwner(who) then return SP.findItem(name) and fill(pick(SP.W_OWNER), who) or nil end
@@ -1246,6 +1247,17 @@ function SP.aboutOther(asker, word)
   return table.concat(parts, " "), pick({ "Here is what " .. shown .. " told me about themselves - in chat.",
     "I sent you what " .. shown .. " told me.", shown .. "? I put it in chat for you.", "Check your chat - that is what " .. shown .. " said about themselves." })
 end
+-- ITEM WISHES AT THE BASE TOO (the owner's chat: "Sparky I wish for 2 shining alloy" at the base got pack 2's joke - "sent
+-- to the redstone gods" - and the owner had to hand it over himself): a wish for a real AE2 item is the same as at spawn
+-- (the limits, half of every item stays, by drone); the "yes" goes through the base's own yes / no (#wish).
+table.insert(V.patterns, 1, function(who, raw)
+  if SP.inSpawn() or cfg("baseWish", true) == false then return nil end
+  local w = SP.wish(who, raw, true)
+  if not w then return nil end
+  if SP.wpend and SP.wpend[low(who)] then V.pend[low(who)] = { kind = "yesno", yes = "#wish:yes", till = os.clock() + 90 } end
+  return w
+end)
+V.hash.wish = function(who) return SP.wishAnswer(who, "yes") or "That wish is gone - ask me again." end
 -- (FIRST: a pack's "i wish ..." joke pattern answered "i wish to teleport to Bob" before)
 table.insert(V.patterns, 1, function(who, raw)
   local t = " " .. low(raw):gsub("[^%w_:' ]", " "):gsub("%s+", " ") .. " "

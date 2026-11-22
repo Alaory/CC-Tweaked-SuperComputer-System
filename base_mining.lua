@@ -301,14 +301,75 @@ function MINE.setCode(text, from)
   MINE.code = { text = text, ver = MINE.codeHash(text), pieces = pieces, from = from, myver = mv }
   return MINE.code
 end
--- keep it on a data floppy (true + where | false + why)
+-- WHERE IT IS KEPT (the owner's `disks`: "disk13/miner_code.lua not saved (45 KB free, needs 82 KB)" with ~2.5 MB free on
+-- the storage helpers): like node.lua (TT.codeStore) - a STORAGE HELPER with room first (read back to check), else a data
+-- floppy; miner_where.dat says where. The old copy elsewhere is deleted (a full floppy gets its room back).
+MINE.WHERE_FILE = "miner_where.dat"
+function MINE.codeWhere()
+  local okR, w = pcall(readSafe, MINE.WHERE_FILE)
+  if okR and type(w) == "table" and type(w.path) == "string" then return w end
+  return nil
+end
+-- the stored program's text (a helper copy is asked over the cable), else nil
+function MINE.readStored()
+  local w = MINE.codeWhere()
+  if w then
+    if STORE and STORE.isRemote(w.path) then
+      local okR, t = pcall(STORE.read, w.path)
+      if okR and type(t) == "string" and #t > 0 then return t end
+    else
+      local t = readAll(w.path)
+      if t then return t end
+    end
+  end
+  return readAll(dataFile and dataFile(MINE.CODE_FILE) or MINE.CODE_FILE)
+end
+-- keep it: true + where | false + why
 function MINE.storeCode(text)
-  local p = dataFile and dataFile(MINE.CODE_FILE, true) or MINE.CODE_FILE
-  local cur = readAll(p)
-  if cur == text then return true, p end
-  local okS = saveFileSafe(p, text)
-  if okS == false or not fs.exists(p) then return false, "no room for miner.lua (" .. math.ceil(#text / 1024) .. " KB) - put in a data floppy (disks data)" end
-  return true, p
+  local w = MINE.codeWhere()
+  if w and MINE.readStored() == text then return true, w.path end
+  local where
+  if STORE and STORE.helpers then
+    local ids = {}
+    for id, h in pairs(STORE.helpers) do
+      if STORE.usable(h) and (h.free or 0) >= #text + 32 * 1024 then ids[#ids + 1] = id end
+    end
+    local oldId = w and STORE.parse(w.path)
+    table.sort(ids, function(a, b)
+      if (a == oldId) ~= (b == oldId) then return a == oldId end
+      return (STORE.helpers[a].free or 0) > (STORE.helpers[b].free or 0)
+    end)
+    for _, id in ipairs(ids) do
+      local p = "store:" .. id .. "/" .. MINE.CODE_FILE
+      local okW = pcall(STORE.write, p, text)
+      local okR, back = pcall(STORE.read, p)
+      if okW and okR and back == text then where = p break end
+    end
+  end
+  if not where then
+    local p = dataFile and dataFile(MINE.CODE_FILE, true) or MINE.CODE_FILE
+    if readAll(p) == text then where = p
+    else
+      local okS = saveFileSafe(p, text)
+      if okS ~= false and fs.exists(p) then where = p end
+    end
+  end
+  if not where then
+    return false, "no room for miner.lua (" .. math.ceil(#text / 1024) .. " KB): no storage helper / data floppy with that much free"
+  end
+  writeSafe(MINE.WHERE_FILE, serialSmall({ path = where }))
+  -- the copy that was somewhere else goes (a floppy gets its room back)
+  if w and w.path ~= where then
+    if STORE and STORE.isRemote(w.path) then pcall(STORE.delete, w.path) elseif fs.exists(w.path) then pcall(fs.delete, w.path) end
+  end
+  if STORE and STORE.isRemote(where) then
+    for _, d in ipairs(mountedDisks and mountedDisks() or {}) do
+      local p = fs.combine(d.mount, MINE.CODE_FILE)
+      if fs.exists(p) then pcall(fs.delete, p) end
+    end
+    if fs.exists(MINE.CODE_FILE) then pcall(fs.delete, MINE.CODE_FILE) end
+  end
+  return true, where
 end
 -- find the program: a miner.lua dragged in > the stored copy; download = GitHub first
 -- the NEWEST of: a miner.lua dragged next to inventory.lua, GitHub (download), the stored copy.
@@ -333,7 +394,7 @@ function MINE.loadCode(download, log)
       else log("Download did not work - using what is here") end
     end
   end
-  local stored = readAll(dataFile and dataFile(MINE.CODE_FILE) or MINE.CODE_FILE)
+  local stored = MINE.readStored()
   if stored then cands[#cands + 1] = { text = stored, from = "the stored copy" } end
   if #cands == 0 then
     return nil, "no miner.lua: drag one onto this computer (next to inventory.lua) or allow http for  mine update"

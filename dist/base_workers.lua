@@ -636,6 +636,7 @@ setToast("Big survey error: " .. tostring(errF), C.bad)
 end
 pcall(TT.updateTick)
 pcall(TT.stopTick)
+pcall(TT.pingTick)
 pcall(TT.patrolTick)
 pcall(TT.partyTick)
 pcall(TT.homeTick)

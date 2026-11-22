@@ -600,7 +600,7 @@ end
 
 local CLEAN = {
 str = { "label", "task", "gear", "ver", "msg", "cmd", "want", "mode", "name", "scan", "route", "walls", "dead", "clears",
-"dim", "role", "phase", "code", "err", "ses", "scanErr", "updReady" },
+"dim", "role", "phase", "code", "err", "ses", "scanErr", "updReady", "refused" },
 strOrFalse = { "front", "up", "down" },
 num = { "fuel", "fuelMax", "items", "freeSlots", "homeFuel", "free", "ci", "li", "nl", "idx", "transit", "rowLength", "nextDump",
 "lastCmd", "scanR", "tx", "tz", "fx", "fz", "py", "x", "y", "z", "trail", "copy", "leader", "partner" },
@@ -753,6 +753,14 @@ end
 if m.task and m.task ~= "idle" and not tostring(m.task):find("^waiting") then t.prevTask = m.task end
 t.freeSlots = tonumber(m.freeSlots)
 t.homeFuel = tonumber(m.homeFuel)
+
+
+if m.refused and m.refused ~= (t.refused and t.refused.raw) then
+local c, k = tostring(m.refused):match("^([^:]*):(.*)$")
+local why = (k == "ses" and "it was for another session (a copy of this id)") or (k == "dup" and "it is a stopped duplicate")
+or (k and k:sub(1, 1) == "n" and ("an old message number (it last took " .. k:sub(2) .. ")")) or tostring(m.refused)
+t.refused = { raw = m.refused, why = tostring(c or "?") .. " - " .. why, at = os.clock() }
+end
 if m.gear then
 
 local function has(g, w) for part in tostring(g or ""):gmatch("[^,]+") do if part == w then return true end end end
@@ -873,6 +881,14 @@ pcall(TT.partySeen, id, m.seen)
 elseif m.t == "recipe" then
 if FACTORY and type(m.recipe) == "table" then pcall(FACTORY.learned, id, m.recipe) end
 elseif m.t == "result" then
+if m.cmd == "ping" and t.pingAsk then
+local p = t.pingAsk
+t.pingAsk = nil
+local msg = t.label .. " answered PING after " .. math.floor(os.clock() - p.at + 0.5) .. " s" ..
+(p.tries > 1 and (" (try " .. p.tries .. " - it did not hear the first one)") or "")
+TT.log(t, msg)
+setToast(msg, C.good, 6)
+end
 if m.cmd == "drive" then
 t.driveMsg = { ok = m.ok, msg = tostring(m.msg), at = os.clock() }
 
@@ -1170,7 +1186,7 @@ for _, d in ipairs(mountedDisks()) do
 if d.data and not d.installer then
 local p = fs.combine(d.mount, name)
 local room = (d.free or 0) + (fs.exists(p) and fs.getSize(p) or 0)
-if room >= #text + 4096 and saveFileSafe(p, text) then where = p break end
+if room >= #text + 2048 and saveFileSafe(p, text) then where = p break end
 end
 end
 end
@@ -2553,6 +2569,40 @@ end
 
 
 
+
+
+function TT.pingWhy(t)
+local why = {}
+local ago = t.lastSeen and math.floor(os.clock() - t.lastSeen) or nil
+if not ago then why[#why + 1] = "it never reported"
+elseif ago > 60 then why[#why + 1] = "its last report was " .. ago .. " s ago (offline?)"
+else why[#why + 1] = "it still reports (" .. ago .. " s ago) but did not hear me" end
+if t.refused and os.clock() - t.refused.at < 600 then
+why[#why + 1] = "it REFUSED a command lately: " .. t.refused.why
+elseif ago and ago <= 60 then
+why[#why + 1] = "the modem may be off (scanning / digging: " .. tostring(t.task) .. ") or the base is out of its radio range"
+end
+return table.concat(why, "; ")
+end
+function TT.pingTick()
+for _, t in pairs(state.turtles) do
+local p = t.pingAsk
+if p and os.clock() - p.last >= 3 then
+if p.tries >= 10 then
+t.pingAsk = nil
+local msg = t.label .. ": no answer to PING after " .. math.floor(os.clock() - p.at) .. " s - " .. TT.pingWhy(t)
+TT.log(t, msg)
+setToast(msg, C.warn, 10)
+else
+p.tries, p.last = p.tries + 1, os.clock()
+TT.send(t.id, "ping", {}, true, true)
+end
+end
+end
+end
+
+
+
 function TT.send(id, cmd, args, quiet, again, ses)
 local n = os.epoch("utc")
 if n <= state.tLastN then n = state.tLastN + 1 end
@@ -2568,6 +2618,7 @@ state.tOut[#state.tOut + 1] = { id = id, msg = { t = "cmd", n = n, cmd = cmd, ar
 sig = TT.sign(CONFIG.turtles.key, "cmd", n, cmd, a) } }
 
 if t and t.held and cmd ~= "stop" and not quiet then t.held = nil TT.listDirty = true end
+if cmd == "ping" and t and not again and not quiet then t.pingAsk = { tries = 1, last = os.clock(), at = os.clock() } end
 if cmd == "stop" and t and not again then
 t.stopAsk = { tries = 1, last = os.clock() }
 t.held = true

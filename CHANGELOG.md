@@ -22,6 +22,10 @@ Peripherals (tested on CC:Tweaked 1.120.2, Minecraft 1.21.1, NeoForge).
 - Autostart and crash restart (`startup.lua`); the base notes when and why it was off. An error in one
   part (a page, a button, a background job) no longer stops the base: that part starts again and the
   error goes to the SYSTEM log.
+- A miner that ends up in the chunk next to its job chunk (after an unload trip) walks back in instead of stopping.
+- PING is sent again until the turtle answers (survey turtles have their modem off while scanning) and says why not.
+- Drones on far trips jump into the sky above a player near the target first, then hop on from there.
+- Item wishes work at the base too, not only at spawn. The miner program is kept on a storage helper.
 - Mining teams survive a server crash right after moving to the next chunk: miners put back into the old chunk
   walk over again (the loader goes back for them when they do not answer), a loader put back walks over itself.
 - Drones never fly out of the loaded area (they were lost), an arrival spot for underground bases, where each

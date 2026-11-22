@@ -75,7 +75,7 @@ local DUMP = { x = 1, y = 70, z = 0 }       -- the empty block in front of the s
 local delivered, busDrained = {}, 0
 local function chunk(x) return math.floor(x / 16) end
 -- chunkyTurtleRadius: 0 = the game default (only its own chunk); "r1" scenario = 3x3
-local RADIUS = (SCEN == "r1") and 1 or 0
+local RADIUS = (SCEN == "r1" or SCEN:find("warpoff")) and 1 or 0     -- ("warpoff": the game showed it RUNNING there)
 local function loaded(x, z, extra)
   local r = RADIUS + (extra or 0)
   if math.abs(chunk(x) - chunk(STATION.x)) <= r and math.abs(chunk(z) - chunk(STATION.z)) <= r then return true end
@@ -403,6 +403,17 @@ local function peripheralApi(u)
           act(u)
           u.fuel = u.fuel - math.floor(math.sqrt((p.x - u.pos.x) ^ 2 + (p.z - u.pos.z) ^ 2) / 4)
           u.pos.x, u.pos.y, u.pos.z = p.x, p.y, p.z
+          -- scenario "warpoff" (the owner's screenshot: "PAUSED: would leave chunk -304,705 ... gave up after 8 tries" - the
+          -- miner 12 blocks into the NEXT chunk after an unload trip): the first trip back lands one chunk off
+          if n == "work" and SCEN:find("warpoff") and not WARPOFF_AT and T > 900 then
+            WARPOFF_AT = T
+            local nx = p.x + 16
+            if occupied(nx, p.y, p.z) then nx = p.x - 16 end
+            setBlock(nx, p.y, p.z, nil)
+            u.pos.x = nx
+            io.write(string.format("** the unload trip back landed one chunk off: %d %d %d (chunk %d) instead of %d (chunk %d)\n",
+              nx, p.y, p.z, math.floor(nx / 16), p.x, math.floor(p.x / 16)))
+          end
           u.warps = (u.warps or 0) + 1
           return true
         end,
@@ -1084,6 +1095,13 @@ if SCEN:find("blocker") then
   end
   if stopped then fail("a miner STOPPED behind the dead turtle: " .. tostring(stopped)) end
   print("ores in all: " .. now .. " (the dead turtle appeared at " .. math.floor(BLOCKED_AT) .. " s)")
+end
+if SCEN:find("warpoff") then
+  if not WARPOFF_AT then fail("no unload trip landed off") end
+  for _, n in ipairs(NOTES) do
+    if n:find("would leave chunk", 1, true) and n:find("gave up", 1, true) then fail("a miner STOPPED outside its job chunk: " .. n) end
+  end
+  if (MINE.units[LOADER] and MINE.units[LOADER].ci or 0) < 3 then fail("the team did not get on after the bad landing (chunk " .. tostring(MINE.units[LOADER] and MINE.units[LOADER].ci) .. ")") end
 end
 if SCEN:find("crashback") then
   if not CB_AT then fail("no crash right after a crossing happened") end

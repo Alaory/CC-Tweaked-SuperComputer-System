@@ -80,7 +80,7 @@ protect = { "computercraft:*", "*shulker*", "ae2:*", "*chest*", "*barrel*", "sop
 }
 
 STATE_FILE = "miner_state"
-MYVER = "m26"
+MYVER = "m27"
 DX = { [0] = 0, 1, 0, -1 }
 DZ = { [0] = -1, 0, 1, 0 }
 FNAME = { [0] = "north", "east", "south", "west" }
@@ -2207,14 +2207,20 @@ local outside = math.floor(S.pos.x / 16) ~= cx or math.floor(S.pos.z / 16) ~= cz
 
 
 
-if outside and GPS_RUN and ci > 0 and not J.late and J.phase ~= "ready" then
-local pcx, pcz = chunkAt(tp, ci - 1)
-if math.floor(S.pos.x / 16) == pcx and math.floor(S.pos.z / 16) == pcz then
+
+
+
+local mcx, mcz = math.floor(S.pos.x / 16), math.floor(S.pos.z / 16)
+if outside and GPS_RUN and not J.late and J.phase ~= "ready" and math.abs(mcx - cx) <= 1 and math.abs(mcz - cz) <= 1 then
 J.late = true
 save()
+local pcx, pcz = chunkAt(tp, math.max(0, ci - 1))
+if ci > 0 and mcx == pcx and mcz == pcz then
 note("A server crash put me back into chunk " .. (ci - 1) .. " - walking into chunk " .. ci .. " again")
 equipTool("modem")
 pcall(sendTeam, S.leader, "behind", { ci = ci })
+else
+note("I am in the chunk next to my job chunk (" .. mcx .. "," .. mcz .. " - after an unload trip?) - walking back in")
 end
 end
 if (ci == 0 or J.late) and outside then CHUNK_LOCK = nil end

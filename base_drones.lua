@@ -884,6 +884,27 @@ function strandedWhy(dr, x, y, z)
   return "too little air to teleport and too far to fly safely (it would be lost) - it waits where it is"
 end
 
+-- A PLAYER AS A SPRINGBOARD (the owner: "make drones teleport to a player - up in the sky - who is near the wanted area,
+-- and the drone hops from there"): a player keeps their own area loaded AND running, so the air high above them always
+-- takes a teleport. A far trip into land nothing loads first jumps into the sky above the online overworld player
+-- nearest the target - when that saves at least two hops - and hops on from there (every hop is ~121 ticks + air).
+function springboard(dr, x, z)
+  local px, _, pz = droneXYZ(dr)
+  if not px then return nil end
+  local hop = safeHop()
+  local dNow = math.sqrt((x - px) ^ 2 + (z - pz) ^ 2)
+  local best, bd
+  for _, e in ipairs(state.players or {}) do
+    local p = type(e) == "table" and e.p
+    local online = not state.online or state.online[tostring(e.name):lower()]
+    if online and type(p) == "table" and tonumber(p.x) and tonumber(p.z) and e.dim == DRONE_DIM and not e.dimOther then
+      local d = math.sqrt((x - p.x) ^ 2 + (z - p.z) ^ 2)
+      if d < dNow - 2 * hop and (not bd or d < bd) then best, bd = e, d end
+    end
+  end
+  return best, bd
+end
+
 -- SIMULATION DISTANCE (the owner: "when a drone hop-teleports I get stuck in an unloaded chunk and see the world
 -- unloading, I never move even when I am on it - teleports to loaded chunks work great"): PneumaticCraft accepts a
 -- teleport into any LOADED chunk (level.isLoaded - the VIEW distance), but the server only RUNS (entity-ticks) chunks
@@ -1082,6 +1103,13 @@ function travelToRaw(dr, x, y, z, spots, noFly, loaded, track)
       -- nothing the base knows keeps it loaded: the straight teleport and the one into the air above it would
       -- both be refused (2 x 120 ticks + their air - the drone_sim ride 300 blocks out: 322 of 726 ticks)
       droneLog(dr, "Nobody the base knows of is near " .. fmtPos(x, y, z) .. " (not loaded) - hopping there")
+      local sp, sd = springboard(dr, x, z)
+      if sp and canTeleport(dr, 2) then
+        local sy = math.min(300, math.max(math.floor(tonumber(sp.p.y) or 64) + 24, CONFIG.drone.hopY or 200))
+        droneLog(dr, "First into the sky above " .. tostring(sp.name) .. " (" .. math.floor(sd) .. " blocks from there) - hopping on from there")
+        local okS, errS = droneMoveTo(dr, "pneumaticcraft:teleport", math.floor(sp.p.x), sy, math.floor(sp.p.z), CONFIG.drone.travelTimeout)
+        if not okS and errS ~= "did not get there" and errS ~= "low on air" then return false, errS end
+      end
       local okH, errH = hopTowards(dr, x, z, track)
       if not okH then return false, errH end
       fresh()

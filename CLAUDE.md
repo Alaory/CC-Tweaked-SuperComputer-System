@@ -551,7 +551,7 @@ PneumaticCraft drone rides, turtle mapping/surveys, and an AE2 ME network view.
   sorts by ID again. MINER UPDATES (m21; base MINE.loadCode / startUpdate / updTick, console `mine update
   [stop]`, MINING tab UPDATE MINERS two taps): miner.lua is NOT kept on the base's disk - upgrade.lua
   fetch mode (o.fetch = "miner.lua", o.group = "miner"; manifest group miner + slim:miner) downloads
-  it checked, kept as miner_code.lua via dataFile (data floppy first); a miner.lua dragged next to
+  it checked, kept as miner_code.lua on a STORAGE HELPER first (MINE.storeCode like TT.codeStore - the owner: "disk13/miner_code.lua not saved (45 KB free, needs 82 KB)" with 2.5 MB on helpers; miner_where.dat, MINE.readStored; the floppy copy is deleted), else a data floppy; a miner.lua dragged next to
   inventory.lua, GitHub and the stored copy: the NEWEST (MYVER mN, MINE.verNum) wins, kept on the floppy, the dragged file removed (an old dragged copy used to win for good - "I still see m23"). Every RUNNING team is PAUSED first (U.resume),
   then each online unit whose m.code (codeHash of its own program file, the same as make_manifest h)
   differs gets "upd" {ver, i, n, text} pieces of 8000 straight into state.tOut (NOT u.queue - that
@@ -605,6 +605,11 @@ PneumaticCraft drone rides, turtle mapping/surveys, and an AE2 ME network view.
   Chunky loads it - they wake up), waits until each has spoken + 45 s (CONFIG.fetchWait 300 s at most), goes back.
   minesim team3crashback / team3crashbackloader / team5crashbackcaves (c.gate: a restarted turtle in an unloaded chunk
   does not run; the old code: "never ran again", 0 ores after the crash).
+  m27 NEXT TO THE JOB CHUNK (the owner's screenshot: "PAUSED: would leave chunk -304,705 ... gave up after 8 tries" - 12
+  blocks into the next chunk after an unload trip): a miner whose GPS chunk is ANY chunk next to its job chunk (not only the
+  one before it) -> J.late = walks back in (CHUNK_LOCK off until inside); "behind" to the loader only for the chunk
+  before. minesim team2warpoff / team3warpoffcaves (the first trip back from the station lands one chunk off; r1 loading -
+  the game showed it running there): the old code STOPPED, the team waited for good.
   MINE.silentTick: a unit silent 15 min (mining.silentWarn) -> ONE WARNING + sysLog with last spot,
   dim, job, last note (a crash can delete a turtle: "no trace"); `mine` shows offline units' spot. TOOL CHECK (m20, toolNow): turtle.getEquippedLeft/Right where they exist
   (the ITEM: modem / geo / pickaxe / "none"); else the side's peripheral type - BUT a side whose
@@ -945,6 +950,12 @@ PneumaticCraft drone rides, turtle mapping/surveys, and an AE2 ME network view.
   go -> one WARNING, it keeps waiting. The party moves on to the next lost turtle at once.
   Buttons: FLEET card, HOME quick action "FIND LOST (n)" / "CALL BACK SEARCH" (POCKET.act
   "party" toggles), pocket BOTS "FIND LOST TURTLES (n)" (status d.lost / d.party). test_party.lua.
+- PING THAT IS HEARD (the owner: "some survey turtles do not respond to ping - a copy that loads its chunks"): a surveying
+  turtle takes its modem off for every scan (Geo Scanner) / dig (pickaxe) - one ping went nowhere. A PING you send
+  (not quiet) -> t.pingAsk; TT.pingTick (comms, next to stopTick) sends it again every 3 s, 10 tries; the answer -> log +
+  toast "answered PING after N s (try k)"; none -> TT.pingWhy: last report age, a command the turtle REFUSED lately
+  (node m27: a signed command for its own copy tag that it did not take - another session / a stopped copy / an old
+  number - REFUSED, reported once as m.refused -> t.refused), or modem off / out of radio range. test_ping.lua.
 - Permanent rescuer: t.rescuerRole (RESCUER button, saved in turtles.dat;
   base only). TT.patrolTick (comms worker) sends it to: no fuel (<20 for
   60 s), stuck (60 s idle), lost (silent CONFIG.turtles.rescueAfter, default
@@ -1580,6 +1591,12 @@ PneumaticCraft drone rides, turtle mapping/surveys, and an AE2 ME network view.
   (smem().peak[id] {n, at}, forgotten after 30 days, 500 items) - using some up does not lower the line; checked at the
   wish AND again at "yes" (two players asking at once); nothing above the line -> SP.W_LOW. Rounded UP: 1 elytra = none,
   2 = 1, 3 = 1. `voice spawn wish keep <percent>`. Caretaker supplies (voice_lonely) use it too. test_spawn_scenarios.
+  WISHES AT THE BASE TOO (the owner's chat: "Sparky I wish for 2 shining alloy" at the base got pack 2's joke "sent to the
+  redstone gods"; the owner handed it over himself): a pattern (voice_spawn, inserted first) runs SP.wish outside spawn -
+  the same limits and half-stays rule - and its yes / no goes through the base's own V.pend yesno -> V.hash.wish ->
+  SP.wishAnswer. voice.baseWish false = off. NO GOD WORDS in what it says (the owner: "remove every gods word in the
+  sentences"): the humble lines, the wish joke, a fact; test_spawn_scenarios checks every quoted line of every voice
+  file (god / gods / lord) - the detection keys stay.
   -> V.giftEarn(who, "wish", {{id, n}}) = the drone gift queue (anywhere in the overworld). voice.wishDaily 3 /
   wishAll 40 / wishMax 64 (and what AE2 has), one waiting wish per player, the owner none. mem["#spawn"] = met / gr
   (greeted) / wish / wall / log (500 names max). SP.tick (a tick hook): a newcomer = how to talk in chat + a greeting;
@@ -2034,6 +2051,12 @@ DW.freeDrone(okFn) picks a drone that has it (gifts wait otherwise). LAST SEEN: 
 (drone_seen.dat; refreshDrone + every droneMoveTo poll; saved when moved 32+ or once a minute) -> droneSeenText on the
 DRONES page (not connected), `drones`, `$drone status`; connected -> not = droneLost: ONE WARNING with the spot.
 drone_sim: W.lost (a flight leaving the loaded area). test_drone_lost.lua.
+
+**Drones - A PLAYER AS A SPRINGBOARD (the owner: "make drones teleport to a player - up in the sky - who is near the wanted
+area, and the drone hops from there"):** springboard(dr, x, z) = the ONLINE overworld player (not dimOther) nearest the
+target, when that is at least 2 hops nearer than the drone; travelTo's "nobody known near the target" branch first
+teleports into the sky above them (max(their y + 24, hopY), a player's area is loaded and running) and hops on from
+there. test_drone_speed: 3,000 out with Bob at 2,600 = 1,212 ticks instead of 17,559.
 
 **Drones - SPEED, MEASURED IN TICKS (the owner: "the drones are slow" + "a server will have a low TPS"):**
 PneumaticCraft source (1.21: EntityPathNavigateDrone, DroneEntity, PneumaticValues): a TELEPORT always waits

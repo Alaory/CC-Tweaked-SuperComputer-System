@@ -78,3 +78,28 @@ CHECK(r.freezes == 1 and tostring(r.err):find("froze", 1, true), "a hop beyond t
 CHECK(table.concat(told, " | "):find("Alaory: The drone is stuck", 1, true), "the rider is told what happened: " ..
       table.concat(told, " | "))
 CHECK(dr.hopOK and dr.hopOK <= 80, "next time: shorter hops (" .. tostring(dr.hopOK) .. ")")
+-- A PLAYER AS A SPRINGBOARD (the owner: "make drones teleport to a player - up in the sky - who is near the wanted area,
+-- and the drone hops from there"): Bob plays 2,600 blocks out on the way to 3,000 - one teleport into the sky above him,
+-- then the last ~400 in hops (instead of ~47 hops from the base)
+local function far(withBob)
+  state.online = { alaory = true, bob = true }
+  local P = { Alaory = { x = 0, y = 70, z = 0 } }
+  if withBob then P.Bob = { x = 2600, y = 72, z = 30 } end
+  dr.hopOK, dr.hopTrust = nil, nil
+  return DRONE_SIM.run({ home = HOME, start = { x = 2, y = 70, z = 0 }, loadedR = 96, simR = 96, air = 10,
+    players = P, dest = { kind = "coords", x = 3000, y = 80, z = 0 }, mission = { kind = "ferry", passenger = "Alaory" } })
+end
+local r0 = far(false)
+local r1 = far(true)
+local viaBob = false
+for _, l in ipairs(r1.log) do if l:find("teleported to 2600 ", 1, true) then viaBob = true end end
+CHECK(viaBob, "the drone first teleports into the sky above Bob (the player near the target)")
+CHECK(r1.state == "done" and r1.freezes == 0, "... and gets there (" .. tostring(r1.state) .. " " .. tostring(r1.err) .. ")")
+CHECK(r1.teleports <= r0.teleports and r1.ticks < r0.ticks / 4, "... far quicker: " .. r1.teleports .. " teleports / " ..
+      r1.ticks .. " ticks instead of " .. r0.teleports .. " / " .. r0.ticks)
+-- a player in another dimension at those x z, or offline, is no springboard
+state.players = { { name = "Bob", p = { x = 2600, y = 72, z = 30 }, dim = "minecraft:the_nether" } }
+CHECK(springboard(dr, 3000, 0) == nil, "a player in the Nether is no springboard")
+state.players = { { name = "Bob", p = { x = 2600, y = 72, z = 30 }, dim = DRONE_DIM } }
+state.online = { alaory = true }
+CHECK(springboard(dr, 3000, 0) == nil, "an offline player is no springboard")

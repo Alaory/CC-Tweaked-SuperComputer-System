@@ -888,6 +888,27 @@ end
 
 
 
+function springboard(dr, x, z)
+local px, _, pz = droneXYZ(dr)
+if not px then return nil end
+local hop = safeHop()
+local dNow = math.sqrt((x - px) ^ 2 + (z - pz) ^ 2)
+local best, bd
+for _, e in ipairs(state.players or {}) do
+local p = type(e) == "table" and e.p
+local online = not state.online or state.online[tostring(e.name):lower()]
+if online and type(p) == "table" and tonumber(p.x) and tonumber(p.z) and e.dim == DRONE_DIM and not e.dimOther then
+local d = math.sqrt((x - p.x) ^ 2 + (z - p.z) ^ 2)
+if d < dNow - 2 * hop and (not bd or d < bd) then best, bd = e, d end
+end
+end
+return best, bd
+end
+
+
+
+
+
 
 
 function simChunks() return math.max(3, math.floor(tonumber(CONFIG.drone.simChunks) or 6)) end
@@ -1082,6 +1103,13 @@ if px and not who and math.abs(x - px) + math.abs(z - pz) > (CONFIG.drone.hopLen
 
 
 droneLog(dr, "Nobody the base knows of is near " .. fmtPos(x, y, z) .. " (not loaded) - hopping there")
+local sp, sd = springboard(dr, x, z)
+if sp and canTeleport(dr, 2) then
+local sy = math.min(300, math.max(math.floor(tonumber(sp.p.y) or 64) + 24, CONFIG.drone.hopY or 200))
+droneLog(dr, "First into the sky above " .. tostring(sp.name) .. " (" .. math.floor(sd) .. " blocks from there) - hopping on from there")
+local okS, errS = droneMoveTo(dr, "pneumaticcraft:teleport", math.floor(sp.p.x), sy, math.floor(sp.p.z), CONFIG.drone.travelTimeout)
+if not okS and errS ~= "did not get there" and errS ~= "low on air" then return false, errS end
+end
 local okH, errH = hopTowards(dr, x, z, track)
 if not okH then return false, errH end
 fresh()

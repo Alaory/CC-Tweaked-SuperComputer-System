@@ -902,7 +902,7 @@ add(V.patterns, {
     local w = table.concat(ws, " "):match("^i wish (.+)$")
     if not w then return nil end
     V.badge(who, "wish")
-    return pick({ "Your wish has been sent to the redstone gods. They are slow. Be patient.", "Granted! In a parallel world. Maybe.",
+    return pick({ "Your wish has been sent to the redstone department. They are slow. Be patient.", "Granted! In a parallel world. Maybe.",
                   "I wrote it in my diary. Wishes in my diary have a 3 percent chance of coming true.", "Wish received. Please hold." })
   end,
   -- owner / friends: how many <item> do we have (AE2)

@@ -639,4 +639,32 @@ scenario("half of every item stays in AE2", function()
   local src = io.open(SRC_DIR .. "/voice_lonely.lua"):read("a")
   CHECK(src:find("SP.wishRoom", 1, true), "caretaker supplies follow the same rule")
 end)
+-- (the owner's chat: "Sparky I wish for 2 shining alloy" AT THE BASE got a joke about the "redstone gods")
+scenario("an item wish at the base, not at spawn", function()
+  setSetting("voice.detector", false)          -- (Kim is at the base by the Player Detector)
+  world({ Kim = "base" })
+  item("modded:shining_alloy", 40)
+  state.me.items[#state.me.items].display = "Shining Alloy"
+  local c = say("Kim", "base I wish for 2 shining alloy")
+  CHECK(has(c, "2 Shining Alloy"), "a wish at the base is a real wish: " .. c)
+  CHECK(not has(c, "gods", "parallel world"), "... not the joke")
+  say("Kim", "yes")
+  local q = V.giftQueue()
+  CHECK(#q == 1 and q[1].item == "modded:shining_alloy" and q[1].n == 2, "... 'yes' queues it for a drone (" .. #q .. ")")
+  CHECK(not has(say("Kim", "base i wish i could fly"), "gods"), "a wish that is no item: no 'gods' line")
+  resetSetting("voice.detector")
+end)
+-- (the owner: "remove every gods word in the sentences")
+for _, f in ipairs(VOICE_FILES) do
+  local src = io.open(SRC_DIR .. "/" .. f):read("a")
+  for line in src:gmatch("[^\n]+") do
+    if not line:find("^%s*%-%-") then
+      for str in line:gmatch('"([^"]*)"') do
+        if str:find("%u") and (str:lower():find("%f[%a]gods?%f[%A]") or str:lower():find("%f[%a]lord%f[%A]")) then
+          CHECK(false, f .. ": a line the base says still has a god word: " .. str)
+        end
+      end
+    end
+  end
+end
 CHECK(#results >= 30, #results .. " scenarios")

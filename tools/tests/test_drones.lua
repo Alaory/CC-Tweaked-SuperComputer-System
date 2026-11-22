@@ -108,6 +108,7 @@ CHECK(near(W.P.Bob, 300, 0), "missed grab: Bob where he was")
 -- a long ride (hops of 160 - the far end is not loaded yet) and you get off half way:
 -- the drone must not hop on into unloaded land without you; it goes home
 for _, mode in ipairs({ "gets off", "logs off" }) do
+  state.players = {}             -- (Mia from a part above would be a springboard 800 out - base_drones.lua springboard)
   dr = world({ players = { Bob = { x = 0, y = 70, z = 0 } }, unreachable = 900 })
   dr.dest = { kind = "coords", x = 1000, y = 80, z = 0 }
   local farTp = 0
