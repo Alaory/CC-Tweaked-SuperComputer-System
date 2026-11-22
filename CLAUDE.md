@@ -968,9 +968,17 @@ PneumaticCraft drone rides, turtle mapping/surveys, and an AE2 ME network view.
   moving speed from two readings, body from eyeHeight, facing + looking from yaw / pitch, online
   for / joined), THE BASE AND <name> (drones: allowed or not, turtles avoid them or not, bed =
   respawnPosition, the $drone back spot) and every raw DETECTOR DATA value. PLAYER_INFO
-  (base_players.lua, memory only): first / joined (playerJoin event), dim + dimSince, last
+  (base_players.lua): first / joined (playerJoin event), dim + dimSince, last
   reading, speed / vy, online / left (playerLeave or gone from getOnlinePlayers).
-  test_players_page.lua.
+  test_players_page.lua. EVERY PLAYER EVER SEEN IS REMEMBERED (the owner: "keep the list of players remembered, even
+  players who went offline, even after a year"): players_seen.dat (dataPath, a data floppy first; serialSmall rows {name,
+  firstEver, last seen, dim, visits, played s, x, y, z, online-at-save}) - loadSeenPlayers once (refreshPlayers, also
+  without a detector), saveSeenPlayers at most every 2 min while changed, 10 s after a join / leave, and on exit
+  (baseExit); the newest SEEN_MAX 1000 by last seen. A visit = sessionOn once (join event or the online list); a base
+  restart while they play is the SAME visit (online at the last save, within 10 min); time played = the time between
+  readings (a gap > 1 min = the base was off). The page: offline rows "left 1 year ago", First seen / Visits / Time on
+  the server (spanWords: days / months / years - fmtSpan stops at hours). test_players_seen.lua (a restart, a year later,
+  back = visit 2, the cap, odd files).
 - ENVIRONMENT DETECTOR (base_env.lua ENV, WORLD page base_ui_env.lua "env" in the PLAYERS group,
   console `env` / `world`): ENV.read (page worker via ENV.tick: the WORLD page every 2 s + a scan
   every scanEvery 5 s, else once a minute) - biome, light (block / sky / daylight), getTime (TOTAL

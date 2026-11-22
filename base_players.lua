@@ -106,13 +106,78 @@ end
 
 -- WHAT THE BASE KNOWS ABOUT EACH PLAYER beyond one detector answer (PLAYERS page):
 -- when they joined / were first seen, how long in their dimension, how fast they
--- move (two readings apart), when they left. Memory only (a restart starts over).
-PLAYER_INFO = PLAYER_INFO or {}          -- [lower name] = { name, first, joined, dim, dimSince, x, y, z, t, sdim, speed, vy, online, left }
+-- move (two readings apart), when they left.
+PLAYER_INFO = PLAYER_INFO or {}          -- [lower name] = { name, first, joined, dim, dimSince, x, y, z, t, sdim, speed, vy, online, left,
+                                         --   firstEver, visits, played, sess, pt }
+-- EVERY PLAYER EVER SEEN IS REMEMBERED (the owner: "keep the list of players remembered, even players who went offline, even
+-- after a year"): players_seen.dat (dataPath: a data floppy first) = { {name, firstEver, left, dim, visits, played s, x, y, z}, ... }
+-- - read once (loadSeenPlayers), saved at most every 2 min while something changed (10 s after a join / leave), the newest
+-- SEEN_MAX by last seen kept (a few KB for a normal server). Before: memory only - a restart forgot everyone offline.
+SEEN_FILE, SEEN_MAX = "players_seen.dat", 1000
+local SEEN = { loaded = false, dirty = false, at = 0, soon = nil }
+local function seenNum(v) return type(v) == "number" and v == v and v > -1e15 and v < 1e15 and v or nil end
+function loadSeenPlayers()
+  if SEEN.loaded then return end
+  SEEN.loaded = true
+  local okP, p = pcall(dataPath, SEEN_FILE)
+  local okR, t = pcall(readSafe, (okP and p) or SEEN_FILE)
+  if not (okR and type(t) == "table") then return end
+  for _, e in ipairs(t) do
+    if type(e) == "table" and type(e[1]) == "string" and #e[1] >= 1 and #e[1] <= 40 then
+      local k = e[1]:lower()
+      local i = PLAYER_INFO[k]
+      if not i then i = { name = e[1], online = false } PLAYER_INFO[k] = i end
+      i.firstEver = i.firstEver or seenNum(e[2])
+      if not i.online then i.left = i.left or seenNum(e[3]) end
+      if type(e[4]) == "string" and #e[4] <= 80 then i.dim = i.dim or e[4] end
+      i.visits = math.max(i.visits or 0, seenNum(e[5]) or 0)
+      i.played = math.max(i.played or 0, seenNum(e[6]) or 0)
+      if not i.x and seenNum(e[7]) and seenNum(e[8]) and seenNum(e[9]) then i.x, i.y, i.z = e[7], e[8], e[9] end
+      -- (online at the last save: a base restart while they play is not a new visit)
+      if e[10] == 1 and seenNum(e[3]) then i.onAt = e[3] end
+    end
+  end
+end
+function resetSeenPlayers() SEEN.loaded, SEEN.dirty, SEEN.at, SEEN.soon = false, false, 0, nil end   -- (tests: a "restart")
+function saveSeenPlayers(force)
+  if not SEEN.loaded or not SEEN.dirty then return end
+  local now = os.epoch("utc")
+  if not force and now - SEEN.at < 120000 and not (SEEN.soon and now >= SEEN.soon) then return end
+  local list = {}
+  for _, i in pairs(PLAYER_INFO) do if type(i.name) == "string" then list[#list + 1] = i end end
+  local function last(i) return i.online and now or (i.left or i.firstEver or 0) end
+  table.sort(list, function(a, b) return last(a) > last(b) end)
+  local out = {}
+  for n = 1, math.min(#list, SEEN_MAX) do
+    local i = list[n]
+    local r = function(v) return v and math.floor(v + 0.5) or nil end
+    out[n] = { i.name, i.firstEver, i.online and now or i.left, i.dim, i.visits or 0, math.floor(i.played or 0), r(i.x), r(i.y), r(i.z),
+               i.online and 1 or nil }
+  end
+  SEEN.at, SEEN.soon = now, nil
+  local okS, ok = pcall(saveFileSafe, dataPath(SEEN_FILE), serialSmall(out))
+  if okS and ok then SEEN.dirty = false end
+end
 local function infoOf(name)
+  loadSeenPlayers()
   local k = tostring(name):lower()
   local i = PLAYER_INFO[k]
   if not i then i = { name = name } PLAYER_INFO[k] = i end
   return i
+end
+-- a visit starts / ends (counted once however it is seen: the join event or the online list)
+local function sessionOn(i, now)
+  i.firstEver = i.firstEver or now
+  -- (still online from before a base restart - saved as online within the last 10 min: the same visit)
+  if not i.sess and i.onAt and now - i.onAt < 600000 and now >= i.onAt then i.sess = true end
+  i.onAt = nil
+  if not i.sess then i.sess, i.visits, i.pt = true, (i.visits or 0) + 1, now SEEN.soon = now + 10000 end
+  SEEN.dirty = true
+end
+local function sessionOff(i, now)
+  if i.sess then i.sess = nil SEEN.soon = now + 10000 end
+  i.pt = nil
+  SEEN.dirty = true
 end
 -- a playerJoin / playerLeave event
 function playerJoined(name, dim)
@@ -121,11 +186,13 @@ function playerJoined(name, dim)
   local now = os.epoch("utc")
   i.first, i.joined, i.online, i.left = now, true, true, nil
   if type(dim) == "string" then i.dim, i.dimSince = dim, now end
+  sessionOn(i, now)
 end
 function playerLeft(name)
   if type(name) ~= "string" then return end
   local i = infoOf(name)
   i.online, i.left = false, os.epoch("utc")
+  sessionOff(i, i.left)
 end
 -- one reading of an online player (refreshPlayers)
 local function notePlayer(e)
@@ -133,6 +200,10 @@ local function notePlayer(e)
   local now = os.epoch("utc")
   i.name, i.online, i.left = e.name, true, nil
   i.first = i.first or now
+  sessionOn(i, now)
+  -- (time played: the time between two readings while online - a gap over a minute = the base was off)
+  if i.pt and now > i.pt and now - i.pt < 60000 then i.played = (i.played or 0) + (now - i.pt) / 1000 end
+  i.pt = now
   if e.dim and e.dim ~= i.dim then i.dim, i.dimSince = e.dim, i.dim and now or i.first end
   local p = e.p
   if not (p and tonumber(p.x)) then return end
@@ -169,6 +240,7 @@ end
 
 -- full = every online player (PLAYERS page); otherwise only the owner
 function refreshPlayers(full)
+  pcall(loadSeenPlayers)                 -- (the players seen before: read once - also without a detector, for the page)
   if not det then return end
   local owner = state.owner
   local fn = det.getPlayer or det.getPlayerPos
@@ -255,9 +327,10 @@ function refreshPlayers(full)
     -- players no longer in the online list: gone (when, for the list)
     if readOnline then
       for k, i in pairs(PLAYER_INFO) do
-        if i.online and not on[k] then i.online, i.left = false, os.epoch("utc") end
+        if i.online and not on[k] then i.online, i.left = false, os.epoch("utc") sessionOff(i, i.left) end
       end
     end
+    pcall(saveSeenPlayers)
   end
   if ownerE then
     state.player, state.playerDim, state.playerMsg = ownerE.p, ownerE.dim, ownerE.err

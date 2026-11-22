@@ -92,7 +92,24 @@ local function valText(v)
   if type(v) == "number" and v ~= math.floor(v) then return string.format("%.2f", v) end
   return tostring(v)
 end
-local function ago(ms) return fmtSpan(math.max(0, (os.epoch("utc") - ms) / 1000)) end
+-- a span in words for long ones too: "3 h 5 min", "12 days", "4 months", "1 year 2 months" (fmtSpan stops at hours)
+function spanWords(sec)
+  sec = math.max(0, math.floor(tonumber(sec) or 0))
+  if sec < 2 * 86400 then return fmtSpan(sec) end
+  local days = math.floor(sec / 86400)
+  if days < 60 then return days .. " days" end
+  local months = math.floor(days / 30.44)
+  if months < 12 then return months .. " months" end
+  local years, rest = math.floor(months / 12), months % 12
+  return years .. (years == 1 and " year" or " years") .. (rest > 0 and (" " .. rest .. (rest == 1 and " month" or " months")) or "")
+end
+local function ago(ms) return spanWords((os.epoch("utc") - ms) / 1000) end
+-- " (14 Mar 2026)" for anything more than a day ago
+function seenDate(ms)
+  if not ms or os.epoch("utc") - ms < 86400000 then return "" end
+  local ok, d = pcall(os.date, "!%d %b %Y", math.floor(ms / 1000))
+  return ok and d and (" (" .. d .. ")") or ""
+end
 
 -- every player for the list: online ones (detector), then the ones who left this run
 local function playerRows()
@@ -244,10 +261,13 @@ local function drawPlayerDetail(x, y, w, h, r)
   local bottom = y + h - 2
   if not r.online then
     local rr = iy
-    kv(ix, rr, iw, "Left the server", i.left and (ago(i.left) .. " ago") or "?") rr = rr + 1
+    kv(ix, rr, iw, "Left the server", i.left and (ago(i.left) .. " ago" .. (i.left and seenDate(i.left) or "")) or "?") rr = rr + 1
+    if i.firstEver then kv(ix, rr, iw, "First seen", ago(i.firstEver) .. " ago" .. seenDate(i.firstEver)) rr = rr + 1 end
+    if (i.visits or 0) > 0 then kv(ix, rr, iw, "Visits", tostring(i.visits)) rr = rr + 1 end
+    if (i.played or 0) >= 60 then kv(ix, rr, iw, "Time on the server", spanWords(i.played)) rr = rr + 1 end
     if i.dim then kv(ix, rr, iw, "Last dimension", dimLabel(i.dim, false), dimColor(i.dim)) rr = rr + 1 end
     if i.x then kv(ix, rr, iw, "Last seen at", string.format("%d, %d, %d", round(i.x), round(i.y), round(i.z))) rr = rr + 1 end
-    para(ix, rr + 1, iw, "The detector only sees players who are on the server.", C.dim, 2)
+    para(ix, rr + 1, iw, "Remembered since the base first saw them (kept even after a long time away). The detector only sees players who are on the server.", C.dim, 3)
     return
   end
   if not e.p then
@@ -286,6 +306,9 @@ local function drawPlayerDetail(x, y, w, h, r)
     { "Body", posture(p.eyeHeight) },
     { "Looking", looking(p) },
     { i.joined and "Joined" or "Online for", i.first and (ago(i.first) .. (i.joined and " ago" or "")) or nil },
+    { "Visits", (i.visits or 0) > 0 and tostring(i.visits) or nil },
+    { "Time on the server", (i.played or 0) >= 60 and spanWords(i.played) or nil },
+    { "First seen", i.firstEver and (ago(i.firstEver) .. " ago" .. seenDate(i.firstEver)) or nil },
   }
   for _, f in ipairs(now) do
     if f[2] and ry <= bottom then kv(rx2, ry, cw, f[1], f[2]) ry = ry + 1 end
