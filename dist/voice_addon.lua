@@ -52,9 +52,16 @@ end
 
 
 local function homePos() return CONFIG.drone and CONFIG.drone.home end
+
+
+
+
+
 local function inOverworld(e)
-return e.dim == nil or e.dim == (DRONE_DIM or "minecraft:overworld")
+if e.dim then return e.dim == (DRONE_DIM or "minecraft:overworld") end
+return not e.dimOther
 end
+VOICE.inOverworld = inOverworld
 
 
 
@@ -1280,6 +1287,10 @@ for _, e in ipairs(state.players or {}) do
 if tostring(e.name):lower() == k and e.p and tonumber(e.p.x) then
 local h = homePos()
 local s = "You are at " .. math.floor(e.p.x) .. ", " .. math.floor(e.p.y) .. ", " .. math.floor(e.p.z)
+if not inOverworld(e) then
+return s .. (e.dim and (" in " .. ((ENV and ENV.dimName) and ENV.dimName(e.dim) or tostring(e.dim))) or
+", in another dimension") .. " - not the base's world."
+end
 if h and h.x then
 local dx, dz = e.p.x - h.x, e.p.z - h.z
 local dist = math.floor(math.sqrt(dx * dx + dz * dz))

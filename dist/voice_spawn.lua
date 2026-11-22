@@ -92,7 +92,8 @@ function SP.online() return SP.paired() and SP.seenAt ~= nil and rt() - SP.seenA
 function SP.ready() return cfg("spawn", true) ~= false and SP.online() and SP.at() ~= nil end
 local function inDim(e)
 local want = cfg("spawnDim", "minecraft:overworld")
-return e.dim == nil or e.dim == want
+if e.dim then return e.dim == want end
+return not e.dimOther
 end
 
 function SP.players()

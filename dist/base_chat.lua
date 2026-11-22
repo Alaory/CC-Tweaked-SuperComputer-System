@@ -150,7 +150,7 @@ if sub == "help" then
 reply("Use: " .. c .. " home | " .. c .. " to <place" ..
 ((owner or CONFIG.chat.othersToPlayers) and "|player" or "") .. "> | " .. c .. " back | " ..
 c .. " places | " .. c .. " status | " .. c .. " stop")
-if owner then reply("Places: " .. c .. " mark <name> (stand ON the block) | " .. c .. " unmark <name> | " .. c .. " workchest [x y z] (stand ON the drones' work chest, or its spot) | " .. c .. " test (test it, standing near it) | " .. c .. " spawn here / pair <code> (the spawn speaker)") end
+if owner then reply("Places: " .. c .. " mark <name> (stand ON the block) | " .. c .. " unmark <name> | " .. c .. " workchest [x y z] (stand ON the drones' work chest, or its spot) | " .. c .. " test (test it, standing near it) | " .. c .. " arrive [off] (stand at an open spot of an underground base - far trips teleport there, then fly in) | " .. c .. " spawn here / pair <code> (the spawn speaker)") end
 if owner then reply("Owner: " .. c .. " allow/deny <name> | " ..
 c .. " allowed | " .. c .. " yes/no <name> | " .. c .. " notify on/all/off") end
 
@@ -209,6 +209,22 @@ else
 reply("Work chest spot saved: " .. fmtPos(x, y, z) .. ". Several empty chests are on the cable - pick this one with CHEST > on the DRONE WORK page.")
 end
 
+elseif sub == "arrive" then
+
+if not owner then reply("Only " .. tostring(state.owner) .. " can set the arrival spot.") return end
+if words[3] == "off" then
+setSetting("drone.arrive", false)
+DRONE_ARRIVE = nil
+reply("Arrival spot removed - far trips teleport straight to where they go.")
+return
+end
+local x, y, z
+if words[3] then x, y, z = posArg(words, 3, name) else x, y, z = posArg({ "", "", "feet" }, 3, name) end
+if not x then reply("Cannot: " .. cleanErr(y)) return end
+setSetting("drone.arrive", { x = x, y = y, z = z })
+reply("Arrival spot: " .. fmtPos(x, y, z) .. ". Drones coming from far away teleport here, then fly in. Keep it open " ..
+"(two blocks of air) and inside the base's loaded area.")
+
 elseif sub == "spawn" then
 
 if not owner then reply("Only " .. tostring(state.owner) .. " can set up the spawn speaker.") return end
@@ -235,7 +251,7 @@ elseif sub == "status" then
 if #droneOrder == 0 then reply("No drones.") end
 for _, k in ipairs(droneOrder) do
 local dr = drones[k]
-reply(dr.label .. ": " .. (not dr.conn and "not connected" or
+reply(dr.label .. ": " .. (not dr.conn and ("not connected" .. (droneSeenText(dr) and (" - " .. droneSeenText(dr)) or "")) or
 (dr.busy and ((dr.mission and dr.mission.title) or "busy") or "free")))
 end
 

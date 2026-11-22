@@ -52,9 +52,16 @@ end
 
 -- ===== where people are =====
 local function homePos() return CONFIG.drone and CONFIG.drone.home end
+-- (the owner: "check the player greeting detection to include if a player is in the overworld"): a player whose
+-- dimension the base does not know counted as "in the overworld" - also when the Player Detector already said they are
+-- NOT in its dimension (e.dimOther: out of its full range). A player in the Nether standing at the base's x z was
+-- greeted, got "you are hurt", AFK lines ... Now: the dimension known = it must be the base's; unknown = only when the
+-- detector does not say "elsewhere".
 local function inOverworld(e)
-  return e.dim == nil or e.dim == (DRONE_DIM or "minecraft:overworld")
+  if e.dim then return e.dim == (DRONE_DIM or "minecraft:overworld") end
+  return not e.dimOther
 end
+VOICE.inOverworld = inOverworld
 -- WHO IS AT THE BASE: the ENVIRONMENT DETECTOR's own scan (living things within its radius,
 -- CONFIG.env.range - it only sees players really standing at the system; the owner's wish).
 -- The scan gives the entity TYPE, not always the name: the name comes from ENV.nameOf (the
@@ -1280,6 +1287,10 @@ function VOICE.extraAnswer(q, who)
       if tostring(e.name):lower() == k and e.p and tonumber(e.p.x) then
         local h = homePos()
         local s = "You are at " .. math.floor(e.p.x) .. ", " .. math.floor(e.p.y) .. ", " .. math.floor(e.p.z)
+        if not inOverworld(e) then
+          return s .. (e.dim and (" in " .. ((ENV and ENV.dimName) and ENV.dimName(e.dim) or tostring(e.dim))) or
+                       ", in another dimension") .. " - not the base's world."
+        end
         if h and h.x then
           local dx, dz = e.p.x - h.x, e.p.z - h.z
           local dist = math.floor(math.sqrt(dx * dx + dz * dz))

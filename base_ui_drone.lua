@@ -73,7 +73,13 @@ function drawDronePage(G)
     kv(ix, iy + 7, iw, "To the destination", (D.pos and dx) and (fl(dist3(D.pos.x, D.pos.y, D.pos.z, dx, dy, dz)) .. " blocks") or "-")
     kv(ix, iy + 8, iw, "On board", D.rider or "nobody", D.rider and C.label or C.dim)
   else
-    para(ix, iy, iw, "No drone is connected. Program a drone with a ComputerCraft puzzle piece whose area holds the interface, then launch it.", C.dim, 6)
+    local seen = droneSeenText and droneSeenText(D)
+    if seen then
+      para(ix, iy, iw, "No drone connected - " .. seen .. ".", C.warn, 4)
+      para(ix, iy + 5, iw, "It is probably there in a chunk that is not loaded: go there and it answers again.", C.dim, 3)
+    else
+      para(ix, iy, iw, "No drone is connected. Program a drone with a ComputerCraft puzzle piece whose area holds the interface, then launch it.", C.dim, 6)
+    end
   end
 
   ------------------------------------------------ mission

@@ -438,7 +438,8 @@ if h then return { kind = "waypoint", name = "the base", x = h.x, y = h.y, z = h
 end
 local function overworld(e)
 local d = low(e.dim or e.dimension or "")
-return d == "" or d:find("overworld", 1, true) ~= nil
+if d == "" then return not e.dimOther end
+return d:find("overworld", 1, true) ~= nil
 end
 LN.AFK_ASK = combos({ "Hi {name}, it is {bot}. ", "{name}, {bot} here. ", "Hello {name}! " },
 { "You have been standing still a while. While {owner} is away, I look after players: want me to fly you to the safety of the base when you go AFK? Say: {botl} afk yes - or {botl} afk no.",

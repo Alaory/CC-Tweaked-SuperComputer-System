@@ -282,6 +282,7 @@ privately. Players who are not allowed only get `help` and ride requests (the ow
 | `$drone notify on\|all\|off` (owner) | the monitor's messages in your chat: `on` = warnings and errors, `all` = everything |
 | `$drone mark <name> [feet]` (owner) | saves a place: the block you stand ON (`feet` = where your feet are) |
 | `$drone unmark <name>` (owner) | deletes a saved place |
+| `$drone arrive [<x> <y> <z>\|off]` (owner) | the drones' ARRIVAL SPOT for an underground base: an open spot they can teleport to (where you stand); far trips teleport there, then fly in |
 | `$drone workchest [<x> <y> <z>]` (owner) | the drones' work chest = the block you stand on (or those coordinates) |
 | `$drone test [item]` (owner) | tests the work chest while you stand near it (a drone drops an item at your feet) |
 | `$drone spawn here` (owner) | the spawn speaker's spot = where you stand |

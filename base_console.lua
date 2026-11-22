@@ -145,6 +145,8 @@ function handleCommand(line)
       local dr = drones[k]
       say(string.format(" %d. %s%s - %s, %s", i, dr.label, (dr == D) and " (selected)" or "",
           dr.conn and "connected" or "not connected", dr.busy and "busy" or "idle"))
+      local seen = droneSeenText(dr)
+      if seen and not dr.conn then say("      " .. seen) end
     end
 
   elseif cmd == "drone" then

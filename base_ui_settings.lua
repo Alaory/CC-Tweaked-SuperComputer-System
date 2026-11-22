@@ -205,6 +205,8 @@ SETTING_GROUPS = {
   } },
   { name = "DRONES", list = {
     place("drone.home", "Base (drop-off point)", "where riders are dropped off - stand there", "feet"),
+    place("drone.arrive", "Arrival spot (underground base)", "far trips teleport here first, then fly in - an OPEN spot " ..
+          "at the base the drones can teleport to (stand there)", "feet"),
     cyc("drone.travel", "Travel", "teleport = no paths needed (best underground), fly = costs no air",
         "teleport", { "teleport", "fly" }),
     bool("drone.returnHome", "Fly home after a mission", "park on the Charging Station after every mission", true),

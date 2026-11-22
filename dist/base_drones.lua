@@ -453,6 +453,65 @@ if x and y and z then return x, y, z end
 end
 
 
+
+
+
+
+DRONE_SEEN = {}
+do
+local okR, t = pcall(readSafe, "drone_seen.dat")
+if okR and type(t) == "table" then
+for k, e in pairs(t) do
+if type(k) == "string" and type(e) == "table" and tonumber(e.x) and tonumber(e.y) and tonumber(e.z) and tonumber(e.at) then
+DRONE_SEEN[k] = { x = math.floor(e.x), y = math.floor(e.y), z = math.floor(e.z), at = tonumber(e.at),
+doing = type(e.doing) == "string" and e.doing or nil }
+end
+end
+end
+end
+local seenSaved = { at = -999 }
+local function epochNow() return (os.epoch and os.epoch("utc")) or 0 end
+function droneSeen(dr, x, y, z)
+if not (dr and dr.key and tonumber(x)) then return end
+local old = DRONE_SEEN[dr.key]
+local m = dr.mission
+local e = { x = math.floor(x), y = math.floor(y), z = math.floor(z), at = epochNow(),
+doing = (m and m.state == "running" and m.title) and tostring(m.title) or nil }
+DRONE_SEEN[dr.key] = e
+if dr.lostAt then
+dr.lostAt = nil
+pcall(droneLog, dr, "Found again at " .. fmtPos(e.x, e.y, e.z))
+end
+local moved = not seenSaved[dr.key] or math.abs(seenSaved[dr.key].x - e.x) + math.abs(seenSaved[dr.key].z - e.z) > 32
+if moved or os.clock() - seenSaved.at > 60 then
+seenSaved.at, seenSaved[dr.key] = os.clock(), e
+if saveFileSafe then pcall(saveFileSafe, "drone_seen.dat", serialSmall and serialSmall(DRONE_SEEN) or textutils.serialize(DRONE_SEEN)) end
+end
+return old
+end
+
+function droneSeenText(dr)
+local e = dr and dr.key and DRONE_SEEN[dr.key]
+if not e then return nil end
+local h = CONFIG.drone.home
+local far = (type(h) == "table" and tonumber(h.x)) and math.floor(math.sqrt((e.x - h.x) ^ 2 + (e.z - h.z) ^ 2)) or nil
+local age = math.max(0, epochNow() - e.at) / 1000
+local ago = (spanWords and spanWords(age)) or (fmtSpan and fmtSpan(age)) or (math.floor(age) .. " s")
+return "last seen at " .. fmtPos(e.x, e.y, e.z) .. (far and (" (" .. far .. " blocks from the base)") or "") .. ", " ..
+ago .. " ago" .. (e.doing and (" - doing: " .. e.doing) or "")
+end
+
+function droneLost(dr)
+if dr.lostAt then return end
+dr.lostAt = epochNow()
+local where = droneSeenText(dr) or "never seen where"
+local msg = tostring(dr.label) .. " LOST CONTACT with its drone - " .. where ..
+". It is probably there in a chunk that is not loaded: go there and it comes back"
+pcall(droneLog, dr, msg)
+if sysLog then pcall(sysLog, msg, "WARNING") end
+if pushNote then pcall(pushNote, "WARNING", msg, C and C.warn) end
+end
+
 function refreshDrone(dr)
 local d = dr.periph
 local r = {}
@@ -469,6 +528,9 @@ dr.conn = r.conn
 dr.pressure = r.conn and r.pressure or nil
 local x, y, z = parsePos(r.pos)
 dr.pos = (r.conn and x) and { x = x, y = y, z = z } or nil
+if dr.pos then pcall(droneSeen, dr, x, y, z) end
+if not r.conn and dr.wasConn then pcall(droneLost, dr) end
+dr.wasConn = r.conn
 dr.action = r.conn and r.action or nil
 dr.done = r.done
 end
@@ -547,7 +609,10 @@ function teleportCost(dr) return dr.tpCost or CONFIG.drone.teleportCost or 0.85 
 function canTeleport(dr, extra)
 local p = dronePressure(dr)
 if not p then return true end
-return p >= teleportCost(dr) * (1 + (extra or 0)) + (CONFIG.drone.airReserve or 1.5)
+
+
+local reserve = dr.useReserve and 0 or (CONFIG.drone.airReserve or 1.5)
+return p >= teleportCost(dr) * (1 + (extra or 0)) + reserve
 end
 
 
@@ -631,6 +696,8 @@ if isTp then limit = math.min(limit or 7, CONFIG.drone.tpLimit or 7) end
 if dr.rider and riderGoneNow(dr) then return false, "passenger got off" end
 if isTp and not canTeleport(dr) then return false, "low on air" end
 local pBefore = isTp and dronePressure(dr) or nil
+local fromX, _, fromZ
+if isTp then fromX, _, fromZ = droneXYZ(dr) end
 local okS, errS = pcall(areaPoint, dr, x, y, z)
 if not okS then return false, cleanErr(errS) end
 local ok, err = pcall(d.setAction, action)
@@ -645,6 +712,7 @@ if riderLeft(dr) then pcall(d.abortAction); return false, "passenger got off" en
 local okP, a, b, c = pcall(d.getDronePosition)
 local px, py, pz
 if okP then px, py, pz = parsePos((type(a) == "number") and { a, b, c } or a) end
+if px then pcall(droneSeen, dr, px, py, pz) end
 local near = px and math.abs(px - (x + 0.5)) <= 2.5 and math.abs(py - (y + 0.5)) <= 2.5
 and math.abs(pz - (z + 0.5)) <= 2.5
 local t = os.clock() - t0
@@ -653,6 +721,7 @@ if pBefore then
 local pAfter = dronePressure(dr)
 local used = pAfter and (pBefore - pAfter)
 if used and used > 0.05 and used < 5 then dr.tpCost = used end
+pcall(learnArrive, dr, x, y, z, fromX, fromZ)
 end
 return true
 end
@@ -750,6 +819,77 @@ end
 
 
 
+function flySafe(dr, x, z)
+if dr.rider then return true end
+local px, _, pz = droneXYZ(dr)
+if not px then return false end
+local dx, dz = x - px, z - pz
+local d = math.sqrt(dx * dx + dz * dz)
+if d <= (tonumber(CONFIG.drone.safeFly) or 64) then return true end
+local n = math.ceil(d / 32)
+for i = 0, n do
+if not knownLoaded(px + dx * i / n, pz + dz * i / n) then return false end
+end
+return true
+end
+
+
+
+
+
+
+DRONE_ARRIVE = nil
+BASE_TP_REFUSED = nil
+do
+local okR, t = pcall(readSafe, "drone_arrive.dat")
+if okR and type(t) == "table" and tonumber(t.x) and tonumber(t.y) and tonumber(t.z) then
+DRONE_ARRIVE = { x = math.floor(t.x), y = math.floor(t.y), z = math.floor(t.z) }
+end
+end
+local function nearHome(x, z, r)
+local h = CONFIG.drone.home
+return type(h) == "table" and tonumber(h.x) and tonumber(h.z) and math.abs(x - h.x) <= r and math.abs(z - h.z) <= r
+end
+function arriveSpot()
+local a = CONFIG.drone.arrive
+if type(a) == "table" and tonumber(a.x) and tonumber(a.y) and tonumber(a.z) then
+return { x = math.floor(a.x), y = math.floor(a.y), z = math.floor(a.z) }, "set"
+end
+if DRONE_ARRIVE then return DRONE_ARRIVE, "learned" end
+return nil
+end
+
+function learnArrive(dr, x, y, z, fromX, fromZ)
+local g = dr.tpGoal
+if not (g and fromX and nearHome(x, z, 64) and not nearHome(fromX, fromZ, 64)) then return end
+if math.abs(x - g.x) + math.abs(y - g.y) + math.abs(z - g.z) > 6 then return end
+local a = DRONE_ARRIVE
+if a and a.x == x and a.y == y and a.z == z then return end
+DRONE_ARRIVE = { x = x, y = y, z = z }
+if saveFileSafe then pcall(saveFileSafe, "drone_arrive.dat", serialSmall and serialSmall(DRONE_ARRIVE) or textutils.serialize(DRONE_ARRIVE)) end
+droneLog(dr, "Arrival spot at the base learned: " .. fmtPos(x, y, z) .. " (far trips teleport here first)")
+end
+
+
+function strandedWhy(dr, x, y, z)
+local px, py, pz = droneXYZ(dr)
+local msg = string.format("%s stays at %s with %.1f bar: too little air to teleport to %s, and flying there would " ..
+"take it out of the loaded area, where it would be lost. Charge it (or pick it up there)",
+tostring(dr.label), px and fmtPos(px, py, pz) or "?", dronePressure(dr) or 0, fmtPos(x, y, z))
+droneLog(dr, msg)
+if not dr.strandAt or os.clock() - dr.strandAt > 600 then
+dr.strandAt = os.clock()
+if pushNote then pcall(pushNote, "WARNING", msg, C and C.warn) end
+end
+return "too little air to teleport and too far to fly safely (it would be lost) - it waits where it is"
+end
+
+
+
+
+
+
+
 function simChunks() return math.max(3, math.floor(tonumber(CONFIG.drone.simChunks) or 6)) end
 function safeHop() return math.max(32, (simChunks() - 2) * 16) end
 
@@ -835,6 +975,7 @@ retry = true
 end
 end
 if not ok and not retry then
+if CONFIG.drone.travel ~= "fly" and not flySafe(dr, hx, hz) then return false, strandedWhy(dr, x, hy, z) end
 if not dr.flyNote then
 dr.flyNote = true
 droneLog(dr, string.format("Flying the next stretches (air %.1f bar - teleports cost about %.1f each)",
@@ -877,6 +1018,12 @@ end
 
 
 function travelTo(dr, x, y, z, spots, noFly, loaded, track)
+dr.tpGoal = { x = x, y = y, z = z }
+local r1, r2 = travelToRaw(dr, x, y, z, spots, noFly, loaded, track)
+dr.useReserve, dr.tpGoal = nil, nil
+return r1, r2
+end
+function travelToRaw(dr, x, y, z, spots, noFly, loaded, track)
 dr.lastSpot = nil
 
 local function fresh()
@@ -891,8 +1038,41 @@ local act = travelAction()
 local SPOTS = spots or SPOTS
 
 if act ~= "pneumaticcraft:goto" and not canTeleport(dr) then
+if not flySafe(dr, x, z) then
+
+dr.useReserve = not dr.rider or nil
+if not canTeleport(dr) then return false, strandedWhy(dr, x, y, z) end
+droneLog(dr, string.format("Low on air (%.1f bar) but too far to fly safely: teleporting on the reserve",
+dronePressure(dr) or 0))
+else
 droneLog(dr, string.format("Low on air (%.1f bar): flying instead of teleporting", dronePressure(dr) or 0))
 act = "pneumaticcraft:goto"
+end
+end
+
+
+if not loaded and knownLoaded(x, z) then loaded = true end
+
+if act ~= "pneumaticcraft:goto" and not noFly and nearHome(x, z, 64) then
+local ar, how = arriveSpot()
+local px, py, pz = droneXYZ(dr)
+
+
+if ar and px and (how == "set" or BASE_TP_REFUSED) and not nearHome(px, pz, 64)
+and math.abs(ar.x - x) + math.abs(ar.y - y) + math.abs(ar.z - z) > 3 then
+droneLog(dr, "To the base's arrival spot " .. fmtPos(ar.x, ar.y, ar.z) .. " (" .. how .. "), then flying in")
+local okA, errA = droneMoveTo(dr, "pneumaticcraft:teleport", ar.x, ar.y, ar.z, CONFIG.drone.travelTimeout)
+if not okA and errA ~= "did not get there" and errA ~= "low on air" then return false, errA end
+if okA then
+local d = math.sqrt((ar.x - x) ^ 2 + (ar.y - y) ^ 2 + (ar.z - z) ^ 2)
+local okF, errF = droneMoveTo(dr, "pneumaticcraft:goto", x, y, z, flyLimit(dr, d) + 7)
+if okF then dr.lastSpot = { x = x, y = y, z = z } return true end
+if errF ~= "did not get there" then return false, errF end
+droneLog(dr, "Could not fly in from the arrival spot - trying the spot itself")
+elseif how == "learned" and errA == "did not get there" then
+DRONE_ARRIVE = nil
+end
+end
 end
 
 if act ~= "pneumaticcraft:goto" and not loaded then
@@ -964,7 +1144,11 @@ local f = SPOTS[1]
 droneLog(dr, "Could not teleport to " .. (x + f[1]) .. ", " .. (y + f[2]) .. ", " .. (z + f[3]) ..
 " (blocked or not loaded) - trying spots nearby")
 end
+local fx, _, fz = droneXYZ(dr)
 local ok, err = droneMoveTo(dr, act, x + o[1], y + o[2], z + o[3], limit)
+if i == 1 and act ~= "pneumaticcraft:goto" and fx and nearHome(x, z, 64) and not nearHome(fx, fz, 64) then
+if ok then BASE_TP_REFUSED = nil elseif err == "did not get there" then BASE_TP_REFUSED = true end
+end
 
 
 if not ok and i == 1 and err == "did not get there" and act ~= "pneumaticcraft:goto" and not noFly then
@@ -973,6 +1157,7 @@ if okS then return true end
 if errS and errS ~= "did not get there" then return false, errS end
 end
 if err == "low on air" then
+if CONFIG.drone.travel ~= "fly" and not flySafe(dr, x + o[1], z + o[3]) then return false, strandedWhy(dr, x, y, z) end
 droneLog(dr, "Low on air after failed teleports - flying the rest")
 act = "pneumaticcraft:goto"
 ok, err = droneMoveTo(dr, act, x + o[1], y + o[2], z + o[3], CONFIG.drone.stepTimeout)
@@ -991,6 +1176,11 @@ lastErr = err
 if act == "pneumaticcraft:goto" then break end
 end
 if act ~= "pneumaticcraft:goto" and not noFly then
+if CONFIG.drone.travel ~= "fly" and not flySafe(dr, x, z) then
+droneLog(dr, "No spot near " .. x .. ", " .. y .. ", " .. z .. " could be teleported to - and it is too far to " ..
+"fly safely (it would end up in unloaded land): not going")
+return false, "could not teleport there, and flying that far would lose the drone"
+end
 droneLog(dr, "No spot near " .. x .. ", " .. y .. ", " .. z .. " could be teleported to (the area is " ..
 "probably not loaded) - FLYING there instead")
 local ok, err = droneMoveTo(dr, "pneumaticcraft:goto", x, y, z, CONFIG.drone.stepTimeout)

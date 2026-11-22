@@ -1240,6 +1240,11 @@ PneumaticCraft drone rides, turtle mapping/surveys, and an AE2 ME network view.
   text of a message ("can i leave a mesage" -> "what should it say?" -> the next line). No intent -> VOICE.answer
   STRICT (only the parts that read details: lonely / extra answers / where is - the loose one-word checks "how",
   "who", "base" answered anything with the status). test_voice part 16 (passes with 60 random seeds).
+  OVERWORLD ONLY (the owner: "check the player greeting detection to include if a player is in the overworld"):
+  inOverworld (voice_addon, VOICE.inOverworld; voice_spawn inDim; voice_lonely overworld) = the dimension known -> it must be
+  the base's; unknown -> only when not e.dimOther (the Player Detector says "out of my dimension") - before, an unknown
+  dimension always counted (a player in the Nether at the base's x z was greeted). "where am i" in another dimension says
+  so. test_voice_dims.lua.
   NOT TALKING TO IT (the owner's chat: "DSLGLITCHERS" / "u free rn?" / "uh" / "in the overworld rn?" - all for another
   player, the base answered twice with its menu; "also when I mention a base word"): VOICE.calledByName - its name is
   a CALL only as the first word, after a filler / greeting (VOICE.CALL_LEAD: hey ok(=yes) uh uhh thanks ...), the
@@ -1997,6 +2002,26 @@ it is online, else the stored x y z): stepGoto follows it - travelTo(..., track)
 re-reads the target before every hop; a refused first teleport + the target moved > 8 -> ONE
 teleport to where it is now before the "air above / hops" logic; after the hops fresh(); after
 arriving it looks again and goes on if the target is > 12 away (max 4 times).
+
+**Drones - LOST ON THE WAY (the owner: "drone gifts teleport up to the sky, get lost and I never see them again" + "it is
+like hopping to the base instead of teleporting directly - the base is underground" + "show where the drone was last
+seen"):** a drone that FLIES out of the loaded area is saved in an unloaded chunk and never comes back. Found: (1) a refused
+teleport into the UNDERGROUND base was read as "not loaded" -> hops at Y 200 (hopY) from the player towards the base, out of
+every loaded chunk; (2) gift / fuel trips started with minPressure 2 bar while a teleport needs 0.85 + airReserve 1.5 ->
+"low on air - flying instead" across the world (or the teleport out used the air for the one home). Now (base_drones.lua):
+travelTo treats a knownLoaded target as LOADED (a refused teleport = blocked: no hops / no sky probe); flySafe(dr, x, z) =
+a rider on board, within CONFIG.drone.safeFly 64, or every 32 blocks of the line knownLoaded - else no flight: the low-air
+switch teleports on the RESERVE (dr.useReserve, empty trips only), too little even for that -> strandedWhy (stays where it
+is, one WARNING / 10 min); hopTowards' flying stretches, "low on air - flying the rest" and the "FLYING there instead"
+fallback check flySafe too (not with CONFIG.drone.travel "fly" - the owner's choice). ARRIVAL SPOT (arriveSpot):
+CONFIG.drone.arrive (SETTINGS > DRONES, $drone arrive [x y z|off]) else DRONE_ARRIVE (drone_arrive.dat) = learned from a
+teleport from far away that reached the base area within 6 of where it was sent (learnArrive in droneMoveTo, dr.tpGoal);
+a far trip into the base area (within 64 of home) teleports there first, then flies in; a learned spot that is refused is
+forgotten; a LEARNED spot is only used after a teleport straight into the base area was refused (BASE_TP_REFUSED, memory). DW.airFor(dr, x, z): a trip past workFly needs canTeleport(dr, 2) (there + back + one refused + reserve) -
+DW.freeDrone(okFn) picks a drone that has it (gifts wait otherwise). LAST SEEN: DRONE_SEEN[interface] {x y z at doing}
+(drone_seen.dat; refreshDrone + every droneMoveTo poll; saved when moved 32+ or once a minute) -> droneSeenText on the
+DRONES page (not connected), `drones`, `$drone status`; connected -> not = droneLost: ONE WARNING with the spot.
+drone_sim: W.lost (a flight leaving the loaded area). test_drone_lost.lua.
 
 **Drones - SPEED, MEASURED IN TICKS (the owner: "the drones are slow" + "a server will have a low TPS"):**
 PneumaticCraft source (1.21: EntityPathNavigateDrone, DroneEntity, PneumaticValues): a TELEPORT always waits

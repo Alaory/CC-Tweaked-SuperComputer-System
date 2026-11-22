@@ -64,7 +64,8 @@ function DW.wantDrone(what) DW.wanted = { what = tostring(what or "?"), at = now
 function DW.yielding() return DW.wanted ~= nil and now() - DW.wanted.at < 30 end
 
 
-function DW.freeDrone()
+
+function DW.freeDrone(okFn)
 local want = cfg("worker")
 local why = {}
 for _, k in ipairs(droneOrder) do
@@ -74,6 +75,10 @@ local w
 if dr.gone or dr.conn == false then w = "not connected"
 elseif dr.busy or #(dr.queue or {}) > 0 then w = "busy" .. (dr.mission and dr.mission.title and (": " .. tostring(dr.mission.title)) or "")
 elseif dr.rider then w = tostring(dr.rider) .. " on board" end
+if not w and okFn then
+local okA, whyA = okFn(dr)
+if not okA then w = tostring(whyA) end
+end
 if not w then return dr end
 why[#why + 1] = tostring(dr.label or k) .. " " .. w
 end
@@ -81,6 +86,22 @@ end
 
 DW.noDroneWhy = #why > 0 and table.concat(why, ", ") or (want and ("no drone named " .. tostring(want))) or "no drones"
 return nil, DW.noDroneWhy
+end
+
+
+
+
+function DW.airFor(dr, x, z)
+local hx, _, hz = DW.chestAt()
+if not hx then local h = CONFIG.drone.home or {} hx, hz = h.x, h.z end
+if not (hx and tonumber(x)) then return true end
+if math.max(math.abs(x - hx), math.abs(z - hz)) <= (tonumber(cfg("workFly", 64)) or 64) then return true end
+if CONFIG.drone.travel == "fly" then return true end
+pcall(refreshDrone, dr)
+if canTeleport(dr, 2) then return true end
+return false, string.format("%s has %.1f bar - a trip that far needs %.1f (a teleport there and back + the " ..
+"reserve): it charges first", tostring(dr.label), dronePressure(dr) or 0,
+teleportCost(dr) * 3 + (CONFIG.drone.airReserve or 1.5))
 end
 
 
@@ -265,8 +286,8 @@ if bad then return false, bad end
 if not TT.online(t) then return false, t.label .. " is offline - its chunk is not loaded (a rescue turtle has to go)" end
 if not (t.pos and t.pos.x) then return false, t.label .. "'s position is unknown" end
 if DW.trip then return false, "a drone job is running (" .. tostring(DW.trip.title) .. ")" end
-local dr = DW.freeDrone()
-if not dr then return false, "no free drone" end
+local dr, whyD = DW.freeDrone(function(d) return DW.airFor(d, t.pos.x, t.pos.z) end)
+if not dr then return false, "no free drone (" .. tostring(whyD) .. ")" end
 local item, count = DW.fuelItem()
 
 if edge then count = DW.slots(dr) * 64 end
@@ -366,10 +387,10 @@ function DW.giftRun(name, item, count, cb, still)
 local bad = DW.notReady()
 if bad then return false, bad end
 if DW.trip then return false, "a drone job is running (" .. tostring(DW.trip.title) .. ")" end
-local dr, whyD = DW.freeDrone()
-if not dr then return false, "no free drone (" .. tostring(whyD) .. ")" end
 local p0, why = playerAt(name)
 if not p0 then return false, why end
+local dr, whyD = DW.freeDrone(function(d) return DW.airFor(d, p0.x, p0.z) end)
+if not dr then return false, "no free drone (" .. tostring(whyD) .. ")" end
 count = math.max(1, math.min(math.floor(tonumber(count) or 1), DW.slots(dr) * 64))
 local J = { kind = "gift" }
 

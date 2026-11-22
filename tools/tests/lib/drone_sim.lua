@@ -54,6 +54,19 @@ function DRONE_SIM.run(opt)
       W.kind = "frozen"                                  -- (its AI does not run: nothing ever completes)
       return
     end
+    -- (a FLIGHT that leaves the loaded area: in the game the drone flies into a chunk nobody keeps loaded, is saved
+    --  there and never comes back - W.lost; with a rider their own area goes with them)
+    if a == "pneumaticcraft:goto" and t and not W.carry then
+      local n = math.max(1, math.ceil(d3(W.pos, t) / 16))
+      for i = 0, n do
+        local q = { x = W.pos.x + (t.x - W.pos.x) * i / n, z = W.pos.z + (t.z - W.pos.z) * i / n }
+        if not loaded(q) then
+          W.lost = (W.lost or 0) + 1
+          note("LOST: a flight out of the loaded area towards " .. t.x .. " " .. t.y .. " " .. t.z)
+          break
+        end
+      end
+    end
     if a == "pneumaticcraft:teleport" or (a == "pneumaticcraft:goto" and t and (d3(W.pos, t) > PATH or not loaded(t))) then
       W.kind, W.doneAt = "tp", tick() + 121
       W.tp = W.tp + 1
@@ -147,7 +160,7 @@ function DRONE_SIM.run(opt)
   dr.hopOK, dr.speedBT = opt.hopOK, nil
   W.t0 = tick()
   if opt.run then opt.run(dr) else runMission(dr, opt.mission) end
-  local res = { frozen = W.frozen, freezes = W.freezes or 0, air = W.air, ticks = tick() - W.t0, teleports = W.tp, refused = W.refused, flights = W.flights, flown = W.flown,
+  local res = { lost = W.lost or 0, frozen = W.frozen, freezes = W.freezes or 0, air = W.air, ticks = tick() - W.t0, teleports = W.tp, refused = W.refused, flights = W.flights, flown = W.flown,
                 log = W.log, state = dr.mission and dr.mission.state, err = dr.mission and dr.mission.err, P = W.P, pos = W.pos }
   det, playerDimNow, refreshDrone = det0, pdn, rd
   state.players, state.turtles = players0, turtles0
