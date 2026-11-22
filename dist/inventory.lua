@@ -71,9 +71,13 @@ if removeOldFiles then pcall(removeOldFiles, dir) end
 if loadVoiceChain then pcall(loadVoiceChain)
 elseif loadAddon then pcall(loadAddon, "voice_addon.lua") end
 
-local okRun, errRun = pcall(parallel.waitForAny, uiLoop, invWorker, pageWorker, actionWorker,
-droneWorker, terminalWorker, chatWorker, commsWorker, mapWorker, supplyWorker, addonWorker,
-playerWorker)
+
+local K = keepWorker or function(_, f) return f end
+local okRun, errRun = pcall(parallel.waitForAny, K("screen", uiLoop), K("inventory worker", invWorker),
+K("page worker", pageWorker), K("action worker", actionWorker), K("drone worker", droneWorker),
+K("console", terminalWorker), K("chat worker", chatWorker), K("turtle worker", commsWorker),
+K("map worker", mapWorker), K("supply worker", supplyWorker), K("add-on worker", addonWorker),
+K("player worker", playerWorker))
 
 pcall(MAP.save)
 if baseExit then

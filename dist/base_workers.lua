@@ -709,11 +709,78 @@ end
 
 
 
+
+
+
+
+
+WORKER_RESTART = {}
+WORKER_FAILS = {}
+function keepWorker(name, fn)
+return function()
+local fails = {}
+while true do
+local ok, err = pcall(fn)
+if ok or not state.running then return end
+if tostring(err):find("Terminated", 1, true) then error(err, 0) end
+local now = os.clock()
+fails[#fails + 1] = now
+while fails[1] and now - fails[1] > 60 do table.remove(fails, 1) end
+WORKER_FAILS[name] = (WORKER_FAILS[name] or 0) + 1
+pcall(sysLog, "The " .. name .. " stopped with an error and was started again: " .. tostring(err), "WARNING")
+if #fails >= 5 then error(name .. " keeps failing: " .. tostring(err), 0) end
+if WORKER_RESTART[name] then pcall(WORKER_RESTART[name]) end
+sleep(1)
+end
+end
+end
+
+
+WORKER_RESTART["drone worker"] = function()
+for _, dr in pairs(drones or {}) do
+if dr.busy then
+dr.busy = false
+dr.mission = { title = "error", steps = {}, state = "failed", err = "the drone worker restarted" }
+pcall(resetDrone, dr)
+dr.failedAt = os.clock()
+end
+end
+end
+
+
+
+function safeDraw()
+local ok, err = pcall(draw)
+if ok then state.drawErr = nil return true end
+if not state.drawErrAt or os.clock() - state.drawErrAt > 60 then
+state.drawErrAt = os.clock()
+pcall(sysLog, "The " .. tostring(state.page) .. " page could not be drawn: " .. tostring(err), "WARNING")
+end
+state.drawErr = tostring(err)
+if state.page ~= "home" then
+state.page = "home"
+if pcall(draw) then return false end
+end
+pcall(function()
+win.setVisible(true)
+mon.setBackgroundColor(colors.black)
+mon.setTextColor(colors.red)
+mon.clear()
+mon.setCursorPos(2, 2)
+mon.write("SCREEN ERROR - the base keeps running")
+mon.setTextColor(colors.white)
+mon.setCursorPos(2, 4)
+mon.write(tostring(err):sub(1, (W or 60) - 4))
+shownRows = {}
+end)
+return false
+end
+
 function uiLoop()
 local lastDraw, drawTimer = -1, nil
 
 local function drawNow()
-draw()
+safeDraw()
 lastDraw = os.clock()
 end
 
@@ -739,7 +806,11 @@ if ev == "monitor_touch" and a == monName then
 USER_ACTION = true
 local okT, wake = pcall(handleTouch, b, c)
 USER_ACTION = false
-if not okT then error(wake, 0) end
+if not okT then
+pcall(setToast, "That button failed: " .. tostring(wake), C.bad, 8)
+pcall(sysLog, "A tap on the " .. tostring(state.page) .. " page failed: " .. tostring(wake), "WARNING")
+wake = false
+end
 if wake then os.queueEvent("inv_wake") end
 drawNow()
 
@@ -762,10 +833,13 @@ if not okT then setToast("Could not take the file: " .. tostring(errT), C.bad, 8
 requestDraw()
 
 elseif ev == "monitor_resize" and a == monName then
-buildWindow()
+pcall(buildWindow)
 drawNow()
 
 elseif ev == "me_crafting" or ev == "rs_crafting" then
+
+
+if MEX and MEX.event then pcall(MEX.event, a, b, c) end
 setToast(string.format("Craft job #%s: %s", tostring(b), tostring(c)),
 a and C.bad or C.good, 8)
 state.meForce = true
@@ -773,7 +847,7 @@ os.queueEvent("inv_wake")
 requestDraw()
 
 elseif ev == "peripheral" then
-rescanPeripherals()
+pcall(rescanPeripherals)
 state.force.inv = true
 state.force.players = true
 state.meForce = true
@@ -781,7 +855,7 @@ os.queueEvent("inv_wake")
 requestDraw()
 
 elseif ev == "peripheral_detach" then
-if type(a) == "string" then forgetDetached(a) end
+if type(a) == "string" then pcall(forgetDetached, a) end
 state.force.inv = true
 os.queueEvent("inv_wake")
 requestDraw()
@@ -791,18 +865,16 @@ elseif ev == "chat" then
 state.chatInbox[#state.chatInbox + 1] = { uuid = a, name = b, msg = c, hidden = d }
 os.queueEvent("chat_cmd")
 
-elseif ev == "me_crafting" or ev == "rs_crafting" then
-if MEX then MEX.event(a, b, c) end
 
 elseif ev == "playerChangedDimension" then
-rememberDim(a, c)
+pcall(rememberDim, a, c)
 
 elseif ev == "playerJoin" then
-rememberDim(a, b)
+pcall(rememberDim, a, b)
 pcall(playerJoined, a, b)
 
 elseif ev == "playerLeave" then
-forgetDim(a)
+pcall(forgetDim, a)
 pcall(playerLeft, a)
 
 elseif ev == "terminate" then

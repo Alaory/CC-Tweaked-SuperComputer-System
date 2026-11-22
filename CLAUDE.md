@@ -21,6 +21,14 @@ PneumaticCraft drone rides, turtle mapping/surveys, and an AE2 ME network view.
 - Workers run together via `parallel.waitForAny`: uiLoop, invWorker,
   pageWorker, actionWorker, droneWorker, terminalWorker, chatWorker, commsWorker, mapWorker,
   supplyWorker, addonWorker, playerWorker.
+  NEVER ONE ERROR = A DEAD BASE (release review, the owner: "I don't want things to bug out and crash"): inventory.lua
+  starts every worker through keepWorker(name, fn) (base_workers.lua): an error -> SYSTEM log WARNING, WORKER_RESTART[name]
+  (the drone worker: its drones freed + failedAt, the park check brings them home), 1 s, started again; 5 errors in 60 s
+  -> the error goes up (startup.lua restarts the base as before); "Terminated" (Ctrl+T) always goes up. uiLoop draws
+  through safeDraw (a page that fails -> HOME + the SYSTEM log once a minute; HOME failing too -> a plain "SCREEN ERROR"
+  on the monitor, shownRows reset); a failing BUTTON (handleTouch) = a box + the log (it re-raised the error before =
+  the base stopped); peripheral / player events pcall'd. FOUND: uiLoop had TWO "me_crafting" branches - the second
+  (MEX.event) never ran, craft requests were only followed by polling. test_keep_worker.lua.
   PLAYERS EVERY TICK (the owner: "make the player list update each tick - it does not cause lag"): playerWorker
   reads the Player Detector (refreshPlayers(true)) again CONFIG.ttl.playersLive s (0.05 = a tick) after each
   reading; never asks for a redraw (the screen has its own timer). Before: every 10-30 s from the page worker -

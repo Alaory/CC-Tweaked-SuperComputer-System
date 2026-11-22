@@ -19,7 +19,9 @@ Peripherals (tested on CC:Tweaked 1.120.2, Minecraft 1.21.1, NeoForge).
   (size, checksum, compiles) before anything is written; `base_config.lua` is never touched.
 - Safe saving everywhere (a full disk or a stop mid-save never wipes a file), data floppies and
   storage helper computers for the map and the big data files (a computer has only 1 MB).
-- Autostart and crash restart (`startup.lua`); the base notes when and why it was off.
+- Autostart and crash restart (`startup.lua`); the base notes when and why it was off. An error in one
+  part (a page, a button, a background job) no longer stops the base: that part starts again and the
+  error goes to the SYSTEM log.
 - Away mode: while you are offline the turtles keep mapping, and you get a WHILE YOU WERE
   AWAY report when you come back.
 
