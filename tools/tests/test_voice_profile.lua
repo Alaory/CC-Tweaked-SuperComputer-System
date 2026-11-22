@@ -237,3 +237,68 @@ fresh("Steve")
 local w12 = say("Steve", "base who is zorblax")
 CHECK(not lowc(w12):find("zorblax is", 1, true) or lowc(w12):find("not", 1, true), "an unknown name: " .. w12)
 setSetting("voice.staff", {})
+
+-- 14) REVIEW (the owner: "go over the code again")
+fresh("Rae")
+V.mem().rae = {}
+P.lastKey = nil
+say("Rae", "base tell me about burnout")
+CHECK(not prof("Rae").s.burnout, "'tell me about burnout' is a question, not having it")
+P.lastKey = nil
+say("Rae", "base i hate creepers when i am building")
+CHECK((prof("Rae").i.build or 0) >= 0, "'I hate creepers when I am building' does not hate building: " .. tostring(prof("Rae").i.build))
+fresh("Steve")
+prof("Steve").i.tech = 6
+local wq = say("Steve", "base what should i do about creepers")
+local isTodo = false
+for _, list in pairs(P.TODO) do for _, l in ipairs(list) do if wq:find(l, 1, true) then isTodo = true end end end
+CHECK(not isTodo, "'what should I do about creepers' is not a to-do idea: " .. wq)
+-- idle: no struggle said out loud with others near
+fresh("Steve", "Alex")
+prof("Steve").s.burnout = { n = 1, at = os.epoch("utc") }
+spoken = {}
+V.say = function(text) spoken[#spoken + 1] = tostring(text) return true end
+P.tipAt = {}
+pcall(P.idle, { steve = true, alex = true }, "Steve")
+local sayBurn = false
+for _, l in ipairs(spoken) do for _, x in ipairs(P.TIP.burnout) do if l:find(x, 1, true) then sayBurn = true end end
+  for _, list in pairs(P.TIP2) do for _, x in ipairs(list) do if l:find(x, 1, true) then sayBurn = true end end end end
+CHECK(not sayBurn, "idle with someone else near: no tip about Steve's burnout out loud: " .. table.concat(spoken, " | "))
+V.say = say0
+-- an offline player is not found by a word that starts their name
+fresh("Steve")
+V.mem().creeperking = { fav = { mob = "creeper" } }
+local wc = say("Steve", "base who is creeper")
+CHECK(not lowc(wc):find("creeperking", 1, true), "'who is creeper' is not the offline CreeperKing: " .. wc)
+-- a player saying "Alex is a builder" means he builds - no "only the owner can"
+fresh("Steve", "Alex")
+local wb = say("Steve", "base alex is a builder")
+CHECK(not lowc(wb):find("only", 1, true), "a player's 'Alex is a builder' is not a staff order: " .. wb)
+-- CHECK-INS: each question's own yes / no
+local function checkin(name, id, q, ans)
+  fresh(name)
+  V.mem()[name:lower()] = { prof = { i = {}, s = { [id] = { n = 1, at = os.epoch("utc") - 86400000 } } } }
+  say(name, "hi")
+  local st = C.state[name:lower()]
+  local yesGood
+  for _, e in ipairs(P.CHECKIN[id]) do if e[1] == q then yesGood = e[2] end end
+  st.topic, st.steps, st.i = "checkin_" .. id, { { q = { q }, checkin = id, yesGood = yesGood, any = { "I see." } } }, 1
+  st.asked = q
+  local r = say(name, ans)
+  return r, prof(name).s[id] ~= nil
+end
+local r1, still1 = checkin("Ann", "burnout", "Got your spark back for the game yet?", "yes")
+CHECK(not still1 and asks(r1), "'got your spark back?' yes = solved: " .. r1)
+local r2, still2 = checkin("Bea", "burnout", "Got your spark back for the game yet?", "yes still burned out")
+CHECK(still2 and lowc(r2):find("tip", 1, true), "'yes, still burned out' = not solved, a tip: " .. r2)
+local r3, still3 = checkin("Cal", "overwhelmed", "Still feeling lost in all the mods?", "no")
+CHECK(not still3, "'still feeling lost?' no = solved: " .. r3)
+local r4, still4 = checkin("Dan", "overwhelmed", "Last time the modpack felt like a lot. Is it getting easier?", "no")
+CHECK(still4, "'is it getting easier?' no = not solved: " .. r4)
+local r5, still5 = checkin("Eve", "grind", "Did you automate that grind yet?", "yes")
+CHECK(not still5, "'did you automate it yet?' yes = solved: " .. r5)
+local r6, still6 = checkin("Fay", "alone", "Still playing on your own mostly?", "yes")
+CHECK(still6, "'still playing on your own?' yes = not solved: " .. r6)
+local r7, still7 = checkin("Gus", "burnout", "Last time you said you were burned out. How is your motivation now?", "much better now")
+CHECK(not still7, "'much better now' = solved: " .. r7)
+for id, list in pairs(P.CHECKIN) do for _, e in ipairs(list) do CHECK(e[1]:find("%?$"), id .. ": a check-in is a question: " .. e[1]) end end

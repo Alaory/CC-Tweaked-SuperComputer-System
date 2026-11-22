@@ -153,7 +153,14 @@ if C.isBad and C.isBad(ws, t) then return ev end
 local seen = {}
 for _, cue in ipairs(P.HATE_CUE) do
 local a = t:find(" " .. cue .. " ", 1, true)
-if a then for _, id in ipairs(interestIn(t, a + #cue + 1)) do if not seen[id] then seen[id] = true ev.hates[#ev.hates + 1] = id end end end
+if a then
+local seg = t:sub(a + #cue + 1)
+for _, cut in ipairs({ " but ", " when ", " because ", " while ", " if ", " so " }) do
+local b = seg:find(cut, 1, true)
+if b then seg = seg:sub(1, b) end
+end
+for _, id in ipairs(interestIn(" " .. seg .. " ")) do if not seen[id] then seen[id] = true ev.hates[#ev.hates + 1] = id end end
+end
 end
 for _, cue in ipairs(P.LIKE_CUE) do
 local a = t:find(" " .. cue .. " ", 1, true)
@@ -170,8 +177,8 @@ for _, id in ipairs(interestIn(t)) do if not seen[id] then seen[id] = true ev.do
 if has(t, { "i am building", "i built", "i was building", "my build", "my builds" }) and not seen.build then seen.build = true ev.does[#ev.does + 1] = "build" end
 end
 
-local mine = t:find(" i ", 1, true) or t:find(" my ", 1, true) or t:find(" me ", 1, true) or t:find(" myself ", 1, true) or
-t:find(" am ", 1, true) or P.answering == low(who)
+
+local mine = t:find(" i ", 1, true) or t:find(" my ", 1, true) or t:find(" myself ", 1, true) or t:find(" am ", 1, true) or P.answering == low(who)
 local p0 = P.prof(who)
 local nowE = os.epoch("utc")
 local better = has(t, P.BETTER)
@@ -187,7 +194,9 @@ end
 end
 end
 
-if better and #ev.better == 0 and p0 and P.checking and P.checking[low(who)] and p0.s[P.checking[low(who)]] then ev.better[1] = P.checking[low(who)] end
+local cst = C.state[low(who)]
+local cid = cst and type(cst.topic) == "string" and cst.topic:match("^checkin_(.+)$")
+if better and #ev.better == 0 and p0 and cid and p0.s[cid] and P.answering == low(who) then ev.better[1] = cid end
 ev.any = #ev.likes + #ev.hates + #ev.does + #(ev.str or {}) + #ev.better > 0
 if not ev.any then return ev end
 local p = P.prof(who, make ~= false)
@@ -335,28 +344,26 @@ any = { "{said}? Good way to learn." } },
 P.TOPIC_OF = { build = { "prof_build", "building", "dreams" }, tech = { "prof_tech", "mods", "redstone" }, redstone = { "redstone", "prof_tech" },
 magic = { "prof_magic", "mods" }, explore = { "adventure" }, mine = { "mining" }, fight = { "adventure", "mobs" }, farm = { "redstone", "food" },
 collect = { "mods" }, social = { "server" } }
-P.CHECKIN = {
-burnout = { "Last time you said you were burned out. How is your motivation now?", "How is the motivation lately - still burned out?",
-"You told me you lose motivation sometimes. How are you feeling about the game now?" },
-tutorials = { "Last time you said you watch a lot of tutorials. Did you build something from one yet?", "Still watching lots of tutorials, or playing more now?" },
-overwhelmed = { "Last time the modpack felt like a lot. Is it getting easier?", "Still feeling lost in all the mods, or better now?" },
-noideas = { "Did you find an idea for your next build?", "Last time you were out of ideas. Any new ones?" },
-perfect = { "Still rebuilding things until they are perfect?", "Did you finish a build without starting over?" },
-notime = { "Got a bit more time to play lately?", "Still busy, or more time for the game now?" },
-alone = { "Found anyone to play with yet?", "Still playing on your own mostly?" },
-new = { "How is it going as a new player - getting the hang of it?", "Still feeling new, or settling in?" },
-grind = { "Is the grind any better now?", "Did you automate that grind yet?" },
-}
-function P.checkSteps(who, id)
-local inv = id == "noideas" or id == "alone" or id == "notime" or id == "new" or id == "tutorials"
-local goodLines = { "Great to hear!", "Yay! Keep it up.", "Wonderful." }
-local badLines = {}
-for _, h in ipairs(P.HEAR[id]) do badLines[#badLines + 1] = h .. " Tip: " .. pick(P.TIP[id]) end
-local step = { q = P.CHECKIN[id], checkin = id,
-good = { goodLines, fn = "solved" }, bad = badLines, any = { "I see. Tip: " .. pick(P.TIP[id]), "Okay. Remember: " .. pick(P.TIP[id]) } }
 
-if inv then step.yes = { goodLines, fn = "solved" } step.no = badLines else step.no = { goodLines, fn = "solved" } step.yes = badLines end
-return { step }
+
+P.CHECKIN = {
+burnout = { { "Last time you said you were burned out. How is your motivation now?" }, { "How is the motivation lately - still burned out?", false },
+{ "You told me you lose motivation sometimes. How are you feeling about the game now?" }, { "Got your spark back for the game yet?", true } },
+tutorials = { { "Last time you said you watch a lot of tutorials. Did you build something from one yet?", true },
+{ "Still watching more tutorials than playing?", false }, { "Have you been playing more than watching lately?", true } },
+overwhelmed = { { "Last time the modpack felt like a lot. Is it getting easier?", true }, { "Still feeling lost in all the mods?", false },
+{ "How is the modpack treating you now - still a lot?", false } },
+noideas = { { "Did you find an idea for your next build?", true }, { "Last time you were out of ideas. Got any new ones?", true } },
+perfect = { { "Still rebuilding things until they are perfect?", false }, { "Did you finish a build without starting over?", true } },
+notime = { { "Got a bit more time to play lately?", true }, { "Still really busy?", false } },
+alone = { { "Found anyone to play with yet?", true }, { "Still playing on your own mostly?", false } },
+new = { { "How is it going as a new player - getting the hang of it?", true }, { "Still feeling new here?", false } },
+grind = { { "Is the grind any better now?", true }, { "Did you automate that grind yet?", true }, { "Still stuck grinding?", false } },
+}
+
+function P.checkSteps(who, id)
+local pickQ = P.CHECKIN[id][math.random(1, #P.CHECKIN[id])]
+return { { q = { pickQ[1] }, checkin = id, yesGood = pickQ[2], any = { "I see." } } }
 end
 
 
@@ -402,15 +409,33 @@ local okL, ev = pcall(P.learn, who, ws, t)
 P.answering = nil
 if okL and ev then
 
-if step and step.checkin and ev.better[1] == nil then
+
+
+local id = step and step.checkin
+if id and not tostring(raw):find("?", 1, true) and not (has(t, C.STOP) and #ws <= 6) and not (C.STOPW and C.STOPW[table.concat(ws, " ")]) then
 local cls = C.classify(ws, t)
-local inv = step.checkin == "noideas" or step.checkin == "alone" or step.checkin == "notime" or step.checkin == "new" or step.checkin == "tutorials"
-if cls.good or (inv and cls.yes) or (not inv and cls.no) then
+local named = false
+for _, x in ipairs(ev.str or {}) do if x == id then named = true end end
+local solved = not named and (ev.better[1] == id or (cls.good and not cls.bad) or (step.yesGood == true and cls.yes) or (step.yesGood == false and cls.no))
+local still = named or cls.bad or (step.yesGood == true and cls.no) or (step.yesGood == false and cls.yes)
 local p = P.prof(who)
-if p then p.s[step.checkin] = nil C.dirty() end
+local line
+if solved then
+if p then p.s[id] = nil C.dirty() end
+line = pick({ "Great to hear!", "Yay! Keep it up.", "Wonderful - I will stop worrying.", "That makes me happy." })
+elseif still then
+if p and p.s[id] then p.s[id].at = os.epoch("utc") C.dirty() end
+local top = P.top(who, 1)[1]
+line = pick(P.HEAR[id]) .. " Tip: " .. pick(P.TIP2[pairKey(id, top or "")] or P.TIP[id])
+else
+line = pick({ "I see. ", "Okay. ", "Thanks for telling me. " }) .. "Tip: " .. pick(P.TIP[id])
 end
+st.at = os.clock()
+local adv = C.advance(who, st)
+if adv == "topic" then return C.ask(who, st, line .. " " .. pick(C.TRANS)) end
+return C.ask(who, st, line)
 end
-if #ev.new > 0 or (#ev.better > 0 and not (step and step.checkin)) then P.extra[k] = P.answer(who, ev) end
+if not (step and step.checkin) and (#ev.new > 0 or #ev.better > 0) then P.extra[k] = P.answer(who, ev) end
 end
 
 if step then
@@ -506,8 +531,10 @@ if has(t, { "what kind of player am i", "what type of player am i", "what is my 
 return P.describe(who) or V.fill(pick({ "I do not know yet, {name}! Tell me what you like to do - building, tech, exploring...",
 "Tell me about how you play and I will remember: what do you like to do most?" }), who)
 end
-if has(t, { "what should i do", "what do i do now", "give me something to do", "i do not know what to do", "what can i do today", "any ideas for me",
-"what should i do today", "suggest something" }) then
+
+local tw = t:gsub("^ " .. low(V.cfg("name", "base")):gsub("%p", "%%%0") .. " ", " "):gsub(" now $", " "):gsub(" today $", " "):gsub(" next $", " ")
+if has(tw, { "what should i do", "what do i do", "give me something to do", "i do not know what to do", "what can i do", "any ideas for me",
+"suggest something", "i am bored what do i do" }) and tw:match("^ [%w ]- do $") or has(tw, { "give me something to do", "any ideas for me", "suggest something" }) and #ws <= 6 then
 local d = P.whatToDo(who)
 if d then return V.fill(d, who) end
 return nil
@@ -559,6 +586,9 @@ if P.tipAt[k] and os.clock() - P.tipAt[k] < 3600 then return nil end
 local str = P.struggles(who)
 local top = P.top(who, 1)[1]
 local line
+local others = 0
+for _, p in ipairs(V.nearPlayers()) do if low(p.name) ~= k then others = others + 1 end end
+if others > 0 then str = {} end
 if str[1] then
 local s = str[math.random(1, #str)]
 line = pick({ "{name}, a little tip for you: ", "Hey {name}, I was thinking about you: ", "{name}, remember: " }) ..
@@ -597,6 +627,7 @@ for _, w in ipairs({ "the", "a", "an", "my", "your", "our", "his", "her", "their
 "playing", "first", "last", "what", "who", "how", "why", "base", "speaker", "bot", "computer", "server", "god", "king", "queen",
 "mine", "yours", "ours", "theirs", "them", "him", "she", "he", "they", "going", "doing", "up", "now", "today", "real", "lag" }) do P.NOTNAME[w] = true end
 local function art(w) return (tostring(w):match("^[aeiou]") and "an " or "a ") .. w end
+local function isOnline(n) return type(state.online) == "table" and state.online[low(n)] and true or false end
 local function cleanKey(n) return low(V.cleanName and V.cleanName(n) or n) end
 
 function P.findPlayer(word, asker)
@@ -610,9 +641,11 @@ for n in pairs(C.staff and C.staff() or {}) do add(n) end
 for n, r in pairs(V.mem()) do if type(r) == "table" then add(n) end end
 for _, n in ipairs(names) do if low(n) == w then return n end end
 for _, n in ipairs(names) do if cleanKey(n) == w then return n end end
+
+if #w < 4 then return nil end
 local hit
 for _, n in ipairs(names) do
-if low(n):sub(1, #w) == w then
+if isOnline(n) and low(n):sub(1, #w) == w then
 if hit and low(hit) ~= low(n) then return nil end
 hit = n
 end
@@ -623,7 +656,6 @@ local function shownName(n)
 for _, e in ipairs(state.players or {}) do if low(e.name) == low(n) then return e.name end end
 return n
 end
-local function isOnline(n) return type(state.online) == "table" and state.online[low(n)] and true or false end
 P.ROLE_DESC = {
 admin = { "they run the server", "they make the big decisions here", "the server is theirs to look after" },
 mod = { "they keep the chat friendly", "they make sure everyone follows the rules", "they keep the peace" },

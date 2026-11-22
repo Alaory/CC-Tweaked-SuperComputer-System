@@ -375,6 +375,8 @@ t:match(" (%S+) is not staff anymore $") or t:match(" (%S+) is not on the staff 
 if n1 and C.ROLE_WORDS[r1] and not NOTNAME[n1] then
 local real = realName(n1) or (not loose and V.isOwner(who) and n1)
 if real then
+
+if not V.isOwner(who) and loose and (C.ROLE_WORDS[r1] == "builder" or C.ROLE_WORDS[r1] == "helper" or C.ROLE_WORDS[r1] == "maintainer") then return nil end
 if not V.isOwner(who) then return V.fill("Only {owner} can tell me who the staff are.", who) end
 C.addRole(real, C.ROLE_WORDS[r1])
 return "Got it: " .. real .. " is " .. art(C.titles(C.rolesOf(real))) .. " now. I will greet them that way."

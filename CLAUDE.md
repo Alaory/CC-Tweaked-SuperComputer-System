@@ -1635,7 +1635,15 @@ PneumaticCraft drone rides, turtle mapping/surveys, and an AE2 ME network view.
   owner ("built me" - never where), staff roles + what that job is (P.ROLE_DESC), online or not, what they love (P.lovesText),
   nickname / favourites / likes / birthday / their bio; NEVER where, never their struggles, notes, points; nothing known = says so
   + "Anyone can: base, about me: ...". "is X an admin / a mod / a builder / nice?" -> P.isQuestion. P.findPlayer: exact, the name
-  without digits ("deadman" = deadman213), a unique start (3+); little words (the, my, admin, staff ...) never a name.
+  without digits ("deadman" = deadman213), a unique start (4+ letters, ONLINE players only - "who is creeper" is not the offline
+  CreeperKing); little words (the, my, admin, staff ...) never a name.
+  REVIEW (the owner: "go over the code again"): "tell me about burnout" is not having it (" me " does not count as about
+  themselves); hates stop at but / when / because ("I hate creepers when I am building"); "what should I do" only as the whole
+  question; CHECK-INS: every question carries what YES means (P.CHECKIN {q, yesGood}: "got your spark back?" yes = solved, "still
+  feeling lost?" no = solved) and the C.reply wrapper answers them itself: solved / still (naming the trouble again - "yes, still
+  burned out" - is never solved) / neither, one tip, then on; "I am good now" clears a struggle only inside its own check-in; the
+  idle tip about a struggle only when that player is alone with it (never out loud with others near); a player's "Alex is a
+  builder" is not a staff order (only admin / mod words get "only the owner can").
 - NAMES WITHOUT NUMBERS (the owner: "stop it from mentioning numbers in players' names - deadman213, 125steve1, 1alex2steve"):
   VOICE.cleanName (digits and _ out, parts kept: "1alex2steve" -> "alex steve"; only digits -> "friend") in fill() ({name},
   {owner}; a nickname chosen with "call me ..." stays as it is), VOICE.cleanNames(text) (every known player name with digits,
