@@ -1612,6 +1612,30 @@ PneumaticCraft drone rides, turtle mapping/surveys, and an AE2 ME network view.
   "roast <staff name>". "who are the admins / who is staff" (whole questions only - "is there a mod for that?" is not), "am I a
   mod?" ("not a moderator - you are an admin and builder"), "I am an admin / a maintainer" from someone not on it = a friendly no
   per role (C.NOT_STAFF). test_voice_convo 23, test_spawn_scenarios "a moderator walks up to spawn".
+- HOW EACH PLAYER PLAYS (voice_profile.lua = VOICE_FILES after voice_staff, uses V.CONVO; the owner: "a detection system - when a
+  player tells the base what they like to do it adapts: they love tech mods but spend most of their time watching tutorials, or
+  like to build but get burned out", then "players might ask who am I, or about themselves / other players / moderators").
+  V.PROFILE = P. P.learn (chats with it, every answer in a conversation - C.reply wrapped -, chat overheard near the base; one
+  message learned once - P.lastKey): INTERESTS r.prof.i[id] (build tech redstone magic explore mine fight farm collect social;
+  "I love / mostly / am a ... X" +2 - the part after "but" is not liked -, "I am building / my factory" +1, "I hate / am bad at X"
+  -2; P.top = score >= 2) and STRUGGLES r.prof.s[id] = {n, at, first} (burnout tutorials overwhelmed noideas perfect notime alone
+  new grind; only about THEMSELVES - "I" / "my" / "me" / "am" in it, or an answer in a chat: "are you lonely?" is about the base;
+  P.BETTER "better now / motivated again" = gone; 30 days = faded). ADAPTING: a new struggle -> P.answer = what it understood ("You
+  love tech mods, but tutorials get in the way") + P.HEAR + a TIP for the PAIR (P.TIP2 "tutorials+tech": "build the machine from the
+  video right away") else P.TIP; at once in chat (a pattern) or before the next question in a conversation (C.ask wrapped,
+  P.extra); then a chat about it (prof_build / prof_tech / prof_magic topics, P.TOPIC_OF). C.nextTopic wrapped: a CHECK-IN on a
+  struggle told 12+ h ago (60 %, once per chat; P.checkSteps - "still burned out?" yes = a tip, "much better now" / good = solved;
+  for "found anyone to play with yet?" yes = solved), else their interests' topics (60 %). "what kind of player am I" =
+  P.describe; "what should I do" = P.whatToDo (P.TODO by interest, P.TODO_WAY with the struggle in mind: "No videos for this one");
+  "what do you know about me" includes it (C.likesText wrapped); idle (P.idle via idleExtra): a tip for a player near it, 1 an
+  hour. "I love mekanism" stays the mod talk (learned too). `voice profile <player>`. test_voice_profile.lua.
+  WHO IS WHO: "who am I" / "tell me about myself" / "describe me" -> P.aboutSelf (owner, staff roles, friendship title, visits,
+  nickname, how you play incl. struggles, favourites, likes, your bio; spoken: a short line). "who is / tell me about / what is X
+  like / what does X like / what do you think of X" -> P.aboutOther (also the spawn pack's SP.aboutOther hands over): PUBLIC only -
+  owner ("built me" - never where), staff roles + what that job is (P.ROLE_DESC), online or not, what they love (P.lovesText),
+  nickname / favourites / likes / birthday / their bio; NEVER where, never their struggles, notes, points; nothing known = says so
+  + "Anyone can: base, about me: ...". "is X an admin / a mod / a builder / nice?" -> P.isQuestion. P.findPlayer: exact, the name
+  without digits ("deadman" = deadman213), a unique start (3+); little words (the, my, admin, staff ...) never a name.
 - NAMES WITHOUT NUMBERS (the owner: "stop it from mentioning numbers in players' names - deadman213, 125steve1, 1alex2steve"):
   VOICE.cleanName (digits and _ out, parts kept: "1alex2steve" -> "alex steve"; only digits -> "friend") in fill() ({name},
   {owner}; a nickname chosen with "call me ..." stays as it is), VOICE.cleanNames(text) (every known player name with digits,
@@ -1737,6 +1761,7 @@ The old Block UI (stone buttons, bedrock theme) is gone.
 | voice_lines.lua / voice_idle.lua | LINES PACKS: 100+ ways to say each thing (asked for / idle, greetings, reactions) |
 | voice_convo.lua | CONVERSATIONS: hi / how are you / just its name start a long chat (topics, reactions, its own answers), remembers what each player likes and the mods they talk about |
 | voice_staff.lua | SERVER STAFF: admins / moderators / maintainers / builders (one or more roles each) get their own greetings, chat topics and roasts; the owner keeps the list |
+| voice_profile.lua | HOW EACH PLAYER PLAYS: learns what they love and what gets in their way (burnout, tutorials ...), adapts its answers / tips / topics / check-ins; who am I / who is X |
 | voice_vary.lua | VARIETY PACK: every other answer said 50+ ways (openers / closers by the kind of answer) |
 | voice_lore.lua | LORE PACK: why drones and not /tp and other questions about the base, modpack tips, mod glossary |
 | voice_spawn.lua / spawn_speaker.lua | the SPAWN SPEAKER: the base talks at spawn through a relay computer (Speaker + ender modem) - own voice and lines, no rewards, item wishes by drone, how-to help |

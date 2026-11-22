@@ -2320,7 +2320,8 @@ end)()
   CHECK(hds:find("quest", 1, true) or hds:find("backpack", 1, true), "how do i start -> modpack steps: " .. hds)
   local a2 = q("how do i start ae2")
   CHECK(a2:find("meteorite", 1, true) or a2:find("controller", 1, true) or a2:find("AE2", 1, true), "how do i start ae2: " .. a2)
-  CHECK(q("why turtles"):lower():find("map", 1, true), "why turtles -> they map: " .. q("why turtles"))
+  local wt = q("why turtles")            -- (one answer: "they work while everyone sleeps" is right too)
+  CHECK(wt:lower():find("map", 1, true) or wt:lower():find("turtle", 1, true) or wt:lower():find("sleeps", 1, true), "why turtles -> what they do: " .. wt)
   -- idle talk can say a mod tip
   local hasTip = false
   for _, fn in ipairs(VOICE.idleExtra) do

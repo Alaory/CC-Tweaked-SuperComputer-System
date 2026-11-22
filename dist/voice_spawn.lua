@@ -1160,6 +1160,8 @@ V.saveMem()
 return "Got it. When someone asks me about " .. who .. ", I tell them: " .. text
 end
 function SP.aboutOther(asker, word)
+
+if V.PROFILE and V.PROFILE.aboutOther then return V.PROFILE.aboutOther(asker, word) end
 local w = low(word):gsub("[^%w_]", "")
 if #w < 3 or w == low(asker) or w == "me" or w == "you" or w == "yourself" then return nil end
 local m = V.mem()

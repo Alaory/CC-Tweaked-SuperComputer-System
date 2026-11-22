@@ -482,9 +482,13 @@ local cw1c = say("Steve", "base is there a mod for that?")
 CHECK(not lowc(cw1c):find("modmax", 1, true), "'is there a mod for that' is not about moderators: " .. cw1c)
 fresh("Steve")
 local cw2 = say("Steve", "base i am an admin")
-CHECK(not lowc(cw2):find("i know", 1, true) and not lowc(cw2):find("confirmed", 1, true), "a stranger claiming admin: nice try: " .. cw2)
+local nice = false
+for _, l in ipairs(C.NOT_STAFF.admin) do if cw2 == V.fill(l, "Steve") then nice = true end end
+CHECK(nice, "a stranger claiming admin: nice try: " .. cw2)
 local cw2b = say("Steve", "base i am a maintainer")
-CHECK(not lowc(cw2b):find("i know", 1, true), "a stranger claiming maintainer: nice try: " .. cw2b)
+nice = false
+for _, l in ipairs(C.NOT_STAFF.maintainer) do if cw2b == V.fill(l, "Steve") then nice = true end end
+CHECK(nice, "a stranger claiming maintainer: nice try: " .. cw2b)
 fresh("AdminAnna")
 local cw3 = say("AdminAnna", "base am i an admin")
 CHECK(lowc(cw3):find("admin and builder", 1, true), "am I an admin (two roles): " .. cw3)
