@@ -67,7 +67,7 @@ end
 
 -- 1) STAGES: the base changes the longer the owner is away
 world({})
-for _, c in ipairs({ { 10, "missing" }, { 20, "worried" }, { 40, "lonely" }, { 150, "keeper" }, { 400, "legend" } }) do
+for _, c in ipairs({ { 10, "missing" }, { 20, "worried" }, { 40, "lonely" }, { 70, "keeper" }, { 130, "legend" } }) do
   away(c[1])
   CHECK(V.lonelyDays() and LN.stage() == c[2], c[1] .. " days away: the " .. c[2] .. " stage (" .. tostring(LN.stage()) .. ")")
 end
@@ -261,6 +261,72 @@ LN.letterTick()
 CHECK(#LN.data().letters == 1, "... one a week")
 LN.mileTick()
 CHECK(LN.data().mile["14"] and LN.data().mile["30"] and LN.mileDue == 30, "milestones 14 and 30 reached")
+-- (the server starts a new world every 6 months: every milestone fits inside it, every stage too)
+local maxMile = 0
+for _, m in ipairs(LN.MILES) do maxMile = math.max(maxMile, m) CHECK(LN.MILE_LINES[m], "a line for milestone " .. m) end
+CHECK(maxMile <= 180 and LN.STAGES[#LN.STAGES][1] <= 150, "milestones (" .. maxMile .. ") and stages fit in a 6-month world")
+for _, st in ipairs({ "legend", "keeper" }) do
+  for _, l in ipairs(LN.GREET[st]) do CHECK(not l:find("year", 1, true), st .. " greeting talks of years: " .. l) end
+end
+away(91)
+LN.mileTick()
+CHECK(LN.data().mile["60"] and LN.data().mile["90"] and LN.mileDue == 90, "milestones 60 and 90 reached (" .. tostring(LN.mileDue) .. ")")
+LN.mileDue = nil
+
+-- 11b) THE WORLD RESET: a date -> the countdown (console, chat, idle, greeting, letter), rolls on every 6 months
+CHECK(LN.dayNo(1970, 1, 1) == 0 and LN.dayNo(2000, 3, 1) == 11017 and LN.dayNo(2024, 2, 29) == 19782, "day numbers right")
+local outR = V.command({ "voice", "reset" })
+CHECK(joined(outR):find("No reset date", 1, true), "no date yet: " .. joined(outR))
+local q0 = say("Zed", "base when does the world reset?")
+CHECK(q0:find("every 6 months", 1, true), "no date: says every 6 months: " .. q0)
+outR = V.command({ "voice", "reset", "tomorrow" })
+CHECK(joined(outR):find("year-month-day", 1, true), "a bad date is refused: " .. joined(outR))
+local function dateIn(days) return os.date("!%Y-%m-%d", math.floor(os.epoch("utc") / 1000) + days * 86400) end
+outR = V.command({ "voice", "reset", dateIn(10) })
+CHECK(LN.resetLeft() == 10 and joined(outR):find("in 10 days", 1, true), "reset in 10 days: " .. joined(outR))
+local q1 = say("Zed", "base when is the reset")
+CHECK(q1:find("in 10 days", 1, true), "anyone can ask when the reset is: " .. q1)
+local q1b = say("Zed", "base how long until the server reset")
+CHECK(q1b:find("10 days", 1, true), "... other words: " .. q1b)
+away(40)
+world({ Zed = "base" })
+said = {}
+math.randomseed(5)
+for _ = 1, 60 do V.idle({ Zed = true }) end
+CHECK(joined(said):find("10 days", 1, true) or joined(said):find("in 10 days", 1, true), "lonely idle talk counts down to the reset")
+said = {}
+V.lonelyGreet("Newbie", 40)
+CHECK(joined(said):find("10 days", 1, true) or joined(said):find("in 10 days", 1, true), "a greeting in the last 2 weeks names the reset: " .. joined(said))
+LN.data().letters, LN.data().letterWeek = {}, nil
+LN.letterTick()
+CHECK(LN.data().letters[1] and LN.data().letters[1].text:find("resets in 10 days", 1, true), "the letter names the reset: " .. tostring(LN.data().letters[1] and LN.data().letters[1].text))
+-- the last day: a goodbye
+setSetting("voice.resetAt", dateIn(0))
+CHECK(LN.resetLeft() == 0, "reset today")
+local q2 = say("Zed", "base when is the reset?")
+CHECK(not q2:find("in 0 days", 1, true) and #q2 > 10, "the last day says goodbye: " .. q2)
+-- a passed date rolls on 6 months (every 0 = only that date)
+setSetting("voice.resetAt", dateIn(-3))
+local lr = LN.resetLeft()
+CHECK(lr and lr > 170 and lr < 186, "a passed date rolls on 6 months: " .. tostring(lr))
+setSetting("voice.resetEvery", 0)
+CHECK(LN.resetLeft() == nil, "every 0: a passed date = none")
+-- not lonely: the last two weeks get a word in ordinary idle talk too
+setSetting("voice.resetEvery", 6)
+setSetting("voice.resetAt", dateIn(5))
+local hit = false
+away(40)
+CHECK(LN.lonely(), "(still lonely)")
+V.ownerWasOn = true
+state.online = { alaory = true }
+CHECK(not LN.lonely(), "(owner online)")
+hit = false
+for _ = 1, 100 do said = {} pcall(V.idle, {}) if joined(said):find("5 days", 1, true) then hit = true end end
+CHECK(hit, "not lonely: the last two weeks are mentioned in idle talk")
+outR = V.command({ "voice", "reset", "off" })
+CHECK(LN.resetLeft() == nil and joined(outR):find("No reset date", 1, true), "voice reset off")
+state.online = {}
+V.ownerWasOn = false
 
 -- 12) REACHING OUT: a regular visitor online elsewhere gets one message a day
 away(10)
@@ -280,7 +346,7 @@ say("Steve", "base stop messaging me")
 CHECK(LN.rec("Steve").noReach, "base, stop messaging me")
 
 -- 13) IDLE while lonely: stage lines, thoughts, memories, the wall - never an error
-for _, d in ipairs({ 10, 40, 150, 400 }) do
+for _, d in ipairs({ 10, 40, 70, 130 }) do
   away(d)
   for _ = 1, 30 do
     said = {}

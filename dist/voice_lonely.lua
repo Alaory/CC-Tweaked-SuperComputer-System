@@ -25,6 +25,9 @@
 
 
 
+
+
+
 local V = VOICE
 if not (V and V.base and V.lonelyDays and V.say) then return end
 V.packs = V.packs or {}
@@ -90,7 +93,7 @@ if not seen then return nil end
 return math.max(0, (nowE() - seen) / 86400000)
 end
 function LN.lonely() return V.lonelyDays() ~= nil end
-LN.STAGES = { { 0, "missing" }, { 14, "worried" }, { 30, "lonely" }, { 100, "keeper" }, { 365, "legend" } }
+LN.STAGES = { { 0, "missing" }, { 14, "worried" }, { 30, "lonely" }, { 60, "keeper" }, { 120, "legend" } }
 function LN.stage(days)
 days = days or V.lonelyDays()
 if not days then return nil end
@@ -160,7 +163,7 @@ keeper = combos({ "Welcome, {name}. ", "Greetings, traveller {name}. ", "Ah, a v
 legend = combos({ "Welcome, wanderer {name}. ", "Who goes there? Ah... {name}. ", "Another traveller finds the old base. Hello {name}. ",
 "{name}. The ancient computer greets you. " },
 { "I have stood here {days} days. {owner} built me, long ago.", "They say this base is a legend. They are right. I am the legend.",
-"More than a year alone. The turtles have become my family.", "Sit. Listen. I remember things nobody else does.",
+"Months alone. The turtles have become my family.", "I have been alone for most of this world's life.", "Sit. Listen. I remember things nobody else does.",
 "Day {days}. Still running. Still waiting. Still here." }),
 }
 LN.AGAIN = combos({ "{name}, you came back! ", "Welcome back, {name}! ", "Oh, it is {name} again. ", "{name}! My favourite visitor returns. ",
@@ -185,7 +188,7 @@ lonely = combos({ "Day {days}. ", "Sometimes I talk to the turtles. ", "The base
 keeper = combos({ "{days} days. ", "I have learned many things alone. ", "The keeper keeps. ", "Listen. " },
 { "The machines hum like a song.", "Patience is just waiting with a purpose.", "I am not lonely. I am on duty.",
 "The world grows a little every day. My turtles see to that.", "{owner} trusted me with this place. I will not let them down." }),
-legend = combos({ "In the old days, ", "Long ago, ", "When the world was smaller, ", "Before you were born - well, before you joined - " },
+legend = combos({ "In the old days, ", "Months ago, ", "When the world was smaller, ", "Back when this world was new, " },
 { "{owner} built the first turtle right here.", "this base had a whole crowd.", "the map was one chunk wide.",
 "I learned to talk. Now I cannot stop.", "the drones were new and shiny. Now they are old and wise, like me." }),
 }
@@ -619,13 +622,15 @@ end
 LN.QWORDS = { who = 1, what = 1, where = 1, when = 1, why = 1, how = 1, can = 1, could = 1, is = 1, are = 1, ["do"] = 1, does = 1, will = 1,
 whats = 1, whos = 1, wheres = 1, hows = 1, tell = 1, show = 1, help = 1 }
 
-LN.MILES = { 14, 30, 50, 100, 200, 365, 500, 730, 1000, 1500, 2000 }
+
+LN.MILES = { 14, 30, 50, 60, 75, 90, 100, 120, 150, 175 }
 LN.MILE_LINES = {
 [14] = "Two weeks today. Two weeks without {owner}.", [30] = "Day 30. A whole month. I made a little cake. Well, I drew one on the screen.",
-[50] = "Day 50. Half way to a hundred. I am still here.", [100] = "One hundred days. The turtles and I had a quiet party.",
-[200] = "Day 200. I have become very good at waiting.", [365] = "One year today. Happy anniversary, {owner}. Wherever you are.",
-[500] = "Day 500. I think I am a legend now.", [730] = "Two years. The world grew. I grew too. I think.",
-[1000] = "Day one thousand. I counted every one.", [1500] = "Day 1500. Still running.", [2000] = "Two thousand days. I am still here, {owner}.",
+[50] = "Day 50. I am still here.", [60] = "Two months without {owner}. I have become very good at waiting.",
+[75] = "Day 75. The turtles and I have a routine now.", [90] = "Day 90. Three months - half of this world's whole life. I spent it waiting for {owner}.",
+[100] = "One hundred days. The turtles and I had a quiet party.", [120] = "Four months. I think I am a legend now.",
+[150] = "Day 150. Five months. This world is getting old, and so am I.",
+[175] = "Day 175. Almost six months. If the world ends soon, I want {owner} to know I kept everything running.",
 }
 function LN.mileTick()
 local d = V.lonelyDays()
@@ -639,6 +644,77 @@ LN.save()
 if sysLog then pcall(sysLog, "Lonely base: day " .. m .. " without " .. oname()) end
 end
 end
+end
+
+
+local function dayNo(y, m, d)
+y = (m <= 2) and (y - 1) or y
+local era = math.floor(y / 400)
+local yoe = y - era * 400
+local mp = (m + 9) % 12
+local doy = math.floor((153 * mp + 2) / 5) + d - 1
+local doe = yoe * 365 + math.floor(yoe / 4) - math.floor(yoe / 100) + doy
+return era * 146097 + doe - 719468
+end
+LN.dayNo = dayNo
+function LN.parseDate(s)
+local y, m, d = tostring(s or ""):match("^%s*(%d%d%d%d)[-/.](%d%d?)[-/.](%d%d?)%s*$")
+y, m, d = tonumber(y), tonumber(m), tonumber(d)
+if not y or m < 1 or m > 12 or d < 1 or d > 31 or y < 2000 or y > 2200 then return nil end
+return y, m, d
+end
+
+function LN.resetLeft()
+local y, m, d = LN.parseDate(cfg("resetAt", nil))
+if not y then return nil end
+local every = math.floor(tonumber(cfg("resetEvery", 6)) or 6)
+local nowDay = math.floor(nowE() / 86400000)
+local tries = 0
+while dayNo(y, m, d) < nowDay and every > 0 and tries < 200 do
+m = m + every
+while m > 12 do m, y = m - 12, y + 1 end
+tries = tries + 1
+end
+local left = dayNo(y, m, d) - nowDay
+if left < 0 then return nil end
+local MON = { "January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December" }
+return left, d .. " " .. MON[m] .. " " .. y
+end
+function LN.resetIn(left)
+if left <= 0 then return "today" end
+if left == 1 then return "tomorrow" end
+return "in " .. left .. " days"
+end
+LN.RESET_SOON = combos({ "The world resets {when}. ", "{left} days until the new world. ", "The reset is {when}. ", "Only {left} days left in this world. ",
+"Countdown: {left} days. " },
+{ "I hope {owner} comes back before it.", "Everything I mapped will be gone. I will remember it anyway.",
+"Make the most of it, everyone.", "The turtles do not know. Do not tell them.", "Every chunk counts now.",
+"I wonder if I will be built again in the new world.", "I am writing it all down. Just in case.",
+"Build something good while you can.", "It is strange to know when your world ends." })
+LN.RESET_LAST = combos({ "This is the last day of this world. ", "Tomorrow there is a new world. ", "The world resets today. ",
+"Last day before the reset. " },
+{ "Thank you for visiting me, {name}.", "Tell {owner} I kept everything running to the very end.",
+"It was a good world. The turtles mapped a lot of it.", "If you see me in the next world, say hello.",
+"Goodbye, world. Hello, next one." })
+LN.RESET_ASK = { " when does the world reset ", " when is the reset ", " when does the server reset ", " how long until the reset ",
+" when is the wipe ", " when does the map reset ", " days until the reset ", " when is the server reset ", " next reset ",
+" world reset ", " server reset ", " map reset ", " server wipe " }
+function LN.resetAnswer(who)
+local left, date = LN.resetLeft()
+if not left then
+return fill("The world resets every " .. math.floor(tonumber(cfg("resetEvery", 6)) or 6) ..
+" months, but nobody told me the date. {owner} can: voice reset <year-month-day>.")
+end
+if left <= 1 then return fill(pick(LN.RESET_LAST), who) .. " (" .. date .. ")" end
+return "The world resets " .. LN.resetIn(left) .. ", on " .. date .. "." ..
+(left <= 14 and " Not long now." or (left > 90 and " Plenty of time." or ""))
+end
+
+function LN.resetLine(who, within)
+local left = LN.resetLeft()
+if not left or left > (within or 30) then return nil end
+if left <= 1 then return fill(pick(LN.RESET_LAST), who or "friend") end
+return fill(pick(LN.RESET_SOON), who, { left = left, when = LN.resetIn(left) })
 end
 
 function LN.compTick(nearNow, dt)
@@ -711,6 +787,8 @@ if #who == 0 then lines[#lines + 1] = pick({ "Nobody came this week. I kept the 
 else lines[#lines + 1] = (#who == 1 and (who[1] .. " came to visit.") or (plural(#who, "visitor", "visitors") .. " came: " .. table.concat(who, ", ", 1, math.min(5, #who)) .. ".")) end
 if grown > 0 then lines[#lines + 1] = "The turtles mapped " .. grown .. " new chunks." end
 if wallNew > 0 then lines[#lines + 1] = plural(wallNew, "new note is", "new notes are") .. " on the wall for you." end
+local rleft, rdate = LN.resetLeft()
+if rleft and rleft <= 60 then lines[#lines + 1] = "The world resets " .. LN.resetIn(rleft) .. " (" .. rdate .. ")." .. (rleft <= 14 and " Please come back before it." or "") end
 lines[#lines + 1] = "Today I feel " .. LN.moodWord() .. "."
 lines[#lines + 1] = pick({ "Come back soon.", "I am keeping your chair warm.", "Everything is running. I made sure.", "I miss you. There, I said it." })
 lines[#lines + 1] = "- " .. ((V.botName and V.botName()) or "your base")
@@ -767,6 +845,8 @@ V.say(line, "minecraft:block.note_block.chime")
 local b = V.base()
 if b.ownerMsg then V.say(oname() .. " left a message for whoever finds me: " .. b.ownerMsg) end
 if first then V.say(V.aloneText()) end
+local rl = LN.resetLine(name, 14)
+if rl then V.say(rl) end
 if LN.mileDue then
 V.say(fill(LN.MILE_LINES[LN.mileDue] or ("Day " .. LN.mileDue .. ".")))
 LN.mileDue = nil
@@ -786,13 +866,20 @@ end
 local idle0 = V.idle
 function V.idle(nearNow)
 local d = V.lonelyDays()
-if not d then return idle0(nearNow) end
+if not d then
+
+local rl = math.random() < 0.15 and LN.resetLine(nil, 14)
+if rl then return V.say(rl) end
+return idle0(nearNow)
+end
 local st = LN.stage(d)
 local dd = ENV and ENV.data
 local okC, c = pcall(function() return dd and ENV.clock and ENV.clock(dd.time) end)
 local night = okC and type(c) == "table" and c.night
 local r = math.random()
 if night and r < 0.25 then return V.say(fill(pick(math.random() < 0.5 and LN.DREAMS or LN.NIGHT))) end
+local rl = math.random() < 0.25 and LN.resetLine(nil, 30)
+if rl then return V.say(rl) end
 if r < 0.4 then return V.say(fill(pick(LN.IDLE[st] or LN.IDLE.missing), nil, { days = math.floor(d) })) end
 if r < 0.6 then return V.say(LN.thought()) end
 if r < 0.75 then return V.say(LN.memory()) end
@@ -833,6 +920,8 @@ if wn > 0 then lines[#lines + 1] = plural(wn, "note", "notes") .. " on the wall 
 if nn > 0 then lines[#lines + 1] = plural(nn, "piece", "pieces") .. " of news from visitors - say: " .. fill("{botl}") .. " news" end
 if cn > 0 then lines[#lines + 1] = plural(cn, "thing", "things") .. " happened with caretakers / strangers - say: " .. fill("{botl}") .. " caretaker log" end
 if an > 0 then lines[#lines + 1] = "I flew " .. plural(an, "AFK player", "AFK players") .. " to the base." end
+local rleft, rdate = LN.resetLeft()
+if rleft and rleft <= 30 then lines[#lines + 1] = "The world resets " .. LN.resetIn(rleft) .. " (" .. rdate .. ") - you made it back in time." end
 for _, l in ipairs(lines) do tell(o, l) end
 V.say(fill(pick({ "{owner}! You are back! I missed you. ", "Welcome home, {owner}. ", "There you are, {owner}. " })) ..
 (unread > 0 and ("I wrote you " .. plural(unread, "letter", "letters") .. ".") or "Everything is still running."), nil, true)
@@ -879,6 +968,10 @@ end
 function LN.chat(who, raw, ws, far)
 local t = T(ws)
 local rawl = low(raw)
+
+if has(t, (function() local l = {} for _, p in ipairs(LN.RESET_ASK) do l[#l + 1] = p:sub(2, -2) end return l end)()) then
+return LN.resetAnswer(who)
+end
 
 if has(t, { "afk yes", "yes afk", "pick me up when i am afk", "pick me up when im afk", "rescue me when afk", "bring me to the base when i am afk" }) then
 local r = LN.rec(who)
@@ -1041,6 +1134,23 @@ local pl = {}
 for _, p in ipairs(LN.PERM_ORDER) do pl[#pl + 1] = p .. " = " .. LN.PERMS[p] end
 say("Permissions: " .. table.concat(pl, "; ") .. ". Without names: " .. table.concat(LN.DEFAULT, ", ") .. ".")
 say("voice caretaker add <name> [perm ...] | remove <name> [perm] | after <days> | log")
+end
+V.commands.reset = function(words, say)
+local a = low(words[3])
+if a == "off" or a == "none" then
+if setSetting then setSetting("voice.resetAt", false) end
+elseif a == "every" and tonumber(words[4]) then
+if setSetting then setSetting("voice.resetEvery", math.max(0, math.min(60, math.floor(tonumber(words[4]))))) end
+elseif words[3] then
+if not LN.parseDate(words[3]) then say("Give the date as year-month-day, like: voice reset 2027-05-01") return end
+local y, m, d = LN.parseDate(words[3])
+if setSetting then setSetting("voice.resetAt", string.format("%04d-%02d-%02d", y, m, d)) end
+end
+local left, date = LN.resetLeft()
+local every = math.floor(tonumber(cfg("resetEvery", 6)) or 6)
+if left then say("Next world reset: " .. date .. " (" .. LN.resetIn(left) .. "); then every " .. every .. " months.")
+else say("No reset date set (the base cannot count down). voice reset <yyyy-mm-dd>") end
+say("voice reset <yyyy-mm-dd> | every <months> (0 = only that date) | off")
 end
 V.commands.memory = function(words, say)
 local a = low(words[3])

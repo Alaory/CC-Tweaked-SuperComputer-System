@@ -1591,8 +1591,9 @@ PneumaticCraft drone rides, turtle mapping/surveys, and an AE2 ME network view.
 - THE LONELY BASE, BIGGER (voice_lonely.lua = VOICE_FILES LAST; V.LONELY = LN; the owner: "improve the lonely feature - when I
   leave for more than 7 days: new dialogs, activities, permissions" + "have the base become like sentient" + "if it sees a player
   who is AFK it teleports them to the base"). Data in "#base".lone (wall, mem, news, letters, log, mile, comp, reach, away ...),
-  saved at most every 60 s. STAGES (LN.stage from V.lonelyDays): missing (lonely days) / worried 14 / lonely 30 / keeper 100 /
-  legend 365 - LN.GREET / LN.IDLE per stage (combos, 20+ / 15+ each), LN.mood 0-100 (stage + time since a visit - company today)
+  saved at most every 60 s. STAGES (LN.stage from V.lonelyDays): missing (lonely days) / worried 14 / lonely 30 / keeper 60 /
+  legend 120 (THE SERVER STARTS A NEW WORLD EVERY 6 MONTHS - the owner: stages / milestones / lines never go past ~180 days, no
+  "year" lines; test_voice_lonely checks) - LN.GREET / LN.IDLE per stage (combos, 20+ / 15+ each), LN.mood 0-100 (stage + time since a visit - company today)
   -> V.moodText wrapped; V.lonelyGreet REPLACED (caretaker greeting + report / best friend / visitor again / stage line; the
   owner's message; a due milestone; 35 % asks for NEWS, else a hint); V.idle wrapped while lonely (stage lines, LN.thought from
   real turtle / map / weather data, memories, a wall note, dreams / night lines from ENV.clock(dd.time)). CARETAKERS (voice.care =
@@ -1611,8 +1612,12 @@ PneumaticCraft drone rides, turtle mapping/surveys, and an AE2 ME network view.
   pack 3's taxi hook took "take me back"); "welcome back" only when they move by themselves at the base after standing there 30 s
   (a drone lift moves them too). ACTIVITIES: the WALL (3 notes a day, 120 chars, 50 kept, rude refused via V.CONVO.isBad; read =
   newest 5), MEMORIES (`voice memory add`, "remember for visitors ..." + facts from V.mem / PLAYER_INFO / turtles / MAP), NEWS
-  (pend react fn -> L.news 30, owner: "news"), COMPANY (seconds near while lonely -> best friend), MILESTONES (14 30 50 100 200 365
-  500 730 1000 ...), LETTERS (one per week away from the real numbers, 12 kept; "read my letters"), REACH OUT (a visitor with 2+
+  (pend react fn -> L.news 30, owner: "news"), COMPANY (seconds near while lonely -> best friend), MILESTONES (14 30 50 60 75 90 100
+  120 150 175), THE WORLD RESET (voice.resetAt "YYYY-MM-DD" UTC, `voice reset <date>|every <months>|off`; LN.resetLeft = days
+  left via LN.dayNo (own day count, not os.time), a passed date rolls on voice.resetEvery 6 months; 0 = only that date): lonely
+  idle 25 % within 30 days, the greeting within 14, letters within 60, the return report within 30, a last-day goodbye
+  (LN.RESET_LAST), "when does the world reset?" for anyone (also not lonely; no date = "every 6 months, nobody told me"), and
+  not lonely (V.idle wrapper, 15 %) a word now and then in the last 14 days), LETTERS (one per week away from the real numbers, 12 kept; "read my letters"), REACH OUT (a visitor with 2+
   visits online elsewhere: one chat message a day, 5 a day in all, "stop messaging me" = r.noReach). THE OWNER BACK (LN.returnTick:
   L.away kept while lonely): one chat report (days, letters, company + best friend, wall, news, caretaker / stranger log, AFK
   rescues) + a spoken welcome; then L.away / comp cleared. test_voice_lonely.lua (1670+ checks, a 400-message fuzz).

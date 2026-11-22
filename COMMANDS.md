@@ -365,11 +365,16 @@ only (not in chat).
 
 When you have been offline `voice lonely` days (default 7) the base changes: its own greetings and
 talk for each stage (missing you, worried, lonely, keeper, legend), a mood, letters to you, and
-things for visitors to do. Caretakers you name may help while you are away.
+things for visitors to do. Caretakers you name may help while you are away. Everything fits in a
+6-month world (the stages are 7 / 14 / 30 / 60 / 120 days, milestones up to day 175); with the reset
+date set it counts down to the new world.
 
 | Command | What it does |
 |---|---|
 | `voice lonely <days>` | after how many days away it acts lonely (0 = never) |
+| `voice reset <yyyy-mm-dd>` | the date the server starts a new world, e.g. `voice reset 2027-05-01`: it counts down (idle talk, greetings and letters in the last weeks, a goodbye on the last day) |
+| `voice reset every <months>` | after the date it moves on by this much (default 6; 0 = only that date) |
+| `voice reset off` / `voice reset` | no date / show the next reset |
 | `voice caretaker` | the caretakers, their permissions, and whether they count right now |
 | `voice caretaker add <name> [perm ...]` | e.g. `voice caretaker add Steve turtles supplies`. Permissions: `status` (where the turtles are + a report), `guard` (told in chat when a stranger is at the base), `taxi` (the free drone taxi), `supplies` (a few items from AE2 by drone), `turtles` (stop / call home every turtle), `wall` (tidy the wall), `all`. No names = status, guard, taxi |
 | `voice caretaker remove <name> [perm]` | takes one permission / all of them away |
@@ -440,6 +445,7 @@ While you are away (the lonely base), visitors and caretakers can also say:
 | `base, tell me a memory` | a story about the owner |
 | `base, what are you thinking?` / `how do you feel?` / `did you dream?` | what the lonely base thinks, feels and dreams about |
 | `base, how long has it been?` | the days without the owner |
+| `base, when does the world reset?` (anyone, any time) | the date of the next new world and how many days are left |
 | `base, I have news` | it asks for your news and tells the owner |
 | `base, afk yes` / `base, afk no` | a drone may / may never fly you to the base when you go AFK far away |
 | `base, stay` | the drone that was about to pick you up does not come |
