@@ -233,7 +233,7 @@ end
 end
 end
 if MAP.full then need[#need + 1] = "map floppies full" end
-for i, g in ipairs(partsGone and partsGone() or {}) do
+for i, g in ipairs(partsGone and partsGone(true) or {}) do
 if i > 4 then need[#need + 1] = "more parts missing (type parts)" break end
 need[#need + 1] = "part missing: " .. partText(g)
 end

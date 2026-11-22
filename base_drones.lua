@@ -482,8 +482,10 @@ function droneSeen(dr, x, y, z)
     dr.lostAt = nil
     pcall(droneLog, dr, "Found again at " .. fmtPos(e.x, e.y, e.z))
   end
-  local moved = not seenSaved[dr.key] or math.abs(seenSaved[dr.key].x - e.x) + math.abs(seenSaved[dr.key].z - e.z) > 32
-  if moved or os.clock() - seenSaved.at > 60 then
+  local last = seenSaved[dr.key]
+  local d = last and (math.abs(last.x - e.x) + math.abs(last.y - e.y) + math.abs(last.z - e.z)) or 999
+  -- (written when it moved 32+ since the last save, or moved at all and a minute passed - never for a parked drone)
+  if d > 32 or (d > 0 and os.clock() - seenSaved.at > 60) then
     seenSaved.at, seenSaved[dr.key] = os.clock(), e
     if saveFileSafe then pcall(saveFileSafe, "drone_seen.dat", serialSmall and serialSmall(DRONE_SEEN) or textutils.serialize(DRONE_SEEN)) end
   end

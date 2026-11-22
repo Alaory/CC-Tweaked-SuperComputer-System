@@ -88,6 +88,11 @@ PneumaticCraft drone rides, turtle mapping/surveys, and an AE2 ME network view.
   only notice at the next start): a warned part gets g.told (saved) - netMissing does not wait 60 s for it at every
   start again (data floppies are always waited for: their files must never be saved over from nothing); 3+ at once ->
   PARTS_CABLE hint (a broken cable / wired modem; a new wired modem must be RIGHT-CLICKED). test_broken.lua + pre_broken.lua.
+  REVIEW: a block remembered from an old file has first = 0 (never a "replacement"); one new block replaces ONE missing
+  block of its type (3 broken chests + 1 new); HOME / SYSTEM / the away report use partsGone(true) = missing goneAfter
+  s of this run or reported before (a chunk still loading after a restart is no alarm), `parts` lists all ("may still
+  load"). drone_seen.dat is written only when the drone MOVED (not every minute while parked). Wishes: the "yes" check
+  reads what AE2 has NOW; the note says spawn / the base.
 - **Peripheral calls belong in workers or fetch functions, never in drawing
   code.** Drawing reads `state.*` only.
 - Drawing: everything is drawn into an off-screen window `win` (text / fill CLIPPED to the

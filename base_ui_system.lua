@@ -64,7 +64,7 @@ function drawSystemPage(G)
   kv(ix, r + 12, iw, "Pocket remote", np == 0 and "none paired (pocket.lua on a pocket computer)"
      or (np .. " paired" .. (lastP and ("   last used " .. TT.ago(lastP)) or "")), np > 0 and C.text or C.dim)
   kv(ix, r + 14, iw, "Program", s.version or ("v" .. tostring(BASE_VERSION)))
-  local gone = partsGone and partsGone() or {}
+  local gone = partsGone and partsGone(true) or {}
   kv(ix, r + 15, iw, "Parts missing", #gone == 0 and "none" or (#gone .. ": " .. partText(gone[1]) ..
      (#gone > 1 and " ..." or "") .. "   (type  parts)"), #gone == 0 and C.text or C.bad)
   kv(ix, r + 13, iw, "Schematics", (s.schematics or 0) .. " stored" .. ((s.schematics or 0) == 0

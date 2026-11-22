@@ -842,7 +842,7 @@ function SP.wish(who, raw, needItem)
   local n, name = SP.wishParse(phrase)
   if name == "" then return nil end
   if needItem and not SP.findItem(name) then return nil end      -- (at the base: only a REAL item is a wish)
-  if cfg("wish", true) == false then return "Wishes are switched off at spawn right now. Sorry!" end
+  if cfg("wish", true) == false then return "Wishes are switched off right now. Sorry!" end
   -- (the owner: only when it IS an item - anything else goes on to the normal answers)
   if V.isOwner(who) then return SP.findItem(name) and fill(pick(SP.W_OWNER), who) or nil end
   if not V.giftEarn then return "I cannot send things from here yet. Sorry!" end
@@ -884,7 +884,11 @@ function SP.wishAnswer(who, raw)
   if not YES[w1 or ""] then return nil end
   SP.wpend[low(who)] = nil
   -- (again at "yes": another player may have wished for the same item meanwhile - waiting gifts count as taken)
-  local room = SP.wishRoom({ id = P.id, count = P.count or P.n })
+  local cnt = P.count or P.n
+  for _, it in ipairs(type(state.me) == "table" and type(state.me.items) == "table" and state.me.items or {}) do
+    if type(it) == "table" and it.name == P.id and tonumber(it.count) then cnt = tonumber(it.count) end   -- (what AE2 has NOW)
+  end
+  local room = SP.wishRoom({ id = P.id, count = cnt })
   if room < 1 then return fill(pick(SP.W_LOW):gsub("{item}", tostring(P.name)), who) end
   if room < P.n then P.n = room end
   local ok, why = V.giftEarn(who, "wish", { { P.id, P.n } })
@@ -900,7 +904,7 @@ function SP.wishAnswer(who, raw)
   while #s.log > 30 do table.remove(s.log, 1) end
   trim(s.wish, 300)
   V.saveMem()
-  if pushNote then pcall(pushNote, "INFO", who .. " wished for " .. P.n .. " " .. tostring(P.name) .. " at spawn - a drone brings it", C and C.info) end
+  if pushNote then pcall(pushNote, "INFO", who .. " wished for " .. P.n .. " " .. tostring(P.name) .. " at " .. (SP.inSpawn() and "spawn" or "the base") .. " - a drone brings it", C and C.info) end
   return fill(pick(SP.W_OK):gsub("{n}", tostring(P.n)):gsub("{item}", itemWord(P.name, P.n)), who)
 end
 

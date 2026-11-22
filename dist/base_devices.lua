@@ -242,7 +242,8 @@ local okR, t = pcall(readSafe, NET_FILE)
 if okR and type(t) == "table" then
 for n, e in pairs(type(t.p) == "table" and t.p or {}) do
 if type(n) == "string" and type(e) == "table" and tonumber(e.at) then
-NET.p[n] = { t = tostring(e.t or "?"), at = tonumber(e.at), first = tonumber(e.first) }
+
+NET.p[n] = { t = tostring(e.t or "?"), at = tonumber(e.at), first = tonumber(e.first) or 0 }
 end
 end
 for id, e in pairs(type(t.f) == "table" and t.f or {}) do
@@ -372,13 +373,15 @@ NET.gone[k] = { kind = "floppy", t = "data floppy", since = e.at, id = id, drive
 changed = true
 end
 end
+local used = {}
 for k, g in pairs(NET.gone) do
 local by = nil
 if g.kind == "block" then
 if present[k] then by = k end
 for n, e in pairs(NET.p) do
-if n ~= k and present[n] and e.t == g.t and (e.first or e.at) > g.since then by = n break end
+if not by and n ~= k and present[n] and not used[n] and e.t == g.t and (e.first or 0) > g.since then by = n end
 end
+if by and by ~= k then used[by] = true end
 end
 if by and by ~= k then
 if sysLog then pcall(sysLog, "Part " .. k .. " (" .. g.t .. ") was replaced by " .. by, "INFO") end
@@ -397,11 +400,16 @@ end
 return changed
 end
 
-function partsGone()
+
+
+function partsGone(sure)
 local out = {}
+local after = tonumber(startCfg("goneAfter", 600)) or 600
 for k, g in pairs(NET.gone) do
+if not sure or g.told or (GONE_RUN[k] and os.clock() - GONE_RUN[k] >= after) then
 out[#out + 1] = { key = k, kind = g.kind, t = g.t, since = g.since, id = g.id, files = g.files, drive = g.drive,
 run = GONE_RUN[k] and (os.clock() - GONE_RUN[k]) or 0 }
+end
 end
 table.sort(out, function(a, b) if a.since ~= b.since then return a.since < b.since end return a.key < b.key end)
 return out

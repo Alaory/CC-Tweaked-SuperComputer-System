@@ -242,7 +242,8 @@ do
   if okR and type(t) == "table" then
     for n, e in pairs(type(t.p) == "table" and t.p or {}) do
       if type(n) == "string" and type(e) == "table" and tonumber(e.at) then
-        NET.p[n] = { t = tostring(e.t or "?"), at = tonumber(e.at), first = tonumber(e.first) }
+        -- (first = when it first came; 0 = it was there before this was kept - never a "replacement")
+        NET.p[n] = { t = tostring(e.t or "?"), at = tonumber(e.at), first = tonumber(e.first) or 0 }
       end
     end
     for id, e in pairs(type(t.f) == "table" and t.f or {}) do
@@ -372,13 +373,15 @@ function partsNote(now)
       changed = true
     end
   end
+  local used = {}                         -- (one new block replaces ONE missing block: 3 broken chests, 1 new one)
   for k, g in pairs(NET.gone) do
     local by = nil
     if g.kind == "block" then
       if present[k] then by = k end         -- (a block that was gone before NET.p remembered it again)
       for n, e in pairs(NET.p) do
-        if n ~= k and present[n] and e.t == g.t and (e.first or e.at) > g.since then by = n break end
+        if not by and n ~= k and present[n] and not used[n] and e.t == g.t and (e.first or 0) > g.since then by = n end
       end
+      if by and by ~= k then used[by] = true end
     end
     if by and by ~= k then
       if sysLog then pcall(sysLog, "Part " .. k .. " (" .. g.t .. ") was replaced by " .. by, "INFO") end
@@ -397,11 +400,16 @@ function partsNote(now)
   return changed
 end
 -- the parts missing now, longest gone first: { {key, kind, t, since, id, files, drive, run} }
-function partsGone()
+-- sure = only parts missing CONFIG.startup.goneAfter s of this run or reported before (HOME / the away report: a chunk
+-- still loading after a restart is no "part missing" for a minute)
+function partsGone(sure)
   local out = {}
+  local after = tonumber(startCfg("goneAfter", 600)) or 600
   for k, g in pairs(NET.gone) do
+    if not sure or g.told or (GONE_RUN[k] and os.clock() - GONE_RUN[k] >= after) then
     out[#out + 1] = { key = k, kind = g.kind, t = g.t, since = g.since, id = g.id, files = g.files, drive = g.drive,
                       run = GONE_RUN[k] and (os.clock() - GONE_RUN[k]) or 0 }
+    end
   end
   table.sort(out, function(a, b) if a.since ~= b.since then return a.since < b.since end return a.key < b.key end)
   return out

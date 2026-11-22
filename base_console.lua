@@ -1178,7 +1178,10 @@ function handleCommand(line)
       if inv == nil and INV_FOREIGN then say("Inventory Manager: NOT USED - " .. INV_FOREIGN) end
       local list = partsGone()
       if #list == 0 then say("No parts missing.") end
-      for i, g in ipairs(list) do say(i .. ". " .. partText(g)) end
+      local after = tonumber(CONFIG.startup and CONFIG.startup.goneAfter) or 600
+      for i, g in ipairs(list) do
+        say(i .. ". " .. partText(g) .. ((g.run < after and not (NET.gone[g.key] or {}).told) and "  (missing since this start - may still load)" or ""))
+      end
       if #list > 0 then
         say("Broken, moved or its chunk is not loaded. Taken away on purpose:  parts forget <n|all>")
         local blocks = 0

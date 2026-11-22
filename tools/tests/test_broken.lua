@@ -21,7 +21,9 @@ local warns = 0
 local oldPush = pushNote
 pushNote = function(t, m, ...) if t == "WARNING" and tostring(m):find("MISSING", 1, true) then warns = warns + 1 end return oldPush(t, m, ...) end
 CHECK(partsTick() == 0 and warns == 0, "no warning in the first minutes")
+CHECK(#partsGone(true) == 0, "HOME / the away report: nothing yet - right after a start a chunk may still be loading")
 CLOCK = CLOCK + 620
+CHECK(#partsGone(true) == 4, "... after 10 min they are listed")
 CHECK(partsTick() == 4 and warns == 1, "after 10 min: ONE warning for all four (" .. warns .. ")")
 CHECK(partsTick() == 0 and warns == 1, "... not again")
 CHECK(NET.gone.me_bridge_4.told, "reported parts are marked (saved) ...")
@@ -59,6 +61,24 @@ CHECK(mon.blank and monName == nil and safeDraw(), "the monitor broken mid-run: 
 PERIPHS.right = SAVED_MON
 rescanPeripherals()
 CHECK(not mon.blank, "... and it is back the moment it is placed")
+-- two chests of one kind: a chest that was there BEFORE (no "first seen" in an old file) never "replaces" a broken one,
+-- and one new chest replaces ONE broken chest, not all
+do
+  local t0 = os.epoch("utc")
+  NET.gone["modded:crate_7"] = { kind = "block", t = "modded:crate", since = t0 - 1000 }
+  NET.gone["modded:crate_8"] = { kind = "block", t = "modded:crate", since = t0 - 1000 }
+  NET.p["modded:crate_1"] = { t = "modded:crate", at = t0, first = 0 }
+  PERIPHS["modded:crate_1"] = { types = { "modded:crate", "inventory" }, obj = {} }
+  noteNetwork(true)
+  CHECK(NET.gone["modded:crate_7"] and NET.gone["modded:crate_8"], "an old chest is no replacement for broken ones")
+  PERIPHS["modded:crate_2"] = { types = { "modded:crate", "inventory" }, obj = {} }
+  noteNetwork(true)
+  local left = (NET.gone["modded:crate_7"] and 1 or 0) + (NET.gone["modded:crate_8"] and 1 or 0)
+  CHECK(left == 1, "one NEW chest replaces one broken chest, not both (" .. left .. " still missing)")
+  PERIPHS["modded:crate_1"], PERIPHS["modded:crate_2"] = nil, nil
+  NET.gone["modded:crate_7"], NET.gone["modded:crate_8"] = nil, nil
+  NET.p["modded:crate_1"], NET.p["modded:crate_2"] = nil, nil
+end
 -- a NEW ME Bridge (another number) replaces the old one
 PERIPHS.me_bridge_7 = { types = { "me_bridge" }, obj = {} }
 noteNetwork(true)

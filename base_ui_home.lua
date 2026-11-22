@@ -109,7 +109,7 @@ local function needs()
     end
   end
   if DW and DW.job and DW.job.paused then out[#out + 1] = { C.warn, "Drone build paused", DW.job.paused, "work", "OPEN" } end
-  local gone = partsGone and partsGone() or {}
+  local gone = partsGone and partsGone(true) or {}
   if #gone > 0 then
     out[#out + 1] = { C.bad, #gone .. " part(s) missing", partText(gone[1]) .. (#gone > 1 and " (+" .. (#gone - 1) .. " more - type parts)" or ""),
                       "system", "OPEN" }
