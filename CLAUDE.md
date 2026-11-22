@@ -825,8 +825,17 @@ PneumaticCraft drone rides, turtle mapping/surveys, and an AE2 ME network view.
   the factory fuel or coal x32): an ONLINE turtle (= loaded by its own Chunky) with fuel < 20 for 30 s
   -> fuel into its inventory (node idleEmptyFuel burns it); max 3 tries 10 min apart; DW.fuelBusy holds
   the rescuer (problemOf) while flying and 3 min after; DONE / WARNING when the fuel did (not) burn.
-  SCHEMATIC BUILD (`schem build <name> <me|place|x y z> [rot 90|180|270] [clear]`, status / pause /
-  resume / stop): DW.plan = place list bottom up (y, item, chunk, x, z) + air list top down (clear);
+  SCHEMATIC BUILD (`schem build|preview <name> [here|place|x y z] [facing <dir>|turn left|right|around|rot n] [centered]
+  [clear]`, status / pause / resume / stop; chat `$drone build <name> ...` -> DW.chatPend (300 s) -> `turn ..` / `facing ..`
+  (DW.placeAt at the spot first asked for) -> `yes`). WHERE + WHICH WAY (the owner: "make it intuitive - rotate it in a
+  direction"; test_schem_build.lua): DW.where(s, words, i, who, rot) -> DW.placeAt {rot, how, ox oy oz, text}: no place /
+  here = "front" (DW.origin: the Player Detector's yaw -> DW.lookDir N E S W, the near edge 2 ahead, centred, bottom at
+  the feet); a place / x y z = the GROUND block (corner = its north-west corner, or centered), bottom one above it - the
+  old "me" put the floor INTO the ground. TURN = clockwise from above, "facing east" = the file's north side faces east
+  (DW.turnText says it). DW.LATE / isLate: torches, signs, doors, rails ... after every solid block (bottom up they came
+  before the wall they hang on). Page BUILD card: SEEN FROM ABOVE preview (drawBuildPreview: DW.sel.top = the top item
+  per column, DW.topAt = the inverse of DW.plan's turn, north up, @ = you), WHERE (in front of you / a saved place
+  centred, DW.buildSpot), TURN LEFT (dwrotl) / TURN RIGHT (dwrot), CLEAR, the placement text, BUILD <NAME> THERE. DW.plan = place list bottom up (y, item, chunk, x, z) + air list top down (clear);
   fluids (buckets) skipped; progress = J.done / J.dug strings ("0"/"1" per block, saved; the plan is
   rebuilt from the schematic after a restart - same order); DW.nextTrip = one chunk, one layer, one
   item, <= carry (dig: 64). Placed = carried minus what came back (a taken spot is left as it is,
@@ -842,8 +851,8 @@ PneumaticCraft drone rides, turtle mapping/surveys, and an AE2 ME network view.
   refreshView; x<n> PER RUN > = DW.nextFuelCount 8/16/32/64 - the owner asked "how do I set the fuel
   type"; NO FUEL turtles + run state, SEND FUEL two taps), PLACES card (SAVE WHERE I STAND =
   DW.markHere "Place N", DELETE two taps), BUILD card (schematic buttons -> DW.select reads size +
-  materials vs AE2 ON THE TAP; AT: under you / a saved place >, TURN: 0/90/180/270 >, CLEAR FIRST;
-  BUILD two taps; while building: progress bar, now / why / anchor, PAUSE / RESUME, STOP). Drawing
+  materials vs AE2 ON THE TAP; the preview from above; WHERE: in front of you / a saved place >, TURN LEFT / TURN
+  RIGHT, CLEAR; BUILD two taps; while building: progress bar, now / why / anchor, PAUSE / RESUME, STOP). Drawing
   reads only DW.view (DW.refreshView in DW.tick every 10 s while the page is open: cable chests +
   SCHEM.list + SCHEM.cache) / DW.job / DW.sel / state. Tab badge = a dot while a job runs.
   test_dronework.lua taps every button.

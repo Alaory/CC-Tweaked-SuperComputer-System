@@ -169,39 +169,87 @@ local function buildPanel(x, y, w, h)
   if #list > per then text(ix, yy, "+" .. (#list - per) .. " more (console: schem)", C.dim, C.panel) yy = yy + 1 end
   yy = yy + 1
   local s = DW.sel
+  local pl, plWhy
+  if s and not s.err then pl, plWhy = DW.buildSpot(s) end
+  local bottomY = y + h - 12                           -- (rows above the where-lines + options)
   if s and s.err then
     yy = para(ix, yy, iw, s.err, C.warn, 3)
   elseif s then
     heading(ix, yy, iw, s.name:upper())
-    text(ix, yy + 1, trunc(s.size.x .. " x " .. s.size.y .. " x " .. s.size.z .. " blocks  -  " .. s.place .. " to place, " ..
-         s.air .. " air", iw), C.text, C.panel)
+    -- left: what it needs; right: where it goes, seen from above
+    local lw2 = (iw >= 50) and math.floor((iw - 1) / 2) or iw
+    text(ix, yy + 1, trunc(s.size.x .. " x " .. s.size.y .. " x " .. s.size.z .. " blocks - " .. s.place .. " to place", lw2), C.text, C.panel)
     text(ix, yy + 2, s.short > 0 and (s.short .. " item(s) short in AE2") or "AE2 has everything", s.short > 0 and C.warn or C.good, C.panel)
-    local half = math.floor((iw - 1) / 2)
-    local my = yy + 4
     for k, r in ipairs(s.rows) do
-      local ry = my + math.floor((k - 1) / 2)
-      if ry > y + h - 10 then break end
-      kv(ix + ((k - 1) % 2) * (half + 1), ry, half, prettify(r.item), r.need .. (r.have < r.need and ("  (AE2 " .. r.have .. ")") or ""),
+      local ry = yy + 3 + k
+      if ry > bottomY then break end
+      kv(ix, ry, lw2, prettify(r.item), r.need .. (r.have < r.need and ("  (AE2 " .. r.have .. ")") or ""),
          r.have < r.need and C.warn or C.text)
     end
+    if lw2 < iw and bottomY - yy >= 6 then
+      drawBuildPreview(ix + lw2 + 1, yy + 1, iw - lw2 - 1, bottomY - yy, s, DW.ui.rot or 0, pl)
+    end
   else
-    text(ix, yy, "Tap a schematic to see what it needs.", C.dim, C.panel)
+    text(ix, yy, "Tap a schematic to see what it needs and where it goes.", C.dim, C.panel)
   end
   -- options + BUILD at the bottom
   local oy = y + h - 8
-  local where = "UNDER YOU"
-  if (DW.ui.at or 0) > 0 and state.waypoints[DW.ui.at] then where = state.waypoints[DW.ui.at].name end
-  local bw = math.floor((iw - 2) / 3)
-  button(ix, oy, bw, 3, "AT: " .. where .. " >", C.line, "dwat")
-  button(ix + bw + 1, oy, bw, 3, "TURN: " .. (DW.ui.rot or 0) .. " >", C.line, "dwrot")
-  button(ix + 2 * (bw + 1), oy, iw - 2 * (bw + 1), 3, DW.ui.clear and "CLEAR FIRST: ON" or "CLEAR FIRST: OFF",
+  local where = "IN FRONT OF YOU"
+  if (DW.ui.at or 0) > 0 and state.waypoints[DW.ui.at] then where = state.waypoints[DW.ui.at].name:upper() end
+  local tw = math.max(8, math.floor((iw - 3) / 5))
+  local ww = iw - 3 * (tw + 1)
+  button(ix, oy, ww, 3, "WHERE: " .. where .. " >", C.line, "dwat")
+  button(ix + ww + 1, oy, tw, 3, "TURN LEFT", C.line, "dwrotl")
+  button(ix + ww + tw + 2, oy, tw, 3, "TURN RIGHT", C.line, "dwrot")
+  button(ix + ww + 2 * (tw + 1), oy, iw - ww - 2 * (tw + 1), 3, DW.ui.clear and "CLEAR: ON" or "CLEAR: OFF",
          DW.ui.clear and C.warn or C.line, "dwclear", nil, DW.ui.clear)
-  if sel then
-    actButton(ix, y + h - 4, iw, 3, "BUILD " .. sel .. "  (north-west corner = " .. where:lower() .. ")",
-              { kind = "dwbuild", name = sel, count = 0 }, true)
+  if sel and pl then
+    para(ix, oy - 3, iw, pl.text, C.label, 3)
+    actButton(ix, y + h - 4, iw, 3, "BUILD " .. sel:upper() .. " THERE", { kind = "dwbuild", name = sel, count = 0 }, true)
+  elseif sel then
+    para(ix, y + h - 4, iw, "Where? " .. tostring(plWhy), C.warn, 2)
   else
     text(ix, y + h - 3, trunc("Blocks are placed the default way round (stairs / logs may face another way).", iw), C.dim, C.panel)
   end
+end
+
+-- THE PREVIEW (the owner: "make it intuitive - rotate it in a direction"): the build seen from above, NORTH UP (like the
+-- MAP), turned as it will be built, every column in the colour of its top block; YOU at the side you stand on (in front
+-- of you), N in the corner. Reads only DW.sel / state (no disk / peripheral calls).
+function drawBuildPreview(x, y, w, h, sel, rot, pl)
+  heading(x, y, w, "SEEN FROM ABOVE")
+  local fw, fd = DW.footprint(sel, rot)
+  local aw, ah = w - 2, h - 4                          -- (a margin for YOU on every side, the line under it)
+  if aw < 3 or ah < 3 then return end
+  -- big enough to see: a block = zw x zh cells (2:1, cells are tall), or 1 cell = sc x sc blocks when it is big
+  local sc = math.max(1, math.ceil(fw / aw), math.ceil(fd / ah))
+  local zh = (sc == 1) and math.max(1, math.min(math.floor(aw / (fw * 2)), math.floor(ah / fd), 4)) or 1
+  local zw = (sc == 1) and 2 * zh or 1
+  if sc == 1 and fw * 2 > aw then zw, zh = 1, 1 end
+  local cw, ch = math.ceil(fw / sc) * zw, math.ceil(fd / sc) * zh
+  local x0 = x + 1 + math.floor((aw - cw) / 2)
+  local y0 = y + 2 + math.floor((ah - ch) / 2)
+  for cy = 0, ch - 1 do
+    for cx = 0, cw - 1 do
+      local bx = math.min(fw - 1, math.floor(cx / zw) * sc + math.floor(sc / 2))
+      local bz = math.min(fd - 1, math.floor(cy / zh) * sc + math.floor(sc / 2))
+      local it = DW.topAt(sel, rot, bx, bz)
+      if it then text(x0 + cx, y0 + cy, " ", C.text, colorFor(it)) else text(x0 + cx, y0 + cy, ".", C.line, C.panel) end
+    end
+  end
+  text(x + w - 3, y + 1, "N^", C.label, C.panel)
+  -- YOU: on the side you stand (looking at it)
+  if pl and pl.how == "front" then
+    local look = pl.look or 2
+    local mx, my = x0 + math.floor(cw / 2), y0 + math.floor(ch / 2)
+    if look == 2 then text(mx, y0 - 1, "@", C.good, C.panel)
+    elseif look == 0 then text(mx, y0 + ch, "@", C.good, C.panel)
+    elseif look == 1 then text(x0 - 1, my, "@", C.good, C.panel)
+    else text(x0 + cw, my, "@", C.good, C.panel) end
+  end
+  local note = (pl and pl.how == "front" and "@ = you" or (pl and "centred on the place" or "")) ..
+               (sc > 1 and ("  (1 dot = " .. sc .. " blocks)") or "") .. "  " .. DW.turnText(rot):gsub(" %(.*$", "")
+  text(x, y + h - 1, trunc(note, w), C.dim, C.panel)
 end
 
 function drawWorkPage(G)

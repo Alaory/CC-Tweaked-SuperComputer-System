@@ -213,7 +213,8 @@ Keeps a chest or tank on the wired cable stocked from AE2. It only ever puts thi
 | `schem` | the stored schematics (drag a Create `.nbt` file onto the computer's screen to add one) |
 | `schem <name>` | its size and materials |
 | `schem delete <name>` | deletes it |
-| `schem build <name> <me\|place\|x y z> [rot 90\|180\|270] [clear]` | drones build it there (`clear` = dig out what does not belong first) |
+| `schem preview <name> [here\|place\|x y z] [facing <dir>\|turn left\|right\|around] [centered] [clear]` | only says where it would go and which way it faces |
+| `schem build <name> [here\|place\|x y z] [facing north\|east\|south\|west \| turn left\|right\|around \| rot 90] [centered] [clear]` | drones build it. No place / `here` = in front of you (where you look, 2 blocks ahead, bottom at your feet); a place / x y z = the GROUND block it stands on (its north-west corner, or `centered`). `facing east` = the side that was north faces east. `clear` = dig the schematic's air spots first |
 | `schem status` / `pause` / `resume` / `stop` | the build: how far / pause / go on / end |
 
 ### The voice add-on
@@ -284,6 +285,7 @@ privately. Players who are not allowed only get `help` and ride requests (the ow
 | `$drone unmark <name>` (owner) | deletes a saved place |
 | `$drone arrive [<x> <y> <z>\|off]` (owner) | the drones' ARRIVAL SPOT for an underground base: an open spot they can teleport to (where you stand); far trips teleport there, then fly in |
 | `$drone workchest [<x> <y> <z>]` (owner) | the drones' work chest = the block you stand on (or those coordinates) |
+| `$drone build [<name> [turn right\|facing east ...] [clear]]` (owner) | a schematic in FRONT OF YOU (look the way it should go): says where and which way it faces; then `$drone build turn left / right / around` or `facing <dir>` to turn it, `$drone build yes` to start (`no` = forget it, `stop`, `status`) |
 | `$drone test [item]` (owner) | tests the work chest while you stand near it (a drone drops an item at your feet) |
 | `$drone spawn here` (owner) | the spawn speaker's spot = where you stand |
 | `$drone spawn pair <code>` (owner) | pairs the spawn relay computer (the code is on its screen) |

@@ -114,10 +114,12 @@ elseif a.kind == "dwstop" then
 local _, msg = DW.stopBuild("stopped by you")
 setToast(msg, C.label, 6)
 elseif a.kind == "dwbuild" then
-local x, y, z, where = DW.buildSpot()
-if not x then setToast("Where? " .. tostring(y), C.warn, 6)
+local sch, whyS = SCHEM.load(a.name)
+local pl, why = nil, whyS
+if sch then pl, why = DW.buildSpot(sch) end
+if not pl then setToast("Where? " .. tostring(why), C.warn, 6)
 else
-local ok, msg = DW.startBuild(a.name, x, y, z, DW.ui.rot or 0, DW.ui.clear)
+local ok, msg = DW.startBuild(a.name, pl.ox, pl.oy, pl.oz, pl.rot, DW.ui.clear)
 if ok then setPopup("DRONE BUILD", msg, C.good) else setToast(msg, C.warn, 8) end
 end
 elseif a.kind == "giftsend" then
@@ -451,6 +453,8 @@ elseif h[5] == "dwsel" then
 DW.select(h[6])
 elseif h[5] == "dwrot" then
 DW.ui.rot = ((DW.ui.rot or 0) + 90) % 360
+elseif h[5] == "dwrotl" then
+DW.ui.rot = ((DW.ui.rot or 0) + 270) % 360
 elseif h[5] == "dwclear" then
 DW.ui.clear = not DW.ui.clear
 elseif h[5] == "dwat" then

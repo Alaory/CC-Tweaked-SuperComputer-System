@@ -499,8 +499,128 @@ function DW.test(say, item, tell, again)
 end
 
 ------------------------------------------------------------------ schematic build
--- the plan: every block to place { x y z item } bottom up (one item at a time per layer),
--- and (clear) every spot the schematic says is air, top down
+-- WHERE IT GOES AND WHICH WAY IT FACES (the owner: "make it intuitive - if I want to rotate a schematic in a direction"):
+--   * TURN = quarter turns CLOCKWISE seen from above (90 = turned right once). "facing east" = the side that was NORTH
+--     in the file now faces east (= 90); north 0, east 90, south 180, west 270.
+--   * IN FRONT OF YOU ("here" / me / no place): it stands on the ground in front of you, in the direction you LOOK,
+--     centred on you, its near edge 2 blocks ahead, its bottom layer where your feet are.
+--   * a saved place / x y z = the GROUND block: the build stands ON it - its bottom layer one above - with that block
+--     at its north-west corner, or in the middle with "centered".
+DW.DIRS = { north = 0, east = 1, south = 2, west = 3, n = 0, e = 1, s = 2, w = 3 }
+DW.DIRNAME = { [0] = "north", "east", "south", "west" }
+-- the way a player looks (Player Detector yaw: 0 = south, 90 = west, 180 = north, 270 = east) -> 0..3 (N E S W)
+function DW.lookDir(yaw)
+  yaw = tonumber(yaw)
+  if not yaw then return nil end
+  yaw = yaw % 360
+  if yaw >= 315 or yaw < 45 then return 2 elseif yaw < 135 then return 3 elseif yaw < 225 then return 0 end
+  return 1
+end
+-- the footprint after turning: width (x), depth (z)
+function DW.footprint(s, rot)
+  local k = math.floor((tonumber(rot) or 0) / 90) % 4
+  if k % 2 == 1 then return s.size.z, s.size.x end
+  return s.size.x, s.size.z
+end
+-- the build's north-west bottom corner for a placement:
+--   how = "front" (x y z = your feet, look = 0..3), "center" or "corner" (x y z = the ground block)
+function DW.origin(s, rot, how, x, y, z, look)
+  local w, d = DW.footprint(s, rot)
+  if how == "front" then
+    look = look or 2
+    local ox, oz
+    if look == 0 then ox, oz = x - math.floor(w / 2), z - 2 - (d - 1)
+    elseif look == 2 then ox, oz = x - math.floor(w / 2), z + 2
+    elseif look == 1 then ox, oz = x + 2, z - math.floor(d / 2)
+    else ox, oz = x - 2 - (w - 1), z - math.floor(d / 2) end
+    return ox, y, oz
+  elseif how == "center" then
+    return x - math.floor(w / 2), y + 1, z - math.floor(d / 2)
+  end
+  return x, y + 1, z
+end
+-- "from 100 64 200 to 111 71 209" for a placement
+function DW.areaText(s, rot, ox, oy, oz)
+  local w, d = DW.footprint(s, rot)
+  return "from " .. fmtPos(ox, oy, oz) .. " to " .. fmtPos(ox + w - 1, oy + s.size.y - 1, oz + d - 1)
+end
+-- what TURN means in words
+function DW.turnText(rot)
+  local k = math.floor((tonumber(rot) or 0) / 90) % 4
+  return ({ [0] = "as saved", "turned right", "turned around", "turned left" })[k] ..
+         " (its north side faces " .. DW.DIRNAME[k] .. ")"
+end
+-- words -> a turn: "facing east", "turn right / left / around", "rot 90"; returns rot, the next index
+function DW.turnWords(words, i, rot)
+  local w, v = tostring(words[i] or ""):lower(), tostring(words[i + 1] or ""):lower()
+  if (w == "facing" or w == "face") and DW.DIRS[v] then return DW.DIRS[v] * 90, i + 2 end
+  if w == "turn" or w == "turned" then
+    if v == "right" or v == "clockwise" then return ((rot or 0) + 90) % 360, i + 2 end
+    if v == "left" then return ((rot or 0) + 270) % 360, i + 2 end
+    if v == "around" or v == "back" then return ((rot or 0) + 180) % 360, i + 2 end
+  end
+  if (w == "rot" or w == "rotate") and tonumber(v) then return (math.floor(tonumber(v) / 90) * 90) % 360, i + 2 end
+  return nil
+end
+-- blocks that HANG on others (torches, signs, buttons, ladders, rails, carpets, doors ...) are placed after all the
+-- solid ones - placed first they had nothing to stick to and dropped as items
+DW.LATE = { "torch", "_button", "lever", "_sign", "ladder", "banner", "rail", "_carpet", "pressure_plate", "redstone",
+            "repeater", "comparator", "tripwire", "vine", "lantern", "_door", "_bed", "candle", "_head", "_skull", "_fan",
+            "flower_pot", "sapling", "flower", "_trapdoor", "chain", "bell", "item_frame", "painting", "snow" }
+function DW.isLate(item)
+  item = tostring(item)
+  for _, w in ipairs(DW.LATE) do if item:find(w, 1, true) then return true end end
+  return false
+end
+
+-- a placement from command words (console `schem build|preview`, chat `$drone build`): words[i..] =
+-- [here|me | a saved place | x y z] [facing <dir> | turn left|right|around | rot <deg>] [centered|corner] [clear]
+-- -> { rot, how, ox, oy, oz, clear, look, text } or nil, why. No place = in front of you.
+function DW.where(s, words, i, who, rot)
+  rot = tonumber(rot) or 0
+  local w = tostring(words[i] or ""):lower()
+  local how, x, y, z, look
+  local OPT = { clear = true, centered = true, center = true, middle = true, corner = true, facing = true, face = true,
+                turn = true, turned = true, rot = true, rotate = true }
+  if w == "" or w == "here" or w == "me" or OPT[w] then
+    local p, why = playerAt(who or state.owner)
+    if not p then return nil, why end
+    x, y, z = math.floor(p.x), math.floor((tonumber(p.y) or 64) + 0.001), math.floor(p.z)
+    look, how = DW.lookDir(p.yaw) or 2, "front"
+    if w == "here" or w == "me" then i = i + 1 end
+  else
+    local ni
+    x, y, z, ni = posArg(words, i, who)
+    if not x then return nil, y end
+    how, i = "corner", ni
+  end
+  local clear = false
+  while words[i] do
+    local r, ni = DW.turnWords(words, i, rot)
+    local o = tostring(words[i]):lower()
+    if r then rot, i = r, ni
+    else
+      if o == "clear" then clear = true
+      elseif (o == "centered" or o == "center" or o == "middle") and how ~= "front" then how = "center"
+      elseif o == "corner" and how ~= "front" then how = "corner" end
+      i = i + 1
+    end
+  end
+  return DW.placeAt(s, rot, how, x, y, z, look, clear)
+end
+-- the placement for a spot (how / x y z / look as DW.origin) - also to TURN a waiting one where it was asked for
+function DW.placeAt(s, rot, how, x, y, z, look, clear)
+  local ox, oy, oz = DW.origin(s, rot, how, x, y, z, look)
+  local wdt, dep = DW.footprint(s, rot)
+  local where = (how == "front" and ("in front of you to the " .. DW.DIRNAME[look]))
+                or (how == "center" and ("centred on " .. fmtPos(x, y, z))) or ("north-west corner on " .. fmtPos(x, y, z))
+  local text = wdt .. " wide (x) x " .. dep .. " deep (z) x " .. s.size.y .. " high, " .. DW.turnText(rot) .. ", " .. where ..
+               ": " .. DW.areaText(s, rot, ox, oy, oz)
+  return { rot = rot, how = how, ox = ox, oy = oy, oz = oz, clear = clear, look = look, text = text, bx = x, by = y, bz = z }
+end
+
+-- the plan: every block to place { x y z item } bottom up (one item at a time per layer; blocks that hang on
+-- others in a second round), and (clear) every spot the schematic says is air, top down
 function DW.plan(s, ox, oy, oz, rot)
   local sx, sz = s.size.x, s.size.z
   rot = (math.floor((tonumber(rot) or 0) / 90)) % 4
@@ -520,11 +640,12 @@ function DW.plan(s, ox, oy, oz, rot)
     elseif e then
       local it = SCHEM.itemOf(e)
       if it and it:find("_bucket", 1, true) then skipped[it] = (skipped[it] or 0) + 1     -- (fluids: not by drone)
-      elseif it then p.item = it place[#place + 1] = p end
+      elseif it then p.item, p.late = it, DW.isLate(it) or nil place[#place + 1] = p end
     end
   end
   local function ck(p) return math.floor(p.x / 16) * 100000 + math.floor(p.z / 16) end
   table.sort(place, function(a, b)
+    if (a.late or false) ~= (b.late or false) then return not a.late end
     if a.y ~= b.y then return a.y < b.y end
     if a.item ~= b.item then return a.item < b.item end
     if ck(a) ~= ck(b) then return ck(a) < ck(b) end
@@ -601,7 +722,7 @@ function DW.startBuild(name, x, y, z, rot, clear)
   DW.job = J
   DW.save()
   local _, missing = DW.materials(J)
-  local msg = "Building " .. name .. " at " .. fmtPos(x, y, z) .. ": " .. #plan.place .. " blocks" ..
+  local msg = "Building " .. name .. " " .. DW.areaText(s, rot, x, y, z) .. ", " .. DW.turnText(rot) .. ": " .. #plan.place .. " blocks" ..
               (clear and (", " .. #plan.air .. " spots cleared first") or "")
   if #missing > 0 then msg = msg .. " - " .. #missing .. " item(s) short in AE2 (schem status)" end
   if sysLog then sysLog(msg) end
@@ -932,19 +1053,38 @@ function DW.select(name)
     if have < n then short = short + 1 end
   end
   table.sort(rows, function(a, b) return a.need > b.need end)
-  DW.sel = { name = name, size = s.size, place = place, air = air, rows = rows, short = short }
+  -- the TOP VIEW for the preview: the highest block of every column (x, z as in the file)
+  local top, topY = {}, {}
+  for _, b in ipairs(s.blocks) do
+    local e = s.palette[b[4]]
+    if e and not SCHEM.isAir(e) and SCHEM.itemOf(e) then
+      local k = b[3] * s.size.x + b[1] + 1
+      if not topY[k] or b[2] > topY[k] then topY[k], top[k] = b[2], SCHEM.itemOf(e) end
+    end
+  end
+  DW.sel = { name = name, size = s.size, place = place, air = air, rows = rows, short = short, top = top }
 end
--- where BUILD puts it: 0 = the block under you, else the n-th saved place
-function DW.buildSpot()
+-- the item seen from above at a TURNED column (rx, rz) of the selected schematic, or nil
+function DW.topAt(sel, rot, rx, rz)
+  local sx, sz = sel.size.x, sel.size.z
+  local k = math.floor((tonumber(rot) or 0) / 90) % 4
+  local dx, dz = rx, rz
+  if k == 1 then dx, dz = rz, sz - 1 - rx
+  elseif k == 2 then dx, dz = sx - 1 - rx, sz - 1 - rz
+  elseif k == 3 then dx, dz = sx - 1 - rz, rx end
+  if dx < 0 or dz < 0 or dx >= sx or dz >= sz then return nil end
+  return sel.top and sel.top[dz * sx + dx + 1]
+end
+-- where BUILD puts it (the page): 0 = in front of you (where you stand and look), else the n-th saved place (centred
+-- on it). Returns the placement (DW.where) or nil, why
+function DW.buildSpot(s)
   local i = DW.ui.at or 0
   if i > 0 then
     local w = state.waypoints[i]
-    if w then return w.x, w.y, w.z, w.name end
+    if w then return DW.where(s, { w.name, "centered" }, 1, state.owner, DW.ui.rot) end
     DW.ui.at = 0
   end
-  local x, y, z = playerBlock(state.owner)
-  if not x then return nil, y end
-  return x, y, z, "under you"
+  return DW.where(s, {}, 1, state.owner, DW.ui.rot)
 end
 
 -- for the status lines (console / pocket)

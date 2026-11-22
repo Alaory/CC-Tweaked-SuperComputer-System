@@ -559,7 +559,9 @@ CHECK(DW.ui.at == idx, "AT cycles to the saved place")
 tap("dwrot")
 CHECK(DW.ui.rot == 90, "TURN: 90")
 tap("act", "dwbuild", true)
-CHECK(DW.job and DW.job.y == OY + 20 and DW.job.rot == 90, "BUILD starts it at the saved place, turned 90")
+CHECK(DW.job and DW.job.y == OY + 21 and DW.job.x == OX - 1 and DW.job.z == OZ - 1 and DW.job.rot == 90,
+      "BUILD starts it ON the saved place (centred, one above the ground block), turned 90 (" ..
+      tostring(DW.job and fmtPos(DW.job.x, DW.job.y, DW.job.z)) .. ")")
 tap("dwpause")
 CHECK(DW.job and DW.job.paused, "PAUSE")
 tap("dwpause")

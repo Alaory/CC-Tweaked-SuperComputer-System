@@ -26,6 +26,10 @@ Peripherals (tested on CC:Tweaked 1.120.2, Minecraft 1.21.1, NeoForge).
 - PING is sent again until the turtle answers (survey turtles have their modem off while scanning) and says why not.
 - Drones on far trips jump into the sky above a player near the target first, then hop on from there.
 - Item wishes work at the base too, not only at spawn. The miner program is kept on a storage helper.
+- Schematic builds are easier: stand where it should go, look the way it should go and type `$drone build <name>`;
+  turn it with `turn left / right / around` or `facing east`, then `$drone build yes`. The DRONE WORK page shows the
+  build seen from above (turned, with you on it), TURN LEFT / TURN RIGHT and where it goes. Torches, signs, doors ...
+  are placed after the blocks they hang on.
 - Mining teams survive a server crash right after moving to the next chunk: miners put back into the old chunk
   walk over again (the loader goes back for them when they do not answer), a loader put back walks over itself.
 - Drones never fly out of the loaded area (they were lost), an arrival spot for underground bases, where each

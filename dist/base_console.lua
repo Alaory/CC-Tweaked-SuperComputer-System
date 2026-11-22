@@ -856,25 +856,26 @@ elseif cmd == "schem" or cmd == "schematics" then
 local sub = words[2]
 if sub == "delete" and words[3] then
 say(SCHEM.delete(words[3]) and ("Deleted " .. words[3]) or ("No schematic '" .. words[3] .. "'"))
-elseif sub == "build" then
+elseif sub == "build" or sub == "preview" then
 
 local name = words[3]
 if not name then
-say("Usage: schem build <name> <me | a saved place | x y z> [rot 90|180|270] [clear]")
-say("  the spot = the schematic's lowest north-west corner; me = the block under you")
+say("Usage: schem " .. sub .. " <name> [here | <saved place> | x y z] [facing north|east|south|west | turn left|right|around] [centered] [clear]")
+say("  no place / here = in front of you, where you look (stand there first); a place / x y z = the GROUND block:")
+say("  the build stands on it with that block at its north-west corner (or centered). facing east = its north side faces east.")
+say("  schem preview ... = only where it would go.  In chat at the spot:  $" .. tostring(CONFIG.chat and CONFIG.chat.command or "drone") .. " build <name>")
 else
-local x, y, z, nx = posArg(words, 4)
-if not x then say(tostring(y))
+local sch, why = SCHEM.load(name)
+if not sch then say(tostring(why))
 else
-local rot, clear = 0, false
-local i = nx
-while words[i] do
-local w = words[i]:lower()
-if w == "rot" and tonumber(words[i + 1]) then rot = tonumber(words[i + 1]) i = i + 1
-elseif w == "clear" then clear = true end
-i = i + 1
-end
-local ok, msg = DW.startBuild(name, x, y, z, rot, clear)
+local pl, whyW = DW.where(sch, words, 4, state.owner, 0)
+if not pl then say(tostring(whyW))
+elseif sub == "preview" then
+say(name .. ": " .. pl.text)
+local _, place = SCHEM.materials(sch)
+say("  " .. place .. " blocks. Turn it with  facing <dir>  or  turn left/right/around;  schem build ... starts it.")
+else
+local ok, msg = DW.startBuild(name, pl.ox, pl.oy, pl.oz, pl.rot, pl.clear)
 say(msg)
 if ok then
 local rows, missing = DW.materials(DW.job)
@@ -882,7 +883,8 @@ for k, r in ipairs(missing) do
 if k > 12 then say("  ... " .. (#missing - 12) .. " more short") break end
 say(string.format("  short: %-32s need %d, AE2 has %d", prettify(r.item), r.need, r.have))
 end
-say("The drone builds it bottom up (blocks are placed the default way round).  schem status | schem stop")
+say("The drones build it bottom up; torches, signs, doors ... come last. Blocks face the default way.  schem status | schem stop")
+end
 end
 end
 end

@@ -150,7 +150,7 @@ if sub == "help" then
 reply("Use: " .. c .. " home | " .. c .. " to <place" ..
 ((owner or CONFIG.chat.othersToPlayers) and "|player" or "") .. "> | " .. c .. " back | " ..
 c .. " places | " .. c .. " status | " .. c .. " stop")
-if owner then reply("Places: " .. c .. " mark <name> (stand ON the block) | " .. c .. " unmark <name> | " .. c .. " workchest [x y z] (stand ON the drones' work chest, or its spot) | " .. c .. " test (test it, standing near it) | " .. c .. " arrive [off] (stand at an open spot of an underground base - far trips teleport there, then fly in) | " .. c .. " spawn here / pair <code> (the spawn speaker)") end
+if owner then reply("Places: " .. c .. " mark <name> (stand ON the block) | " .. c .. " unmark <name> | " .. c .. " workchest [x y z] (stand ON the drones' work chest, or its spot) | " .. c .. " test (test it, standing near it) | " .. c .. " arrive [off] (stand at an open spot of an underground base - far trips teleport there, then fly in) | " .. c .. " build <name> (a schematic in front of you - look the way it should go) | " .. c .. " spawn here / pair <code> (the spawn speaker)") end
 if owner then reply("Owner: " .. c .. " allow/deny <name> | " ..
 c .. " allowed | " .. c .. " yes/no <name> | " .. c .. " notify on/all/off") end
 
@@ -207,6 +207,58 @@ if DW.chestName() then
 reply("Work chest: " .. DW.chestName() .. " at " .. fmtPos(x, y, z) .. ". Keep it empty - only the base and the drones use it.")
 else
 reply("Work chest spot saved: " .. fmtPos(x, y, z) .. ". Several empty chests are on the cable - pick this one with CHEST > on the DRONE WORK page.")
+end
+
+elseif sub == "build" then
+
+
+if not owner then reply("Only " .. tostring(state.owner) .. " can start a build.") return end
+DW.chatPend = DW.chatPend or {}
+local key = name:lower()
+local a = tostring(words[3] or ""):lower()
+local P = DW.chatPend[key]
+if P and os.clock() - P.at > 300 then DW.chatPend[key], P = nil, nil end
+local function show(pp)
+local sch = SCHEM.load(pp.name)
+if not sch then reply("The schematic " .. pp.name .. " is gone.") DW.chatPend[key] = nil return end
+local _, place = SCHEM.materials(sch)
+reply(pp.name .. ": " .. pp.pl.text .. " - " .. place .. " blocks" .. (pp.pl.clear and ", air spots cleared first" or "") .. ".")
+reply("Say  " .. c .. " build yes  to start, or turn it:  " .. c .. " build turn left / right / around  or  facing north / east / south / west")
+end
+if a == "" then
+local names = {}
+for n in pairs(SCHEM.list()) do names[#names + 1] = n end
+table.sort(names)
+reply("Stand where it should go, look the way it should go, then:  " .. c .. " build <name> [turn right] [clear].  Schematics: " ..
+(#names > 0 and table.concat(names, ", ") or "none yet - drag a Create .nbt onto the base computer's screen"))
+elseif a == "stop" then
+local _, msg = DW.stopBuild("stopped by you")
+reply(msg)
+elseif a == "status" then
+for k, l in ipairs(DW.statusLines()) do if k <= 6 then reply(l) end end
+elseif a == "yes" or a == "go" or a == "start" then
+if not P then reply("Nothing to start - first:  " .. c .. " build <name>") return end
+DW.chatPend[key] = nil
+local ok, msg = DW.startBuild(P.name, P.pl.ox, P.pl.oy, P.pl.oz, P.pl.rot, P.pl.clear)
+reply(msg)
+elseif a == "no" or a == "cancel" then
+DW.chatPend[key] = nil
+reply("OK, not built.")
+elseif P and DW.turnWords(words, 3, P.pl.rot) then
+
+local sch = SCHEM.load(P.name)
+if not sch then reply("The schematic " .. P.name .. " is gone.") return end
+local o = P.pl
+P.pl = DW.placeAt(sch, (DW.turnWords(words, 3, o.rot)), o.how, o.bx, o.by, o.bz, o.look, o.clear)
+P.at = os.clock()
+show(P)
+else
+local sch, why = SCHEM.load(words[3])
+if not sch then reply(tostring(why) .. " - schematics: " .. c .. " build") return end
+local pl, whyW = DW.where(sch, words, 4, name, 0)
+if not pl then reply("Cannot: " .. tostring(whyW)) return end
+DW.chatPend[key] = { name = words[3], pl = pl, at = os.clock() }
+show(DW.chatPend[key])
 end
 
 elseif sub == "arrive" then

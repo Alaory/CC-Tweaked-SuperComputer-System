@@ -66,7 +66,7 @@ end
 -- what upgrade installs by default: the SLIM copy (dist/)
 local function slimOf(p) return readReal("dist/" .. p) end
 local function fresh(cap, full)
-  DISK, CAP = {}, cap or 1048576
+  DISK, CAP = {}, cap or 1000000   -- (CC:Tweaked computer_space_limit = 1,000,000 bytes)
   -- an older install: every file, two changed, the owner's config
   for line in readReal("manifest.txt"):gmatch("[^\n]+") do
     local g, p = line:match("^(%S+) (%S+)")
@@ -121,7 +121,7 @@ local before = used()
 ok, n, log = upgrade({})
 CHECK(ok and n >= 38 and used() < before - 150000, "full files -> slim: " .. tostring(n) .. " files, " ..
       math.floor((before - used()) / 1024) .. " KB freed")
-CAP = math.max(used() + 1, 1048576)
+CAP = math.max(used() + 1, 1000000)
 -- upgrade full: the commented files (and it stays so); upgrade slim: back
 -- (the commented files are bigger than a 1 MB computer now: then it must refuse cleanly and
 -- leave the slim files as they are; with room - a bigger disk - it switches and back)
@@ -139,7 +139,7 @@ ok, n, log = upgrade({ "slim" })
 CHECK(ok and DISK["base/base_me.lua"] == slimOf("base_me.lua"), "upgrade slim: back to slim")
 
 -- the pocket: only pocket.lua (+ upgrade.lua)
-DISK, CAP = {}, 1048576
+DISK, CAP = {}, 1000000
 pocket = {}
 local fnP = assert(load(src, "=upgrade.lua", "t", _ENV))
 ok, n = fnP({ args = {}, dir = "", log = function() end })
