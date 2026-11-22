@@ -1494,7 +1494,9 @@ PneumaticCraft drone rides, turtle mapping/surveys, and an AE2 ME network view.
   partial AE2 view), never SP.NEVER / voice.wishBlock;
   NOT IN THE LIST (the owner: "asked for a diamond - not in storage - I have 13m": the PARTIAL VIEW list holds only what
   the tag sweeps / name lookups found so far) -> callx(bridge, "getItem") for minecraft:<words> + every ME_NAMES / list
-  id whose name fits (before: only when the list was EMPTY); SP.NOT_ITEM: "I want to play" is no wish; asks "yes?" (90 s)
+  id whose name fits (before: only when the list was EMPTY); SP.freshME: the base reads AE2 (fetchME) only while the AE2 page
+  / curios is open - after a restart the list was empty (the owner: "I have to load the AE2 tab first for players to be able to
+  wish") -> a wish reads it itself when there is none or it is older than 5 min; SP.NOT_ITEM: "I want to play" is no wish; asks "yes?" (90 s)
   -> V.giftEarn(who, "wish", {{id, n}}) = the drone gift queue (anywhere in the overworld). voice.wishDaily 3 /
   wishAll 40 / wishMax 64 (and what AE2 has), one waiting wish per player, the owner none. mem["#spawn"] = met / gr
   (greeted) / wish / wall / log (500 names max). SP.tick (a tick hook): a newcomer = how to talk in chat + a greeting;

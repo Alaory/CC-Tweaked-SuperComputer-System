@@ -664,7 +664,22 @@ end
 return true
 end
 
+
+
+function SP.freshME()
+if not (bridge and fetchME) then return end
+local t = state.t and state.t.me
+if state.me and type(state.me.items) == "table" and #state.me.items > 0 and t and os.clock() - t < 300 then return end
+local ok, me = pcall(fetchME)
+if ok and type(me) == "table" then
+state.me = me
+state.t = state.t or {}
+state.t.me = os.clock()
+end
+end
+
 function SP.findItem(name)
+pcall(SP.freshME)
 name = low(name):gsub("^%s+", ""):gsub("%s+$", "")
 if name == "" then return nil end
 local ws = {}

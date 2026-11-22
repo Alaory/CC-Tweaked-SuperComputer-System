@@ -663,8 +663,23 @@ function SP.wordsClose(a, b)
   end
   return true
 end
+-- THE AE2 LIST WITHOUT THE AE2 PAGE (the owner: "I have to load the AE2 tab on the base first for players to be able to
+-- wish"): the base reads AE2 (fetchME) only while the AE2 page / curios is open - after a restart state.me was empty. A
+-- wish reads it itself when there is none or it is older than 5 min.
+function SP.freshME()
+  if not (bridge and fetchME) then return end
+  local t = state.t and state.t.me
+  if state.me and type(state.me.items) == "table" and #state.me.items > 0 and t and os.clock() - t < 300 then return end
+  local ok, me = pcall(fetchME)
+  if ok and type(me) == "table" then
+    state.me = me
+    state.t = state.t or {}
+    state.t.me = os.clock()
+  end
+end
 -- an AE2 item for "diamond" / "golden apples" / "oak log": { id, name, count }
 function SP.findItem(name)
+  pcall(SP.freshME)
   name = low(name):gsub("^%s+", ""):gsub("%s+$", "")
   if name == "" then return nil end
   local ws = {}

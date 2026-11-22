@@ -432,6 +432,24 @@ scenario("light blue wool", function()
   table.remove(state.me.items)
   CHECK(has(c, "16 Light Blue Wool"), "light blue wool is wishable: " .. c)
 end)
+-- 46. the AE2 list was never read (the AE2 page not opened since the restart): a wish reads it itself (the owner:
+-- "I have to load the AE2 tab on the base first for players to be able to wish")
+scenario("no AE2 page visit", function()
+  world({ Steve = "spawn", Alex = "spawn" })
+  local me0, b0, f0 = state.me, bridge, fetchME
+  state.me = nil
+  state.t = state.t or {}
+  state.t.me = nil
+  local calls = 0
+  bridge = { getItem = function() return nil end }
+  fetchME = function() calls = calls + 1 return { items = { { name = "minecraft:diamond", display = "Diamond", count = 13000000 } }, byName = {} } end
+  local c = say("Steve", "base i wish for 3 diamonds")
+  CHECK(has(c, "3 Diamonds") and calls == 1, "the wish read AE2 itself: " .. c .. " (fetchME x" .. calls .. ")")
+  SP.wpend = {}
+  say("Steve", "base can i have a diamond")
+  CHECK(calls == 1, "... and not again within 5 min (" .. calls .. ")")
+  state.me, bridge, fetchME = me0, b0, f0
+end)
 -- 42. "max 64" - never more, also when the setting says more
 scenario("max 64", function()
   world({ Steve = "spawn", Alex = "spawn" })
