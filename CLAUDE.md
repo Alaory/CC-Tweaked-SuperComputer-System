@@ -987,6 +987,13 @@ PneumaticCraft drone rides, turtle mapping/surveys, and an AE2 ME network view.
   dw dig <c> <c> -> dw dig yes (DW.digPend); dw break <spot> starts at once; a running job -> the queue (kinds dig /
   unbuild). Chat $drone dig here x2 -> yes (the clear branch with dig), $drone break, $drone unbuild [n|name|list] ->
   yes. DW.isDigJob / DW.jobWord / DW.dugCount for texts; the page shows "N of M spots dug". test_drone_parallel.
+  IN GAME "it did not break it": PneumaticCraft (1.21 source: DroneInterfaceBlockEntity setAction -> a fresh ProgWidgetDig
+  whose DroneAIDig works ON the CC widget - its area, item filters, requiresTool false, SIDES (default all false: the drone
+  never moves next to the block - DW.allSides sets them); isActionDone = a scan pass found nothing valid OR could not
+  navigate - so the action ends "done" WITHOUT digging when the drone cannot reach / may not break the block; a claim
+  mod can cancel the fake player's LeftClickBlock). So a break (1 block) / unbuild trip whose unload brought NOTHING
+  back (T.back) = unconfirmed: J.digAgain[i] + J.digWait 20 s (memory) -> one more try; nothing again -> J.noDrops,
+  the end note is a WARNING with DW.DIG_WHY, never DONE. (Area digs have air spots - not checked.)
   ANCHORS PER CHUNK (the owner: "a turtle can only load the chunk that it is in"): J.anchors {["cx,cz"] = id} (saved;
   an old J.anchor is read as one), at most #droneOrder; buildOne passes over a group in a chunk not loaded
   (DW.anchorFor: a free turtle goto the chunk middle at top + 3, every 300 s again; all taken -> one whose chunk has

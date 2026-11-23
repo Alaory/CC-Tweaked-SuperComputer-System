@@ -737,7 +737,7 @@ end
 
 -- (times on the os.clock are NOT saved: it starts at 0 again after a server restart - a build "waiting 5 min"
 --  waited hours, the anchor's goto was never sent again)
-DW.MEMORY_ONLY = { plan = true, waitUntil = true, anchorSent = true, anchorAt = true, short = true, againUntil = true }
+DW.MEMORY_ONLY = { plan = true, waitUntil = true, anchorSent = true, anchorAt = true, short = true, againUntil = true, digWait = true }
 function DW.save()
   local J = DW.job
   if not J then pcall(fs.delete, dataPath(DW.FILE)) return end
@@ -768,6 +768,10 @@ function DW.load()
     if type(t.again) == "table" then for k, v in pairs(t.again) do if tonumber(k) and tonumber(v) then ag[tonumber(k)] = tonumber(v) end end end
     if type(t.againN) == "table" then for k, v in pairs(t.againN) do if tonumber(k) and tonumber(v) then an2[tonumber(k)] = tonumber(v) end end end
     t.again, t.againN = ag, an2
+    local dga = {}
+    if type(t.digAgain) == "table" then for k, v in pairs(t.digAgain) do if tonumber(k) then dga[tonumber(k)] = 1 end end end
+    t.digAgain = dga
+    t.noDrops, t.dugGot = tonumber(t.noDrops), tonumber(t.dugGot)
     t.placed, t.skippedN, t.fails = tonumber(t.placed) or 0, tonumber(t.skippedN) or 0, tonumber(t.fails) or 0    -- (the plan is rebuilt from the schematic; old files had clock times)
     DW.job = t
   end
@@ -1323,6 +1327,8 @@ function DW.anchorTick(J)
     if not open[ck] then releaseOne(J, ck, "Its chunk of the drone job is done - going home") end
   end
 end
+DW.DIG_WHY = "a claimed chunk where drones may not break blocks, no free block next to it for the drone, or a block " ..
+            "that drops nothing without a pickaxe - the drone's log on the DRONES page says what it did"
 function DW.dugCount(J)
   local n = 0
   for i = 1, #(J.dug or "") do if J.dug:sub(i, i) == "1" then n = n + 1 end end
@@ -1369,14 +1375,20 @@ function DW.nextTrip(J, cap, busy)
   local bd, bp = busy.dig or {}, busy.place or {}
   -- (a trip's spots are in ONE 8 x 8 square of one chunk - compact, so two drones can work squares apart: DW.tooClose)
   local function ck(p) return math.floor(p.x / 8) .. "," .. math.floor(p.z / 8) end
+  local digWait = J.digWait and now() < J.digWait
+  local dag = J.digAgain or {}
+  local digWaiting = false
   local function digTrip()
     for i = 1, #J.dug do
-      if J.dug:sub(i, i) == "0" and not bd[i] then
+      if digWait and dag[i] and J.dug:sub(i, i) == "0" and not bd[i] then digWaiting = true end
+      if J.dug:sub(i, i) == "0" and not bd[i] and not (digWait and dag[i]) then
         local p0, idx = plan.air[i], {}
         for k = i, #J.dug do
           local p = plan.air[k]
           if p.y ~= p0.y then break end                      -- (one layer: top down)
-          if J.dug:sub(k, k) == "0" and not bd[k] and ck(p) == ck(p0) and p.item == p0.item then idx[#idx + 1] = k end
+          if J.dug:sub(k, k) == "0" and not bd[k] and not (digWait and dag[k]) and ck(p) == ck(p0) and p.item == p0.item then
+            idx[#idx + 1] = k
+          end
           if #idx >= 64 then break end
         end
         return { kind = "dig", idx = idx, at = p0 }
@@ -1387,6 +1399,7 @@ function DW.nextTrip(J, cap, busy)
   if not J.digLast then
     local t = digTrip()
     if t then return t end
+    if digWaiting then return nil, "the drone brought nothing back - trying those spots again in a moment" end
     -- (still being cleared by another drone: nothing is placed before every dig is done)
     if J.dug:find("0", 1, true) then return nil end
   end
@@ -1433,7 +1446,9 @@ function DW.nextTrip(J, cap, busy)
   end
   if J.digLast then
     if J.done:find("0", 1, true) then return nil end            -- (blocks still out with a drone: dig after)
-    return digTrip()
+    local t = digTrip()
+    if not t and digWaiting then return nil, "the drone brought nothing back - trying those spots again in a moment" end
+    return t
   end
 end
 
@@ -1524,6 +1539,28 @@ local function tripDone(trip, dr)
   J.fails, J.why = 0, nil
   if J.short and trip.item then J.short[trip.item] = nil end
   if trip.kind == "dig" then
+    -- (the owner: "I gave the drone the exact block to break and it did not break it" - the dig action ends "done" also
+    --  when the drone could not get to the block or was not allowed to break it (a claimed chunk): a BREAK / TAKE-DOWN
+    --  trip that brought NOTHING back gets one more try after 20 s, then it is counted as "nothing came back" and said)
+    local got = 0
+    for _, n in pairs(T.back or {}) do got = got + (tonumber(n) or 0) end
+    J.dugGot = (J.dugGot or 0) + got
+    local check = J.kind == "unbuild" or (J.kind == "dig" and #J.dug == 1)
+    if check and got == 0 then
+      J.digAgain = J.digAgain or {}
+      local again = false
+      for _, i in ipairs(trip.idx) do
+        if not J.digAgain[i] then J.digAgain[i] = 1 again = true end
+      end
+      if again then
+        J.digWait = now() + 20
+        J.why = "the drone came back with nothing from " .. fmtPos(trip.at and trip.at.x or J.x, trip.at and trip.at.y or J.y,
+                trip.at and trip.at.z or J.z) .. " - trying once more"
+        DW.save()
+        return
+      end
+      J.noDrops = (J.noDrops or 0) + #trip.idx
+    end
     J.dug = mark(J.dug, trip.idx, #trip.idx, "1")
   else
     local carried = T.carried or 0
@@ -1685,11 +1722,13 @@ function DW.buildOne(J)
   if not tr and waitWhy then J.why = waitWhy return false end
   if not tr then
     if flying > 0 then return false end              -- (the last trips are still out - finished when they are back)
-    local msg = DW.isDigJob(J) and ("Drones finished " .. DW.jobWord(J):lower() .. " " .. J.name .. ": " .. DW.dugCount(J) .. " spots dug")
+    local msg = DW.isDigJob(J) and ("Drones finished " .. DW.jobWord(J):lower() .. " " .. J.name .. ": " .. DW.dugCount(J) .. " spots dug" ..
+                ((J.noDrops or 0) > 0 and (" - but " .. J.noDrops .. " of them brought NOTHING back: those blocks may still be " ..
+                 "there (" .. DW.DIG_WHY .. ")") or ""))
                 or ("Drone build of " .. J.name .. " finished: " .. J.placed .. " blocks placed" ..
                     (J.skippedN > 0 and (", " .. J.skippedN .. " spots were taken") or ""))
     if J.kind == "unbuild" then DW.forgetBuilt(J) end
-    pushNote("DONE", msg, C.good)
+    if (J.noDrops or 0) > 0 then pushNote("WARNING", msg, C.warn) else pushNote("DONE", msg, C.good) end
     if sysLog then sysLog(msg) end
     DW.stopBuild("finished")
     return false

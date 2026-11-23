@@ -10,7 +10,7 @@ local W = { chest = {}, blocks = {}, stock = { ["minecraft:stone"] = 1000, ["min
             ["modern_industrialization:salt_block"] = 100, ["minecraft:anvil"] = 10, ["minecraft:chest"] = 10,
             ["minecraft:barrel"] = 10, ["minecraft:gravel"] = 10,
             ["minecraft:torch"] = 100, ["minecraft:diamond"] = 50 }, mixedChest = 0, mixedDrone = 0, maxTrips = 0,
-            placedOnTaken = 0, order = {}, dropped = {}, water = {}, blockOnce = {} }
+            placedOnTaken = 0, order = {}, dropped = {}, water = {}, blockOnce = {}, noDig = {} }
 local function count(t) local n = 0 for _, v in pairs(t) do n = n + v end return n end
 local function kinds(t) local n = 0 for _, v in pairs(t) do if v > 0 then n = n + 1 end end return n end
 
@@ -76,7 +76,8 @@ local function finish(d)
   elseif a == "pneumaticcraft:dig" then
     for _, q in ipairs(pts) do
       local k = key(q.x, q.y, q.z)
-      if W.blocks[k] then                                  -- (a drone picks up what it digs)
+      if W.blocks[k] and W.noDig[k] then W.digRefused = (W.digRefused or 0) + 1     -- (a claimed chunk / out of reach)
+      elseif W.blocks[k] then                              -- (a drone picks up what it digs)
         W.dug = (W.dug or 0) + 1
         d.inv[W.blocks[k]] = (d.inv[W.blocks[k]] or 0) + 1
         W.blocks[k] = nil
@@ -607,4 +608,30 @@ do
   DW.stopBuild("test")
   runUntil(function() return next(DW.trips) == nil end)
   chatTell = tell0
+end
+
+-- A BLOCK THE DRONE CANNOT BREAK (the owner: "I gave the drone the exact block coords and it did not break it" - the dig
+-- action ends "done" also when the drone may not / cannot break it): one more try, then a WARNING - never "done"
+do
+  local notes = {}
+  local pn0 = pushNote
+  pushNote = function(kind, msg, ...) notes[#notes + 1] = tostring(kind) .. ": " .. tostring(msg) return pn0(kind, msg, ...) end
+  W.blocks[key(9, 66, 9)] = "minecraft:stone"
+  W.noDig[key(9, 66, 9)] = true
+  W.digRefused = 0
+  handleCommand("dw break 9 66 9")
+  local doneN = runUntil(function() return DW.job == nil and next(DW.trips) == nil end, 30000)
+  local all = table.concat(notes, "\n")
+  CHECK(doneN and W.digRefused == 2, "it tried twice (" .. tostring(W.digRefused) .. ")")
+  CHECK(all:find("WARNING", 1, true) and all:find("NOTHING back", 1, true), "then a WARNING that the block may still be there:\n" .. all)
+  CHECK(not all:find("DONE: Drones finished", 1, true), "not reported as done")
+  -- a block it can break: done at the first try, no warning
+  notes = {}
+  W.noDig = {}
+  W.blocks[key(9, 66, 9)] = "minecraft:stone"
+  handleCommand("dw break 9 66 9")
+  runUntil(function() return DW.job == nil and next(DW.trips) == nil end, 30000)
+  all = table.concat(notes, "\n")
+  CHECK(not W.blocks[key(9, 66, 9)] and all:find("DONE", 1, true) and not all:find("WARNING", 1, true), "a block it can break: DONE, no warning")
+  pushNote = pn0
 end

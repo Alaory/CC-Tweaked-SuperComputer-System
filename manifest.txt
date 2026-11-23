@@ -8,7 +8,7 @@ base base_console.lua 87832 cd706f51
 base base_curios.lua 7969 634b1833
 base base_devices.lua 34895 00a92721
 base base_drones.lua 94493 edab8cb5
-base base_dronework.lua 94060 ad5f8722
+base base_dronework.lua 96451 c8165696
 base base_env.lua 10269 b6081e20
 base base_factory.lua 29478 ac14f7e9
 base base_input.lua 31054 99762fa0
@@ -75,7 +75,7 @@ slim:base base_console.lua 72686 a8a78f50 dist/base_console.lua
 slim:base base_curios.lua 4566 afac3e09 dist/base_curios.lua
 slim:base base_devices.lua 23725 4b3af2c2 dist/base_devices.lua
 slim:base base_drones.lua 60553 198d7632 dist/base_drones.lua
-slim:base base_dronework.lua 67935 f79889c5 dist/base_dronework.lua
+slim:base base_dronework.lua 69738 f250b8ab dist/base_dronework.lua
 slim:base base_env.lua 7154 ae1b2584 dist/base_env.lua
 slim:base base_factory.lua 21663 188c4b24 dist/base_factory.lua
 slim:base base_input.lua 21948 66de7008 dist/base_input.lua
@@ -138,7 +138,7 @@ z:base base_console.luz 23476 aefc95eb dist/z/base_console.luz
 z:base base_curios.luz 1558 fe4c6a20 dist/z/base_curios.luz
 z:base base_devices.luz 6933 982df396 dist/z/base_devices.luz
 z:base base_drones.luz 15833 8454c5ba dist/z/base_drones.luz
-z:base base_dronework.luz 19440 78320b16 dist/z/base_dronework.luz
+z:base base_dronework.luz 19950 daf16459 dist/z/base_dronework.luz
 z:base base_env.luz 2601 7478a918 dist/z/base_env.luz
 z:base base_factory.luz 6111 78bb75ec dist/z/base_factory.luz
 z:base base_input.luz 6568 51e12629 dist/z/base_input.luz
