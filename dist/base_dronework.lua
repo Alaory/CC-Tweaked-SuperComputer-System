@@ -751,11 +751,11 @@ if type(t) == "table" and type(t.name) == "string" and type(t.done) == "string" 
 and tonumber(t.x) and tonumber(t.y) and tonumber(t.z) and tonumber(t.rot or 0) then
 t.dug = t.dug or ""
 for k in pairs(DW.MEMORY_ONLY) do t[k] = nil end
-if t.kind == "drain" then
+if t.kind == "drain" or t.kind == "dig" then
 if type(t.box) ~= "table" then return end
 for k = 1, 6 do if not tonumber(t.box[k]) then return end end
 if type(t.fill) ~= "string" then t.fill = nil end
-elseif t.kind ~= nil then return end
+elseif t.kind ~= nil and t.kind ~= "unbuild" then return end
 
 local an = {}
 if type(t.anchors) == "table" then
@@ -777,8 +777,8 @@ end
 
 local function planOf(J)
 if J.plan then return J.plan end
-if J.kind == "drain" then
-local plan = DW.drainPlan(J)
+if J.kind == "drain" or J.kind == "dig" then
+local plan = J.kind == "dig" and DW.digPlan(J) or DW.drainPlan(J)
 if #J.done ~= #plan.place or #J.dug ~= #plan.air then return nil, "the clearing job changed - start it again" end
 J.plan = plan
 return plan
@@ -793,6 +793,12 @@ if why then SCHEM.failed[J.name] = nil return nil, why end
 return nil, "reading", true
 end
 s = SCHEM.get(J.name)
+end
+if J.kind == "unbuild" then
+local plan = DW.unbuildPlan(s, J)
+if #J.dug ~= #plan.air then return nil, "the schematic " .. J.name .. " changed - start taking it down again" end
+J.plan = plan
+return plan
 end
 local plan = DW.plan(s, J.x, J.y, J.z, J.rot)
 if not J.clear then plan.air = {} end
@@ -946,6 +952,7 @@ if not clear then plan.air = {} end
 J.plan = plan
 DW.job = J
 DW.save()
+pcall(DW.noteBuilt, J)
 local _, missing = DW.materials(J)
 local msg = "Building " .. name .. " " .. DW.areaText(s, rot, x, y, z) .. ", " .. DW.turnText(rot) .. ": " .. #plan.place .. " blocks" ..
 (clear and (", " .. #plan.air .. " spots cleared first") or "")
@@ -955,6 +962,144 @@ msg = msg .. " - " .. #missing .. " item(s) short in AE2" .. (n > 0 and (", " ..
 end
 if sysLog then sysLog(msg) end
 return true, msg
+end
+
+
+
+
+
+
+
+function DW.isDigJob(J) return J ~= nil and (J.kind == "dig" or J.kind == "unbuild") end
+function DW.jobWord(J)
+if not J then return "Build" end
+if J.kind == "dig" then return "Digging" elseif J.kind == "unbuild" then return "Taking down"
+elseif J.kind == "drain" then return "Clearing" end
+return "Build"
+end
+local function protected()
+local keep = {}
+local function add(p) if p and tonumber(p.x) then keep[math.floor(p.x) .. "," .. math.floor(p.y) .. "," .. math.floor(p.z)] = true end end
+local cx, cy, cz = DW.chestAt()
+if cx then add({ x = cx, y = cy, z = cz }) end
+add(CONFIG.drone.charger)
+add(CONFIG.drone.home)
+return keep
+end
+local function topDown(list)
+table.sort(list, function(a, b)
+if a.y ~= b.y then return a.y > b.y end
+local ca, cb = math.floor(a.x / 16) * 100000 + math.floor(a.z / 16), math.floor(b.x / 16) * 100000 + math.floor(b.z / 16)
+if ca ~= cb then return ca < cb end
+if (a.item or "") ~= (b.item or "") then return (a.item or "") < (b.item or "") end
+if a.x ~= b.x then return a.x < b.x end
+return a.z < b.z
+end)
+return list
+end
+function DW.digPlan(J)
+local x1, y1, z1, x2, y2, z2 = DW.drainBox(J)
+local keep, air = protected(), {}
+for y = y2, y1, -1 do for x = x1, x2 do for z = z1, z2 do
+if not keep[x .. "," .. y .. "," .. z] then air[#air + 1] = { x = x, y = y, z = z } end
+end end end
+return { place = {}, air = topDown(air), skipped = {}, top = y2 + 1 }
+end
+function DW.unbuildPlan(s, J)
+local p = DW.plan(s, J.x, J.y, J.z, J.rot)
+local keep, air = protected(), {}
+for _, q in ipairs(p.place) do
+if not keep[q.x .. "," .. q.y .. "," .. q.z] then air[#air + 1] = { x = q.x, y = q.y, z = q.z, item = q.item } end
+end
+return { place = {}, air = topDown(air), skipped = {}, top = p.top }
+end
+local function digJob(kind, name)
+return { kind = kind, name = name, rot = 0, clear = true, done = "", placed = 0, skippedN = 0,
+startedE = os.epoch("utc"), fails = 0 }
+end
+function DW.startDig(x1, y1, z1, x2, y2, z2, name)
+if DW.job then return false, "a job is running (" .. DW.job.name .. ") -  schem stop  first" end
+local bad = DW.notReady()
+if bad then return false, bad end
+local J = digJob("dig")
+J.box = { x1, y1, z1, x2, y2, z2 }
+local ax, ay, az, bx, by, bz = DW.drainBox(J)
+local w, h, d = bx - ax + 1, by - ay + 1, bz - az + 1
+local max = tonumber(cfg("drainMax")) or DW.DRAIN_MAX
+if w * h * d > max then return false, "that box is " .. w * h * d .. " blocks - at most " .. max .. " in one job (dig it in parts)" end
+J.name = name or (w * h * d == 1 and ("break " .. fmtPos(ax, ay, az)) or ("dig " .. w .. "x" .. d .. "x" .. h))
+J.x, J.y, J.z = ax, ay, az
+local plan = DW.digPlan(J)
+if #plan.air == 0 then return false, "nothing to dig there (the work chest, the charger and the drones' home are never dug)" end
+J.dug, J.plan = string.rep("0", #plan.air), plan
+DW.job = J
+DW.save()
+local msg = (w * h * d == 1 and ("Breaking the block at " .. fmtPos(ax, ay, az))
+or ("Digging " .. fmtPos(ax, ay, az) .. " to " .. fmtPos(bx, by, bz) .. " (" .. w .. " x " .. d .. " x " .. h ..
+", " .. #plan.air .. " spots), top down")) .. " - what the drones dig goes into AE2"
+if sysLog then sysLog(msg) end
+return true, msg
+end
+function DW.startUnbuild(name, x, y, z, rot)
+if DW.job then return false, "a job is running (" .. DW.job.name .. ") -  schem stop  first" end
+local bad = DW.notReady()
+if bad then return false, bad end
+local s, why = SCHEM.load(name)
+if not s then return false, why end
+local J = digJob("unbuild", name)
+J.x, J.y, J.z, J.rot = x, y, z, tonumber(rot) or 0
+local plan = DW.unbuildPlan(s, J)
+if #plan.air == 0 then return false, "nothing to take down in " .. name end
+J.dug, J.plan = string.rep("0", #plan.air), plan
+DW.job = J
+DW.save()
+local msg = "Taking down " .. name .. " " .. DW.areaText(s, J.rot, x, y, z) .. ": " .. #plan.air ..
+" blocks, top down - they go back into AE2"
+if sysLog then sysLog(msg) end
+return true, msg
+end
+
+DW.BUILT_FILE = "drone_built.dat"
+function DW.builtList()
+if not DW.built then
+DW.built = {}
+local t = readSafe(dataPath(DW.BUILT_FILE))
+if type(t) == "table" then
+for _, b in ipairs(t) do
+if type(b) == "table" and type(b.name) == "string" and tonumber(b.x) and tonumber(b.y) and tonumber(b.z) then
+DW.built[#DW.built + 1] = { name = b.name, x = tonumber(b.x), y = tonumber(b.y), z = tonumber(b.z),
+rot = tonumber(b.rot) or 0, at = tonumber(b.at) or 0 }
+end
+if #DW.built >= 20 then break end
+end
+end
+end
+return DW.built
+end
+function DW.noteBuilt(J)
+local l = DW.builtList()
+for i = #l, 1, -1 do
+local b = l[i]
+if b.name == J.name and b.x == J.x and b.y == J.y and b.z == J.z and b.rot == (J.rot or 0) then table.remove(l, i) end
+end
+table.insert(l, 1, { name = J.name, x = J.x, y = J.y, z = J.z, rot = J.rot or 0, at = math.floor(os.epoch("utc") / 1000) })
+while #l > 20 do table.remove(l) end
+pcall(saveFileSafe, dataPath(DW.BUILT_FILE), serialSmall(l))
+end
+function DW.forgetBuilt(J)
+local l = DW.builtList()
+for i = #l, 1, -1 do
+local b = l[i]
+if b.name == J.name and b.x == J.x and b.y == J.y and b.z == J.z then table.remove(l, i) end
+end
+pcall(saveFileSafe, dataPath(DW.BUILT_FILE), serialSmall(l))
+end
+
+function DW.findBuilt(what)
+local l = DW.builtList()
+if not what or what == "" or what == "last" then return l[1] end
+if tonumber(what) then return l[tonumber(what)] end
+for _, b in ipairs(l) do if b.name:lower() == tostring(what):lower() then return b end end
 end
 
 
@@ -977,12 +1122,12 @@ for _, q in ipairs(t) do
 if type(q) == "table" and type(q.name) == "string" and tonumber(q.x) and tonumber(q.y) and tonumber(q.z) then
 local e = { name = q.name, x = tonumber(q.x), y = tonumber(q.y), z = tonumber(q.z), rot = tonumber(q.rot) or 0,
 clear = q.clear and true or nil }
-if q.kind == "drain" and type(q.box) == "table" and #q.box == 6 then
+if (q.kind == "drain" or q.kind == "dig") and type(q.box) == "table" and #q.box == 6 then
 local ok = true
 for k = 1, 6 do if not tonumber(q.box[k]) then ok = false end end
-if ok then e.kind, e.box, e.fill = "drain", q.box, type(q.fill) == "string" and q.fill or nil end
-end
-if q.kind ~= "drain" or e.kind then DW.queue[#DW.queue + 1] = e end
+if ok then e.kind, e.box, e.fill = q.kind, q.box, type(q.fill) == "string" and q.fill or nil end
+elseif q.kind == "unbuild" then e.kind = "unbuild" end
+if (q.kind ~= "drain" and q.kind ~= "dig") or e.kind then DW.queue[#DW.queue + 1] = e end
 end
 end
 end
@@ -1061,6 +1206,8 @@ local q = DW.queue[1]
 local ok, msg
 if q.kind == "drain" then
 ok, msg = DW.startDrain(q.box[1], q.box[2], q.box[3], q.box[4], q.box[5], q.box[6], q.fill)
+elseif q.kind == "dig" then
+ok, msg = DW.startDig(q.box[1], q.box[2], q.box[3], q.box[4], q.box[5], q.box[6])
 else
 if not SCHEM.get(q.name) then
 local why = SCHEM.failed[q.name]
@@ -1068,7 +1215,10 @@ if why then SCHEM.failed[q.name] = nil ok, msg = false, why
 elseif SCHEM.wanted[q.name] or not SCHEM.request(q.name) then return end
 if ok == nil and not SCHEM.get(q.name) then return end
 end
-if ok == nil then ok, msg = DW.startBuild(q.name, q.x, q.y, q.z, q.rot, q.clear) end
+if ok == nil then
+if q.kind == "unbuild" then ok, msg = DW.startUnbuild(q.name, q.x, q.y, q.z, q.rot)
+else ok, msg = DW.startBuild(q.name, q.x, q.y, q.z, q.rot, q.clear) end
+end
 end
 table.remove(DW.queue, 1)
 DW.saveQueue()
@@ -1173,13 +1323,19 @@ for ck in pairs(J.anchors) do
 if not open[ck] then releaseOne(J, ck, "Its chunk of the drone job is done - going home") end
 end
 end
+function DW.dugCount(J)
+local n = 0
+for i = 1, #(J.dug or "") do if J.dug:sub(i, i) == "1" then n = n + 1 end end
+return n
+end
 function DW.stopBuild(why)
 local J = DW.job
 if not J then return false, "no build is running" end
 releaseAnchor(J)
 DW.job = nil
 DW.save()
-local msg = "Build of " .. J.name .. " " .. (why or "stopped") .. " - " .. J.placed .. " blocks placed"
+local msg = DW.isDigJob(J) and (DW.jobWord(J) .. " " .. J.name .. " " .. (why or "stopped") .. " - " .. DW.dugCount(J) .. " spots dug")
+or ("Build of " .. J.name .. " " .. (why or "stopped") .. " - " .. J.placed .. " blocks placed")
 if sysLog then sysLog(msg) end
 return true, msg
 end
@@ -1220,7 +1376,7 @@ local p0, idx = plan.air[i], {}
 for k = i, #J.dug do
 local p = plan.air[k]
 if p.y ~= p0.y then break end
-if J.dug:sub(k, k) == "0" and not bd[k] and ck(p) == ck(p0) then idx[#idx + 1] = k end
+if J.dug:sub(k, k) == "0" and not bd[k] and ck(p) == ck(p0) and p.item == p0.item then idx[#idx + 1] = k end
 if #idx >= 64 then break end
 end
 return { kind = "dig", idx = idx, at = p0 }
@@ -1529,8 +1685,10 @@ end
 if not tr and waitWhy then J.why = waitWhy return false end
 if not tr then
 if flying > 0 then return false end
-local msg = "Drone build of " .. J.name .. " finished: " .. J.placed .. " blocks placed" ..
-(J.skippedN > 0 and (", " .. J.skippedN .. " spots were taken") or "")
+local msg = DW.isDigJob(J) and ("Drones finished " .. DW.jobWord(J):lower() .. " " .. J.name .. ": " .. DW.dugCount(J) .. " spots dug")
+or ("Drone build of " .. J.name .. " finished: " .. J.placed .. " blocks placed" ..
+(J.skippedN > 0 and (", " .. J.skippedN .. " spots were taken") or ""))
+if J.kind == "unbuild" then DW.forgetBuilt(J) end
 pushNote("DONE", msg, C.good)
 if sysLog then sysLog(msg) end
 DW.stopBuild("finished")
@@ -1733,9 +1891,13 @@ local left = 0
 for i = 1, #J.done do if J.done:sub(i, i) == "0" then left = left + 1 end end
 local dug = 0
 for i = 1, #J.dug do if J.dug:sub(i, i) == "1" then dug = dug + 1 end end
-out[#out + 1] = "Build " .. J.name .. " at " .. fmtPos(J.x, J.y, J.z) .. (J.rot ~= 0 and (" rot " .. J.rot) or "") ..
+if DW.isDigJob(J) then
+out[#out + 1] = DW.jobWord(J) .. " " .. J.name .. " at " .. fmtPos(J.x, J.y, J.z) .. ": " .. dug .. " of " .. #J.dug .. " spots dug"
+else
+out[#out + 1] = DW.jobWord(J) .. " " .. J.name .. " at " .. fmtPos(J.x, J.y, J.z) .. (J.rot ~= 0 and (" rot " .. J.rot) or "") ..
 ": " .. J.placed .. " placed, " .. left .. " to go" .. (J.clear and (", cleared " .. dug .. "/" .. #J.dug) or "") ..
 (J.skippedN > 0 and (", " .. J.skippedN .. " spots taken") or "")
+end
 if J.paused then out[#out + 1] = "  PAUSED: " .. J.paused end
 local sh = {}
 for it, t in pairs(J.short or {}) do if now() < t then sh[#sh + 1] = prettify(it) end end

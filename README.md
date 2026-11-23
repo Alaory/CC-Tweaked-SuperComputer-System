@@ -305,6 +305,7 @@ More in [Turtle factory](#turtle-factory).
 | build a schematic | drop the `.nbt` on the computer's screen, then DRONES > DRONE WORK ([Schematics](#schematics-drones-build-them)) |
 | build a road in pieces | `schem chain road_start,road*6,road_end` ([Schematics](#schematics-drones-build-them)) |
 | empty a lake or a lava pool to build in | `$drone clear here` on two corners, then `$drone clear yes` |
+| take a build down / dig out an area / break a block | `schem unbuild` · `$drone dig here` (two corners) · `$drone break x y z` |
 | send a player a gift | PLAYERS > GIFTS (with the voice add-on): pick an AE2 item, the player, SEND - a drone brings it |
 | see what happened while you were away | the WELCOME BACK box when you log in, or `away` on the computer |
 | get the newest version | `upgrade` on the computer (the voice add-on updates itself right after) |
@@ -592,6 +593,12 @@ above the build. `schem` lists them, `schem <name>` shows the size and the mater
 after the one before, centred, all turned the same way; they are built one after another (`schem queue`, `schem
 skip`). In chat: `$drone chain road_start,road*6,road_end`, then `$drone chain yes`.
 
+**Taking things down:** `schem unbuild` takes your newest build down again, top down - its blocks go back
+into AE2 (`schem built` lists your builds, `schem unbuild <n>` picks one). `dw dig <corner> <corner>` digs out
+every block in an area (in chat: `$drone dig here` on two corners, then `$drone dig yes`), `dw break <x y z>` /
+`$drone break x y z` breaks one block (F3 shows its "Targeted Block"). The work chest, the charger and the drones'
+home spot are never dug. Each start asks for a `yes` first (one block does not).
+
 **Clearing water or lava:** `dw clear <corner> <corner>` (or in chat: `$drone clear here` on the top corner at the
 surface, again on the opposite bottom corner, then `$drone clear yes`). The drones put walls round the box, fill it
 with cobblestone and dig it out again - an empty, dry hole to build in. Everything inside the walls goes. Drones
@@ -786,7 +793,7 @@ Type these on the base computer. `help` lists them all.
 | Mining | `mine [drop\|forget] <id>` · `mine update [stop]` |
 | Pocket | `pocket [unpair <id>]` |
 | Schematics | `schem [<name>\|delete <name>]` · `schem build …` · `schem chain …` · `schem queue [clear]` · `schem status\|pause\|resume\|skip\|stop` · `schem craft [on\|off\|now]` |
-| Drone work | `dw` · `dw chest …` · `dw test [item]` · `dw fuel <id>` · `dw clear <corner> <corner> [block]` |
+| Drone work | `dw` · `dw chest …` · `dw test [item]` · `dw fuel <id>` · `dw clear <corner> <corner> [block]` · `dw dig <corner> <corner>` · `dw break <x y z>` · `schem built` · `schem unbuild [<n>]` |
 | Drones | `drones` · `drone <n>` · `dest …` · `save <name>` · `list` · `fly` · `pickup` · `drop` · `ferry` · `home` · `stop` · `charger [x y z]` |
 | Chat | `allow <name>` · `deny <name>` · `allowed` |
 | ME | `mesetup` · `me check` · `me add <id>` · `tanks` · `fluidbuffer [<n>\|auto]` · `fluidstop` · `supply [<storage> <item> <count>\|<storage> fluid <fluid> <buckets>\|stop <n>\|now]` · `curios check` · `curios probe` · `curios auto [clear]` |

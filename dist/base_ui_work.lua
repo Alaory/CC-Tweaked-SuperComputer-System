@@ -110,13 +110,15 @@ local ix, iy, iw, ih = panel(x, y, w, h, "BUILD A SCHEMATIC (BY DRONE)", { right
 rcol = J and (J.paused and C.warn or C.good) or C.dim })
 if J then
 local total, placed = #J.done, done1(J.done)
-text(ix, iy, trunc(J.name, iw), C.label, C.panel)
+local unit = " blocks"
+if DW.isDigJob and DW.isDigJob(J) then total, placed, unit = #J.dug, done1(J.dug), " spots dug" end
+text(ix, iy, trunc((DW.jobWord and DW.jobWord(J) .. ": " or "") .. J.name, iw), C.label, C.panel)
 text(ix, iy + 1, trunc("at " .. fmtPos(J.x, J.y, J.z) .. (J.rot ~= 0 and ("  turned " .. J.rot) or "") ..
 (J.clear and "  -  clearing first" or ""), iw), C.dim, C.panel)
 local share = total > 0 and placed / total or 1
 local bw = big(ix, iy + 3, math.floor(share * 100) .. "%", C.text, C.panel)
-text(ix + bw + 2, iy + 3, placed .. " of " .. total .. " blocks", C.text, C.panel)
-text(ix + bw + 2, iy + 4, trunc((J.clear and ("cleared " .. done1(J.dug) .. " of " .. #J.dug .. "   ") or "") ..
+text(ix + bw + 2, iy + 3, trunc(placed .. " of " .. total .. unit, iw - bw - 2), C.text, C.panel)
+text(ix + bw + 2, iy + 4, trunc(((J.clear and not (DW.isDigJob and DW.isDigJob(J))) and ("cleared " .. done1(J.dug) .. " of " .. #J.dug .. "   ") or "") ..
 (J.skippedN > 0 and (J.skippedN .. " spots were taken") or ""), iw - bw - 2), C.dim, C.panel)
 gauge(ix, iy + 6, iw, share, C.good)
 local yy = iy + 8

@@ -977,6 +977,16 @@ PneumaticCraft drone rides, turtle mapping/surveys, and an AE2 ME network view.
   then the inside dug top down (J.digLast: nextTrip fills first, digs after; the dug
   blocks come back with the drone). Console dw clear|drain <corner> <corner> [block], chat $drone clear here (two
   corners) -> yes. A job running -> it waits in the queue.
+  TAKING THINGS DOWN (the owner: "a way to break built schematics, and tell drones to clear an area or break a block"):
+  dig jobs = J.done "" (nothing placed), only J.dug: kind "dig" (J.box; DW.digPlan = every block in the box, top
+  down) / kind "unbuild" (J.name x y z rot; DW.unbuildPlan = the schematic's PLACED spots, top down, p.item kept ->
+  digTrip groups one item per trip, so a 1-slot drone holds what it digs - it brings it back into AE2 with the
+  usual "Bring back" unload). protected(): the work chest, CONFIG.drone.charger and home spots are left out.
+  DW.builtList (drone_built.dat, newest 20, DW.noteBuilt at startBuild; DW.forgetBuilt when an unbuild finishes) ->
+  schem built / unbuild [last|n|name] | <name> <place> (never "in front of you") -> schem unbuild yes (DW.unbuildPend);
+  dw dig <c> <c> -> dw dig yes (DW.digPend); dw break <spot> starts at once; a running job -> the queue (kinds dig /
+  unbuild). Chat $drone dig here x2 -> yes (the clear branch with dig), $drone break, $drone unbuild [n|name|list] ->
+  yes. DW.isDigJob / DW.jobWord / DW.dugCount for texts; the page shows "N of M spots dug". test_drone_parallel.
   ANCHORS PER CHUNK (the owner: "a turtle can only load the chunk that it is in"): J.anchors {["cx,cz"] = id} (saved;
   an old J.anchor is read as one), at most #droneOrder; buildOne passes over a group in a chunk not loaded
   (DW.anchorFor: a free turtle goto the chunk middle at top + 3, every 300 s again; all taken -> one whose chunk has

@@ -156,7 +156,7 @@ if sub == "help" then
 reply("Use: " .. c .. " home | " .. c .. " to <place" ..
 ((owner or CONFIG.chat.othersToPlayers) and "|player" or "") .. "> | " .. c .. " back | " ..
 c .. " places | " .. c .. " status | " .. c .. " stop")
-if owner then reply("Places: " .. c .. " mark <name> (stand ON the block) | " .. c .. " unmark <name> | " .. c .. " workchest [x y z] (stand ON the drones' work chest, or its spot) | " .. c .. " test (test it, standing near it) | " .. c .. " arrive [off] (stand at an open spot of an underground base - far trips teleport there, then fly in) | " .. c .. " build <name> (a schematic in front of you - look the way it should go) | " .. c .. " chain a,b*5,c (pieces one after another - a road) | " .. c .. " clear here (twice: the corners of a box of water / lava to empty) | " .. c .. " spawn here / pair <code> (the spawn speaker)") end
+if owner then reply("Places: " .. c .. " mark <name> (stand ON the block) | " .. c .. " unmark <name> | " .. c .. " workchest [x y z] (stand ON the drones' work chest, or its spot) | " .. c .. " test (test it, standing near it) | " .. c .. " arrive [off] (stand at an open spot of an underground base - far trips teleport there, then fly in) | " .. c .. " build <name> (a schematic in front of you - look the way it should go) | " .. c .. " chain a,b*5,c (pieces one after another - a road) | " .. c .. " clear here (twice: the corners of a box of water / lava to empty) | " .. c .. " dig here (twice: dig out an area) | " .. c .. " break x y z (one block) | " .. c .. " unbuild [<n>|<name>] (take a build down) | " .. c .. " spawn here / pair <code> (the spawn speaker)") end
 if owner then reply("Owner: " .. c .. " allow/deny <name> | " ..
 c .. " allowed | " .. c .. " yes/no <name> | " .. c .. " notify on/all/off") end
 
@@ -292,15 +292,21 @@ DW.chatPend[key] = { list = list, at = os.clock() }
 reply("Chain: " .. text .. ". Say  " .. c .. " chain yes  to start.")
 end
 
-elseif sub == "clear" or sub == "drain" then
+elseif sub == "clear" or sub == "drain" or sub == "dig" then
+
 
 if not owner then reply("Only " .. tostring(state.owner) .. " can start that.") return end
+local dig = sub == "dig"
 DW.chatPend = DW.chatPend or {}
-local key = name:lower() .. "#clear"
+local key = name:lower() .. (dig and "#dig" or "#clear")
 local a = tostring(words[3] or ""):lower()
 local P = DW.chatPend[key]
 if P and os.clock() - P.at > 600 then DW.chatPend[key], P = nil, nil end
-if a == "" then
+if a == "" and dig then
+reply("Dig out an area: stand at one corner -  " .. c .. " dig here  - then at the opposite corner -  " .. c .. " dig here  - " ..
+"then  " .. c .. " dig yes.  EVERY block in the box goes into AE2 (water / lava stay -  " .. c .. " clear  empties those). " ..
+"One block:  " .. c .. " break x y z")
+elseif a == "" then
 reply("Empty a box of water / lava: stand at one corner (the TOP one at the surface) -  " .. c .. " clear here  - then at the " ..
 "opposite corner (at the bottom) -  " .. c .. " clear here  - then  " .. c .. " clear yes.  Walls go round it, " ..
 "everything inside is filled and dug out.")
@@ -309,11 +315,14 @@ if not (P and P.b) then reply("Mark both corners first:  " .. c .. " clear here"
 DW.chatPend[key] = nil
 local x1, y1, z1, x2, y2, z2 = P.a[1], P.a[2], P.a[3], P.b[1], P.b[2], P.b[3]
 if DW.job then
-DW.enqueue({ { kind = "drain", box = { x1, y1, z1, x2, y2, z2 }, fill = P.fill, name = "clear " .. fmtPos(x1, y1, z1),
+DW.enqueue({ { kind = dig and "dig" or "drain", box = { x1, y1, z1, x2, y2, z2 }, fill = (not dig) and P.fill or nil,
+name = (dig and "dig " or "clear ") .. fmtPos(x1, y1, z1),
 x = math.min(x1, x2), y = math.min(y1, y2), z = math.min(z1, z2), rot = 0 } })
 reply("A job runs (" .. DW.job.name .. ") - this one waits in the queue (" .. #DW.queue .. ").")
 else
-local _, msg = DW.startDrain(x1, y1, z1, x2, y2, z2, P.fill)
+local _, msg
+if dig then _, msg = DW.startDig(x1, y1, z1, x2, y2, z2)
+else _, msg = DW.startDrain(x1, y1, z1, x2, y2, z2, P.fill) end
 reply(msg)
 end
 elseif a == "no" or a == "cancel" then
@@ -325,15 +334,67 @@ if not x then reply("Cannot: " .. cleanErr(y)) return end
 local fill = words[4] and words[4]:lower() ~= "with" and SUPPLY.fullName(words[4]) or (words[5] and SUPPLY.fullName(words[5])) or nil
 if not P or P.b then
 DW.chatPend[key] = { a = { x, y, z }, at = os.clock(), fill = fill }
-reply("Corner 1: " .. fmtPos(x, y, z) .. ". Now the opposite corner:  " .. c .. " clear here")
+reply("Corner 1: " .. fmtPos(x, y, z) .. ". Now the opposite corner:  " .. c .. (dig and " dig here" or " clear here"))
 else
 P.b, P.at, P.fill = { x, y, z }, os.clock(), fill or P.fill
 local w = math.abs(P.a[1] - x) + 1
 local h = math.abs(P.a[2] - y) + 1
 local d = math.abs(P.a[3] - z) + 1
 reply("Box " .. w .. " x " .. d .. " x " .. h .. " (" .. w * d * h .. " blocks) from " .. fmtPos(P.a[1], P.a[2], P.a[3]) ..
-" to " .. fmtPos(x, y, z) .. ". Everything inside the walls goes. Say  " .. c .. " clear yes  to start.")
+" to " .. fmtPos(x, y, z) .. (dig and ". EVERY block in it is dug. Say  " .. c .. " dig yes  to start." or
+". Everything inside the walls goes. Say  " .. c .. " clear yes  to start."))
 end
+end
+
+elseif sub == "break" then
+
+if not owner then reply("Only " .. tostring(state.owner) .. " can do that.") return end
+if not words[3] then
+reply("Look at the block, press F3 and read 'Targeted Block' x y z, then:  " .. c .. " break x y z  (or a saved place, or me = the block under you)")
+return
+end
+local x, y, z = posArg(words, 3, name)
+if not x then reply("Cannot: " .. cleanErr(y)) return end
+if DW.job then
+DW.enqueue({ { kind = "dig", box = { x, y, z, x, y, z }, name = "break " .. fmtPos(x, y, z), x = x, y = y, z = z, rot = 0 } })
+reply("A job runs (" .. DW.job.name .. ") - it waits in the queue (" .. #DW.queue .. ").")
+else
+local _, msg = DW.startDig(x, y, z, x, y, z)
+reply(msg)
+end
+
+elseif sub == "unbuild" then
+
+if not owner then reply("Only " .. tostring(state.owner) .. " can do that.") return end
+DW.chatPend = DW.chatPend or {}
+local key = name:lower() .. "#unbuild"
+local a = tostring(words[3] or "")
+local P = DW.chatPend[key]
+if P and os.clock() - P.at > 300 then DW.chatPend[key], P = nil, nil end
+if a:lower() == "yes" or a:lower() == "go" then
+if not P then reply("Nothing to start - first:  " .. c .. " unbuild [<n>|<name>]") return end
+DW.chatPend[key] = nil
+if DW.job then
+DW.enqueue({ { kind = "unbuild", name = P.name, x = P.x, y = P.y, z = P.z, rot = P.rot } })
+reply("A job runs (" .. DW.job.name .. ") - it waits in the queue (" .. #DW.queue .. ").")
+else
+local _, msg = DW.startUnbuild(P.name, P.x, P.y, P.z, P.rot)
+reply(msg)
+end
+elseif a:lower() == "no" then
+DW.chatPend[key] = nil
+reply("OK, forgotten.")
+elseif a:lower() == "list" then
+local l = DW.builtList()
+local t = {}
+for k, b in ipairs(l) do if k <= 8 then t[#t + 1] = k .. ". " .. b.name .. " " .. fmtPos(b.x, b.y, b.z) end end
+reply(#t > 0 and table.concat(t, " | ") or "No builds remembered yet.")
+else
+local b = DW.findBuilt(a)
+if not b then reply(#DW.builtList() == 0 and "No builds remembered yet." or ("No build '" .. a .. "' -  " .. c .. " unbuild list")) return end
+DW.chatPend[key] = { name = b.name, x = b.x, y = b.y, z = b.z, rot = b.rot, at = os.clock() }
+reply("Take down " .. b.name .. " at " .. fmtPos(b.x, b.y, b.z) .. ": every block it has there goes back into AE2. Say  " ..
+c .. " unbuild yes")
 end
 
 elseif sub == "arrive" then

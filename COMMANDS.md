@@ -238,6 +238,10 @@ Keeps a chest or tank on the wired cable stocked from AE2. It only ever puts thi
 | `schem chain <a>,<b>*5,<c> [here\|place\|x y z] [toward north\|east\|south\|west] [facing <dir>\|turn left\|right\|around] [centered] [clear]` | a CHAIN of schematics (a road in parts): the first where `schem build` would put it, each next one right after the one before, toward the way you look (or `toward <dir>`), centred on it, all turned the same way. `road*5` = that piece 5 times. They are built one after another |
 | `schem queue [clear]` | the builds / clearings waiting their turn; `clear` drops them |
 | `schem skip` | ends the running build and starts the next one in the queue |
+| `schem built` | the builds started here (newest first, 20 kept) |
+| `schem unbuild [<n>\|<name>]` / `schem unbuild <name> <place\|x y z> [turn ...]` | TAKE A BUILD DOWN again: every block the schematic has there is dug, top down, one kind per trip - the blocks go back into AE2. No name = the newest build; a name + place for one built before. Then `schem unbuild yes` |
+| `dw dig <corner> <corner>` | drones dig EVERY block in that box, top down, into AE2 (water / lava stay - `dw clear` empties those). Then `dw dig yes`. Never the work chest, the charger or the drones' home spot |
+| `dw break <x y z\|place\|me>` | a drone breaks that ONE block (F3 "Targeted Block" shows its x y z) |
 | `dw clear <corner> <corner> [block]` (also `dw drain`) | EMPTIES A BOX OF WATER / LAVA for building: walls round it (the outer ring), the inside filled with the block (cobblestone - it comes back to AE2) and dug out top down. Everything inside the walls goes. Put the top corner at the surface. Corners: x y z, a saved place or `me`. A job already running -> it waits in the queue |
 | `schem craft [on\|off\|now]` | AE2 crafts the blocks a running build is short of (items with a pattern; on by default, checked every 30 s); `now` = ask at once |
 
@@ -311,6 +315,9 @@ privately. Players who are not allowed only get `help` and ride requests (the ow
 | `$drone workchest [<x> <y> <z>]` (owner) | the drones' work chest = the block you stand on (or those coordinates) |
 | `$drone build [<name> [turn right\|facing east ...] [clear]]` (owner) | a schematic in FRONT OF YOU (look the way it should go): says where and which way it faces; then `$drone build turn left / right / around` or `facing <dir>` to turn it, `$drone build yes` to start (`no` = forget it, `stop`, `status`) |
 | `$drone chain <a>,<b>*5,<c> [turn right\|facing east ...] [toward <dir>] [clear]` (owner) | a chain of schematics from in front of you, going on the way you look; `$drone chain yes` starts it (`no` = forget it) |
+| `$drone dig here` (owner) | stand on one corner of an area: `$drone dig here`, then on the opposite corner again, then `$drone dig yes` - every block in it is dug into AE2 |
+| `$drone break <x y z\|place\|me>` (owner) | a drone breaks that one block (F3 "Targeted Block") |
+| `$drone unbuild [<n>\|<name>\|list]` (owner) | take a build down again (its blocks back into AE2); `$drone unbuild yes` starts it |
 | `$drone clear here [with <block>]` (also `$drone drain`, owner) | stand on one corner of a box of water / lava (the top one, at the surface): `$drone clear here`; then on the opposite corner: `$drone clear here` again; `$drone clear yes` starts it (walls, fill, dig out) |
 | `$drone test [item]` (owner) | tests the work chest while you stand near it (a drone drops an item at your feet) |
 | `$drone spawn here` (owner) | the spawn speaker's spot = where you stand |

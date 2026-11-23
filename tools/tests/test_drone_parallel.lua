@@ -511,3 +511,100 @@ do
   runUntil(function() return next(DW.trips) == nil end)
   chatTell = tell0
 end
+
+-- TAKING THINGS DOWN (the owner: "a way to break built schematics, and tell drones to clear an area or break a block")
+do
+  -- a build, then taken down again: every block back into AE2, nothing else touched
+  W.blocks, DW.queue, DW.built = {}, {}, nil
+  pcall(fs.delete, dataPath(DW.BUILT_FILE))
+  W.stock["minecraft:oak_planks"] = 1000
+  local UX, UY, UZ = -20, 64, -50
+  W.blocks[key(UX + 2, UY + 1, UZ + 2)] = "minecraft:torch"            -- (something of yours on top - not in the schematic)
+  DW.startBuild("roadb", UX, UY, UZ, 0, false)
+  runUntil(function() return DW.job == nil and next(DW.trips) == nil end)
+  CHECK(W.stock["minecraft:oak_planks"] == 975, "built first (25 planks out of AE2: " .. W.stock["minecraft:oak_planks"] .. ")")
+  local out = handleCommand("schem built") or {}
+  CHECK(table.concat(out, "\n"):find("1. roadb", 1, true), "schem built lists it: " .. table.concat(out, " / "))
+  out = handleCommand("schem unbuild") or {}
+  CHECK(not DW.job and table.concat(out, " "):find("schem unbuild yes", 1, true), "schem unbuild: says what, waits for yes: " .. table.concat(out, " / "))
+  out = handleCommand("schem unbuild yes") or {}
+  CHECK(DW.job and DW.job.kind == "unbuild", "schem unbuild yes starts it: " .. table.concat(out, " / "))
+  local doneU = runUntil(function() return DW.job == nil and next(DW.trips) == nil end, 30000)
+  local left = 0
+  for x = 0, 4 do for z = 0, 4 do if W.blocks[key(UX + x, UY, UZ + z)] then left = left + 1 end end end
+  CHECK(doneU and left == 0, "every block of the build is gone (" .. left .. " left)")
+  CHECK(W.stock["minecraft:oak_planks"] == 1000, "... and back in AE2 (" .. W.stock["minecraft:oak_planks"] .. ")")
+  CHECK(W.blocks[key(UX + 2, UY + 1, UZ + 2)] == "minecraft:torch", "a block that is not part of the schematic stays")
+  CHECK(#DW.builtList() == 0, "a build taken down is off the list")
+  CHECK(next(W.chest) == nil, "the work chest is empty after")
+
+  -- dig an area: every block in the box, top down - never the work chest (inside the box here)
+  W.blocks = {}
+  local items = { "minecraft:dirt", "minecraft:stone", "minecraft:oak_log" }
+  local n0 = 0
+  for x = CH.x - 2, CH.x + 2 do for y = CH.y - 1, CH.y do for z = CH.z - 2, CH.z + 2 do
+    W.blocks[key(x, y, z)] = items[(x + y + z) % 3 + 1]
+    n0 = n0 + 1
+  end end end
+  W.blocks[key(CH.x, CH.y, CH.z)] = "minecraft:barrel"
+  local dirt0 = W.stock["minecraft:dirt"] or 0
+  out = handleCommand("dw dig " .. (CH.x - 2) .. " " .. CH.y .. " " .. (CH.z - 2) .. " " .. (CH.x + 2) .. " " .. (CH.y - 1) .. " " .. (CH.z + 2)) or {}
+  CHECK(not DW.job and table.concat(out, " "):find("50 spots", 1, true), "dw dig: the box, then waits for yes: " .. table.concat(out, " / "))
+  handleCommand("dw dig yes")
+  CHECK(DW.job and DW.job.kind == "dig", "dw dig yes starts it")
+  local orderOK, lastY = true, math.huge
+  local doneG = runUntil(function()
+    for _, t in pairs(DW.trips) do if t.kind == "dig" and t.layer then
+      if t.layer > lastY then orderOK = false end
+      lastY = math.min(lastY, t.layer)
+    end end
+    return DW.job == nil and next(DW.trips) == nil
+  end, 30000)
+  local left2 = 0
+  for x = CH.x - 2, CH.x + 2 do for y = CH.y - 1, CH.y do for z = CH.z - 2, CH.z + 2 do
+    if W.blocks[key(x, y, z)] and not (x == CH.x and y == CH.y and z == CH.z) then left2 = left2 + 1 end
+  end end end
+  CHECK(doneG and left2 == 0, "the area is dug out (" .. left2 .. " left)")
+  CHECK(W.blocks[key(CH.x, CH.y, CH.z)] == "minecraft:barrel", "the work chest itself is never dug")
+  CHECK(orderOK, "top layer first")
+  CHECK((W.stock["minecraft:dirt"] or 0) > dirt0, "what the drones dug went into AE2 (dirt " .. dirt0 .. " -> " .. tostring(W.stock["minecraft:dirt"]) .. ")")
+
+  -- one block
+  W.blocks[key(5, 66, 5)] = "minecraft:stone"
+  out = handleCommand("dw break 5 66 5") or {}
+  CHECK(DW.job and DW.job.kind == "dig", "dw break starts at once: " .. table.concat(out, " / "))
+  runUntil(function() return DW.job == nil and next(DW.trips) == nil end)
+  CHECK(not W.blocks[key(5, 66, 5)], "the block is broken")
+
+  -- in chat
+  local told = {}
+  local tell0 = chatTell
+  chatTell = function(_, t) told[#told + 1] = t end
+  local function chat(m) handleChat({ name = "Alaory", uuid = state.ownerUuid, msg = "$" .. CONFIG.chat.command .. " " .. m }) end
+  W.blocks[key(7, 66, 7)] = "minecraft:stone"
+  chat("break 7 66 7")
+  CHECK(DW.job and DW.job.kind == "dig", "$drone break x y z: " .. tostring(told[#told]))
+  runUntil(function() return DW.job == nil and next(DW.trips) == nil end)
+  CHECK(not W.blocks[key(7, 66, 7)], "... broken")
+  told = {}
+  chat("dig 20 66 20")
+  chat("dig 22 65 22")
+  CHECK(table.concat(told, " "):find("dig yes", 1, true), "$drone dig here twice: asks for yes: " .. table.concat(told, " / "))
+  chat("dig yes")
+  CHECK(DW.job and DW.job.kind == "dig" and #DW.job.dug == 18, "$drone dig yes starts it (18 spots)")
+  DW.stopBuild("test")
+  DW.startBuild("roadb", UX, UY, UZ, 0, false)
+  runUntil(function() return DW.job == nil and next(DW.trips) == nil end)
+  told = {}
+  chat("unbuild roadb")
+  chat("unbuild yes")
+  CHECK(DW.job and DW.job.kind == "unbuild", "$drone unbuild <name> then yes: " .. table.concat(told, " / "))
+  -- saved and read back (a restart mid-job)
+  local J0 = DW.job
+  DW.job = nil
+  DW.load()
+  CHECK(DW.job and DW.job.kind == "unbuild" and DW.job.dug == J0.dug, "an unbuild job is saved and read back")
+  DW.stopBuild("test")
+  runUntil(function() return next(DW.trips) == nil end)
+  chatTell = tell0
+end

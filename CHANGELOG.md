@@ -96,6 +96,10 @@ Peripherals (tested on CC:Tweaked 1.120.2, Minecraft 1.21.1, NeoForge).
   a no-digging zone around the base.
 - Schematic builds get their missing blocks crafted by AE2 automatically (items with a pattern; `schem craft
   on|off|now`, SETTINGS > DRONES). `schem status` names the blocks AE2 has no pattern for.
+- Drones TAKE THINGS DOWN too: `schem unbuild` takes a build down again (its blocks go back into AE2; `schem built`
+  lists your builds), `dw dig <corner> <corner>` (or `$drone dig here` at two corners) digs out an area, and
+  `dw break <x y z>` / `$drone break x y z` breaks one block. The work chest, the charger and the drones' home are
+  never dug.
 - Drones no longer get in each other's way on a build: two drones always work at least 3 blocks apart (each trip
   is one 8 x 8 square), and a spot that refused its block once (a drone, a mob or a player in the way) is tried
   again with just the blocks that came back. On a tiny build (a few blocks) the drones now take turns.

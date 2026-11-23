@@ -69,6 +69,8 @@ HELP = {
   " schem build <name> <me|place|x y z> [rot 90] [clear] | status | pause | resume | stop   a drone builds it",
   " schem chain <a>,<b>*3 [place] [toward <dir>] | queue [clear] | skip   pieces one after another (a road)",
   " dw clear <corner> <corner> [block]   empty a box of water / lava (walls, fill, dig out)",
+  " dw dig <corner> <corner> | dw break <x y z>   drones dig an area / break one block (into AE2)",
+  " schem built | schem unbuild [<n>|<name>]   take a build down again (its blocks back into AE2)",
   " mine update [stop]    the newest miner.lua to every mining turtle (teams paused first, then started again)",
   " factory [chest <name>|builder <id>|build|stop]   build turtles from AE2 parts",
   " factory recipes|learn|forget <item>|crafter <id>   recipes TAUGHT to a crafting turtle",
@@ -937,6 +939,49 @@ function handleCommand(line)
         end
         say("schem queue clear = drop them,  schem skip = stop the running one and start the next")
       end
+    elseif sub == "built" then
+      local l = DW.builtList()
+      if #l == 0 then say("No builds remembered yet (each  schem build  is noted; the newest 20 are kept).") end
+      for k, b in ipairs(l) do say(k .. ". " .. b.name .. " at " .. fmtPos(b.x, b.y, b.z) .. " " .. DW.turnText(b.rot)) end
+      if #l > 0 then say("schem unbuild <n>  takes one down again (the blocks go back into AE2)") end
+    elseif sub == "unbuild" then
+      -- schem unbuild [last | <n> | <name>] | <name> <place | x y z> [turn ..]  -> schem unbuild yes
+      local a = words[3] or ""
+      local P = DW.unbuildPend
+      if P and os.clock() - P.at > 300 then DW.unbuildPend, P = nil, nil end
+      if a:lower() == "yes" or a:lower() == "go" then
+        if not P then say("Nothing to start - first:  schem unbuild <n|name>")
+        elseif DW.job then
+          DW.unbuildPend = nil
+          DW.enqueue({ { kind = "unbuild", name = P.name, x = P.x, y = P.y, z = P.z, rot = P.rot } })
+          say("A job runs (" .. DW.job.name .. ") - it waits in the queue as job " .. #DW.queue)
+        else
+          DW.unbuildPend = nil
+          local _, msg = DW.startUnbuild(P.name, P.x, P.y, P.z, P.rot)
+          say(msg)
+        end
+      elseif a:lower() == "no" then DW.unbuildPend = nil say("OK, forgotten.")
+      else
+        local b = (not words[4]) and DW.findBuilt(a) or nil
+        if not b and words[4] then
+          local sch, why = SCHEM.load(a)
+          if not sch then say(tostring(why))
+          else
+            local pl, whyW = DW.where(sch, words, 4, state.owner, 0)
+            if not pl then say(tostring(whyW))
+            elseif pl.how == "front" then say("Give the place it was built at (x y z of its ground block, or a saved place) - never 'in front of you'.")
+            else b = { name = a, x = pl.ox, y = pl.oy, z = pl.oz, rot = pl.rot } end
+          end
+        end
+        if b then
+          DW.unbuildPend = { name = b.name, x = b.x, y = b.y, z = b.z, rot = b.rot, at = os.clock() }
+          say("Take down " .. b.name .. " at " .. fmtPos(b.x, b.y, b.z) .. " " .. DW.turnText(b.rot) ..
+              ": every block the schematic has there is dug (whatever is there now) and goes into AE2. Type  schem unbuild yes")
+        elseif not words[4] then
+          say(#DW.builtList() == 0 and "No builds remembered.  schem unbuild <name> <x y z> [turn ..]  for one built before." or
+              ("No build '" .. a .. "'.  schem built  lists them."))
+        end
+      end
     elseif sub == "skip" then
       local _, msg = DW.stopBuild("skipped by you")
       say(msg)
@@ -988,6 +1033,7 @@ function handleCommand(line)
       for _, n in ipairs(names) do say("  " .. n) end
       say("schem <name> = size and materials,  schem delete <name>,  schem build <name> <me|place|x y z> [rot 90] [clear]")
       say("schem chain <a>,<b>*3,<c> [place] [toward <dir>] = pieces one after another (a road),  schem queue")
+      say("schem built = your builds,  schem unbuild [<n>|<name>] = take one down again (into AE2)")
     end
 
   elseif cmd == "dw" or cmd == "dronework" then
@@ -1065,6 +1111,51 @@ function handleCommand(line)
           say(msg)
         end
       end
+    elseif sub == "dig" then
+      -- dw dig <corner> <corner>: drones dig every block in the box (top down) -> dw dig yes
+      local a = (words[3] or ""):lower()
+      local P = DW.digPend
+      if P and os.clock() - P.at > 300 then DW.digPend, P = nil, nil end
+      if a == "yes" or a == "go" then
+        if not P then say("Nothing to start - first:  dw dig <corner> <corner>")
+        else
+          DW.digPend = nil
+          if DW.job then
+            DW.enqueue({ { kind = "dig", box = P.box, name = "dig " .. fmtPos(P.box[1], P.box[2], P.box[3]),
+                           x = math.min(P.box[1], P.box[4]), y = math.min(P.box[2], P.box[5]), z = math.min(P.box[3], P.box[6]), rot = 0 } })
+            say("A job runs (" .. DW.job.name .. ") - the digging waits in the queue as job " .. #DW.queue)
+          else
+            local _, msg = DW.startDig(P.box[1], P.box[2], P.box[3], P.box[4], P.box[5], P.box[6])
+            say(msg)
+          end
+        end
+      elseif a == "no" then DW.digPend = nil say("OK, forgotten.")
+      else
+        local x1, y1, z1, j = posArg(words, 3)
+        local x2, y2, z2
+        if x1 then x2, y2, z2 = posArg(words, j) end
+        if not x1 or not x2 then
+          say("Usage: dw dig <corner> <corner>   (x y z, a saved place or me) - drones dig EVERY block in that box, top down;")
+          say("  what they dig goes into AE2. Water / lava stay (dw clear empties those). One block:  dw break <x y z>")
+          if words[3] then say("  " .. tostring(x1 and y2 or y1)) end
+        else
+          local n = (math.abs(x1 - x2) + 1) * (math.abs(y1 - y2) + 1) * (math.abs(z1 - z2) + 1)
+          DW.digPend = { box = { x1, y1, z1, x2, y2, z2 }, at = os.clock() }
+          say("Dig " .. fmtPos(x1, y1, z1) .. " to " .. fmtPos(x2, y2, z2) .. ": " .. n .. " spots - EVERYTHING in it goes. Type  dw dig yes  to start.")
+        end
+      end
+    elseif sub == "break" then
+      local x, y, z = posArg(words, 3)
+      if not x then
+        say("Usage: dw break <x y z | saved place | me>   - a drone breaks that one block (F3: Targeted Block shows x y z)")
+        if words[3] then say("  " .. tostring(y)) end
+      elseif DW.job then
+        DW.enqueue({ { kind = "dig", box = { x, y, z, x, y, z }, name = "break " .. fmtPos(x, y, z), x = x, y = y, z = z, rot = 0 } })
+        say("A job runs (" .. DW.job.name .. ") - it waits in the queue as job " .. #DW.queue)
+      else
+        local _, msg = DW.startDig(x, y, z, x, y, z)
+        say(msg)
+      end
     elseif sub == "test" then
       DW.test(say, words[3] and SUPPLY.fullName(words[3]) or nil)
     elseif sub == "auto" and (words[3] == "on" or words[3] == "off") then
@@ -1073,7 +1164,7 @@ function handleCommand(line)
       say("Automatic drone fuel runs " .. words[3]:upper())
     else
       for _, l in ipairs(DW.statusLines()) do say(l) end
-      say("dw chest [<n|name> me]  |  dw test [item]  |  dw fuel <id>  |  dw fuel item <item> [count]  |  dw auto on|off  |  dw clear <corner> <corner> [block]  |  schem build / chain ...")
+      say("dw chest [<n|name> me]  |  dw test [item]  |  dw fuel <id>  |  dw fuel item <item> [count]  |  dw auto on|off  |  dw clear <corner> <corner> [block]  |  dw dig <corner> <corner>  |  dw break <x y z>  |  schem build / chain / unbuild ...")
     end
 
   elseif cmd == "voice" then
