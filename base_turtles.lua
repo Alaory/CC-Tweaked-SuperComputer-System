@@ -1186,7 +1186,9 @@ function TT.codeStore(text, from)
       if d.data and not d.installer then
         local p = fs.combine(d.mount, name)
         local room = (d.free or 0) + (fs.exists(p) and fs.getSize(p) or 0)
-        if room >= #text + 2048 and saveFileSafe(p, text) then where = p break end
+        -- (writeSafe with this check: saveFileSafe wants size + 4 KB free - a 121 KB program did not fit an EMPTY
+        --  125 KB floppy; the install floppy's limit 122500 is the one that counts)
+        if room >= #text + 2048 and writeSafe(p, text) then where = p break end
       end
     end
   end

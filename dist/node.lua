@@ -3713,6 +3713,9 @@ else
 if m.hand ~= true then S.paused = nil end
 stopFlag = false
 job = { cmd = m.cmd, args = a }
+
+
+task = "starting " .. m.cmd
 end
 elseif type(m) == "table" and m.t == "cmd" and type(m.n) == "number" and (tonumber(m.copy) or 0) == (COPY or 0)
 and m.sig == sign(CONFIG.key, m.t, m.n, m.cmd, m.args) then

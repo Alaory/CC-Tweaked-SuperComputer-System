@@ -1567,6 +1567,7 @@ local dx, dz = spiral(MAP.ringStart(r) + (s0 + off) % MAP.ringLen(r))
 return q.cx + dx * q.step, q.cz + dz * q.step
 end
 
+MAP.REDO_NEAR = 800
 local function ringDeal(q, ids, k)
 local total = q.cols * q.rows
 local rad = math.floor((q.cols - 1) / 2)
@@ -1619,13 +1620,30 @@ if MAP.spotDone(p[1], p[2]) or not MAP.inArea(p[1], p[2]) or busySpot[p[1] .. ",
 elseif nearPlayer(p[1], p[2]) then q.redo[#q.redo + 1] = p
 else cand[#cand + 1] = p end
 end
-if #cand > 0 then
-table.sort(cand, function(a, b) return math.abs(a[1] - cx) + math.abs(a[2] - cz) < math.abs(b[1] - cx) + math.abs(b[2] - cz) end)
+
+
+
+
+local nearR = MAP.REDO_NEAR
+local function dist(p, id) return math.abs(p[1] - pos[id][1]) + math.abs(p[2] - pos[id][2]) end
 local take = {}
-for i, p in ipairs(cand) do
-if i <= cap then take[#take + 1] = p else q.redo[#q.redo + 1] = p end
+for _, p in ipairs(cand) do
+local ok = p[3]
+if not ok then for _, id in ipairs(ids) do if dist(p, id) <= nearR then ok = true break end end end
+if ok then take[#take + 1] = p else q.redo[#q.redo + 1] = p end
 end
-out = dealEven(take, ids, q.step)
+if #take > 0 then
+table.sort(take, function(a, b) return math.abs(a[1] - cx) + math.abs(a[2] - cz) < math.abs(b[1] - cx) + math.abs(b[2] - cz) end)
+for i = #take, cap + 1, -1 do q.redo[#q.redo + 1] = table.remove(take, i) end
+for id, l in pairs(dealEven(take, ids, q.step)) do
+local got = {}
+for _, p in ipairs(l) do
+if p[3] or dist(p, id) <= nearR then got[#got + 1] = p else q.redo[#q.redo + 1] = p end
+end
+if #got > 0 then out[id] = got end
+end
+end
+if #cand > 0 then
 local rest = {}
 for _, id in ipairs(ids) do if not out[id] then rest[#rest + 1] = id else solo[id] = true end end
 ids = rest
@@ -1651,17 +1669,49 @@ return true
 end
 
 
+
+
+
+
+local function nearestOff(rec, p, from)
+local lo = math.max(rec.i, from or rec.i)
+if lo >= rec.j then return nil end
+local best, bd
+local function try(off)
+if off < lo or off >= rec.j then return end
+local x, z = ringSpot(q, rec.r, rec.s0, off)
+local d = math.abs(x - p[1]) + math.abs(z - p[2])
+if not bd or d < bd then best, bd = off, d end
+end
+for off = lo, rec.j - 1, 4 do try(off) end
+try(rec.j - 1)
+if best then local b0 = best for off = b0 - 3, b0 + 3 do try(off) end end
+return best, bd
+end
+
+local function splitAt(rec, m)
+local tail = { r = rec.r, s0 = rec.s0, i = m, j = rec.j }
+rec.j = m
+return tail
+end
+
+
 local function newRing(id)
 local p = pos[id]
-local bi, bd
+local bi, bm, bd
 for i, rec in ipairs(rr.loose) do
 if rec.i < rec.j then
-local x, z = ringSpot(q, rec.r, rec.s0, rec.i)
-local d = math.abs(x - p[1]) + math.abs(z - p[2])
-if not bi or d < bd then bi, bd = i, d end
+local m, d = nearestOff(rec, p)
+if m and (not bd or d < bd) then bi, bm, bd = i, m, d end
 end
 end
-if bi then return table.remove(rr.loose, bi) end
+local function takeLoose()
+local rec = rr.loose[bi]
+if bm > rec.i then return splitAt(rec, bm) end
+return table.remove(rr.loose, bi)
+end
+if bi and bd <= 400 then return takeLoose() end
+local fresh
 while rr.next <= rad do
 if outOfTime() then
 MAP.looking = { r = rr.next, rad = rad, found = 0, want = 1 }
@@ -1682,8 +1732,14 @@ if not best or d < bdist then best, bdist = s, d end
 end
 end
 end
-if best then return { r = r, s0 = best, i = 0, j = P } end
+if best then fresh = { r = r, s0 = best, i = 0, j = P, d = bdist } break end
 end
+if fresh and (not bi or fresh.d <= bd) then
+fresh.d = nil
+return fresh
+end
+if fresh then fresh.d = nil rr.loose[#rr.loose + 1] = fresh end
+if bi then return takeLoose() end
 return nil
 end
 
@@ -1719,17 +1775,40 @@ end
 if #mine > 0 then out[id] = mine else helpers[#helpers + 1] = id end
 end
 
+
 for _, id in ipairs(helpers) do
-local best, left
+local best, bm, bd
 for _, rec in pairs(rr.own) do
-if rec.j - rec.i > (left or 2 * k) then best, left = rec, rec.j - rec.i end
+if rec.j - rec.i > 3 * k then
+local m, d = nearestOff(rec, pos[id], rec.i + 2 * k)
+if m and (not bd or d < bd) then best, bm, bd = rec, m, d end
+end
 end
 for _, rec in ipairs(rr.loose) do
-if rec.j - rec.i > (left or 2 * k) then best, left = rec, rec.j - rec.i end
+if rec.i < rec.j then
+local m, d = nearestOff(rec, pos[id])
+if m and (not bd or d < bd) then best, bm, bd = rec, m, d end
+end
 end
 if best and not outOfTime() then
-local m = walk(best, k, true)
+local mine = (bm > best.i) and splitAt(best, bm) or best
+if mine == best then for i2, r2 in ipairs(rr.loose) do if r2 == best then table.remove(rr.loose, i2) break end end end
+rr.own[id] = mine
+local m = walk(mine, k)
 if #m > 0 then out[id] = m end
+end
+
+if not out[id] and #q.redo > 0 then
+local p0 = pos[id]
+table.sort(q.redo, function(a, b)
+return math.abs(a[1] - p0[1]) + math.abs(a[2] - p0[2]) < math.abs(b[1] - p0[1]) + math.abs(b[2] - p0[2])
+end)
+local got = {}
+while #q.redo > 0 and #got < 2 * k do
+local p = table.remove(q.redo, 1)
+if not MAP.spotDone(p[1], p[2]) and not busySpot[p[1] .. "," .. p[2]] then got[#got + 1] = p end
+end
+if #got > 0 then out[id] = got solo[id] = true end
 end
 end
 
@@ -1773,7 +1852,8 @@ local t = state.turtles[id]
 
 
 
-if not ok and t and t.queueAt and os.clock() - t.queueAt < 30 then
+
+if not ok and t and t.queueAt and os.clock() - t.queueAt < 30 and not tostring(msg or ""):find("^busy") then
 t.surveyFail = { msg = tostring(msg or "no reason given"), at = os.clock() }
 if MAP.press then MAP.press.failed[id] = t.surveyFail.msg end
 TT.log(t, "Refused its survey spots: " .. t.surveyFail.msg)
@@ -1808,7 +1888,10 @@ local have = {}
 for _, p in ipairs(q.redo) do have[p[1] .. "," .. p[2]] = true end
 for _, l in pairs(q.out or {}) do for _, p in ipairs(l) do have[p[1] .. "," .. p[2]] = true end end
 for i = #spots, 1, -1 do
-if not have[spots[i][1] .. "," .. spots[i][2]] then table.insert(q.redo, 1, spots[i]) end
+if not have[spots[i][1] .. "," .. spots[i][2]] then
+spots[i][3] = 1
+table.insert(q.redo, 1, spots[i])
+end
 end
 for _, id in ipairs(TT.available()) do
 local t = state.turtles[id]

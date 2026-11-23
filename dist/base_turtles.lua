@@ -1186,7 +1186,9 @@ for _, d in ipairs(mountedDisks()) do
 if d.data and not d.installer then
 local p = fs.combine(d.mount, name)
 local room = (d.free or 0) + (fs.exists(p) and fs.getSize(p) or 0)
-if room >= #text + 2048 and saveFileSafe(p, text) then where = p break end
+
+
+if room >= #text + 2048 and writeSafe(p, text) then where = p break end
 end
 end
 end

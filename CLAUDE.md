@@ -177,9 +177,8 @@ PneumaticCraft drone rides, turtle mapping/surveys, and an AE2 ME network view.
   ring's unmapped spot NEAREST to it, all the way round, packSpots (4) spots per hand-out, mapped stretches
   skipped; NOBODY WAITS. Ring done -> the next ring nobody had (q.rr.next; found by TIME - outOfTime >= 3000
   checks AND CONFIG.map.lookTime 0.3 s, MAP.looking for the BIG SURVEY panel); a turtle that went away (gone,
-  offline > reclaimOffline, STOPPED / excluded) leaves its ring LOOSE (q.rr.loose, taken first, nearest). No ring
-  left -> it helps the ring with the most left from its FAR END (j backwards) towards that ring's owner - they
-  meet. q.rr = {next, own = {[id] = {r, s0, i, j}}, loose}; offsets i..j-1 from s0 still to do. Spots out with a
+  offline > reclaimOffline, STOPPED / excluded) leaves its ring LOOSE (q.rr.loose: its nearest stretch, split there - PHASE 5). No ring
+  left -> the nearest stretch of any ring with work left (its owner keeps 2 hand-outs in front), split there. q.rr = {next, own = {[id] = {r, s0, i, j}}, loose}; offsets i..j-1 from s0 still to do. Spots out with a
   turtle (q.out) are never handed out twice. q.cursor = ringStart(first ring not finished); MAP.queuePos =
   ringStart(next) minus what is left on rings. nextBatch (pack off) goes on from the first unfinished ring.
   Given-back spots (q.redo, a small SURVEY: ALL = MAP.addSurvey) go first: dealEven (snake rows cut into one
@@ -378,6 +377,22 @@ PneumaticCraft drone rides, turtle mapping/surveys, and an AE2 ME network view.
   done when fuel >= surveyFuelNeed. No drones (DW.canFuel: fuel runs on + DW.notReady nil) / the run failed / the
   fuel did not burn in 3 min -> t.dwEdgeFail -> the trip home (30 min). test_dronework.lua "fuel FAR OUT".
   The owner's storage idea was dropped ("ignore what I said about storage").
+  PHASE 5, NEAREST WORK FIRST (the owner: "200 chunks surveyed while 350 chunks mined - something is broken"; away 11 h
+  = +217 chunks, turtles on 1,500-3,600-block sky trips). test_survey_far.lua (made-up base, edge 2,400 out, patches
+  mapped, 10 turtles, one lost an hour + a new one from the base, 3 x 8 h) FOUND: every long trip was a batch MIXING
+  two places - spots GIVEN BACK (q.redo: a lost / failed / avoiding turtle's batch) were dealt to ANY free turtle, one
+  8,000 blocks round the map flew there for a few spots and back to its ring. Now (ringDeal): given-back spots only to
+  a free turtle within MAP.REDO_NEAR 800 (dealEven, then a share's spots farther than that back to q.redo); the rest
+  wait for a turtle working near them (the loose ring brings one) or for a turtle with no ring work (step 3, nearest
+  first); spots of a SURVEY: ALL you start (addSurvey: p[3] = 1) still go to anyone. A loose ring / a helper: the
+  still-to-do stretch's spot NEAREST to the turtle (nearestOff: stride 4 + refine), SPLIT there (splitAt: the part
+  before stays loose; a helper owns its part) - not where the lost turtle stopped / the ring's far end; a loose
+  stretch farther than 400 is compared with the next new ring (the farther one is kept loose). Old dealing: 1935
+  spots/h, 31.9 blocks a spot, 44 trips over 1,000 blocks; now ~2140, ~27.8, 2-4 (+ new turtles leaving the base).
+  "BUSY: IDLE" REFUSALS: a job taken while the worker still did idle work (fuel chest, top-up) left task "idle" - the
+  base sent a 2nd order, refused "busy: idle (press STOP first)"; for survey spots that was REFUSED = left out 2 min.
+  node listener: task = "starting <cmd>" when it takes a job (node_hand.lua); base MAP.batchResult: "busy: ..." is no
+  refusal (no surveyFail).
 - node.lua never just ends: the main parallel.waitForAny is in a pcall; an
   error is written to `node_crash`, the turtle reboots (5 s, longer when it
   keeps crashing) and tells the base ("restarted after an ERROR: ..." in the

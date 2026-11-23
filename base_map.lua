@@ -1557,16 +1557,17 @@ MAP.dealEven = dealEven
 -- Now: a turtle owns a ring (a square round the base, 17 blocks from the next) and walks it at its
 -- own pace - from the ring's unmapped spot NEAREST to it, all the way round - k spots per hand-out,
 -- mapped stretches skipped; nobody waits. Ring done -> the next ring nobody had (a turtle that went
--- away leaves its ring "loose" - taken first). No ring left -> it helps the ring with the most left
--- from its FAR END, walking towards that ring's owner: they meet, never one behind the other.
+-- away leaves its ring "loose"). A loose ring / no ring left -> the NEAREST stretch of a ring with work
+-- left, split there (the helper owns the part from there on: never one behind the other).
 -- Two turtles are never on the same ring line, so none flies over land another just mapped.
 -- q.rr = { next = the next ring nobody had, own = { [id] = { r, s0, i, j } }, loose = { ... } }
--- (offsets i .. j-1 from s0 round ring r are still to do: i = the owner, j-1 = a helper)
+-- (offsets i .. j-1 from s0 round ring r are still to do, walked forward by the owner)
 local function ringSpot(q, r, s0, off)
   local dx, dz = spiral(MAP.ringStart(r) + (s0 + off) % MAP.ringLen(r))
   return q.cx + dx * q.step, q.cz + dz * q.step
 end
 
+MAP.REDO_NEAR = 800
 local function ringDeal(q, ids, k)
   local total = q.cols * q.rows
   local rad = math.floor((q.cols - 1) / 2)
@@ -1619,13 +1620,30 @@ local function ringDeal(q, ids, k)
     elseif nearPlayer(p[1], p[2]) then q.redo[#q.redo + 1] = p
     else cand[#cand + 1] = p end
   end
-  if #cand > 0 then
-    table.sort(cand, function(a, b) return math.abs(a[1] - cx) + math.abs(a[2] - cz) < math.abs(b[1] - cx) + math.abs(b[2] - cz) end)
-    local take = {}
-    for i, p in ipairs(cand) do
-      if i <= cap then take[#take + 1] = p else q.redo[#q.redo + 1] = p end
+  -- GIVEN BACK BY A TURTLE (lost, failed, stopped for a player ...): only spots within MAP.REDO_NEAR of a free turtle,
+  -- shared out evenly, and a share only to a turtle that near. Dealt to anyone, a turtle 8,000 blocks round the map flew there for a few
+  -- spots and back to its ring (test_survey_far.lua). The rest waits for a turtle working near them (the lost turtle's
+  -- loose ring brings one) - or for no ring work left. Spots of a SURVEY: ALL you started (p[3]) go to anyone.
+  local nearR = MAP.REDO_NEAR
+  local function dist(p, id) return math.abs(p[1] - pos[id][1]) + math.abs(p[2] - pos[id][2]) end
+  local take = {}
+  for _, p in ipairs(cand) do
+    local ok = p[3]
+    if not ok then for _, id in ipairs(ids) do if dist(p, id) <= nearR then ok = true break end end end
+    if ok then take[#take + 1] = p else q.redo[#q.redo + 1] = p end
+  end
+  if #take > 0 then
+    table.sort(take, function(a, b) return math.abs(a[1] - cx) + math.abs(a[2] - cz) < math.abs(b[1] - cx) + math.abs(b[2] - cz) end)
+    for i = #take, cap + 1, -1 do q.redo[#q.redo + 1] = table.remove(take, i) end
+    for id, l in pairs(dealEven(take, ids, q.step)) do
+      local got = {}
+      for _, p in ipairs(l) do
+        if p[3] or dist(p, id) <= nearR then got[#got + 1] = p else q.redo[#q.redo + 1] = p end
+      end
+      if #got > 0 then out[id] = got end
     end
-    out = dealEven(take, ids, q.step)
+  end
+  if #cand > 0 then
     local rest = {}
     for _, id in ipairs(ids) do if not out[id] then rest[#rest + 1] = id else solo[id] = true end end
     ids = rest
@@ -1649,19 +1667,51 @@ local function ringDeal(q, ids, k)
     if nearPlayer(x, z) then q.redo[#q.redo + 1] = { x, z } return false end
     return true
   end
-  -- a ring with work for this turtle: a loose one (nearest), else the next nobody had - started
-  -- at its unmapped spot NEAREST to the turtle
+  -- NEAREST WORK FIRST (the owner: "200 chunks surveyed while 350 chunks mined"; turtles flew 1,500-3,600 blocks on
+  -- the sky highway between hand-outs). A loose ring was taken at the spot where its LOST turtle stopped (rec.i) -
+  -- however far, before any new ring - and a helper took a ring's FAR END: at 2,400 blocks out a ring is ~19,000
+  -- blocks round. Now the ring's still-to-do stretch is looked at for its spot NEAREST to the turtle and SPLIT there:
+  -- the turtle owns from there on, the part before stays loose for another. test_survey_far.lua.
+  -- (offset in i .. j-1 of rec nearest to p, at least `from`; stride 4 then the spots round the best)
+  local function nearestOff(rec, p, from)
+    local lo = math.max(rec.i, from or rec.i)
+    if lo >= rec.j then return nil end
+    local best, bd
+    local function try(off)
+      if off < lo or off >= rec.j then return end
+      local x, z = ringSpot(q, rec.r, rec.s0, off)
+      local d = math.abs(x - p[1]) + math.abs(z - p[2])
+      if not bd or d < bd then best, bd = off, d end
+    end
+    for off = lo, rec.j - 1, 4 do try(off) end
+    try(rec.j - 1)
+    if best then local b0 = best for off = b0 - 3, b0 + 3 do try(off) end end
+    return best, bd
+  end
+  -- rec split at m: [i, m) stays where it was (keep), [m, j) is returned
+  local function splitAt(rec, m)
+    local tail = { r = rec.r, s0 = rec.s0, i = m, j = rec.j }
+    rec.j = m
+    return tail
+  end
+  -- a ring with work for this turtle: the nearest stretch of a loose ring, or the next ring nobody had (from its
+  -- unmapped spot nearest to the turtle) - whichever is NEARER
   local function newRing(id)
     local p = pos[id]
-    local bi, bd
+    local bi, bm, bd
     for i, rec in ipairs(rr.loose) do
       if rec.i < rec.j then
-        local x, z = ringSpot(q, rec.r, rec.s0, rec.i)
-        local d = math.abs(x - p[1]) + math.abs(z - p[2])
-        if not bi or d < bd then bi, bd = i, d end
+        local m, d = nearestOff(rec, p)
+        if m and (not bd or d < bd) then bi, bm, bd = i, m, d end
       end
     end
-    if bi then return table.remove(rr.loose, bi) end
+    local function takeLoose()
+      local rec = rr.loose[bi]
+      if bm > rec.i then return splitAt(rec, bm) end          -- (the part before it stays loose)
+      return table.remove(rr.loose, bi)
+    end
+    if bi and bd <= 400 then return takeLoose() end
+    local fresh
     while rr.next <= rad do
       if outOfTime() then
         MAP.looking = { r = rr.next, rad = rad, found = 0, want = 1 }
@@ -1682,8 +1732,14 @@ local function ringDeal(q, ids, k)
           end
         end
       end
-      if best then return { r = r, s0 = best, i = 0, j = P } end
+      if best then fresh = { r = r, s0 = best, i = 0, j = P, d = bdist } break end
     end
+    if fresh and (not bi or fresh.d <= bd) then
+      fresh.d = nil
+      return fresh
+    end
+    if fresh then fresh.d = nil rr.loose[#rr.loose + 1] = fresh end   -- (nothing lost: someone nearer takes it)
+    if bi then return takeLoose() end
     return nil
   end
   -- up to n usable spots of a ring: forward (its owner) or from the far end (a helper)
@@ -1718,18 +1774,41 @@ local function ringDeal(q, ids, k)
     end
     if #mine > 0 then out[id] = mine else helpers[#helpers + 1] = id end
   end
-  -- 3. no ring left: help the ring with the most left, from its far end
+  -- 3. no ring left: the NEAREST stretch of a ring with work left (its owner keeps at least 2 hand-outs in front of
+  --    it), split there - the helper owns the rest (before: the ring's far end, up to half a ring away)
   for _, id in ipairs(helpers) do
-    local best, left
+    local best, bm, bd
     for _, rec in pairs(rr.own) do
-      if rec.j - rec.i > (left or 2 * k) then best, left = rec, rec.j - rec.i end
+      if rec.j - rec.i > 3 * k then
+        local m, d = nearestOff(rec, pos[id], rec.i + 2 * k)
+        if m and (not bd or d < bd) then best, bm, bd = rec, m, d end
+      end
     end
     for _, rec in ipairs(rr.loose) do
-      if rec.j - rec.i > (left or 2 * k) then best, left = rec, rec.j - rec.i end
+      if rec.i < rec.j then
+        local m, d = nearestOff(rec, pos[id])
+        if m and (not bd or d < bd) then best, bm, bd = rec, m, d end
+      end
     end
     if best and not outOfTime() then
-      local m = walk(best, k, true)
+      local mine = (bm > best.i) and splitAt(best, bm) or best
+      if mine == best then for i2, r2 in ipairs(rr.loose) do if r2 == best then table.remove(rr.loose, i2) break end end end
+      rr.own[id] = mine
+      local m = walk(mine, k)
       if #m > 0 then out[id] = m end
+    end
+    -- nothing on any ring: the given-back spots that waited for someone near them, nearest first
+    if not out[id] and #q.redo > 0 then
+      local p0 = pos[id]
+      table.sort(q.redo, function(a, b)
+        return math.abs(a[1] - p0[1]) + math.abs(a[2] - p0[2]) < math.abs(b[1] - p0[1]) + math.abs(b[2] - p0[2])
+      end)
+      local got = {}
+      while #q.redo > 0 and #got < 2 * k do
+        local p = table.remove(q.redo, 1)
+        if not MAP.spotDone(p[1], p[2]) and not busySpot[p[1] .. "," .. p[2]] then got[#got + 1] = p end
+      end
+      if #got > 0 then out[id] = got solo[id] = true end
     end
   end
   -- 4. how far the survey is: the first ring not finished (auto-map / plain mode go on from there)
@@ -1773,7 +1852,8 @@ function MAP.batchResult(id, ok, msg)
   -- REFUSED its spots at once (position / facing unknown, the anchor, ...): it would get spots
   -- again every round and refuse them again - looking as if the base sent it nothing ("only
   -- half get sent"). Kept out for 2 min with the reason shown (TURTLES list, SURVEY: ALL report).
-  if not ok and t and t.queueAt and os.clock() - t.queueAt < 30 then
+  -- ("busy: ..." = it took another order a moment before - not a refusal of THESE spots: no 2-min wait)
+  if not ok and t and t.queueAt and os.clock() - t.queueAt < 30 and not tostring(msg or ""):find("^busy") then
     t.surveyFail = { msg = tostring(msg or "no reason given"), at = os.clock() }
     if MAP.press then MAP.press.failed[id] = t.surveyFail.msg end
     TT.log(t, "Refused its survey spots: " .. t.surveyFail.msg)
@@ -1808,7 +1888,10 @@ function MAP.addSurvey(x1, z1, x2, z2, r)
   for _, p in ipairs(q.redo) do have[p[1] .. "," .. p[2]] = true end
   for _, l in pairs(q.out or {}) do for _, p in ipairs(l) do have[p[1] .. "," .. p[2]] = true end end
   for i = #spots, 1, -1 do
-    if not have[spots[i][1] .. "," .. spots[i][2]] then table.insert(q.redo, 1, spots[i]) end   -- before the rest
+    if not have[spots[i][1] .. "," .. spots[i][2]] then
+      spots[i][3] = 1                                       -- (asked for: any turtle may go - ringDeal)
+      table.insert(q.redo, 1, spots[i])                     -- before the rest
+    end
   end
   for _, id in ipairs(TT.available()) do
     local t = state.turtles[id]

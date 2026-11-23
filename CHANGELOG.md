@@ -94,6 +94,10 @@ Peripherals (tested on CC:Tweaked 1.120.2, Minecraft 1.21.1, NeoForge).
   and put to use, a chunk test for copies.
 - STOP that always works, your own commands first, a DRIVE page to steer a turtle by hand,
   a no-digging zone around the base.
+- Survey far out: given-back spots (from a lost or failed turtle) only go to a turtle near them, and a turtle that
+  takes over a ring starts at its nearest point - no more trips across the whole map between hand-outs (measured:
+  ~10 % more spots an hour, trips over 1,000 blocks 44 -> 2-4). A turtle that just took a job no longer says "idle"
+  (it refused the next order "busy: idle").
 - The turtle factory: keeps the fleet at a size you choose, from AE2 parts; taught recipes.
 - Mining teams (`miner.lua`, m25): one loader + up to 5 miners per mining dimension, updated
   from the base (`mine update`).

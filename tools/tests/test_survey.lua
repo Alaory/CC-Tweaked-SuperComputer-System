@@ -256,10 +256,12 @@ for round = 1, 12 do
     for _, x in ipairs(got) do
       for _, p in ipairs(x.spots) do if p[1] == HOME.x - 1300 and p[2] == HOME.z + 17 then lone = x.id end end
     end
-    local inWave = false
-    for _, id in ipairs(q7.wave and q7.wave.ids or {}) do if id == lone then inWave = true end end
-    CHECK(lone and not inWave, "the old survey's lone spot goes out, and the pack does not wait for it (" ..
-          tostring(lone) .. ", in the wave: " .. tostring(inWave) .. ")")
+    -- (a given-back spot 1,300 blocks from every free turtle: not worth a trip across the map - it waits in the
+    --  queue for a turtle working near it; MAP.REDO_NEAR, test_survey_far.lua)
+    local waits = false
+    for _, p in ipairs(q7.redo or {}) do if p[1] == HOME.x - 1300 and p[2] == HOME.z + 17 then waits = true end end
+    CHECK(not lone and waits and #got >= 27, "the old survey's lone far spot waits for a turtle near it, and the pack does not wait for it (" ..
+          tostring(lone) .. ", waits " .. tostring(waits) .. ", " .. #got .. " went)")
   end
   for id, t in pairs(state.turtles) do
     if q7.out and q7.out[id] then t.queueAt = CLOCK - 100 MAP.batchResult(id, true) end
