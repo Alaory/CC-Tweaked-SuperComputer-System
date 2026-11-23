@@ -1,8 +1,9 @@
 # CC:Tweaked Base Control
 
 **One computer and one big monitor that run your whole Minecraft base:** your
-inventory, players, backpacks, curios, an AE2 network, drone rides, a team of
-mapping turtles and a map of the world.
+inventory, players, backpacks, curios, an AE2 network, drone rides and drone-built
+schematics, a team of mapping turtles, a map of the world, mining teams - and, if you
+want, a base that talks.
 
 > Made for **CC:Tweaked 1.120.2** on **Minecraft 1.21.1 (NeoForge)** with
 > **Advanced Peripherals** · optional: **PneumaticCraft**, **AE2 / Refined Storage**, **Curios**
@@ -85,9 +86,14 @@ If you want, messages are also sent to you privately in chat.
 
 ### Required
 
-- A **Computer** (CC:Tweaked)
-- A big **Advanced (gold) Monitor**. If it is too small, the screen tells you.
-- An **Inventory Manager** (Advanced Peripherals) with a **Memory Card** bound to you
+- A **Computer** (CC:Tweaked) - an Advanced Computer is best
+- A big **Advanced (gold) Monitor**. If it is too small, the screen tells you. (The base even
+  starts without one - it uses the monitor as soon as you place it.)
+
+### Strongly recommended
+
+- An **Inventory Manager** (Advanced Peripherals) with a **Memory Card** bound to you: it tells the
+  base who the owner is and gives you the YOU tab
 
 ### Optional: each one adds features
 
@@ -101,6 +107,7 @@ If you want, messages are also sent to you privately in chat.
 | Chat Box | `$drone` chat commands, CHAT tab, messages in chat |
 | Ender Modem (or Wireless Modem) on the computer | TURTLES and MAP tabs |
 | Disk Drive + floppy | turtle install floppy, extra room for the map |
+| Another computer on the cable running `store.lua` | 1 MB more room - the map, schematics and the voice add-on go there first |
 
 > **Connecting the blocks:** blocks can touch the computer, or sit anywhere on a
 > **wired network**. For that, put a Wired Modem on each block and on the computer,
@@ -296,9 +303,11 @@ More in [Turtle factory](#turtle-factory).
 | find lost turtles | HOME: FIND LOST (a search party flies out) |
 | drive a turtle yourself | TURTLES > DRIVE |
 | build a schematic | drop the `.nbt` on the computer's screen, then DRONES > DRONE WORK ([Schematics](#schematics-drones-build-them)) |
+| build a road in pieces | `schem chain road_start,road*6,road_end` ([Schematics](#schematics-drones-build-them)) |
+| empty a lake or a lava pool to build in | `$drone clear here` on two corners, then `$drone clear yes` |
 | send a player a gift | PLAYERS > GIFTS (with the voice add-on): pick an AE2 item, the player, SEND - a drone brings it |
 | see what happened while you were away | the WELCOME BACK box when you log in, or `away` on the computer |
-| get the newest version | `upgrade` on the computer, then `voice update` if you use the voice add-on |
+| get the newest version | `upgrade` on the computer (the voice add-on updates itself right after) |
 | look up a command | `help` on the computer, `$drone help` in chat, or [COMMANDS.md](COMMANDS.md) |
 
 ---
@@ -313,7 +322,7 @@ More in [Turtle factory](#turtle-factory).
 | Storage helpers | By themselves, a few minutes after the base was upgraded (`store update` does it at once). |
 | Voice add-on | `voice update` (also run by itself about 15 s after an `upgrade` restart). |
 | Spawn relay | Copy the new `spawn_speaker.lua` onto it as `startup.lua` by hand when a release says it changed (it stays paired). |
-| Mining turtles | Copy `miner.lua` onto them by hand **once** (m21 or newer). After that: `mine update` on the base computer (or **UPDATE MINERS** on TURTLES > MINING). The base downloads `miner.lua`, keeps it on a data floppy (not on the computer's 1 MB), pauses each running team, sends the program to every loader and miner, and starts the team again once all of them run it. Each turtle installs it only while paused and keeps its team, field, job and unload station. |
+| Mining turtles | Copy `miner.lua` onto them by hand **once** (m21 or newer). After that: `mine update` on the base computer (or **UPDATE MINERS** on TURTLES > MINING). The base downloads `miner.lua`, keeps it on a storage helper or a data floppy (not on the computer's 1 MB), pauses each running team, sends the program to every loader and miner, and starts the team again once all of them run it. Each turtle installs it only while paused and keeps its team, field, job and unload station. |
 
 The files you get have their comments removed and, on the base, are PACKED (`base_*.luz`, about a third of
 the size - a computer has only 1 MB; `unzip.lua` unpacks them in memory when the base starts, which takes a
@@ -354,7 +363,7 @@ The settings you will most likely touch:
 | `map.up` | Which way is up on the map (`"north"`, `"east"`, `"south"`, `"west"`) |
 | `map.computerKB` | How much of the computer's disk the map may use (default 200) |
 | `chat.command` | The chat command word (`$drone …`) |
-| `theme` | Fix the monitor's colours, e.g. `theme = "bedrock"` (default: a random one on every start) |
+| `theme` | The monitor's colours: `"teal"` (default), `"amber"`, `"ice"`, `"violet"`, `"graphite"`, `"crimson"` or `"random"` |
 | `names.*` | Pick one block by its network name when you have several of a kind |
 
 > Many settings can also be changed while the program runs: `charger`, `theme`,
@@ -393,12 +402,12 @@ base) through the base.
 
 ### Rescue, anchor and stop
 
-- ** ANCHOR:** one turtle parked in the base computer's chunk keeps the base
+- **ANCHOR:** one turtle parked in the base computer's chunk keeps the base
   running while you are offline.
-- ** RESCUER:** a permanent rescue turtle. It flies to a turtle that has gone
+- **RESCUER:** a permanent rescue turtle. It flies to a turtle that has gone
   silent (for example an unloaded chunk: arriving wakes it up), that is stuck, or
   that has no fuel. It goes home afterwards.
-- ** SEARCH PARTY** (FIND LOST on HOME, the FLEET card or the pocket): all free turtles
+- **SEARCH PARTY** (FIND LOST on HOME, the FLEET card or the pocket): all free turtles
   meet at the base, fly over the sky highway to each lost turtle in turn, drop down to just
   above the ground and scan. A turtle they find is fetched by the rescuer (one at a time); one
   that wakes up when they arrive counts as found; one that is gone is marked **MISSING**.
@@ -406,10 +415,10 @@ base) through the base.
 - **Lost near the base:** a turtle that went silent within 1024 blocks of the base was most
   likely picked up or broken - no rescue goes there. **FORGET THEM** on the FLEET card
   (or `forget base`) clears them.
-- ** STOP** really stops a turtle, also after its chunk was unloaded and loaded
+- **STOP** really stops a turtle, also after its chunk was unloaded and loaded
   again. A stopped turtle shows **STOPPED** and is left alone by automatic jobs.
   Any button (for example PING) makes it normal again.
-- ** Your commands go first:** a button, pocket or console command to a busy turtle pauses
+- **Your commands go first:** a button, pocket or console command to a busy turtle pauses
   its trip or survey, runs yours at once, and the turtle goes back to its job 2 minutes after
   your last command. A build, a craft or a rescue is never cut halfway - it finishes first.
 - **Keeping away from players:** a surveying turtle with another player within
@@ -653,15 +662,18 @@ mining = {
 - **Two layers:** *detail* (every block column, newest chunks) and *overview* (one
   colour and height per chunk, never dropped). You see the overview when zoomed
   out to 16 blocks per cell or more.
-- Saved in small files on **data floppies** first. Empty floppies become data
-  disks by themselves, and you are told when to add another one.
-- **SURVEY: ALL TURTLES** maps the area on screen. Big areas are handed out in
-  batches of 64 spots per turtle. `survey` on the computer shows the progress, and
-  what each turtle is waiting for.
+- Saved in small files on **storage helpers** and **data floppies** first (the computer keeps
+  room for itself). Empty floppies become data disks by themselves, and you are told when to
+  add another one.
+- **AUTO-MAP** (on by default) maps outward from the base: every turtle owns a **ring** round
+  the base and works it at its own pace, so nobody waits for anybody and no two turtles map
+  the same line. Turtles far out get fuel by drone instead of flying all the way home.
+- **SURVEY: ALL TURTLES** maps the area on screen. `survey` on the computer shows the progress
+  and what each turtle is waiting for; `survey stats` how fast it goes; `lost` every turtle
+  that went quiet.
 - **Work area** (SETTINGS > MAP, two corners - or SET CORNER on the pocket): turtles survey
   only inside it (auto-map too); its edge is drawn on the map with `+`. Tap "Work area" for
   the whole world again.
-- Turtles survey as a **pack** (side by side), so after a server crash one visit wakes them all.
 - The letters on the map: **B** base · **@** you · **D** drone · **T** turtle.
 
 ---
@@ -676,7 +688,8 @@ tells you it is just a bot.
 
 - Install: `voice install` on the base computer (needs http on). The files go onto a DATA floppy
   (`disks data` makes one) or a storage helper - never onto the computer's own 1 MB.
-- Update: `voice update` (also done by itself after `upgrade`). Remove: `voice remove`.
+- Update: nothing to do - it updates itself about 15 s after an `upgrade` restart (`voice update` does
+  it at once). Remove: `voice remove`. The files are kept packed (about a third of the size).
 - Settings: `voice` lists them - `voice on|off`, `voice name <word>` (what players call it),
   `voice preset <name>` (ready-made voices, try them with `voice try`), `voice speed`, `voice volume`.
 - The speech comes from the free CC text-to-speech service (music.madefor.cc) - the server needs
@@ -772,7 +785,8 @@ Type these on the base computer. `help` lists them all.
 | Factory | `factory [chest <name>\|builder <id>\|crafter <id>\|build\|stop\|fuel <item> [count]\|fuel reset\|learn\|recipes\|forget <item>\|items]` (or SETTINGS > FACTORY) |
 | Mining | `mine [drop\|forget] <id>` · `mine update [stop]` |
 | Pocket | `pocket [unpair <id>]` |
-| Schematics | `schem [<name>\|delete <name>]` |
+| Schematics | `schem [<name>\|delete <name>]` · `schem build …` · `schem chain …` · `schem queue [clear]` · `schem status\|pause\|resume\|skip\|stop` · `schem craft [on\|off\|now]` |
+| Drone work | `dw` · `dw chest …` · `dw test [item]` · `dw fuel <id>` · `dw clear <corner> <corner> [block]` |
 | Drones | `drones` · `drone <n>` · `dest …` · `save <name>` · `list` · `fly` · `pickup` · `drop` · `ferry` · `home` · `stop` · `charger [x y z]` |
 | Chat | `allow <name>` · `deny <name>` · `allowed` |
 | ME | `mesetup` · `me check` · `me add <id>` · `tanks` · `fluidbuffer [<n>\|auto]` · `fluidstop` · `supply [<storage> <item> <count>\|<storage> fluid <fluid> <buckets>\|stop <n>\|now]` · `curios check` · `curios probe` · `curios auto [clear]` |
@@ -783,12 +797,12 @@ Type these on the base computer. `help` lists them all.
 
 ## Themes & the message log
 
-- **7 themes named after Minecraft:** bedrock, stone, deepslate, oak, nether, ender, ocean.
-  By default a **different one is picked on every start**. `theme bedrock` keeps one, and
-  `theme random` goes back to random (also on SYSTEM > Settings). A theme only changes the
-  frame; the map and status colours mean the same in every theme.
-- **Message log:** every message is also saved in `events.log` (about 32 KB at
-  most). The EVENTS tab keeps its list after a restart; CLEAR LIST only empties
+- **6 colour themes** for the "control room" look: teal (the default), amber, ice, violet,
+  graphite and crimson. `theme amber` switches at once and keeps it; `theme random` picks a
+  different one on every start (also on SYSTEM > Settings). A theme only changes the frame; the
+  map and status colours mean the same in every theme.
+- **Message log:** every message is also saved in `events.log` (16 KB, then the older half goes
+  to `events.old.log`). The EVENTS tab keeps its list after a restart; CLEAR LIST only empties
   the list on screen. `events 30 errors` shows the last 30 errors.
 
 ---
@@ -811,7 +825,7 @@ Type these on the base computer. `help` lists them all.
 | You want the messages in chat | `$drone notify on`, or the buttons on the CHAT tab. |
 | The computer's disk is full | `disks data` puts the map on floppies; the footer warns before anything is lost. A storage helper computer takes the map, the voice files and schematics first. |
 | You want to copy a file onto the base computer | Drag it onto the open computer's screen - the base does not need to be stopped. Program files are saved next to `inventory.lua`; restart the base for `base_*.lua` files. |
-| The base does not answer in chat | Start with its name (`base, ...` or your `voice name`), stand near the base, and check `voice` (is it on?). After an `upgrade`, run `voice update`. |
+| The base does not answer in chat | Start with its name (`base, ...` or your `voice name`), stand near the base, and check `voice` (is it on?). Still nothing after an `upgrade`: `voice update`. |
 | `voice install` / `voice update` says there is no room | Add a storage helper computer (the voice files go there first) or `disks data` for one more data floppy. |
 | Someone broke parts of the base while it was off | The base still starts, even without its monitor (it runs blind and uses a new Advanced Monitor as soon as you place one). Type `parts`: everything it saw before and does not see now, with how long it has been gone. HOME and SYSTEM show it too, and you get one warning. A new block of the same kind (say a new ME Bridge) replaces the old one by itself; `parts forget <n>` for something you removed on purpose. Several parts missing at once usually means a broken cable or wired modem - a new wired modem must be right-clicked before the block next to it joins. An Inventory Manager with someone else's memory card in it is never used (`owner new` if you changed accounts). |
 | After a server restart the base says "waiting for its blocks to load" | It saw those blocks / data floppies last time and their chunks are not loaded yet. It waits up to a minute (tap the screen to start at once) and finds them later by itself. A block you removed for good is forgotten after 3 days. |
@@ -828,10 +842,11 @@ Type these on the base computer. `help` lists them all.
 
 | File | Purpose |
 |---|---|
-| `inventory.lua` | Starts the program: checks the files, loads them in order, runs the workers |
+| `inventory.lua` | Starts the program: checks the files, loads them in order (unpacking the packed ones), runs the workers |
+| `unzip.lua` | unpacks the packed program files (`base_*.luz`) in memory when the base starts |
 | `startup.lua` | Autostart (goes in the computer's top level) |
 | `upgrade.lua` | Gets the newest program files from GitHub (base and pocket) |
-| `manifest.txt` · `dist/` | the file list `upgrade` reads · the comment-free copies it downloads (made by `tools/make_manifest.py`) |
+| `manifest.txt` · `dist/` | the file list `upgrade` reads · the comment-free (`dist/*.lua`) and packed (`dist/z/*.luz`) copies it downloads (made by `tools/make_manifest.py`) |
 | `base_config.lua` | **All settings** |
 | `base_devices.lua` · `base_state.lua` · `base_theme.lua` | finding blocks · shared state · colours, themes, safe saving, floppies |
 | `base_storage.lua` · `base_players.lua` | backpacks, curios · players, dimensions, `$drone back` |
@@ -848,7 +863,7 @@ Type these on the base computer. `help` lists them all.
 | `miner.lua` | the mining dimension team program (miner + loader) |
 | `base_mining.lua` / `base_ui_mining.lua` | the mining teams on the base / the MINING tab |
 | `store.lua` | the storage helper program (for extra computers) |
-| `base_dronework.lua` · `base_ui_work.lua` | drone jobs: work chest, fuel runs, schematic builds · the DRONE WORK page |
+| `base_dronework.lua` · `base_ui_work.lua` | drone jobs: work chest, fuel runs, schematic builds, chains, clearing water / lava · the DRONE WORK page |
 | `base_meplus.lua` · `base_ui_mesys.lua` | crafting CPUs, jobs, drives, patterns · the AE2 SYSTEM page |
 | `base_env.lua` · `base_ui_env.lua` | the Environment Detector · the WORLD page |
 | `base_ui_gifts.lua` | the GIFTS page (needs the voice add-on) |
@@ -869,13 +884,14 @@ Type these on the base computer. `help` lists them all.
 `me_setup.dat`, `me_names.dat`, `me_owed.dat`, `curios_last.dat`, `ui_page.dat`,
 `theme.dat`, `settings.dat`, `auto_survey.dat`, `survey_queue.dat`, `base_alive.dat`, `away.dat`,
 `factory.dat`, `recipes.dat`, `mining.dat`, `pockets.dat`, `curios_fits.dat`, `curios_auto.dat`,
-`store_helpers.dat`, `upgrade.dat`, `owner.dat`, `players_seen.dat`, `supply.dat`, `dronework.dat`, `fluid_buffer.dat`,
-`node_where.dat`, `voice_where.dat`, `net_seen.dat`, `voice_memory.dat`, `map_stale.dat`, `schematics/`, `events.log` + `events.old.log`,
+`store_helpers.dat`, `upgrade.dat`, `owner.dat`, `players_seen.dat`, `supply.dat`, `dronework.dat`, `dronequeue.dat`,
+`drone_seen.dat`, `drone_arrive.dat`, `fluid_buffer.dat`, `node_where.dat`, `miner_where.dat`, `schem_where.dat`, `voice_where.dat`, `net_seen.dat`, `voice_memory.dat`, `map_stale.dat`, `schematics/`, `events.log` + `events.old.log`,
 `system.log` + `system.old.log`.
 With a data floppy in a drive, the logs and the bigger data files live there.
 
-A computer has only **1 MB** of disk. The big files (map, turtle knowledge) can
-live on data floppies (`disks data` / `disks move`).
+A computer has only **1 MB** of disk. The program itself is packed (~300 KB); the big files
+(map, turtle knowledge, schematics, the voice add-on) live on storage helpers and data floppies
+(`disks` shows where everything is, `disks data` / `disks move`).
 
 ### For developers
 
