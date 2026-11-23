@@ -53,10 +53,10 @@ voice voice_addon.lua 168194 68619fcb
 voice voice_talk.lua 72213 8dd9df24
 voice voice_talk2.lua 102506 eff91cf4
 voice voice_talk3.lua 59587 7d7fe44d
-voice voice_lines.lua 93826 ca6c4832
+voice voice_lines.lua 93877 3fce185f
 voice voice_idle.lua 36489 bb1ef145
-voice voice_lore.lua 29210 522540d6
-voice voice_convo.lua 103650 96df1107
+voice voice_lore.lua 29223 4ab633bc
+voice voice_convo.lua 103663 1af45904
 voice voice_staff.lua 39322 84e79b61
 voice voice_profile.lua 52866 c042e285
 voice voice_vary.lua 16686 efdb67e7
@@ -119,10 +119,10 @@ slim:voice voice_addon.lua 124127 7e52cd6c dist/voice_addon.lua
 slim:voice voice_talk.lua 66189 e9a962dc dist/voice_talk.lua
 slim:voice voice_talk2.lua 89254 d0c70bec dist/voice_talk2.lua
 slim:voice voice_talk3.lua 50255 b068732a dist/voice_talk3.lua
-slim:voice voice_lines.lua 87322 5be8ee1f dist/voice_lines.lua
+slim:voice voice_lines.lua 87373 5ed8f1d2 dist/voice_lines.lua
 slim:voice voice_idle.lua 33866 aade0b76 dist/voice_idle.lua
-slim:voice voice_lore.lua 27047 ac5fcf6a dist/voice_lore.lua
-slim:voice voice_convo.lua 91069 27b4fa8b dist/voice_convo.lua
+slim:voice voice_lore.lua 27060 a29072f6 dist/voice_lore.lua
+slim:voice voice_convo.lua 91082 6f1be934 dist/voice_convo.lua
 slim:voice voice_staff.lua 35010 a84814a9 dist/voice_staff.lua
 slim:voice voice_profile.lua 45132 695dbe75 dist/voice_profile.lua
 slim:voice voice_vary.lua 13906 0fb1da8e dist/voice_vary.lua

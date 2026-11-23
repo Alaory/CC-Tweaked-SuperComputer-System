@@ -1650,6 +1650,17 @@ PneumaticCraft drone rides, turtle mapping/surveys, and an AE2 ME network view.
   "thanks" is the first intent ("thanks for the help" got the help list); "welcome here" is no "Welcome, here!"; C.thing
   never saves "this place" / "your base" as a like; "1 minute"; VOICE.said (every line ever said) trimmed every 200
   lines; the owner's welcome-back lists visitors since b.reportFrom (as the messages).
+  ALL VOICE LINES READ (the owner: "go over all voice lines"; ~10,300 sentence strings extracted from every voice file):
+  automatic checks (placeholders, a / an, doubled words, punctuation, quotes, missing apostrophes, every word used once
+  read for typos - all puns on purpose) found nothing real; the FACTS were read one by one (every quiz / riddle, true or
+  false, Minecraft / real fact, tip, guide, recipe, glossary entry, mod tip / mod line). Wrong, fixed: beacon "made of
+  nine iron" (it sits on the pyramid), iron golems attack creepers (they do not - marked false now), the honey-block riddle
+  (you cannot walk through it; now blue ice), "a skeleton's worst fear" = bone, emerald = "most experience" (diamond
+  ties), ants never sleep, pigs cannot look up, a name tag for pets (pets never despawn), a FULL gold set for piglins (one
+  piece), Create gears breaking from speed (stress stops them), a "cat-free" creeper farm, honey blocks and pistons,
+  Mekanism "fluorinated" reactor (fission / fusion) and its teleporter, Occultism demon's dream "tea" (fruit), Create
+  andesite alloy in a press (mixer / by hand), Tinkers smeltery "doubles ores", leather mobs (+ donkey, mule, hoglin).
+  test_voice_words.lua part 5 fails if any comes back.
 - THE SPAWN SPEAKER (voice_spawn.lua = VOICE_FILES[9], loaded last; spawn_speaker.lua on a small computer at spawn,
   manifest group "spawn" - never on the base; the owner: "an ender modem on a speaker at spawn - its own place, no
   rewards, wishes sent by drone, games, players do not know how to ask it, lots of different sentences"). An ender

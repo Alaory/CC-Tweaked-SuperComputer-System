@@ -620,7 +620,7 @@ aboutbot = { "you", "yourself", "computers", "robots" } }
 C.MODS = {
 { n = "Create", k = { "create", "create mod" }, amb = true, r = { "Create! Gears and contraptions. So satisfying.", "Create is beautiful - a factory that moves." },
 q = { "What is the biggest contraption you have built with Create?", "Have you built a Create train yet?" },
-tip = "In Create, a mechanical press plus a basin makes andesite alloy early. Water wheels give free stress units." },
+tip = "In Create, andesite alloy is made by hand early, later in a mixer and basin. Water wheels give free stress units." },
 { n = "Mekanism", k = { "mekanism", "mek" }, r = { "Mekanism! Ore processing heaven.", "Mekanism - five times the ores, if you are patient." },
 q = { "How far is your Mekanism ore processing?", "Have you made a digital miner yet?" },
 tip = "Mekanism: enrichment chamber doubles ores, purification chamber triples, the full chain makes five." },
@@ -648,7 +648,7 @@ q = { "Do you write your own Lua programs?", "Have you made a turtle program yet
 { n = "Advanced Peripherals", k = { "advanced peripherals" }, r = { "Advanced Peripherals! My eyes and ears. Player detector, chat box, ME bridge." },
 q = { "Which peripheral would you use first?" }, tip = "Advanced Peripherals: the ME Bridge lets a computer read AE2." },
 { n = "Tinkers' Construct", k = { "tinkers", "tinkers construct", "tconstruct", "tinker" }, r = { "Tinkers! Make your own tools. Great fun.", "Tinkers' Construct - a smeltery is a beautiful thing." },
-q = { "What is your best Tinkers tool?" }, tip = "Tinkers: a smeltery doubles ores, and tool parts mix materials for traits." },
+q = { "What is your best Tinkers tool?" }, tip = "Tinkers: a smeltery melts metals and casts tool parts - mix materials for traits." },
 { n = "Twilight Forest", amb = true, k = { "twilight forest", "twilight" }, r = { "The Twilight Forest! Bosses, mazes, fireflies. Lovely.", "Twilight Forest - always dusk, always an adventure." },
 q = { "Which Twilight Forest boss have you beaten?" }, tip = "Twilight Forest: beat the naga first, then the lich. They unlock the next areas." },
 { n = "Mystical Agriculture", amb = true, k = { "mystical agriculture", "mystical", "mystical ag" }, r = { "Mystical Agriculture! Grow your diamonds. Literally." },

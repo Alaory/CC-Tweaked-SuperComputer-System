@@ -119,3 +119,19 @@ V.queue = q0
 local n = 0
 for _ in pairs(V.said) do n = n + 1 end
 CHECK(n < 400, "VOICE.said keeps only the last minute or so (" .. n .. " of 1000 lines)")
+
+-- 5) WRONG FACTS taken out (the owner: "go over all voice lines" - every quiz / riddle / fact / tip / recipe / glossary / mod
+--    line was read; these were wrong): a beacon is not "made of nine iron", iron golems do NOT attack creepers, ants do sleep,
+--    pigs can look up, one gold piece is enough for piglins, Mekanism has no "fluorinated" reactor, andesite alloy is not pressed
+local src = ""
+for _, f in ipairs({ "voice_lines.lua", "voice_lore.lua", "voice_convo.lua", "voice_talk.lua", "voice_talk2.lua", "voice_talk3.lua" }) do
+  local h = io.open(SRC_DIR .. "/" .. f) src = src .. h:read("a") h:close()
+end
+local WRONG = { "made of nine iron", "Iron golems attack creepers.\", true", "Ants never sleep", "Pigs cannot look up",
+  "a full set of gold armour makes piglins", "fluorinated", "mechanical press plus a basin makes andesite alloy",
+  "a block you can walk through that lets mobs fall", "a skeleton's worst fear", "ore gives the most experience",
+  "demon's dream tea", "gears that are too fast will break", "cat-free platform", "name your pets with a name tag",
+  "honey blocks stop pistons", "a smeltery doubles ores", "portable teleporter for travel" }
+local found = {}
+for _, w in ipairs(WRONG) do if src:find(w, 1, true) then found[#found + 1] = w end end
+CHECK(#found == 0, "no wrong facts left in the voice lines: " .. table.concat(found, " | "))
