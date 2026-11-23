@@ -25,7 +25,7 @@ SYSTEM > Status and with the console command `version`.
 - [While you are away](#while-you-are-away)
 - [Turtle factory](#turtle-factory)
 - [Pocket remote](#pocket-remote)
-- [Schematics (builder turtles)](#schematics-builder-turtles)
+- [Schematics (drones build them)](#schematics-drones-build-them)
 - [Mining dimension teams](#mining-dimension-teams)
 - [The voice add-on](#the-voice-add-on)
   - [Talking to it](#talking-to-it)
@@ -148,14 +148,16 @@ A new turtle refuels by itself and gets a home by itself (see [Turtles](#turtles
 
 ### Extra storage: helper computers (optional)
 
-Each extra computer gives the map **1 MB** more (about 8 floppies):
+Each extra computer gives the base **1 MB** more (about 8 floppies). The base uses helpers
+**first**: the map, the voice add-on, the stored turtle and miner programs, and schematics you
+drop on the screen all go there before the floppies and the computer itself.
 
 1. Put a computer near the base, **in the same chunk if you can** (it must stay
    loaded), with a **Wired Modem** connected to the base's cable. Right-click
    the modem so it turns on.
 2. Copy `store.lua` onto it and run `store` once. It then starts by itself.
-3. On the base computer, type `store find`. The map uses the helpers when the
-   data floppies are full.
+3. On the base computer, type `store find` (it also finds new helpers by itself within a few
+   minutes). `store` shows each helper and how much room it has.
 
 A helper belongs to the first base that uses it (`store reset` on the helper
 changes that) and only listens on wired modems.
@@ -348,8 +350,11 @@ again …)", "after an update" or "after an ERROR: …".
   SYSTEM > Messages.
 - **Auto-equip:** on the CURIOS tab, **AUTO** next to an item (or **KEEP ONE ON** on one you
   wear) makes the base put a new one on from AE2 whenever it is gone - a used totem, for
-  example. `curios auto` lists the rules. An empty slot lists what fits; SHOW ALL lists
-  everything in AE2.
+  example. It checks every game tick and puts the new one on at once, even while other buttons
+  are busy (made for hardcore). `curios auto` lists the rules. An empty slot lists what fits;
+  SHOW ALL lists everything in AE2.
+- **Armour and off hand:** on the INVENTORY tab, tap a worn piece (helmet, chestplate, leggings,
+  boots, off hand) to see it, then **TAKE OFF > INVENTORY** or **TAKE OFF + SEND > AE2**.
 - **Keep a storage stocked:** put a **wired modem** on any chest, barrel, drawer or tank and
   right-click the modem (it turns red). On the **AE2** tab pick a fluid or item: under it,
   **KEEP A STORAGE FILLED** - tap the storage button to choose the storage, then an amount or
@@ -419,11 +424,27 @@ or back where you died) · **BOTS** (STOP / HOME / GPS / FORGET / DRIVE IT; STOP
 `pocket` on the base lists paired pockets, `pocket unpair <id>` locks one out.
 `upgrade` on the pocket gets the newest `pocket.lua`.
 
-## Schematics (builder turtles)
+## Schematics (drones build them)
 
-Save a build with Create's **Schematic and Quill**, then drag the `.nbt` file (from
-`.minecraft/schematics` on your PC) onto the base computer's screen. `schem` lists them,
-`schem <name>` shows the size and the materials. (Building them with turtles comes next.)
+1. Save a build with Create's **Schematic and Quill**.
+2. Open the base computer and drag the `.nbt` file (from `.minecraft/schematics` on your PC) onto
+   its screen - the base can keep running. It is stored on a **storage helper** first (the
+   computer and the floppies are usually full), else a data floppy, else the computer.
+3. On the monitor: **DRONES > DRONE WORK**, tap the schematic. You see what it needs from AE2 and a
+   picture of it from above. WHERE: in front of you (stand where it should go and look that way)
+   or a saved place; **TURN LEFT / TURN RIGHT**; then **BUILD ... THERE** (tap twice).
+   Or in chat at the spot: `$drone build <name>`, `$drone build turn right`, `$drone build yes`.
+
+The drones need a **work chest** (an empty chest on the cable, see DRONE WORK) and take plain items
+from AE2 - never your enchanted or renamed ones. They build bottom up; torches, doors and other
+things that hang on walls come last. Blocks are placed the default way round (stairs and logs may
+face another way), fluids are left out. An item AE2 has none of waits (it looks again every 5
+minutes) while the rest is built. A site nobody keeps loaded gets a turtle that waits above it.
+`schem` lists them, `schem <name>` shows the size and the materials, `schem status` / `pause` /
+`stop` for a running build.
+
+Other files can be dropped onto the computer's screen too - program files are saved next to
+`inventory.lua` (it tells you when a restart is needed). See [COMMANDS.md](COMMANDS.md#dropping-files-onto-the-computer).
 
 ## Mining dimension teams
 
@@ -643,7 +664,8 @@ Type these on the base computer. `help` lists them all.
 | A drone will not let you off | It stays where it is: press DROP again, or sneak to get off. |
 | `upgrade` says it cannot read the file list | The branch it follows is gone or renamed: `upgrade branch main`, then `upgrade`. |
 | You want the messages in chat | `$drone notify on`, or the buttons on the CHAT tab. |
-| The computer's disk is full | `disks data` puts the map on floppies; the footer warns before anything is lost. |
+| The computer's disk is full | `disks data` puts the map on floppies; the footer warns before anything is lost. A storage helper computer takes the map, the voice files and schematics first. |
+| You want to copy a file onto the base computer | Drag it onto the open computer's screen - the base does not need to be stopped. Program files are saved next to `inventory.lua`; restart the base for `base_*.lua` files. |
 | The base does not answer in chat | Start with its name (`base, ...` or your `voice name`), stand near the base, and check `voice` (is it on?). After an `upgrade`, run `voice update`. |
 | `voice install` / `voice update` says there is no room | Add a storage helper computer (the voice files go there first) or `disks data` for one more data floppy. |
 | Someone broke parts of the base while it was off | The base still starts, even without its monitor (it runs blind and uses a new Advanced Monitor as soon as you place one). Type `parts`: everything it saw before and does not see now, with how long it has been gone. HOME and SYSTEM show it too, and you get one warning. A new block of the same kind (say a new ME Bridge) replaces the old one by itself; `parts forget <n>` for something you removed on purpose. Several parts missing at once usually means a broken cable or wired modem - a new wired modem must be right-clicked before the block next to it joins. An Inventory Manager with someone else's memory card in it is never used (`owner new` if you changed accounts). |

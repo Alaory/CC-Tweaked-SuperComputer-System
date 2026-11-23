@@ -27,11 +27,30 @@ Contents:
 | Minecraft chat, commands | start with `$drone`, e.g. `$drone home` (the `$` hides it from others, replies are private) | the owner and allowed players |
 | Minecraft chat, talking | start with the base's name, e.g. `base, status?` (needs the voice add-on) | everyone |
 | The monitor | tap the buttons; risky ones need a second tap (CONFIRM?) | anyone at the monitor |
+| The computer's screen, drag and drop | drag a file from your PC onto the open computer screen - also while the base runs (see [Dropping files](#dropping-files-onto-the-computer)) | anyone at the computer |
 | The pocket computer | tap the buttons in `pocket.lua` | the paired pocket |
 | A mining turtle / storage helper / pocket | its own shell commands, see [Other computers](#other-computers) | at that computer |
 
 `help` on the base computer prints the short list. Most console commands answer on the screen;
 some answers come later as a message on the monitor or in the turtle's log.
+
+### Dropping files onto the computer
+
+Open the base computer (right-click it) and drag files from your PC onto its screen. The base does
+not need to be stopped. A message on the monitor says what happened:
+
+| You drop | It goes |
+|---|---|
+| a Create schematic (`.nbt`, from `.minecraft/schematics`) | read and stored: on a storage helper first, else a data floppy, else the computer. Then `schem` lists it and DRONE WORK can build it |
+| `base_*.lua`, `inventory.lua`, `startup.lua`, `upgrade.lua` | saved next to `inventory.lua` (the old one replaced) - restart the base to use it (SYSTEM > RESTART BASE) |
+| `node.lua` | saved; the turtles get it by themselves (it is moved off the computer within a minute) |
+| `store.lua` | saved; the storage helpers get it by themselves within a few minutes |
+| `miner.lua` | saved; type `mine update` to send it to the mining turtles |
+| a voice file (`voice_*.lua`) | not saved - type `voice update` instead (they live on a floppy / storage helper) |
+| anything else | saved next to `inventory.lua` |
+
+A file that does not fit on the computer is refused (it says how much room is left; the old file
+stays). `upgrade` is still the easy way to get the newest files.
 
 ---
 
@@ -210,7 +229,7 @@ Keeps a chest or tank on the wired cable stocked from AE2. It only ever puts thi
 | `dw fuel <id>` | a drone brings fuel to that turtle now |
 | `dw fuel item <item> [n]` | the fuel drones bring, and how many per run |
 | `dw auto on\|off` | drones bring fuel to turtles out of fuel by themselves |
-| `schem` | the stored schematics (drag a Create `.nbt` file onto the computer's screen to add one) |
+| `schem` | the stored schematics and where each one is (drag a Create `.nbt` file onto the computer's screen to add one - a storage helper takes it first, so the full computer / floppies do not matter) |
 | `schem <name>` | its size and materials |
 | `schem delete <name>` | deletes it |
 | `schem preview <name> [here\|place\|x y z] [facing <dir>\|turn left\|right\|around] [centered] [clear]` | only says where it would go and which way it faces |
