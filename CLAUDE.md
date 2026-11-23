@@ -1444,7 +1444,9 @@ PneumaticCraft drone rides, turtle mapping/surveys, and an AE2 ME network view.
   base) when due AND the player is online (state.online); "next time" = online after being seen offline; my reminders /
   forget my reminders; `voice reminders [clear]`. SHORT NAMES (pack 3 wraps V.namesOther): the first word = the start
   (2+ letters) of exactly one other online player's name, not V.NOT_SHORT (so, me, hi ...) -> talking to that player.
-  test_voice_remind.lua (the chat replayed).
+  CLOCK TIMES ("at 6pm", "18:30", noon): the base cannot know the player's time zone -> RM.CLOCK "say it like: in 3 hours"
+  (and keeps waiting for the time; "at 6pm" is taken out of the text); a NEW "remind me ..." is never the answer to an older
+  "when?" (it grabbed the new request). test_voice_remind.lua (the chat replayed).
   ASKED = ANSWERED (the owner: "go over all the features - I am sure you did something silly like this"): every COMMANDS.md
   console example and every "Say" example replayed (tools: extract the backticked commands, run handleCommand / V.chat,
   read the answers). Fixed: RM.chance (pack 3, a pattern first) - dice NdS / dS / "N dice", coins "flip N coins", numbers

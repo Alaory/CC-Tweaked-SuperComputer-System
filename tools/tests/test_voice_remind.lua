@@ -148,3 +148,13 @@ playing({ "Alaory", "Bob" })
 r = chat("Bob", "tomorrow")
 CHECK(not r:find("remind", 1, true) and mine("Bob") == 0, "Bob saying tomorrow answers nothing: " .. r)
 os.clock, os.epoch = realClock, realEpoch
+-- a clock time: it cannot know the player's time zone - it says how to say it, and keeps waiting
+playing({ "Alaory" })
+r = chat("Alaory", "base remind me at 6pm to feed the cat")
+CHECK(r:find("do not know what time it is where you are", 1, true), "at 6pm: says how to say it: " .. r)
+r = chat("Alaory", "in 3 hours")
+CHECK(r:find("in 3 h", 1, true) and r:find("feed the cat", 1, true), "... then in 3 hours works: " .. r)
+r = chat("Alaory", "base remind me to sleep")
+r = chat("Alaory", "18:30")
+CHECK(r:find("do not know what time", 1, true), "the answer 18:30 to 'when?': says how: " .. r)
+chat("Alaory", "base forget my reminders")

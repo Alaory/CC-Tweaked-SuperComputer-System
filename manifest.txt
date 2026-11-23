@@ -52,7 +52,7 @@ miner miner.lua 125074 da12b7a8
 voice voice_addon.lua 167599 ed869e09
 voice voice_talk.lua 72213 8dd9df24
 voice voice_talk2.lua 102488 41594cc6
-voice voice_talk3.lua 58668 85e9246c
+voice voice_talk3.lua 59587 7d7fe44d
 voice voice_lines.lua 93826 ca6c4832
 voice voice_idle.lua 36489 bb1ef145
 voice voice_lore.lua 29210 522540d6
@@ -118,7 +118,7 @@ slim:miner miner.lua 84075 2798fb9a dist/miner.lua
 slim:voice voice_addon.lua 123646 66dfd47a dist/voice_addon.lua
 slim:voice voice_talk.lua 66189 e9a962dc dist/voice_talk.lua
 slim:voice voice_talk2.lua 89236 bf6c291a dist/voice_talk2.lua
-slim:voice voice_talk3.lua 49491 309b7972 dist/voice_talk3.lua
+slim:voice voice_talk3.lua 50255 b068732a dist/voice_talk3.lua
 slim:voice voice_lines.lua 87322 5be8ee1f dist/voice_lines.lua
 slim:voice voice_idle.lua 33866 aade0b76 dist/voice_idle.lua
 slim:voice voice_lore.lua 27047 ac5fcf6a dist/voice_lore.lua

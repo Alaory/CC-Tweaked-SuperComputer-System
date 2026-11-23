@@ -787,8 +787,15 @@ function RM.add(who, when, what)
   return "OK, I will remind you " .. RM.whenText(r) .. ": " .. r.text .. "."
 end
 RM.ASK = "Say: in 30 min, in 2 hours, tomorrow, or next time."
+-- a clock time ("at 6pm", "18:30") - the base cannot know the player's time zone
+RM.CLOCK = "I do not know what time it is where you are - say it like: in 3 hours, or in 45 min."
+function RM.clockTime(raw)
+  local t = " " .. tostring(raw or ""):lower() .. " "
+  return t:find("%d+%s*[ap]%.?m%.?[%s%p]") or t:find(" %d%d?:%d%d") or t:find(" at %d+[%s%p]") or t:find(" noon ") or t:find(" midnight ")
+end
 -- the answer to "when?" / "what?" it asked for (near or far - VOICE.pendKinds runs before anything else)
 V.pendKinds["remindwhen"] = function(who, P, ws, raw)
+  if tostring(raw):lower():find("remind", 1, true) then return nil end   -- (a NEW "remind me ..." - not the answer)
   local w = RM.words(raw)
   local base = tostring(V.cfg("name", "base")):lower()
   if w[1] == base then table.remove(w, 1) end
@@ -797,6 +804,7 @@ V.pendKinds["remindwhen"] = function(who, P, ws, raw)
     return "OK, no reminder."
   end
   local when, more = RM.parse(raw)
+  if not when and RM.clockTime(raw) then return RM.CLOCK end
   if not when then return nil end                        -- (something else - another message, not for the reminder)
   V.pend[tostring(who):lower()] = nil
   local what = P.text ~= "" and P.text or more
@@ -837,6 +845,12 @@ table.insert(V.patterns, 1, function(who, raw, ws)
   if when then
     V.pend[k] = { kind = "remindwhat", when = when, till = os.clock() + 180 }
     return "OK - what should I remind you about?"
+  end
+  if RM.clockTime(raw) then
+    what = (" " .. what .. " "):gsub(" at %d+[%w:%.]* ", " "):gsub(" %d+%s*[ap]m ", " "):gsub(" noon ", " "):gsub(" midnight ", " ")
+    what = what:gsub("^%s*to%s+", ""):gsub("^%s+", ""):gsub("%s+$", "")
+    V.pend[k] = { kind = "remindwhen", text = what, till = os.clock() + 300 }
+    return RM.CLOCK
   end
   if what == "" then return "What should I remind you about, and when? Like: remind me in 30 min to check the furnace." end
   V.pend[k] = { kind = "remindwhen", text = what, till = os.clock() + 300 }
