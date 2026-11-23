@@ -926,6 +926,12 @@ PneumaticCraft drone rides, turtle mapping/surveys, and an AE2 ME network view.
   as before. Page / console list every trip with its drone. tools/tests/test_drone_parallel.lua (2 drones as
   coroutines, shared chest / AE2 / world: 153 blocks, 2 trips at once, chest never mixed, one kind per drone, no spot
   twice, torches after the floor, exact AE2 counts, a gift during a build) - the old code fails 3.
+  AUTO-CRAFT (the owner: "can the stuff for schematics get auto crafted?"): DW.craftTick(J, force) (DW.tick every 2 s,
+  itself every 30 s; startBuild + `schem craft now` force) - DW.materials' short items: FACTORY.meCraftable (exposed from
+  base_factory) -> craftME(item, need - have) (MEX follows the job); not again while that item's MEX job is
+  calculating / crafting or 10 min after a request (J.craft[item] = {n, at epoch s, err}); no pattern -> J.noPattern
+  (statusLines "No AE2 pattern for"); a J.short item that was asked for is looked at again within 60 s.
+  CONFIG.drone.buildCraft (default on; SETTINGS > DRONES; `schem craft on|off`). test_dronework "AUTO-CRAFT".
   DW.test / console `dw test [item]` (the owner: "how do I test the drone chest"): DW.notReady, the chest's spot + distance
   from the drones' home, 1 PLAIN item (DW.TEST_ITEMS: the first AE2 has, or the one named) AE2 -> work chest -> AE2;
   then, with the owner within 48 of the chest, DW.giftRun(owner, item, 1) = a drone takes it out of the chest and drops

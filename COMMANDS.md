@@ -235,6 +235,7 @@ Keeps a chest or tank on the wired cable stocked from AE2. It only ever puts thi
 | `schem preview <name> [here\|place\|x y z] [facing <dir>\|turn left\|right\|around] [centered] [clear]` | only says where it would go and which way it faces |
 | `schem build <name> [here\|place\|x y z] [facing north\|east\|south\|west \| turn left\|right\|around \| rot 90] [centered] [clear]` | drones build it. No place / `here` = in front of you (where you look, 2 blocks ahead, bottom at your feet); a place / x y z = the GROUND block it stands on (its north-west corner, or `centered`). `facing east` = the side that was north faces east. `clear` = dig the schematic's air spots first |
 | `schem status` / `pause` / `resume` / `stop` | the build: how far / pause / go on / end |
+| `schem craft [on\|off\|now]` | AE2 crafts the blocks a running build is short of (items with a pattern; on by default, checked every 30 s); `now` = ask at once |
 
 ### The voice add-on
 

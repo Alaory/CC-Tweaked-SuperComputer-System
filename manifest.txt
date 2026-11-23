@@ -4,13 +4,13 @@ base store.lua 11181 9643835d
 base upgrade.lua 17018 90571421
 base base_away.lua 19132 3e929492
 base base_chat.lua 23519 0eb6fd4c
-base base_console.lua 77777 bf36f28e
+base base_console.lua 78663 c3f1321d
 base base_curios.lua 7969 634b1833
 base base_devices.lua 34895 00a92721
 base base_drones.lua 93950 8feb0b39
-base base_dronework.lua 59814 e8c0bd0f
+base base_dronework.lua 62879 52790327
 base base_env.lua 10269 b6081e20
-base base_factory.lua 29444 4933f33c
+base base_factory.lua 29478 ac14f7e9
 base base_input.lua 31054 99762fa0
 base base_map.lua 94144 7efa8c09
 base base_me.lua 98127 4bc939c8
@@ -39,7 +39,7 @@ base base_ui_me.lua 16789 d4bdd4e6
 base base_ui_mesys.lua 16602 41e3deaf
 base base_ui_mining.lua 11618 848cba10
 base base_ui_players.lua 18530 5b22fb0a
-base base_ui_settings.lua 21408 2019199e
+base base_ui_settings.lua 21577 aa7cdfec
 base base_ui_storage.lua 13810 0a7a3da0
 base base_ui_system.lua 8539 1111d2b4
 base base_ui_turtles.lua 18523 fbf4149c
@@ -71,13 +71,13 @@ slim:base store.lua 7892 55ef20ea dist/store.lua
 slim:base upgrade.lua 11623 560f68d3 dist/upgrade.lua
 slim:base base_away.lua 13709 b2890939 dist/base_away.lua
 slim:base base_chat.lua 17869 c802c350 dist/base_chat.lua
-slim:base base_console.lua 64461 9bd163e6 dist/base_console.lua
+slim:base base_console.lua 65138 d90481bf dist/base_console.lua
 slim:base base_curios.lua 4566 afac3e09 dist/base_curios.lua
 slim:base base_devices.lua 23725 4b3af2c2 dist/base_devices.lua
 slim:base base_drones.lua 60328 75efe5cc dist/base_drones.lua
-slim:base base_dronework.lua 42723 094b459b dist/base_dronework.lua
+slim:base base_dronework.lua 45041 12beed15 dist/base_dronework.lua
 slim:base base_env.lua 7154 ae1b2584 dist/base_env.lua
-slim:base base_factory.lua 21629 0269dab1 dist/base_factory.lua
+slim:base base_factory.lua 21663 188c4b24 dist/base_factory.lua
 slim:base base_input.lua 21948 66de7008 dist/base_input.lua
 slim:base base_map.lua 58885 aced8750 dist/base_map.lua
 slim:base base_me.lua 70093 4c89d391 dist/base_me.lua
@@ -106,7 +106,7 @@ slim:base base_ui_me.lua 13603 6435cdda dist/base_ui_me.lua
 slim:base base_ui_mesys.lua 13664 4ec0e530 dist/base_ui_mesys.lua
 slim:base base_ui_mining.lua 9799 4662c94b dist/base_ui_mining.lua
 slim:base base_ui_players.lua 15455 0ff0592d dist/base_ui_players.lua
-slim:base base_ui_settings.lua 18382 2e8bc2aa dist/base_ui_settings.lua
+slim:base base_ui_settings.lua 18538 cca647a8 dist/base_ui_settings.lua
 slim:base base_ui_storage.lua 11336 07fce5d6 dist/base_ui_storage.lua
 slim:base base_ui_system.lua 7131 437ffe00 dist/base_ui_system.lua
 slim:base base_ui_turtles.lua 15847 ac0874c5 dist/base_ui_turtles.lua
@@ -134,13 +134,13 @@ slim:voice voice_lonely.lua 58869 faa308a6 dist/voice_lonely.lua
 slim:spawn spawn_speaker.lua 9748 e9e10994 dist/spawn_speaker.lua
 z:base base_away.luz 4486 b47178c0 dist/z/base_away.luz
 z:base base_chat.luz 5601 6bb58d98 dist/z/base_chat.luz
-z:base base_console.luz 21020 3c565b22 dist/z/base_console.luz
+z:base base_console.luz 21230 df13cb7a dist/z/base_console.luz
 z:base base_curios.luz 1558 fe4c6a20 dist/z/base_curios.luz
 z:base base_devices.luz 6933 982df396 dist/z/base_devices.luz
 z:base base_drones.luz 15749 776feb41 dist/z/base_drones.luz
-z:base base_dronework.luz 12517 1af6b42c dist/z/base_dronework.luz
+z:base base_dronework.luz 13204 60d1e2fa dist/z/base_dronework.luz
 z:base base_env.luz 2601 7478a918 dist/z/base_env.luz
-z:base base_factory.luz 6104 94497153 dist/z/base_factory.luz
+z:base base_factory.luz 6111 78bb75ec dist/z/base_factory.luz
 z:base base_input.luz 6568 51e12629 dist/z/base_input.luz
 z:base base_map.luz 16486 b2ac103a dist/z/base_map.luz
 z:base base_me.luz 17889 d369b328 dist/z/base_me.luz
@@ -169,7 +169,7 @@ z:base base_ui_me.luz 4806 5591c566 dist/z/base_ui_me.luz
 z:base base_ui_mesys.luz 4607 05466a73 dist/z/base_ui_mesys.luz
 z:base base_ui_mining.luz 3695 24462164 dist/z/base_ui_mining.luz
 z:base base_ui_players.luz 5063 64ff1576 dist/z/base_ui_players.luz
-z:base base_ui_settings.luz 6473 344aca3b dist/z/base_ui_settings.luz
+z:base base_ui_settings.luz 6538 d9d033cc dist/z/base_ui_settings.luz
 z:base base_ui_storage.luz 3823 39cf2b43 dist/z/base_ui_storage.luz
 z:base base_ui_system.luz 2906 376eacb9 dist/z/base_ui_system.luz
 z:base base_ui_turtles.luz 5660 9e3fe7f3 dist/z/base_ui_turtles.luz

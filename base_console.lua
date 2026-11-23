@@ -890,6 +890,22 @@ function handleCommand(line)
           end
         end
       end
+    elseif sub == "craft" then
+      -- schem craft [on|off|now]: AE2 crafts what a running build is short of (items with a pattern)
+      local a = (words[3] or ""):lower()
+      if a == "on" or a == "off" then
+        setSetting("drone.buildCraft", a == "on")
+        say("Auto-craft for builds: " .. a:upper())
+      elseif a == "now" then
+        if not DW.job then say("No build is running.")
+        else
+          local n = DW.craftTick(DW.job, true)
+          say(n > 0 and ("Asked AE2 to craft " .. n .. " item(s).") or "Nothing to craft (enough in AE2, a craft already runs, or no pattern).")
+        end
+      else
+        say("Auto-craft for builds: " .. (DW.craftOn() and "ON" or "OFF") .. "  (schem craft on|off|now)")
+      end
+      if DW.job then for _, l in ipairs(DW.statusLines()) do if l:find("craft", 1, true) or l:find("pattern", 1, true) then say(l) end end end
     elseif sub == "stop" then
       local _, msg = DW.stopBuild("stopped by you")
       say(msg)

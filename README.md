@@ -571,8 +571,10 @@ or back where you died) · **BOTS** (STOP / HOME / GPS / FORGET / DRIVE IT; STOP
 The drones need a **work chest** (an empty chest on the cable, see DRONE WORK) and take plain items
 from AE2 - never your enchanted or renamed ones. They build bottom up; torches, doors and other
 things that hang on walls come last. Blocks are placed the default way round (stairs and logs may
-face another way), fluids are left out. An item AE2 has none of waits (it looks again every 5
-minutes) while the rest is built. A site nobody keeps loaded gets a turtle that waits above it.
+face another way), fluids are left out. Blocks AE2 is short of are CRAFTED by AE2 automatically
+(items it has a pattern for - `schem status` names the ones without a pattern; `schem craft off` to stop
+it, or SETTINGS > DRONES). An item AE2 has none of waits (it looks again every 5 minutes) while the
+rest is built. All free drones work at once. A site nobody keeps loaded gets a turtle that waits above it.
 `schem` lists them, `schem <name>` shows the size and the materials, `schem status` / `pause` /
 `stop` for a running build.
 

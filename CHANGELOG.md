@@ -94,6 +94,8 @@ Peripherals (tested on CC:Tweaked 1.120.2, Minecraft 1.21.1, NeoForge).
   and put to use, a chunk test for copies.
 - STOP that always works, your own commands first, a DRIVE page to steer a turtle by hand,
   a no-digging zone around the base.
+- Schematic builds get their missing blocks crafted by AE2 automatically (items with a pattern; `schem craft
+  on|off|now`, SETTINGS > DRONES). `schem status` names the blocks AE2 has no pattern for.
 - Every drone works at once: builds, gifts and fuel runs use all free drones side by side (they take turns at the
   one work chest, a few seconds each). Each drone still carries one kind of item per trip.
 - Survey turtles no longer keep what they dig (ores, gems, logs, saplings, sticks, modded drops ...): away from the

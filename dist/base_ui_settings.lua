@@ -219,6 +219,8 @@ function(v) return v .. " blocks" end),
 num("drone.simChunks", "Server simulation distance", "chunks (server.properties) - hops stay inside it, or the drone " ..
 "freezes with its rider", 6, 3, 32, 1, function(v) return v .. " chunks = hops of " .. math.max(32, (v - 2) * 16) end),
 num("drone.pickupTries", "Pickup tries", "tries to pick a player up before giving up", 4, 1, 10, 1, plain),
+bool("drone.buildCraft", "Builds: AE2 crafts what is short", "a schematic build asks AE2 to craft the blocks it " ..
+"lacks (items with a pattern)", true),
 } },
 { name = "CHAT", list = {
 bool("chat.askOwner", "Ask me for strangers' rides", "players not on the allow list need your OK", true),

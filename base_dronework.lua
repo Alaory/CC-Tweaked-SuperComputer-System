@@ -768,6 +768,51 @@ function DW.materials(J)
   return rows, missing
 end
 
+-- AUTO-CRAFT THE MATERIALS (the owner: "can the stuff for schematics get auto crafted?"): what a running build still
+-- needs and AE2 does not have, AE2 is asked to craft (only items it has a pattern for) - checked every 30 s; an item is
+-- not asked for again while its craft runs (MEX job calculating / crafting) or for 10 min after a request. CONFIG.drone.
+-- buildCraft (default on;  schem craft on|off). J.craft[item] = { n, at (epoch s), err }, J.noPattern[item] = true.
+function DW.craftOn() return cfg("buildCraft", true) ~= false end
+local function craftRunning(item)
+  for _, k in ipairs((MEX and MEX.order) or {}) do
+    local j = MEX.jobs[k]
+    if j and j.name == item and not j.fluid and (j.state == "calculating" or j.state == "crafting"
+       or (j.state == "requested" and os.clock() - (j.t or 0) < 600)) then return true end
+  end
+  return false
+end
+function DW.craftTick(J, force)
+  J = J or DW.job
+  if not J or not bridge or not DW.craftOn() then return 0 end
+  local nowE = math.floor(os.epoch("utc") / 1000)
+  if not force and nowE - (J.craftAt or 0) < 30 then return 0 end
+  J.craftAt = nowE
+  local _, missing = DW.materials(J)
+  J.craft, J.noPattern = J.craft or {}, {}
+  local asked = {}
+  for _, m in ipairs(missing) do
+    local short = m.need - m.have
+    local c = J.craft[m.item]
+    if short > 0 and not craftRunning(m.item) and (force or not c or nowE - (c.at or 0) > 600 or (c.at or 0) > nowE) then
+      if FACTORY.meCraftable and FACTORY.meCraftable(m.item) then
+        local ok, err = craftME(m.item, short)
+        J.craft[m.item] = { n = short, at = nowE, err = (not ok) and tostring(err) or nil }
+        if ok then asked[#asked + 1] = short .. " " .. prettify(m.item) end
+      else
+        J.noPattern[m.item] = true
+      end
+    end
+  end
+  if #asked > 0 then
+    local msg = "Build " .. J.name .. ": asked AE2 to craft " .. table.concat(asked, ", ")
+    pushNote("INFO", msg, C.info)
+    if sysLog then sysLog(msg) end
+    -- (an item that waited as "AE2 has none" is looked at again soon)
+    for item in pairs(J.short or {}) do if J.craft[item] then J.short[item] = math.min(J.short[item], now() + 60) end end
+  end
+  return #asked
+end
+
 function DW.startBuild(name, x, y, z, rot, clear)
   if DW.job then return false, "a build is running (" .. DW.job.name .. ") -  schem stop  first" end
   local bad = DW.notReady()
@@ -786,7 +831,10 @@ function DW.startBuild(name, x, y, z, rot, clear)
   local _, missing = DW.materials(J)
   local msg = "Building " .. name .. " " .. DW.areaText(s, rot, x, y, z) .. ", " .. DW.turnText(rot) .. ": " .. #plan.place .. " blocks" ..
               (clear and (", " .. #plan.air .. " spots cleared first") or "")
-  if #missing > 0 then msg = msg .. " - " .. #missing .. " item(s) short in AE2 (schem status)" end
+  if #missing > 0 then
+    local n = DW.craftTick(J, true)
+    msg = msg .. " - " .. #missing .. " item(s) short in AE2" .. (n > 0 and (", " .. n .. " sent to AE2 to craft") or "") .. " (schem status)"
+  end
   if sysLog then sysLog(msg) end
   return true, msg
 end
@@ -964,6 +1012,7 @@ function DW.tick()
   DW.syncTrip()
   pcall(DW.fuelTick)
   local J = DW.job
+  if J then pcall(DW.craftTick, J) end
   if not J or J.paused then return end
   -- as many build trips as there are free drones (each on its own spots)
   for _ = 1, math.max(1, #droneOrder) do
@@ -1250,6 +1299,17 @@ function DW.statusLines()
       table.sort(sh)
       out[#out + 1] = "  AE2 has none of: " .. table.concat(sh, ", ") .. " - those spots wait, the rest goes on"
     end
+    local cr, np = {}, {}
+    local nowE = math.floor(os.epoch("utc") / 1000)
+    for it, c in pairs(J.craft or {}) do
+      cr[#cr + 1] = c.n .. " " .. prettify(it) .. (c.err and (" (refused: " .. c.err .. ")") or
+                    (" (" .. math.max(0, math.floor((nowE - (c.at or nowE)) / 60)) .. " min ago)"))
+    end
+    for it in pairs(J.noPattern or {}) do np[#np + 1] = prettify(it) end
+    table.sort(cr) table.sort(np)
+    if not DW.craftOn() then out[#out + 1] = "  Auto-craft: OFF (schem craft on)"
+    elseif #cr > 0 then out[#out + 1] = "  AE2 asked to craft: " .. table.concat(cr, ", ") end
+    if #np > 0 then out[#out + 1] = "  No AE2 pattern for: " .. table.concat(np, ", ") .. " - add some to AE2 by hand" end
     if J.why then out[#out + 1] = "  " .. J.why end
     local a = anchorTurtle(J)
     if a then out[#out + 1] = "  Keeping the site loaded: " .. a.label end

@@ -638,5 +638,39 @@ cx, cy, cz = DW.chestAt()
 CHECK(cx == CH.x and cy == CH.y and cz == CH.z, "chat  workchest  = the block under you (" .. tostring(told[1]) .. ")")
 CHECK(DW.chestName() == "minecraft:barrel_9", "... and the only empty chest on the cable is picked")
 
+------------------------------------------------------------------ AUTO-CRAFT (the owner: "can the stuff for schematics get auto crafted?")
+-- a build short of planks (AE2 has a pattern) and stone (no pattern): AE2 is asked for the planks it lacks, once;
+-- stone is named "no pattern"; the build goes on with the crafted planks; off = nothing asked
+do
+  local drC = world()
+  W.stock["minecraft:oak_planks"], W.stock["minecraft:stone"] = 3, 100
+  local ASKED = {}
+  bridge.isItemCraftable = function(f) return f.name == "minecraft:oak_planks" end
+  bridge.craftItem = function(f)
+    ASKED[#ASKED + 1] = f.name .. " x" .. f.count
+    W.stock[f.name] = (W.stock[f.name] or 0) + f.count          -- (AE2 crafts it at once here)
+    return true
+  end
+  W.stock["minecraft:stone"] = 5                               -- 9 needed: 4 short, and no pattern for stone
+  local okC = DW.startBuild("hut", OX + 70, OY, OZ, 0, false)
+  CHECK(okC and #ASKED == 1 and ASKED[1] == "minecraft:oak_planks x5", "the build asks AE2 to craft the 5 planks it lacks (" ..
+        table.concat(ASKED, ", ") .. ")")
+  CHECK(DW.job.noPattern and DW.job.noPattern["minecraft:stone"], "stone: no pattern - named, not asked")
+  local st = table.concat(DW.statusLines(), "\n")
+  CHECK(st:find("No AE2 pattern for: Stone", 1, true), "schem status says so:\n" .. st)
+  W.stock["minecraft:oak_planks"] = 0                          -- (used up elsewhere)
+  DW.job.craftAt = 0
+  DW.craftTick(DW.job)
+  CHECK(#ASKED == 1, "not asked again within 10 minutes (" .. #ASKED .. ")")
+  W.stock["minecraft:oak_planks"] = 50
+  setSetting("drone.buildCraft", false)
+  W.stock["minecraft:oak_planks"] = 0
+  DW.job.craftAt, DW.job.craft = 0, {}
+  DW.craftTick(DW.job)
+  CHECK(#ASKED == 1, "auto-craft off: nothing asked")
+  resetSetting("drone.buildCraft")
+  DW.stopBuild("test")
+end
+
 bridge = BRIDGE0
 PERIPHS["minecraft:barrel_9"] = nil

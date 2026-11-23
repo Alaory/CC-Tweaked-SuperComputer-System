@@ -171,6 +171,7 @@ local function variants(name)
   return plain, own, fp
 end
 FACTORY.variants = variants
+FACTORY.meCraftable = meCraftable
 
 -- every part: { part, have (plain ones), own (yours - never taken), craftable, ok } - and the missing ones
 function FACTORY.check()

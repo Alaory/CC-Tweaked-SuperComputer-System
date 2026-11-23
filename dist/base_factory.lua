@@ -171,6 +171,7 @@ end
 return plain, own, fp
 end
 FACTORY.variants = variants
+FACTORY.meCraftable = meCraftable
 
 
 function FACTORY.check()
