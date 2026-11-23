@@ -663,10 +663,47 @@ if name:lower():match("%.nbt$") then
 SCHEM.pending[#SCHEM.pending + 1] = { name = name, data = data }
 setToast("Reading schematic " .. name .. " ...", C.label, 4)
 else
-pushNote("WARNING", name .. ": only Create schematics (.nbt) can be dropped here", C.warn)
+local ok, msg = SCHEM.saveDropped(name, data)
+pushNote(ok and "DONE" or "WARNING", msg, ok and C.good or C.warn)
 end
 end
 if #SCHEM.pending > 0 then os.queueEvent("schem_in") end
+end
+
+
+
+function SCHEM.saveDropped(name, data)
+name = fs.getName(tostring(name or ""))
+data = tostring(data or "")
+if name == "" or name:find("^%.") then return false, "A dropped file without a name was not saved." end
+for _, v in ipairs(VOICE_FILES or {}) do
+if v == name then return false, name .. " is part of the voice add-on (it lives on a floppy / storage helper) - type  voice update  to get the newest." end
+end
+local path = fs.combine(BASE_DIR or "", name)
+if fs.isDir(path) then return false, name .. ": a folder of that name is in the way." end
+local okF, free = pcall(fs.getFreeSpace, fs.getDir(path) == "" and "/" or fs.getDir(path))
+local old = fs.exists(path) and fs.getSize(path) or 0
+if not okF or (free or 0) + old < #data + 16 * 1024 then
+return false, name .. " (" .. math.ceil(#data / 1024) .. " KB) not saved: the computer has only " .. math.floor(((free or 0) + old) / 1024) ..
+" KB free for it. Type  disks  to see what takes the room."
+end
+local tmp = path .. ".drop"
+local h = fs.open(tmp, "wb")
+if not h then return false, name .. " not saved: cannot write " .. tmp end
+local okW = pcall(h.write, data)
+pcall(h.close)
+if not okW or not fs.exists(tmp) or fs.getSize(tmp) < #data then pcall(fs.delete, tmp) return false, name .. " not saved (disk full?)" end
+if fs.exists(path) then fs.delete(path) end
+fs.move(tmp, path)
+local what
+if name:match("^base_.*%.lua$") or name == "inventory.lua" or name == "startup.lua" or name == "upgrade.lua" then
+what = "Restart the base to use it (SYSTEM > RESTART BASE)."
+elseif name == "node.lua" then what = "The turtles get it by themselves (it is moved to storage within a minute)."
+elseif name == "miner.lua" then what = "Type  mine update  to send it to the mining turtles."
+elseif name == "store.lua" then what = "The storage helpers get it by themselves within a few minutes."
+else what = "It is next to inventory.lua." end
+if sysLog then pcall(sysLog, "File dropped on the screen and saved: " .. path .. " (" .. #data .. " bytes)") end
+return true, (old > 0 and "Replaced " or "Saved ") .. name .. " (" .. math.ceil(#data / 1024) .. " KB). " .. what
 end
 function SCHEM.processPending()
 local names = {}

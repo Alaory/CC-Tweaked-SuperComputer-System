@@ -409,6 +409,18 @@ end
 end
 end
 
+
+
+
+function dropWorker()
+while state.running do
+local _, files = os.pullEvent("file_transfer")
+local okT, errT = pcall(SCHEM.onTransfer, files)
+if not okT then setToast("Could not take the file: " .. tostring(errT), C.bad, 8) end
+os.queueEvent("inv_update")
+end
+end
+
 function supplyWorker()
 while state.running do
 local ok, busy = pcall(SUPPLY.tick)
@@ -889,12 +901,6 @@ elseif a == clockTimer then
 clockTimer, clockDue = os.startTimer(1), os.clock() + 1
 requestDraw()
 end
-
-elseif ev == "file_transfer" then
-
-local okT, errT = pcall(SCHEM.onTransfer, a)
-if not okT then setToast("Could not take the file: " .. tostring(errT), C.bad, 8) end
-requestDraw()
 
 elseif ev == "monitor_resize" and a == monName then
 pcall(buildWindow)

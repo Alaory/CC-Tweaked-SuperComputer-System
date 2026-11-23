@@ -78,7 +78,7 @@ local okRun, errRun = pcall(parallel.waitForAny, K("screen", uiLoop), K("invento
                    K("console", terminalWorker), K("chat worker", chatWorker), K("turtle worker", commsWorker),
                    K("map worker", mapWorker), K("supply worker", supplyWorker), K("add-on worker", addonWorker),
                    K("player worker", playerWorker),
-                   K("curios worker", curiosWorker))
+                   K("curios worker", curiosWorker), K("drop worker", dropWorker))
 
 pcall(MAP.save)                     -- map changes of the last minute
 if baseExit then

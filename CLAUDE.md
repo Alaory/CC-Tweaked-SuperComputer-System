@@ -20,7 +20,7 @@ PneumaticCraft drone rides, turtle mapping/surveys, and an AE2 ME network view.
   at load time (inside functions, anything goes).
 - Workers run together via `parallel.waitForAny`: uiLoop, invWorker,
   pageWorker, actionWorker, droneWorker, terminalWorker, chatWorker, commsWorker, mapWorker,
-  supplyWorker, addonWorker, playerWorker.
+  supplyWorker, addonWorker, playerWorker, curiosWorker, dropWorker.
   NEVER ONE ERROR = A DEAD BASE (release review, the owner: "I don't want things to bug out and crash"): inventory.lua
   starts every worker through keepWorker(name, fn) (base_workers.lua): an error -> SYSTEM log WARNING, WORKER_RESTART[name]
   (the drone worker: its drones freed + failedAt, the park check brings them home), 1 s, started again; 5 errors in 60 s
@@ -832,6 +832,12 @@ PneumaticCraft drone rides, turtle mapping/surveys, and an AE2 ME network view.
   {name = path} on the computer: SCHEM.list merges it WITHOUT asking the cable; SCHEM.read fetches it with STORE.read
   (the map worker), a quiet helper -> "did not answer - try again"; store / delete remove copies everywhere (delAny);
   then the floppy, then the computer as before; nowhere -> says to start a storage helper. test_schem_review part 8.
+  DROPS WHILE THE BASE RUNS (the owner: "I need to stop the program to upload"): dropWorker (base_workers, in inventory.lua's
+  list) only waits for "file_transfer" -> SCHEM.onTransfer (the screen loop's branch is gone: a drop arriving while it waited
+  for a peripheral was LOST, and both would take it). .nbt -> SCHEM.pending as before; ANY OTHER FILE -> SCHEM.saveDropped:
+  next to inventory.lua (BASE_DIR) through "<name>.drop", room = free + the old copy - 16 KB, size checked, replaced; the note
+  says what next (base_* / inventory / startup / upgrade: restart; node.lua / store.lua: picked up by themselves; miner.lua:
+  mine update); a VOICE_FILES name -> refused, "voice update" (a computer copy would lose to the floppy / helper one). test_schem.
 - DRONE WORK (base_dronework.lua DW, comms tick DW.tick; dronework.dat via dataPath): PneumaticCraft
   drones do jobs with items from AE2. Drone chunk loading is OFF on the owner's server: a drone only
   works where a player / an online turtle (its Chunky) / the drones' home chunk keeps it loaded

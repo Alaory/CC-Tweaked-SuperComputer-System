@@ -37,6 +37,8 @@ Peripherals (tested on CC:Tweaked 1.120.2, Minecraft 1.21.1, NeoForge).
   the help", "I am back" and "I love this place" get the right answer.
 - Every voice line was read: a dozen wrong Minecraft / mod facts in the quiz, riddles, tips and mod tips are corrected.
 - A schematic dropped on the screen is stored on a storage helper first (the computer and the floppies are often full).
+- Files can be dropped onto the computer's screen while the base runs: program files are saved next to inventory.lua (it says
+  when a restart is needed), schematics are read - no need to stop the base first.
 - INVENTORY tab: armour and the offhand can be picked (they were un-picked at once) and taken off into your inventory or
   sent to AE2.
 - Asked = answered: "roll a d20" / "roll 2 dice" / "flip 3 coins" / "pick a number from 1 to 10" / "be quiet for 2

@@ -78,7 +78,7 @@ K("page worker", pageWorker), K("action worker", actionWorker), K("drone worker"
 K("console", terminalWorker), K("chat worker", chatWorker), K("turtle worker", commsWorker),
 K("map worker", mapWorker), K("supply worker", supplyWorker), K("add-on worker", addonWorker),
 K("player worker", playerWorker),
-K("curios worker", curiosWorker))
+K("curios worker", curiosWorker), K("drop worker", dropWorker))
 
 pcall(MAP.save)
 if baseExit then
