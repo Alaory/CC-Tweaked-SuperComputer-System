@@ -28,6 +28,10 @@ Peripherals (tested on CC:Tweaked 1.120.2, Minecraft 1.21.1, NeoForge).
 - Item wishes work at the base too, not only at spawn. The miner program is kept on a storage helper.
 - Hardcore-ready auto-equip: KEEP ONE ON (CURIOS tab) checks every tick and puts a new totem on at once, even while
   other buttons are busy.
+- Schematics: files with Create machines in them can be read (8-byte numbers in the file stopped the reader); crops,
+  vines and filled cauldrons ask AE2 for the right item; fluids are left out of the list; an item AE2 has none of no
+  longer stops a drone build (the rest is built, it looks again every 5 min); a build without CLEAR goes on after a
+  restart; a big schematic is read in the background, not on the screen; a newer file of the same name stays the one.
 - INVENTORY tab: armour and the offhand can be picked (they were un-picked at once) and taken off into your inventory or
   sent to AE2.
 - Asked = answered: "roll a d20" / "roll 2 dice" / "flip 3 coins" / "pick a number from 1 to 10" / "be quiet for 2

@@ -910,9 +910,10 @@ function handleCommand(line)
       local s, err = SCHEM.load(sub)
       if not s then say(err)
       else
-        local need, place, air = SCHEM.materials(s)
+        local need, place, air, fluids = SCHEM.materials(s)
         say(sub .. ": " .. s.size.x .. " x " .. s.size.y .. " x " .. s.size.z .. " (x y z), " .. place .. " blocks to place, " ..
             air .. " air (cleared), " .. #s.palette .. " kinds of block")
+        if (fluids or 0) > 0 then say("  " .. fluids .. " fluid blocks (water, lava ...) are left out - drones place no fluids") end
         local list = {}
         for it, n in pairs(need) do list[#list + 1] = { it, n } end
         table.sort(list, function(a, b) return a[2] > b[2] end)

@@ -78,16 +78,19 @@ function SCHEM.inflate(data, pos, yield)
     error("schematic: broken compressed data", 0)
   end
   local fixedL, fixedD
-  local blocks = 0
+  local blocks, syms = 0, 0
   repeat
     local last = bits(1)
     local kind = bits(2)
     if kind == 0 then
       -- stored: byte aligned, LEN, NLEN, raw bytes
       bitbuf, bitcnt = 0, 0
-      local lo, hi = byte(data, pos, pos + 1)
+      local lo, hi, nlo, nhi = byte(data, pos, pos + 3)
+      if not nhi then error("schematic: the file ends too early (cut off?)", 0) end
       local len = lo + hi * 256
+      if len + nlo + nhi * 256 ~= 65535 then error("schematic: broken compressed data", 0) end
       pos = pos + 4
+      if pos + len - 1 > #data then error("schematic: the file ends too early (cut off?)", 0) end
       for i = 0, len - 1 do n = n + 1 out[n] = byte(data, pos + i) end
       pos = pos + len
     elseif kind == 1 or kind == 2 then
@@ -134,6 +137,9 @@ function SCHEM.inflate(data, pos, yield)
       end
       while true do
         local sym = decode(lh)
+        syms = syms + 1
+        if yield and syms % 16384 == 0 then yield() end      -- (one block can hold a lot)
+        if not sym or sym > 285 then error("schematic: broken compressed data", 0) end
         if sym < 256 then
           n = n + 1
           out[n] = sym
@@ -143,8 +149,10 @@ function SCHEM.inflate(data, pos, yield)
           sym = sym - 257
           local len = LBASE[sym + 1] + bits(LEXT[sym + 1])
           local ds = decode(dh)
+          if not ds or ds > 29 then error("schematic: broken compressed data", 0) end
           local dist = DBASE[ds + 1] + bits(DEXT[ds + 1])
           local from = n - dist
+          if from < 0 then error("schematic: broken compressed data", 0) end
           for k = 1, len do out[n + k] = out[from + k] end
           n = n + len
         end
@@ -186,15 +194,25 @@ end
 function SCHEM.nbt(s, yield)
   local pos = 1
   local reads = 0
+  local function short() error("schematic: the file ends too early (cut off?)", 0) end
   local function u8() local b = byte(s, pos) pos = pos + 1 return b end
+  -- (a LONG is 8 bytes: 2 ^ 63 - POW stops at 2 ^ 31; POW[63] = nil made every file with a long tag fail -
+  --  Create's machines keep their network id as one)
   local function int(nb, signed)
+    if pos + nb - 1 > #s then short() end
     local v = 0
-    for i = 0, nb - 1 do v = v * 256 + byte(s, pos + i) end
+    if signed and byte(s, pos) >= 128 then
+      -- negative: from the inverted bytes (exact for small ones; 2 ^ 64 - 1 as a double is not)
+      for i = 0, nb - 1 do v = v * 256 + (255 - byte(s, pos + i)) end
+      v = -v - 1
+    else
+      for i = 0, nb - 1 do v = v * 256 + byte(s, pos + i) end
+    end
     pos = pos + nb
-    if signed and v >= POW[nb * 8 - 1] then v = v - 2 ^ (nb * 8) end
     return v
   end
   local function float(nb)
+    if pos + nb - 1 > #s then short() end
     local b = { byte(s, pos, pos + nb - 1) }
     pos = pos + nb
     local sign = b[1] >= 128 and -1 or 1
@@ -220,6 +238,7 @@ function SCHEM.nbt(s, yield)
   end
   local function str()
     local len = int(2)
+    if pos + len - 1 > #s then short() end
     local v = s:sub(pos, pos + len - 1)
     pos = pos + len
     return v
@@ -236,12 +255,18 @@ function SCHEM.nbt(s, yield)
     elseif t == 6 then return float(8)
     elseif t == 7 then
       local n = int(4, true)
-      local a = { byte(s, pos, pos + n - 1) }
+      if n < 0 or pos + n - 1 > #s then short() end
+      local a = {}
+      for i = 0, n - 1, 4000 do                        -- (string.byte gives at most a few thousand at once)
+        local part = { byte(s, pos + i, pos + math.min(n - 1, i + 3999)) }
+        for k = 1, #part do a[i + k] = part[k] end
+      end
       pos = pos + n
       return a
     elseif t == 8 then return str()
     elseif t == 9 then
       local et, n = u8(), int(4, true)
+      if n > 0 and et == 0 then error("schematic: broken NBT list", 0) end
       local a = {}
       for i = 1, n do a[i] = read(et) end
       return a
@@ -283,11 +308,24 @@ function SCHEM.parse(data, yield)
     if root.Schematic or root.Regions then error("this is a Litematica / WorldEdit file - save it with Create's Schematic and Quill (.nbt)", 0) end
     error("not a structure / Create schematic (.nbt) file", 0)
   end
-  local s = { size = { x = size[1], y = size[2], z = size[3] }, palette = {}, blocks = {}, data = root.DataVersion }
-  for i, e in ipairs(pal) do s.palette[i] = { name = tostring(e.Name), props = e.Properties or {} } end
+  local sx, sy, sz = tonumber(size[1]), tonumber(size[2]), tonumber(size[3])
+  if not (sx and sy and sz and sx >= 1 and sy >= 1 and sz >= 1) then error("schematic: its size is missing / broken", 0) end
+  local s = { size = { x = sx, y = sy, z = sz }, palette = {}, blocks = {}, data = root.DataVersion }
+  for i, e in ipairs(pal) do
+    if type(e) ~= "table" then e = {} end
+    s.palette[i] = { name = tostring(e.Name), props = type(e.Properties) == "table" and e.Properties or {} }
+  end
+  -- (a block whose palette number or spot is not in the file is left out: one odd entry stopped the
+  --  materials list / the build with a Lua error)
   for _, b in ipairs(root.blocks) do
-    local p = b.pos
-    if type(p) == "table" then s.blocks[#s.blocks + 1] = { p[1], p[2], p[3], (b.state or 0) + 1 } end
+    local p = type(b) == "table" and b.pos
+    local st = type(b) == "table" and tonumber(b.state or 0)
+    if type(p) == "table" and st and s.palette[st + 1] then
+      local x, y, z = tonumber(p[1]), tonumber(p[2]), tonumber(p[3])
+      if x and y and z and x >= 0 and y >= 0 and z >= 0 and x < sx and y < sy and z < sz then
+        s.blocks[#s.blocks + 1] = { x, y, z, st + 1 }
+      end
+    end
   end
   return s
 end
@@ -297,19 +335,43 @@ end
 local SKIP = { ["minecraft:air"] = true, ["minecraft:cave_air"] = true, ["minecraft:void_air"] = true,
                ["minecraft:structure_void"] = true, ["minecraft:piston_head"] = true, ["minecraft:moving_piston"] = true,
                ["minecraft:fire"] = true, ["minecraft:soul_fire"] = true, ["minecraft:nether_portal"] = true,
-               ["minecraft:end_portal"] = true, ["minecraft:end_gateway"] = true, ["minecraft:bubble_column"] = true }
+               ["minecraft:end_portal"] = true, ["minecraft:end_gateway"] = true, ["minecraft:bubble_column"] = true,
+               ["minecraft:frosted_ice"] = true, ["minecraft:light"] = true }
 local ITEM = { ["minecraft:wall_torch"] = "minecraft:torch", ["minecraft:soul_wall_torch"] = "minecraft:soul_torch",
                ["minecraft:redstone_wall_torch"] = "minecraft:redstone_torch", ["minecraft:redstone_wire"] = "minecraft:redstone",
                ["minecraft:tripwire"] = "minecraft:string", ["minecraft:water"] = "minecraft:water_bucket",
                ["minecraft:lava"] = "minecraft:lava_bucket", ["minecraft:farmland"] = "minecraft:dirt",
-               ["minecraft:dirt_path"] = "minecraft:dirt" }
+               ["minecraft:dirt_path"] = "minecraft:dirt",
+               -- (a block whose name is not an item: a build waited for "carrots" in AE2 for ever)
+               ["minecraft:carrots"] = "minecraft:carrot", ["minecraft:potatoes"] = "minecraft:potato",
+               ["minecraft:wheat"] = "minecraft:wheat_seeds", ["minecraft:beetroots"] = "minecraft:beetroot_seeds",
+               ["minecraft:cocoa"] = "minecraft:cocoa_beans", ["minecraft:sweet_berry_bush"] = "minecraft:sweet_berries",
+               ["minecraft:melon_stem"] = "minecraft:melon_seeds", ["minecraft:attached_melon_stem"] = "minecraft:melon_seeds",
+               ["minecraft:pumpkin_stem"] = "minecraft:pumpkin_seeds", ["minecraft:attached_pumpkin_stem"] = "minecraft:pumpkin_seeds",
+               ["minecraft:torchflower_crop"] = "minecraft:torchflower_seeds", ["minecraft:pitcher_crop"] = "minecraft:pitcher_pod",
+               ["minecraft:kelp_plant"] = "minecraft:kelp", ["minecraft:cave_vines"] = "minecraft:glow_berries",
+               ["minecraft:cave_vines_plant"] = "minecraft:glow_berries", ["minecraft:twisting_vines_plant"] = "minecraft:twisting_vines",
+               ["minecraft:weeping_vines_plant"] = "minecraft:weeping_vines", ["minecraft:big_dripleaf_stem"] = "minecraft:big_dripleaf",
+               ["minecraft:bamboo_sapling"] = "minecraft:bamboo", ["minecraft:tall_seagrass"] = "minecraft:seagrass",
+               ["minecraft:water_cauldron"] = "minecraft:cauldron", ["minecraft:lava_cauldron"] = "minecraft:cauldron",
+               ["minecraft:powder_snow_cauldron"] = "minecraft:cauldron", ["minecraft:candle_cake"] = "minecraft:cake",
+               ["minecraft:powder_snow"] = "minecraft:powder_snow_bucket" }
+-- a fluid block (water, lava, a modded fluid): only "level" as its property - not by drone
+function SCHEM.isFluid(e)
+  local n, pr = tostring(e.name), e.props or {}
+  if n == "minecraft:water" or n == "minecraft:lava" then return true end
+  if pr.level == nil or n:find("cauldron", 1, true) or n:find("composter", 1, true) then return false end
+  for k in pairs(pr) do if k ~= "level" then return false end end
+  return true
+end
 function SCHEM.itemOf(e)
   local n = e.name
   if SKIP[n] then return nil end
   local pr = e.props or {}
-  -- two-block things: only one half needs an item
-  if pr.half == "upper" and (n:find("_door", 1, true) or n:find("sunflower") or n:find("lilac") or n:find("peony")
-     or n:find("rose_bush") or n:find("tall_grass") or n:find("large_fern")) then return nil end
+  -- two-block things: only one half needs an item (doors, tall flowers / grass, seagrass, dripleaf, pitcher plants,
+  -- modded ones - stairs and trapdoors say top / bottom, not upper)
+  if pr.half == "upper" then return nil end
+  if SCHEM.isFluid(e) and not ITEM[n] then return n .. "_bucket" end
   if pr.part == "head" and n:find("_bed", 1, true) then return nil end
   if ITEM[n] then return ITEM[n] end
   if n:find("_wall_sign", 1, true) then return (n:gsub("_wall_sign", "_sign")) end
@@ -323,17 +385,21 @@ function SCHEM.itemOf(e)
 end
 function SCHEM.isAir(e) return e.name == "minecraft:air" or e.name == "minecraft:cave_air" or e.name == "minecraft:void_air" end
 
--- what a schematic needs: { [item] = count }, blocks to place, air to clear
+-- what a schematic needs: { [item] = count }, blocks to place, air to clear, fluid blocks left out (drones
+-- place no fluids - the same as DW.plan; a water block was listed as "short: water bucket")
 function SCHEM.materials(s)
-  local need, place, air = {}, 0, 0
-  local slabs = {}
+  local need, place, air, fluids = {}, 0, 0, 0
   for _, b in ipairs(s.blocks) do
     local e = s.palette[b[4]]
-    if SCHEM.isAir(e) then
+    if not e then
+      -- (not in the palette: left out)
+    elseif SCHEM.isAir(e) then
       air = air + 1
     else
       local it = SCHEM.itemOf(e)
-      if it then
+      if it and it:find("_bucket", 1, true) then
+        fluids = fluids + 1
+      elseif it then
         local c = 1
         if e.props.type == "double" and it:find("_slab", 1, true) then c = 2 end      -- a double slab = 2 slabs
         need[it] = (need[it] or 0) + c
@@ -341,7 +407,7 @@ function SCHEM.materials(s)
       end
     end
   end
-  return need, place, air
+  return need, place, air, fluids
 end
 
 ----------------------------------------------------------------- the library
@@ -354,6 +420,26 @@ local function dirs()
   local okF, free = pcall(fs.getFreeSpace, "/")
   out[#out + 1] = { dir = SCHEM.dir, free = okF and free or 0 }
   return out
+end
+-- every file of one name in every place (a copy on another floppy)
+local function allPaths(name)
+  local out = {}
+  for _, d in ipairs(dirs()) do
+    local p = fs.combine(d.dir, name .. ".nbt")
+    if fs.exists(p) then out[#out + 1] = p end
+  end
+  return out
+end
+-- the parsed schematics kept in memory: the newest few (a big one is megabytes of tables) + the one being built
+SCHEM.KEEP = 4
+function SCHEM.remember(name, s, path)
+  SCHEM.cache[name] = { s = s, path = path, used = os.clock() }
+  local n, oldest, oldT = 0, nil, nil
+  for k, c in pairs(SCHEM.cache) do
+    n = n + 1
+    if k ~= name and not (DW and DW.job and DW.job.name == k) and (not oldT or (c.used or 0) < oldT) then oldest, oldT = k, c.used or 0 end
+  end
+  if n > SCHEM.KEEP and oldest then SCHEM.cache[oldest] = nil end
 end
 -- every schematic: { [name] = path }
 function SCHEM.list()
@@ -390,9 +476,11 @@ function SCHEM.store(name, data, yield)
         local okW = pcall(h.write, data)
         pcall(h.close)
         if okW then
-          if fs.exists(path) then fs.delete(path) end
+          -- (an older file of the same name somewhere else goes: SCHEM.list takes the first one it finds - after a
+          --  restart the OLD schematic came back)
+          for _, other in ipairs(allPaths(name)) do pcall(fs.delete, other) end
           fs.move(tmp, path)
-          SCHEM.cache[name] = { s = s, path = path }
+          SCHEM.remember(name, s, path)
           return true, path, s
         end
         pcall(fs.delete, tmp)
@@ -401,25 +489,63 @@ function SCHEM.store(name, data, yield)
   end
   return false, "no room for it (" .. math.ceil(#data / 1024) .. " KB) - put an empty floppy in and type  disks data"
 end
--- read one (cached)
-function SCHEM.load(name)
+-- the parsed one if it is in memory (no disk, nothing waits)
+function SCHEM.get(name)
   local c = SCHEM.cache[name]
-  if c then return c.s end
+  if c then c.used = os.clock() return c.s end
+end
+-- read one now (cached). Unpacking a big file takes seconds in the game: in the map worker it pauses (TT.workYield);
+-- any other worker (console, chat, actions) asks the MAP WORKER and waits for it - parsing it there without a pause
+-- stopped the computer ("too long without yielding")
+-- is there a map worker to read it (not this coroutine)?
+function SCHEM.otherReader()
+  return TT and TT.yieldCo and coroutine.status(TT.yieldCo) ~= "dead" and coroutine.running() ~= TT.yieldCo
+end
+function SCHEM.load(name)
+  local s0 = SCHEM.get(name)
+  if s0 then return s0 end
+  if SCHEM.otherReader() then
+    SCHEM.request(name)
+    local untilT = os.clock() + 120
+    while not SCHEM.get(name) and not SCHEM.failed[name] and os.clock() < untilT do
+      local tm = os.startTimer(1)
+      repeat local ev, a = os.pullEvent() until (ev == "timer" and a == tm) or (ev == "schem_loaded" and a == name)
+    end
+    local s1 = SCHEM.get(name)
+    if s1 then return s1 end
+    local why = SCHEM.failed[name] or "reading it took too long"
+    SCHEM.failed[name] = nil
+    return nil, why
+  end
+  return SCHEM.read(name)
+end
+function SCHEM.read(name)
   local path = SCHEM.list()[name]
   if not path then return nil, "no schematic '" .. tostring(name) .. "'" end
   local h = fs.open(path, "rb")
   if not h then return nil, "cannot open " .. path end
   local data = h.readAll()
   h.close()
-  local ok, s = pcall(SCHEM.parse, data, TT and TT.workYield)
+  local ok, s = pcall(SCHEM.parse, data or "", TT and TT.workYield)
   if not ok then return nil, tostring(s) end
-  SCHEM.cache[name] = { s = s, path = path }
+  SCHEM.remember(name, s, path)
   return s
 end
+-- the screen / the comms worker must not wait: they ask (SCHEM.wanted) and look again later
+SCHEM.wanted, SCHEM.failed = {}, {}
+function SCHEM.request(name)
+  if SCHEM.get(name) then return true end
+  if not SCHEM.otherReader() then return SCHEM.read(name) ~= nil end       -- (no map worker: read it here)
+  if not SCHEM.wanted[name] then
+    SCHEM.wanted[name] = true
+    os.queueEvent("schem_in")
+  end
+  return false
+end
 function SCHEM.delete(name)
-  local path = SCHEM.list()[name]
-  if not path then return false end
-  fs.delete(path)
+  local paths = allPaths(name)
+  if #paths == 0 then return false end
+  for _, p in ipairs(paths) do pcall(fs.delete, p) end
   SCHEM.cache[name] = nil
   return true
 end
@@ -446,6 +572,15 @@ function SCHEM.onTransfer(transfer)
   if #SCHEM.pending > 0 then os.queueEvent("schem_in") end
 end
 function SCHEM.processPending()
+  local names = {}
+  for name in pairs(SCHEM.wanted) do names[#names + 1] = name end      -- (another worker may ask while this reads)
+  for _, name in ipairs(names) do
+    SCHEM.wanted[name] = nil
+    local s, why = SCHEM.read(name)
+    if not s then SCHEM.failed[name] = tostring(why) end
+    if DW and DW.sel and DW.sel.name == name and DW.sel.reading then pcall(DW.select, name) end
+    os.queueEvent("schem_loaded", name)
+  end
   while #SCHEM.pending > 0 do
     local f = table.remove(SCHEM.pending, 1)
     local name, data = f.name, f.data

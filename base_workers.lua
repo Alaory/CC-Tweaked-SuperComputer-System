@@ -532,7 +532,7 @@ function mapWorker()
   local lastCode = os.clock()
   while state.running do
     waitFor(5, "map_save", "schem_in")
-    if #SCHEM.pending > 0 then pcall(SCHEM.processPending) end   -- dropped schematics (read with pauses)
+    if #SCHEM.pending > 0 or next(SCHEM.wanted or {}) then pcall(SCHEM.processPending) end   -- dropped schematics (read with pauses)
     pcall(MAP.readLate)                      -- a helper / floppy away at the start is back: its map files first
     if MAP.saveNow and MAP.loaded then            -- (still loading: saved once it is read)
       MAP.saveNow = false

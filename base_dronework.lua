@@ -661,11 +661,14 @@ function DW.plan(s, ox, oy, oz, rot)
   return { place = place, air = air, skipped = skipped, top = oy + s.size.y }
 end
 
+-- (times on the os.clock are NOT saved: it starts at 0 again after a server restart - a build "waiting 5 min"
+--  waited hours, the anchor's goto was never sent again)
+DW.MEMORY_ONLY = { plan = true, waitUntil = true, anchorSent = true, short = true }
 function DW.save()
   local J = DW.job
   if not J then pcall(fs.delete, dataPath(DW.FILE)) return end
   local keep = {}
-  for k, v in pairs(J) do if k ~= "plan" then keep[k] = v end end
+  for k, v in pairs(J) do if not DW.MEMORY_ONLY[k] then keep[k] = v end end
   saveFileSafe(dataPath(DW.FILE), serialSmall(keep))
 end
 function DW.load()
@@ -673,20 +676,34 @@ function DW.load()
   if type(t) == "table" and type(t.name) == "string" and type(t.done) == "string" and type(t.dug or "") == "string"
      and tonumber(t.x) and tonumber(t.y) and tonumber(t.z) and tonumber(t.rot or 0) then
     t.dug = t.dug or ""
-    t.plan = nil                                       -- (rebuilt from the schematic)
+    for k in pairs(DW.MEMORY_ONLY) do t[k] = nil end    -- (the plan is rebuilt from the schematic; old files had clock times)
     DW.job = t
   end
 end
 
--- the plan of the running build (rebuilt from the schematic after a restart: same order)
+-- the plan of the running build (rebuilt from the schematic after a restart: same order). Never waits: a schematic
+-- not in memory is read by the map worker (nil, "reading")
 local function planOf(J)
   if J.plan then return J.plan end
-  local s, why = SCHEM.load(J.name)
-  if not s then return nil, why end
-  J.plan = DW.plan(s, J.x, J.y, J.z, J.rot)
-  if #J.done ~= #J.plan.place or #J.dug ~= #J.plan.air then return nil, "the schematic " .. J.name .. " changed - start the build again" end
-  return J.plan
+  local s = SCHEM.get(J.name)
+  if not s then
+    local why = SCHEM.failed[J.name]
+    if why then SCHEM.failed[J.name] = nil return nil, why end
+    if SCHEM.wanted[J.name] or not SCHEM.request(J.name) then
+      why = SCHEM.failed[J.name]
+      if why then SCHEM.failed[J.name] = nil return nil, why end
+      return nil, "reading", true
+    end
+    s = SCHEM.get(J.name)
+  end
+  local plan = DW.plan(s, J.x, J.y, J.z, J.rot)
+  if not J.clear then plan.air = {} end          -- (as at the start: without clear the air spots are no work - the
+                                                 --  check below "changed" EVERY build without clear after a restart)
+  if #J.done ~= #plan.place or #J.dug ~= #plan.air then return nil, "the schematic " .. J.name .. " changed - start the build again" end
+  J.plan = plan
+  return plan
 end
+DW.planOf = planOf
 
 -- what the build needs from AE2 now: { {item, need, have} } and the missing ones
 function DW.materials(J)
@@ -788,17 +805,30 @@ function DW.nextTrip(J, cap)
       return { kind = "dig", idx = idx, at = p0 }
     end
   end
+  -- (an item AE2 could not give is left for J.short's 5 min - the rest of the build goes on; it stopped at that item)
+  local short, waiting = J.short or {}, nil
   for i = 1, #J.done do
     if J.done:sub(i, i) == "0" then
       local p0, idx = plan.place[i], {}
-      for k = i, #J.done do
-        local p = plan.place[k]
-        if p.y ~= p0.y then break end
-        if J.done:sub(k, k) == "0" and p.item == p0.item and ck(p) == ck(p0) then idx[#idx + 1] = k end
-        if #idx >= cap then break end
+      if short[p0.item] and now() < short[p0.item] then
+        waiting = waiting or {}
+        waiting[p0.item] = true
+      else
+        for k = i, #J.done do
+          local p = plan.place[k]
+          if p.y ~= p0.y then break end
+          if J.done:sub(k, k) == "0" and p.item == p0.item and ck(p) == ck(p0) then idx[#idx + 1] = k end
+          if #idx >= cap then break end
+        end
+        return { kind = "place", item = p0.item, idx = idx, at = p0 }
       end
-      return { kind = "place", item = p0.item, idx = idx, at = p0 }
     end
+  end
+  if waiting then
+    local names = {}
+    for it in pairs(waiting) do names[#names + 1] = prettify(it) end
+    table.sort(names)
+    return nil, "only " .. table.concat(names, ", ") .. " left - AE2 has none (it looks again every 5 min)"
   end
 end
 
@@ -840,7 +870,10 @@ local function tripDone(trip, dr)
     J.why = m and m.err or "the drone mission failed"
     -- low air / nothing in AE2: wait, not a failure of the build
     if tostring(J.why):find("Pressure too low", 1, true) then J.fails = J.fails - 1 J.waitUntil = now() + 120
-    elseif T.missing then J.fails = J.fails - 1 J.waitUntil = now() + 300
+    elseif T.missing then
+      J.fails = J.fails - 1
+      J.short = J.short or {}
+      J.short[T.missing] = now() + 300            -- (that item waits; the next trip takes another one)
     else J.waitUntil = now() + 60 end
     if J.fails >= 5 then
       J.paused = "5 failed trips in a row - " .. tostring(J.why) .. " (schem resume)"
@@ -850,6 +883,7 @@ local function tripDone(trip, dr)
     return
   end
   J.fails, J.why = 0, nil
+  if J.short and trip.item then J.short[trip.item] = nil end
   if trip.kind == "dig" then
     J.dug = mark(J.dug, trip.idx, #trip.idx, "1")
   else
@@ -882,13 +916,17 @@ function DW.tick()
   if not J or DW.trip or J.paused then return end
   if DW.yielding() then J.why = "a " .. DW.wanted.what .. " goes first" return end
   if J.waitUntil and now() < J.waitUntil then return end
-  local plan, why = planOf(J)
-  if not plan then J.paused = tostring(why) return end
+  local plan, why, reading = planOf(J)
+  if not plan then
+    if reading then J.why = "reading the schematic " .. J.name .. " ..." else J.paused = tostring(why) end
+    return
+  end
   local dr = DW.freeDrone()
   if not dr then J.why = "waiting for a free drone" return end
   local bad = DW.notReady()
   if bad then J.why = bad return end
-  local tr = DW.nextTrip(J, DW.slots(dr) * 64)
+  local tr, waitWhy = DW.nextTrip(J, DW.slots(dr) * 64)
+  if not tr and waitWhy then J.why = waitWhy return end
   if not tr then
     local msg = "Drone build of " .. J.name .. " finished: " .. J.placed .. " blocks placed" ..
                 (J.skippedN > 0 and (", " .. J.skippedN .. " spots were taken") or "")
@@ -1043,9 +1081,22 @@ function DW.markHere()
 end
 -- a schematic picked on the page: its size + what it needs (AE2 read here, on the tap)
 function DW.select(name)
-  local s, why = SCHEM.load(name)
-  if not s then DW.sel = { name = name, err = why } return end
-  local need, place, air = SCHEM.materials(s)
+  -- (tapped on the screen: a file not in memory is read by the map worker - unpacking a big one here froze the screen
+  --  and could stop the computer; SCHEM.processPending calls this again when it is read)
+  local s = SCHEM.get(name)
+  if not s then
+    local why = SCHEM.failed[name]
+    if why then SCHEM.failed[name] = nil DW.sel = { name = name, err = why } return end
+    SCHEM.request(name)
+    s = SCHEM.get(name)
+    if not s then
+      why = SCHEM.failed[name] or (not SCHEM.wanted[name] and select(2, SCHEM.read(name)))
+      if why then SCHEM.failed[name] = nil DW.sel = { name = name, err = tostring(why) } return end
+      DW.sel = { name = name, err = "Reading " .. name .. " ...", reading = true }
+      return
+    end
+  end
+  local need, place, air, fluids = SCHEM.materials(s)
   local rows, short = {}, 0
   for it, n in pairs(need) do
     local have = bridge and (FACTORY.variants(it)) or 0
@@ -1062,7 +1113,7 @@ function DW.select(name)
       if not topY[k] or b[2] > topY[k] then topY[k], top[k] = b[2], SCHEM.itemOf(e) end
     end
   end
-  DW.sel = { name = name, size = s.size, place = place, air = air, rows = rows, short = short, top = top }
+  DW.sel = { name = name, size = s.size, place = place, air = air, rows = rows, short = short, top = top, fluids = fluids }
 end
 -- the item seen from above at a TURNED column (rx, rz) of the selected schematic, or nil
 function DW.topAt(sel, rot, rx, rz)
@@ -1110,6 +1161,12 @@ function DW.statusLines()
                     ": " .. J.placed .. " placed, " .. left .. " to go" .. (J.clear and (", cleared " .. dug .. "/" .. #J.dug) or "") ..
                     (J.skippedN > 0 and (", " .. J.skippedN .. " spots taken") or "")
     if J.paused then out[#out + 1] = "  PAUSED: " .. J.paused end
+    local sh = {}
+    for it, t in pairs(J.short or {}) do if now() < t then sh[#sh + 1] = prettify(it) end end
+    if #sh > 0 then
+      table.sort(sh)
+      out[#out + 1] = "  AE2 has none of: " .. table.concat(sh, ", ") .. " - those spots wait, the rest goes on"
+    end
     if J.why then out[#out + 1] = "  " .. J.why end
     local a = anchorTurtle(J)
     if a then out[#out + 1] = "  Keeping the site loaded: " .. a.label end

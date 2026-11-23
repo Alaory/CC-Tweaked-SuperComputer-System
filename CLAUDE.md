@@ -808,6 +808,23 @@ PneumaticCraft drone rides, turtle mapping/surveys, and an AE2 ME network view.
   not belong -> back into AE2, place what is missing; daily rotation per site at
   an hour), stage 3 structure "spawning" at flat spots from the map. Litematica /
   WorldEdit files are refused with a hint. tools/tests/fixtures (make_fixtures.py).
+  REVIEW (the owner: "go over the schematic code"; test_schem_review.lua, test_dronework): a LONG tag (8 bytes - Create
+  machines keep their network id as one) crashed the reader (POW[63] = nil; negatives now from the inverted bytes:
+  exact); cut-off / broken files say "schematic: ..." (stored-block NLEN, distance past the start, bad symbols, every NBT
+  read checked against the end); byte arrays read in pieces; parse drops blocks with no palette entry / outside the size.
+  itemOf: half = "upper" of anything = no item (stairs say top / bottom); ITEM maps crops / vines / stems / filled
+  cauldrons / candle cake / tall seagrass to their items (the build waited for "carrots" for ever); SCHEM.isFluid (water,
+  lava, a block whose only property is level - not cauldrons / composters) -> "<name>_bucket" = left out; materials'
+  4th result = fluid blocks left out (they were "short: water bucket"). A store deletes copies of that name elsewhere
+  (SCHEM.list takes the first - the OLD one came back after a restart); delete removes all. SCHEM.cache = the newest
+  SCHEM.KEEP 4 parsed (SCHEM.remember; the running build's kept). READ IN THE MAP WORKER: SCHEM.get (memory only);
+  SCHEM.load from any other worker asks the map worker (SCHEM.request -> SCHEM.wanted -> processPending -> SCHEM.read
+  with TT.workYield, event schem_loaded) and waits <= 120 s; the screen (DW.select: DW.sel.reading "Reading ...") and the
+  comms tick (planOf -> nil, "reading", true: J.why, no pause) never wait; no map worker (SCHEM.otherReader) = read
+  there. BUILD: planOf drops the air list when the job has no clear (after a restart EVERY build without clear paused
+  "the schematic changed"); DW.MEMORY_ONLY (plan, waitUntil, anchorSent, short - os.clock times) never saved; an item
+  AE2 could not give -> J.short[item] 5 min: DW.nextTrip skips it, the rest goes on, nothing else left -> nil, why
+  ("only X left - AE2 has none"); statusLines "AE2 has none of".
 - DRONE WORK (base_dronework.lua DW, comms tick DW.tick; dronework.dat via dataPath): PneumaticCraft
   drones do jobs with items from AE2. Drone chunk loading is OFF on the owner's server: a drone only
   works where a player / an online turtle (its Chunky) / the drones' home chunk keeps it loaded

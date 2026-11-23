@@ -209,6 +209,42 @@ CHECK(W.blocks[key(OX, OY, OZ)] == "minecraft:cobblestone", "the taken spot is l
 CHECK(W.stock["minecraft:stone"] == 92, "the stone that did not fit went back into AE2 (stone " .. tostring(W.stock["minecraft:stone"]) .. ")")
 CHECK(next(W.chest) == nil and next(W.inv) == nil, "nothing left in the chest / drone after the taken spot")
 
+------------------------------------------------------------------ a restart of a build WITHOUT clear
+-- (the schematic has an air spot: the plan rebuilt after a restart had it, the saved job not -> "the schematic hut
+--  changed - start the build again" after EVERY restart; a clock time saved = it waited hours)
+dr = world()
+ok = DW.startBuild("hut", OX, OY, OZ, 0, false)
+DW.tick()
+if #dr.queue > 0 then runMission(dr, table.remove(dr.queue, 1)) dr.busy = false end
+CLOCK = CLOCK + 2
+DW.tick()
+DW.job.waitUntil = os.clock() + 50000                     -- (a wait on the old clock)
+DW.save()
+DW.job, DW.trip = nil, nil
+DW.load()
+CHECK(DW.job and DW.job.waitUntil == nil, "a clock time is not kept over a restart")
+run(dr)
+CHECK(DW.job == nil and W.blocks[key(OX + 2, OY + 1, OZ + 2)] == "minecraft:oak_planks",
+      "after a restart a build without clear goes on to the end (" .. tostring(DW.job and (DW.job.paused or DW.job.why)) .. ")")
+
+------------------------------------------------------------------ an item AE2 has none of: the rest is built
+-- (the stone floor first - AE2 has no stone: it waited at that trip for ever, the planks were never placed)
+dr = world()
+W.stock["minecraft:stone"] = 0
+ok = DW.startBuild("hut", OX, OY, OZ, 0, false)
+run(dr, 60)
+local planks = 0
+for x = 0, 2 do for z = 0, 2 do if W.blocks[key(OX + x, OY + 1, OZ + z)] == "minecraft:oak_planks" then planks = planks + 1 end end end
+CHECK(planks == 8, "no stone in AE2: the planks are built anyway (" .. planks .. "/8)")
+local st = table.concat(DW.statusLines(), " | ")
+CHECK(DW.job and st:find("Stone", 1, true), "it says stone is what it waits for: " .. st)
+W.stock["minecraft:stone"] = 50
+CLOCK = CLOCK + 400
+run(dr)
+local stone = 0
+for x = 0, 2 do for z = 0, 2 do if W.blocks[key(OX + x, OY, OZ + z)] == "minecraft:stone" then stone = stone + 1 end end end
+CHECK(DW.job == nil and stone == 9, "stone in AE2 again: the floor is built and the build ends (" .. stone .. "/9)")
+
 ------------------------------------------------------------------ a site nobody keeps loaded
 dr = world()
 local FX, FZ = 600, 600

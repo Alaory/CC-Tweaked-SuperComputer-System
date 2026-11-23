@@ -173,13 +173,14 @@ local function buildPanel(x, y, w, h)
   if s and not s.err then pl, plWhy = DW.buildSpot(s) end
   local bottomY = y + h - 12                           -- (rows above the where-lines + options)
   if s and s.err then
-    yy = para(ix, yy, iw, s.err, C.warn, 3)
+    yy = para(ix, yy, iw, s.err, s.reading and C.dim or C.warn, 3)
   elseif s then
     heading(ix, yy, iw, s.name:upper())
     -- left: what it needs; right: where it goes, seen from above
     local lw2 = (iw >= 50) and math.floor((iw - 1) / 2) or iw
     text(ix, yy + 1, trunc(s.size.x .. " x " .. s.size.y .. " x " .. s.size.z .. " blocks - " .. s.place .. " to place", lw2), C.text, C.panel)
-    text(ix, yy + 2, s.short > 0 and (s.short .. " item(s) short in AE2") or "AE2 has everything", s.short > 0 and C.warn or C.good, C.panel)
+    text(ix, yy + 2, trunc((s.short > 0 and (s.short .. " item(s) short in AE2") or "AE2 has everything") ..
+         ((s.fluids or 0) > 0 and (", " .. s.fluids .. " fluid blocks left out") or ""), lw2), s.short > 0 and C.warn or C.good, C.panel)
     for k, r in ipairs(s.rows) do
       local ry = yy + 3 + k
       if ry > bottomY then break end

@@ -532,7 +532,7 @@ local lastFind = os.clock() - 280
 local lastCode = os.clock()
 while state.running do
 waitFor(5, "map_save", "schem_in")
-if #SCHEM.pending > 0 then pcall(SCHEM.processPending) end
+if #SCHEM.pending > 0 or next(SCHEM.wanted or {}) then pcall(SCHEM.processPending) end
 pcall(MAP.readLate)
 if MAP.saveNow and MAP.loaded then
 MAP.saveNow = false
