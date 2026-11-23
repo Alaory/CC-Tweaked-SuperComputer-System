@@ -96,7 +96,8 @@ Peripherals (tested on CC:Tweaked 1.120.2, Minecraft 1.21.1, NeoForge).
   a no-digging zone around the base.
 - The program takes a third of the space: `upgrade` keeps the base files PACKED (`base_*.luz`, ~280 KB instead
   of ~917 KB of the computer's 1 MB) and the base unpacks them in memory when it starts. A plain file you drag in
-  is still used first. `upgrade slim` / `upgrade full` for plain files.
+  is still used first. `upgrade slim` / `upgrade full` for plain files. The voice add-on is packed too (`voice
+  update`: 823 KB -> 271 KB on the floppies / storage helpers).
 - Survey far out: given-back spots (from a lost or failed turtle) only go to a turtle near them, and a turtle that
   takes over a ring starts at its nearest point - no more trips across the whole map between hand-outs (measured:
   ~10 % more spots an hour, trips over 1,000 blocks 44 -> 2-4). A turtle that just took a job no longer says "idle"

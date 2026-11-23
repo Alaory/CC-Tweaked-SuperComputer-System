@@ -321,6 +321,13 @@ few seconds). A plain `base_x.lua` you drag in is used instead of its packed cop
 `upgrade slim` gets plain files without comments, `upgrade full` the commented ones, `upgrade packed` goes
 back. `upgrade branch <name>` follows another branch.
 
+A computer so full that `upgrade` says "Not enough room": stop the base (Ctrl+T) and run the newest upgrade
+straight from GitHub - it needs no room for itself and packs the files, which frees the space:
+
+```
+wget run https://raw.githubusercontent.com/Alaory/CC-Tweaked-SuperComputer-System/main/upgrade.lua
+```
+
 ---
 
 ## Configuration

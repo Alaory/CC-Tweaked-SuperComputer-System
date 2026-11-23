@@ -53,7 +53,7 @@ def build():
         dist[f] = data
         lines.append("slim:%s %s %d %s dist/%s" % (g, f, len(data), h(data), f))
     for g, f in files():
-        if g == "base" and f.startswith("base_"):
+        if (g == "base" and f.startswith("base_")) or g == "voice":
             z = packed(dist[f])
             name = f[:-4] + ".luz"
             dist["z/" + name] = z

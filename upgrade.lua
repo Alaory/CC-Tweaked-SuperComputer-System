@@ -197,6 +197,27 @@ local function run(o)
     end
   end
   if o.fetch then
+    -- the PACKED copy when the caller can unpack it (o.inflate - the base's voice files: a third of the size):
+    -- checked (size, checksum), unpacked, compiled; returns true, text, version, packed bytes
+    if o.inflate then
+      local zname = o.fetch:gsub("%.lua$", ".luz")
+      for line in man:gmatch("[^\n]+") do
+        local path, size, sum, src = line:match("^z:" .. group:gsub("%p", "%%%0") .. "%s+(%S+)%s+(%d+)%s+(%x+)%s*(%S*)")
+        if path == zname then
+          log("  getting " .. zname)
+          local body, e = get(base .. ((src ~= "" and src) or path))
+          if not body or #body ~= tonumber(size) or upgradeHash(body, yield) ~= sum then
+            log("Download of " .. zname .. " is not complete / not the right version - try again in a minute. " .. tostring(e or ""))
+            return false
+          end
+          local okU, text = pcall(o.inflate, body, yield)
+          if not okU or type(text) ~= "string" then log(zname .. " does not unpack: " .. tostring(text)) return false end
+          local fn, ce = load(text, "=" .. o.fetch, "t", {})
+          if not fn then log("New " .. o.fetch .. " does not compile: " .. tostring(ce)) return false end
+          return true, text, (sha and sha:sub(1, 7)) or branch, body
+        end
+      end
+    end
     for _, f in ipairs(list) do
       if f.path == o.fetch then
         log("  getting " .. f.path)
@@ -326,6 +347,18 @@ if type(first) == "table" then return run(first) end     -- (loaded by the base 
 
 -- started from the shell: upgrade [check|branch <name>]
 local here = (shell and shell.getRunningProgram) and fs.getDir(shell.getRunningProgram()) or ""
+-- run straight from GitHub (wget run <url>) - no room needed on a full computer: the program is not a file
+-- here, so the base program's folder is the one with inventory.lua (like startup.lua finds it)
+if not pocket and not fs.exists(fs.combine(here, "inventory.lua")) then
+  local found = {}
+  for _, pattern in ipairs({ "inventory.lua", "*/inventory.lua", "*/*/inventory.lua" }) do
+    for _, p in ipairs(fs.find(pattern)) do
+      if not fs.getDrive or fs.getDrive(p) == "hdd" then found[#found + 1] = p end
+    end
+  end
+  table.sort(found, function(a, b) return #a < #b end)
+  if found[1] then here = fs.getDir(found[1]) print("Base program found in /" .. here) end
+end
 local done = run({ args = { ... }, dir = here })
 if done then
   print("Restarting in 3 s ...")

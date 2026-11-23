@@ -217,7 +217,7 @@ if not here then return nil end
 if freeFloppyRoom(dir, #text + 4096) then
 if writeSafe(path, text) then return path end
 end
-if name:find("%.lua$") or name:find("%.log$") then return nil end
+if name:find("%.lua$") or name:find("%.luz$") or name:find("%.log$") then return nil end
 
 
 
@@ -643,7 +643,34 @@ local function saveVoiceWhere() saveFileSafe(VOICE_WHERE_FILE, textutils.seriali
 
 function addonInstalled(file) return addonPath(file) ~= nil or (VOICE_WHERE[file] ~= nil) end
 
-local function voiceToHelper(file, body)
+
+
+local function luzName(file) return (file:gsub("%.lua$", ".luz")) end
+local function readBytes(p)
+local h = fs.open(p, "rb")
+if not h then return nil end
+local s = h.readAll()
+h.close()
+return s
+end
+local function writeBytes(p, data)
+local tmp = p .. ".tmp"
+local h = fs.open(tmp, "wb")
+if not h then return false end
+local okW = pcall(h.write, data)
+pcall(h.close)
+if not okW or not fs.exists(tmp) or fs.getSize(tmp) < #data then pcall(fs.delete, tmp) return false end
+if fs.exists(p) then fs.delete(p) end
+fs.move(tmp, p)
+return true
+end
+local function unpackVoice(bytes)
+local okU, text = pcall(SCHEM.inflate, bytes, 1)
+if okU and type(text) == "string" then return text end
+return nil, "the packed copy is broken (" .. tostring(text) .. ") - type  voice update"
+end
+
+local function voiceToHelper(file, body, name)
 if not STORE then return nil, "no storage helpers" end
 if not next(STORE.helpers or {}) then pcall(STORE.find, true) end
 local oldId = VOICE_WHERE[file] and STORE.parse(VOICE_WHERE[file])
@@ -654,7 +681,7 @@ if STORE.usable(h) and room >= #body + 16 * 1024 then list[#list + 1] = { id = i
 end
 table.sort(list, function(a, b) if (a.id == oldId) ~= (b.id == oldId) then return a.id == oldId end return a.room > b.room end)
 for _, c in ipairs(list) do
-local path = "store:" .. c.id .. "/voice/" .. file
+local path = "store:" .. c.id .. "/voice/" .. (name or file)
 local okW = STORE.write(path, body)
 local back = okW and STORE.read(path)
 if back == body then return path end
@@ -662,30 +689,50 @@ pcall(STORE.delete, path)
 end
 return nil, #list == 0 and "no storage helper with room" or "the storage helper did not keep it"
 end
+
 function addonPath(file)
+local z = luzName(file)
 for _, d in ipairs(mountedDisks()) do
 local p = fs.combine(d.mount, file)
-if fs.exists(p) then return p end
+if fs.exists(p) then return p, false end
+p = fs.combine(d.mount, z)
+if fs.exists(p) then return p, true end
 end
 local here = fs.combine(BASE_DIR or "", file)
-if fs.exists(here) then return here end
+if fs.exists(here) then return here, false end
+here = fs.combine(BASE_DIR or "", z)
+if fs.exists(here) then return here, true end
 return nil
 end
 
 local function loadOne(file, remoteOK)
-local p = addonPath(file)
+local p, packed = addonPath(file)
 local text
 if p then
+if packed then
+local bytes = readBytes(p)
+if not bytes then return false, "cannot read " .. p end
+local e
+text, e = unpackVoice(bytes)
+if not text then return false, e end
+else
 local h = fs.open(p, "r")
 if not h then return false, "cannot read " .. p end
 text = h.readAll() or ""
 h.close()
+end
 elseif VOICE_WHERE[file] and remoteOK and STORE then
 p = VOICE_WHERE[file]
 if not next(STORE.helpers or {}) then pcall(STORE.find, true) end
 local okR, t = pcall(STORE.read, p)
 if not (okR and type(t) == "string" and #t > 0) then return false, "the storage helper with " .. file .. " did not answer" end
 text = t
+if p:match("%.luz%.b64$") then
+local okD, bytes = pcall(SCHEM.dec, t)
+local e
+text, e = unpackVoice(okD and bytes or "")
+if not text then return false, e end
+end
 else
 return false, VOICE_WHERE[file] and "on a storage helper - loaded a little after start" or "not installed"
 end
@@ -719,63 +766,88 @@ end
 return loadOne(file, remoteOK)
 end
 
+
 function installAddon(file, group, log, noLoad)
 log = log or function() end
 local up = fs.combine(BASE_DIR or "", "upgrade.lua")
 local fn = fs.exists(up) and loadfile(up, "t", _ENV)
 if not fn then return false, "upgrade.lua is missing next to inventory.lua" end
-local okR, done, body = pcall(fn, { fetch = file, group = group, dir = BASE_DIR or "", log = log })
-if not (okR and done and type(body) == "string") then return false, "the download did not work (see above)" end
+local inflate = (group == "voice" and SCHEM and SCHEM.inflate) and function(b) return (SCHEM.inflate(b, 1)) end or nil
+local okR, done, text, _, packed = pcall(fn, { fetch = file, group = group, dir = BASE_DIR or "", log = log, inflate = inflate })
+if not (okR and done and type(text) == "string") then return false, "the download did not work (see above)" end
+if type(packed) ~= "string" then packed = nil end
+
+local fname = packed and luzName(file) or file
+local blob = packed or text
+local hname = packed and (luzName(file) .. ".b64") or file
+local hblob = packed and SCHEM.enc(packed) or text
 local old = addonPath(file)
 local oldRemote = VOICE_WHERE[file]
 
-if not old and oldRemote and STORE then
+local function dropOthers(keep)
+for _, d in ipairs(mountedDisks()) do
+for _, n in ipairs({ file, luzName(file) }) do
+local q = fs.combine(d.mount, n)
+if q ~= keep and fs.exists(q) then pcall(fs.delete, q) end
+end
+end
+for _, n in ipairs({ file, luzName(file) }) do
+local q = fs.combine(BASE_DIR or "", n)
+if q ~= keep and fs.exists(q) then pcall(fs.delete, q) end
+end
+if oldRemote and oldRemote ~= keep and STORE then pcall(STORE.delete, oldRemote) end
+if VOICE_WHERE[file] ~= keep then VOICE_WHERE[file] = nil saveVoiceWhere() end
+end
+
+if not old and oldRemote and STORE and oldRemote:match("/" .. hname:gsub("%p", "%%%0") .. "$") then
 local okC, cur = pcall(STORE.read, oldRemote)
-if okC and cur == body then
+if okC and cur == hblob then
 if noLoad then return true, oldRemote, "same" end
 local okL, where = loadAddon(file, true)
 return okL, where, "same"
 end
 end
+local oldSame = old and fs.getName(old) == fname and readBytes(old) == blob
 
-if group == "voice" and (type(CONFIG.voice) ~= "table" or CONFIG.voice.onHelpers ~= false) and STORE and not (old and (function()
-local h = fs.open(old, "rb") local cur = h and h.readAll() if h then h.close() end return cur == body end)()) then
-local hp = voiceToHelper(file, body)
+if group == "voice" and (type(CONFIG.voice) ~= "table" or CONFIG.voice.onHelpers ~= false) and STORE and not oldSame then
+local hp = voiceToHelper(file, hblob, hname)
 if hp then
-if old then pcall(fs.delete, old) end
-if oldRemote and oldRemote ~= hp then pcall(STORE.delete, oldRemote) end
 VOICE_WHERE[file] = hp
 saveVoiceWhere()
+dropOthers(hp)
 if noLoad then return true, hp end
 return loadAddon(file, true)
 end
 end
-if old then
-local h = fs.open(old, "rb")
-local cur = h and h.readAll()
-if h then h.close() end
-if cur == body then
+if oldSame then
 if noLoad then return true, old, "same" end
 local okL, where = loadAddon(file)
 return okL, where, "same"
 end
-end
 
 
 
-local need = #body + 5 * 1024
+local need = #blob + 5 * 1024
 local function cacheBytes(m)
 local dir, n = fs.combine(m, "voice"), 0
 if fs.isDir(dir) then for _, f in ipairs(fs.list(dir)) do n = n + (fs.getSize(fs.combine(dir, f)) or 0) end end
 return n
 end
+local function oldHere(m)
+local n = 0
+for _, nm in ipairs({ file, luzName(file) }) do
+local q = fs.combine(m, nm)
+if fs.exists(q) then n = n + fs.getSize(q) end
+end
+return n
+end
+local oldMount = old and fs.getDir(old)
 local best, bestRoom
 for _, d in ipairs(mountedDisks()) do
 if d.data then
-local here = fs.combine(d.mount, file)
-local room = (d.free or 0) + (fs.exists(here) and fs.getSize(here) or 0) + cacheBytes(d.mount)
+local room = (d.free or 0) + oldHere(d.mount) + cacheBytes(d.mount)
 
-if room >= need and (not best or (old == here) or (old ~= fs.combine(best.mount, file) and room > bestRoom)) then
+if room >= need and (not best or (d.mount == oldMount) or (best.mount ~= oldMount and room > bestRoom)) then
 best, bestRoom = d, room
 end
 end
@@ -783,10 +855,13 @@ end
 if not best then
 return false, "no storage helper and no DATA floppy with room (" .. math.ceil(need / 1024) .. " KB, counting old speech that can go) - add-ons are kept off the computer. Type  store  to check the helpers, or put an empty floppy in a drive and type  disks data"
 end
-local p = fs.combine(best.mount, file)
+local p = fs.combine(best.mount, fname)
 
 local function free() return fs.getFreeSpace(best.mount) end
-if free() < need and fs.exists(p) then pcall(fs.delete, p) end
+for _, nm in ipairs({ file, luzName(file) }) do
+local q = fs.combine(best.mount, nm)
+if free() < need and fs.exists(q) then pcall(fs.delete, q) end
+end
 local vdir = fs.combine(best.mount, "voice")
 if free() < need and fs.isDir(vdir) then
 local list, age = fs.list(vdir), {}
@@ -800,9 +875,10 @@ if free() >= need then break end
 pcall(fs.delete, fs.combine(vdir, f))
 end
 end
-if not saveFileSafe(p, body) then return false, "could not save it on " .. best.mount end
-if old and old ~= p then pcall(fs.delete, old) end
-if oldRemote then pcall(STORE.delete, oldRemote) VOICE_WHERE[file] = nil saveVoiceWhere() end
+local okS
+if packed then okS = writeBytes(p, blob) else okS = saveFileSafe(p, blob) end
+if not okS then return false, "could not save it on " .. best.mount end
+dropOthers(p)
 if noLoad then return true, p end
 return loadAddon(file, true)
 end

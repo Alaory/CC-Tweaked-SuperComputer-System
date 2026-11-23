@@ -141,9 +141,10 @@ CHECK(not ok and log:find("up to date"), "...and it stays full\n" .. log)
 ok, n, log = upgrade({ "slim" })
 CHECK(ok and DISK["base/base_me.lua"] == slimOf("base_me.lua"), "upgrade slim: back to slim")
 
--- PACKED (the default on the base): the owner's computer at 13 KB free with every base file plain.
--- 1) the upgrade.lua on it now (before packing) must still fit the step to the new upgrade.lua + inventory.lua;
--- 2) the new upgrade.lua packs every base_*.lua into base_*.luz (+ unzip.lua) and frees the room.
+-- PACKED (the default on the base): the owner's computer at 13 KB free with every base file plain. The upgrade.lua
+-- there now cannot take this step (it wants the growth + 8 KB free); the NEW one, run straight from GitHub
+-- (wget run <url>: not a file on the computer - no room needed), finds the base folder and packs every base_*.lua
+-- into base_*.luz (+ unzip.lua), freeing the room as it goes.
 do
   local OLDUP = readReal("tools/tests/fixtures/upgrade_prepack.lua")
   local OLDINV = readReal("tools/tests/fixtures/inventory_prepack.lua")
@@ -156,13 +157,26 @@ do
   DISK["base/base_config.lua"] = "CONFIG = { mine = true }"
   DISK["map/r1.dat"] = string.rep("x", 30000)
   CAP = used() + 13 * 1024                                  -- (the owner's screen: 13 KB left)
-  local log = {}
-  local okO, nO = assert(load(OLDUP, "=upgrade.lua", "t", _ENV))({ args = {}, dir = "base", log = function(s) log[#log + 1] = s end })
-  CHECK(okO and DISK["base/upgrade.lua"] == slimOf("upgrade.lua") and DISK["base/inventory.lua"] == slimOf("inventory.lua"),
-        "13 KB free: the upgrade.lua there now still fits the step to the new one (" .. tostring(nO) .. " files)\n" .. table.concat(log, "\n"))
-  CHECK(DISK["base/unzip.lua"] == nil, "... (unzip.lua is not part of that step - it would not fit)")
+  -- wget run: the running program is wget, not a file next to inventory.lua
+  local rebooted, printed = false, {}
+  shell = { getRunningProgram = function() return "rom/programs/http/wget.lua" end }
+  fs.find = function(pat)
+    local out = {}
+    local lpat = "^" .. pat:gsub("%.", "%%."):gsub("%*", "[^/]+") .. "$"
+    for k in pairs(DISK) do if k:match(lpat) then out[#out + 1] = k end end
+    return out
+  end
+  fs.getDrive = function() return "hdd" end
+  local p0, s0, r0 = print, sleep, os.reboot
+  print = function(t) printed[#printed + 1] = tostring(t) end
+  sleep = function() end
+  os.reboot = function() rebooted = true end
   local before = used()
-  local okP, nP, logP = upgrade({})
+  assert(load(src, "=upgrade.lua", "t", _ENV))()
+  print, sleep, os.reboot, shell = p0, s0, r0, nil
+  local logP = table.concat(printed, "\n")
+  local okP = rebooted
+  CHECK(logP:find("found in /base", 1, true), "wget run: it finds the base program's folder (/base)\n" .. logP)
   local plainLeft, luz, bad = {}, 0, {}
   local unz = DISK["base/unzip.lua"] and assert(load(DISK["base/unzip.lua"]))()
   for k, v in pairs(DISK) do
@@ -203,6 +217,21 @@ do
   local okK = upgrade({ "packed" })
   CHECK(okK and DISK["base/base_me.lua"] == nil and DISK["base/base_me.luz"], "upgrade packed: packed again")
   CAP = keepCap
+end
+
+-- fetch mode, PACKED (the voice files): the packed copy checked, unpacked with the caller's inflate, compiled
+do
+  DISK, CAP = {}, 1000000
+  local unz = assert(load(readReal("dist/unzip.lua")))()
+  local fn = assert(load(src, "=upgrade.lua", "t", _ENV))
+  local okF, text, ver, packed = fn({ fetch = "voice_talk3.lua", group = "voice", dir = "base", log = function() end, inflate = unz })
+  CHECK(okF and text == slimOf("voice_talk3.lua") and packed == readReal("dist/z/voice_talk3.luz"), "fetch mode: the packed copy + its text")
+  BROKEN = "dist/z/voice_talk3.luz"
+  local okB = assert(load(src, "=upgrade.lua", "t", _ENV))({ fetch = "voice_talk3.lua", group = "voice", dir = "base", log = function() end, inflate = unz })
+  CHECK(not okB, "fetch mode: a cut packed download is refused")
+  BROKEN = nil
+  local okP, textP, _, packedP = assert(load(src, "=upgrade.lua", "t", _ENV))({ fetch = "voice_talk3.lua", group = "voice", dir = "base", log = function() end })
+  CHECK(okP and textP == slimOf("voice_talk3.lua") and packedP == nil, "fetch mode without inflate: the plain copy as before")
 end
 
 -- the pocket: only pocket.lua (+ upgrade.lua)

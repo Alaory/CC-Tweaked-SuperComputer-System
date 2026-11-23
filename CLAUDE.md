@@ -2000,10 +2000,25 @@ PneumaticCraft drone rides, turtle mapping/surveys, and an AE2 ME network view.
   inventory.lua: a module = base_x.lua if there (a file dragged in - SCHEM.saveDropped says so), else base_x.luz ->
   unzip (fs "rb") -> load(text, "@<dir>/base_x.lua") (error messages unchanged); breathe() between files and inside
   long ones (a unique event; other events put back - none lost); unzip.lua missing / a broken .luz / missing files
-  say so. tools/tests/upgrade_sim.lua (the owner's path at 13 KB free: the frozen pre-packing upgrade.lua +
-  inventory.lua in tools/tests/fixtures/, then the new upgrade packs; every .luz unpacks to the slim text; a dragged
+  say so. A FULL COMPUTER (13 KB free): the pre-packing upgrade.lua wants growth + 8 KB free and this step grows the
+  slim files ~7 KB - it refuses; `wget run <raw url of upgrade.lua>` runs the NEW one from memory (no room needed):
+  started from the shell where no inventory.lua is next to the running program (wget) it finds the base folder like
+  startup.lua (inventory.lua, */inventory.lua, */*/inventory.lua on "hdd", the shortest path). tools/tests/upgrade_sim.lua
+  (the owner's path at 13 KB free: every file plain, the frozen pre-packing upgrade.lua + inventory.lua in
+  tools/tests/fixtures/, the new one run as `wget run` packs; every .luz unpacks to the slim text; a dragged
   plain copy; a broken packed download; slim / packed switch), tools/tests/inventory_load.lua (the real loader on a
   fake disk).
+  PACKED VOICE FILES (the owner: "why not use it on the voice add-on too"): z:voice in the manifest (823 -> 271 KB).
+  upgrade.lua fetch mode with o.inflate (the caller's unpacker) -> the z copy: size + checksum, unpacked, compiled ->
+  true, text, version, PACKED BYTES (without o.inflate: the plain copy as before). installAddon (base_theme) asks with
+  SCHEM.inflate: a floppy gets <name>.luz ("wb", writeBytes: .tmp + size check), a helper <name>.luz.b64 (SCHEM.enc -
+  store.lua keeps TEXT); every other copy (plain / packed, floppies, next to inventory.lua, the old helper copy) goes
+  once the new one is in (dropOthers); an up-to-date copy is left where it is ("same"). addonPath(file) -> path,
+  packed (a plain copy first); loadOne unpacks (SCHEM.dec for .b64) - a broken one says "type voice update". A plain
+  copy alone still loads; moveDataFile never moves .luz. tools/tests/test_voice_packed.lua (old code fails 6),
+  upgrade_sim (fetch mode packed / cut / without inflate). THE MAP IS NOT PACKED: it changes every minute, so the
+  game would have to COMPRESS in Lua (CPU on a busy server, every save + every start) - program / voice files are
+  packed once on GitHub (Python zlib) and only unpacked in the game; the map lives on the storage helpers (MBs free).
 - RELEASES (the owner: "get stuff ready for a github release"): BASE_VERSION (base_state.lua, x.y.z) = the newest
   entry in CHANGELOG.md (test_version.lua fails otherwise); versionText() = "v<x.y.z> (<commit>) [from <branch>]" from
   upgrade.dat - console `version`, SYSTEM > Status "Program" (state.sys.version from sysRefresh). tools/make_release.py
