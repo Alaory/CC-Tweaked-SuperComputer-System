@@ -96,6 +96,10 @@ Peripherals (tested on CC:Tweaked 1.120.2, Minecraft 1.21.1, NeoForge).
   a no-digging zone around the base.
 - Schematic builds get their missing blocks crafted by AE2 automatically (items with a pattern; `schem craft
   on|off|now`, SETTINGS > DRONES). `schem status` names the blocks AE2 has no pattern for.
+- Drone builds use more drones on small builds: blocks go into any layer at once (falling blocks like sand and
+  gravel still wait for the layer below, torches and doors for the walls), no extra chest visit before each trip,
+  and `schem status` shows where a trip's time goes (chest wait, AE2 into the chest, the drone taking it, flying,
+  placing).
 - Faster drone builds: a drone stays at the work chest between trips (no flight home to the charger each time,
   as long as it has air), and a drone low on air charges instead of failing a trip that paused the whole build.
 - Every drone works at once: builds, gifts and fuel runs use all free drones side by side (they take turns at the

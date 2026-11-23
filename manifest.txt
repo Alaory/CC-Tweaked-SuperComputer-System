@@ -7,8 +7,8 @@ base base_chat.lua 23519 0eb6fd4c
 base base_console.lua 78663 c3f1321d
 base base_curios.lua 7969 634b1833
 base base_devices.lua 34895 00a92721
-base base_drones.lua 94361 66ebf316
-base base_dronework.lua 63641 e7e2d787
+base base_drones.lua 94493 edab8cb5
+base base_dronework.lua 68078 215ba8b3
 base base_env.lua 10269 b6081e20
 base base_factory.lua 29478 ac14f7e9
 base base_input.lua 31054 99762fa0
@@ -74,8 +74,8 @@ slim:base base_chat.lua 17869 c802c350 dist/base_chat.lua
 slim:base base_console.lua 65138 d90481bf dist/base_console.lua
 slim:base base_curios.lua 4566 afac3e09 dist/base_curios.lua
 slim:base base_devices.lua 23725 4b3af2c2 dist/base_devices.lua
-slim:base base_drones.lua 60497 255dd8c8 dist/base_drones.lua
-slim:base base_dronework.lua 45326 f20107e1 dist/base_dronework.lua
+slim:base base_drones.lua 60553 198d7632 dist/base_drones.lua
+slim:base base_dronework.lua 48314 8e4e57da dist/base_dronework.lua
 slim:base base_env.lua 7154 ae1b2584 dist/base_env.lua
 slim:base base_factory.lua 21663 188c4b24 dist/base_factory.lua
 slim:base base_input.lua 21948 66de7008 dist/base_input.lua
@@ -137,8 +137,8 @@ z:base base_chat.luz 5601 6bb58d98 dist/z/base_chat.luz
 z:base base_console.luz 21230 df13cb7a dist/z/base_console.luz
 z:base base_curios.luz 1558 fe4c6a20 dist/z/base_curios.luz
 z:base base_devices.luz 6933 982df396 dist/z/base_devices.luz
-z:base base_drones.luz 15804 5f46db61 dist/z/base_drones.luz
-z:base base_dronework.luz 13260 b0d904f1 dist/z/base_dronework.luz
+z:base base_drones.luz 15833 8454c5ba dist/z/base_drones.luz
+z:base base_dronework.luz 14242 62d10beb dist/z/base_dronework.luz
 z:base base_env.luz 2601 7478a918 dist/z/base_env.luz
 z:base base_factory.luz 6111 78bb75ec dist/z/base_factory.luz
 z:base base_input.luz 6568 51e12629 dist/z/base_input.luz

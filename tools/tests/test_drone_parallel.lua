@@ -7,6 +7,8 @@ bridgeKind = bridgeKind or "ME"
 local HOME = { x = 0, y = 70, z = 0 }
 local function key(x, y, z) return x .. "," .. y .. "," .. z end
 local W = { chest = {}, blocks = {}, stock = { ["minecraft:stone"] = 1000, ["minecraft:oak_planks"] = 1000,
+            ["modern_industrialization:salt_block"] = 100, ["minecraft:anvil"] = 10, ["minecraft:chest"] = 10,
+            ["minecraft:barrel"] = 10, ["minecraft:gravel"] = 10,
             ["minecraft:torch"] = 100, ["minecraft:diamond"] = 50 }, mixedChest = 0, mixedDrone = 0, maxTrips = 0,
             placedOnTaken = 0, order = {}, dropped = {} }
 local function count(t) local n = 0 for _, v in pairs(t) do n = n + v end return n end
@@ -55,6 +57,7 @@ local function finish(d)
       if kinds(d.inv) > 1 then W.mixedDrone = W.mixedDrone + 1 end
     end
   elseif a == "pneumaticcraft:inventory_export" then
+    if next(d.inv) == nil and W.counting then W.emptyExports = (W.emptyExports or 0) + 1 end
     if key(p.x, p.y, p.z) == key(CH.x, CH.y, CH.z) then
       for name, n in pairs(d.inv) do W.chest[name] = (W.chest[name] or 0) + n end
       d.inv = {}
@@ -243,4 +246,67 @@ do
   CHECK(doneL and lowTrips == 0, "a drone with 1 bar gets no trip; the build finishes with the other (" .. lowTrips .. " trips on it)")
   CHECK(fails == 0, "no 'Pressure too low' stalls (" .. fails .. ")")
   D[low].p = 9
+end
+
+-- THE OWNER'S test1 (2 x 2 x 2: stone, an anvil, a chest, a barrel below; salt blocks above - "3 drones work, then 1
+-- continues"): the salt trip goes out while the bottom layer is still being built (a drone places in mid-air); a
+-- block that FALLS (gravel, on top) waits for the layer below; no "empty the drone" chest visit when it is empty
+do
+  local t1 = { size = { x = 2, y = 2, z = 2 }, palette = { { name = "minecraft:stone", props = {} },
+               { name = "modern_industrialization:salt_block", props = {} }, { name = "minecraft:anvil", props = {} },
+               { name = "minecraft:chest", props = {} }, { name = "minecraft:barrel", props = {} },
+               { name = "minecraft:gravel", props = {} } },
+               blocks = { { 1, 0, 1, 1 }, { 0, 1, 0, 2 }, { 0, 1, 1, 2 }, { 1, 1, 0, 6 }, { 1, 1, 1, 2 },
+                          { 1, 0, 0, 3 }, { 0, 0, 0, 4 }, { 0, 0, 1, 5 } } }
+  SCHEM.cache["test1"] = { s = t1, path = "schematics/test1.nbt" }
+  W.blocks, W.order, W.maxTrips, W.emptyExports = {}, {}, 0, 0
+  local TX, TY, TZ = 40, 64, 50
+  DW.startBuild("test1", TX, TY, TZ, 0, false)
+  local saltWhileBottom = false
+  W.counting = true
+  local doneT = runUntil(function()
+    local bottomOut, saltOut = false, false
+    for _, t in pairs(DW.trips) do
+      if t.layer == TY then bottomOut = true end
+      if t.item == "modern_industrialization:salt_block" then saltOut = true end
+    end
+    if bottomOut and saltOut then saltWhileBottom = true end
+    return DW.job == nil and next(DW.trips) == nil
+  end)
+  W.counting = false
+  CHECK(doneT, "test1 is built")
+  local n = 0
+  for _ in pairs(W.blocks) do n = n + 1 end
+  CHECK(n == 8, "all 8 blocks of test1 (" .. n .. ")")
+  -- (the rule itself: every bottom-layer group out with a drone, the free one takes the salt at once - it waited for
+  --  the whole bottom layer before)
+  do
+    SCHEM.cache["test1"] = { s = t1, path = "schematics/test1.nbt" }
+    DW.startBuild("test1", TX + 8, TY, TZ, 0, false)
+    local J = DW.job
+    local plan = J.plan
+    local bottom = {}
+    for i, pp in ipairs(plan.place) do if pp.y == TY then bottom[#bottom + 1] = i end end
+    DW.trips = { busyone = { kind = "place", layer = TY, idx = bottom, dr = "busyone", at = os.clock(), item = "x" } }
+    drones.busyone = { key = "busyone", busy = true, queue = {} }
+    DW.buildOne(J)
+    local salt = false
+    for k, t in pairs(DW.trips) do if k ~= "busyone" and t.item == "modern_industrialization:salt_block" then salt = true end end
+    CHECK(salt or saltWhileBottom, "with the whole bottom layer out, a free drone takes the salt (layer 2) at once (" .. tostring(J.why) .. ", free: " .. tostring(DW.freeDrone and (DW.freeDrone()) and "yes" or "no") .. ")")
+    drones.busyone = nil
+    DW.trips.busyone = nil
+    runUntil(function() return next(DW.trips) == nil end)
+    DW.stopBuild("test")
+  end
+  local lastBottom, gravelAt = 0, nil
+  for i, o in ipairs(W.order) do
+    if o.y == TY then lastBottom = i end
+    if o.item == "minecraft:gravel" then gravelAt = i end
+  end
+  CHECK(gravelAt and gravelAt > lastBottom, "the gravel (it falls) only after every block below (" .. tostring(gravelAt) ..
+        " after " .. lastBottom .. ")")
+  CHECK((W.emptyExports or 0) <= 6, "no 'empty the drone first' chest visit with an empty drone - only the end-of-trip one (" ..
+        tostring(W.emptyExports) .. " for 6 trips)")
+  local tl = DW.timesLine()
+  CHECK(tl and tl:find("chest wait", 1, true), "schem status shows where a trip's time goes: " .. tostring(tl))
 end

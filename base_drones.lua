@@ -1913,7 +1913,9 @@ function runMission(dr, cmd)
     local ms = dr.mission.steps[i]
     ms.status = "run"
     os.queueEvent("inv_update")
+    local t0 = os.epoch("utc")
     local ok, res, why = pcall(st.fn)      -- steps return true, or false + reason
+    ms.ms = os.epoch("utc") - t0           -- (real time: drone work shows where a trip's time goes)
     local good = ok and res and true or false
     local err = (not ok) and res or why
     if good then

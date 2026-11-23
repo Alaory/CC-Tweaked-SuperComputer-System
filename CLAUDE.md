@@ -816,7 +816,9 @@ PneumaticCraft drone rides, turtle mapping/surveys, and an AE2 ME network view.
   lays out exactly, extras back, craft, ALL back into the chest; any failure -> all back)
   -> "tcraft" -> FACTORY.craftResult imports the chest into AE2 -> next craft / "parts"
   (j.rounds > 30 = wrong recipe -> fail). `factory recipes|forget <item>|crafter <id>`.
-  The preview stub counts the SLIM program sizes (dist/) as the computer's used space.
+  The preview stub counts the program as the computer's used space: the PACKED base files (dist/z/*.luz) + unzip.lua +
+  the slim inventory / store / startup / upgrade (the slim sizes left ~80 KB free - a 1000-player test file stopped
+  fitting after a few KB of new code).
   test_factory.lua (taught), node_craft.lua.
 - SCHEMATICS (base_schem.lua SCHEM, stage 1 of the builder turtles): Create's
   Schematic and Quill `.nbt` (= vanilla structure format, also Minecraft's own
@@ -941,6 +943,19 @@ PneumaticCraft drone rides, turtle mapping/surveys, and an AE2 ME network view.
   minPressure first (gifts / fuel runs / buildOne's freeDrone okFn) - it charges, the others work; a "Pressure too
   low" failure no longer sets J.waitUntil. test_drone_parallel (no home flights between trips; a 1-bar drone gets no
   trip, no stalls) - the old code fails 3.
+  THE OWNER'S test1 (2x2x2: stone, anvil, chest, barrel below, 4 salt blocks above; "3 drones work then 1 continues",
+  "most of the time it waits for items to go into the chest"; work chest = entangled:tile_6): one item kind per trip =
+  4 bottom trips + 1 salt trip, and the layer rule kept the salt trip until the bottom was done. Now PLACING goes on in
+  ANY layer at once (a drone places in mid-air); clearing stays one layer; FALLING blocks (DW.isGravity: sand, gravel,
+  concrete powder, anvil, scaffolding, pointed dripstone, suspicious_*; p.grav in the plan) wait until DW.lowestOpen
+  (lowest layer with a block to place or out) is their own; LATE ones until no solid trip is out. buildOne tries up to 20
+  groups, passing over blocked ones (gravel before salt in the plan kept the free drone idle). "Empty the drone first"
+  is skipped while dr.dwEmpty (set by an unload that worked; cleared by a load, a dig, a failed trip) - it was a chest
+  visit + the chest lock + an export on every trip. TIMES: runMission keeps each step's real ms (ms.ms); tripDone ->
+  noteTimes -> DW.stats (running averages: empty / load / fly / place / back + the load's chest wait / AE2 -> chest /
+  drone takes from stepLoad's T.tWait / tGive / tTake) -> DW.timesLine in schem status ("Trip time (avg of N): ...").
+  test_drone_parallel test1 part (all 8, gravel after the bottom, a free drone takes the salt with the bottom out, no
+  empty-drone visits at the start, the times line).
   DW.test / console `dw test [item]` (the owner: "how do I test the drone chest"): DW.notReady, the chest's spot + distance
   from the drones' home, 1 PLAIN item (DW.TEST_ITEMS: the first AE2 has, or the one named) AE2 -> work chest -> AE2;
   then, with the owner within 48 of the chest, DW.giftRun(owner, item, 1) = a drone takes it out of the chest and drops

@@ -252,8 +252,11 @@ local function toChest(dr)
   return true
 end
 -- empty the drone into the work chest; all of it back into AE2. J.back = { [item] = n }
-local function stepUnload(dr, J, text)
+-- first = the trip's first step: nothing to do when its last trip ended with an unload that worked (dr.dwEmpty) -
+-- before, every trip flew to the chest, took it and exported an EMPTY drone first
+local function stepUnload(dr, J, text, first)
   return { text = text or "Empty the drone into the work chest", fn = function()
+    if first and dr.dwEmpty then return true end
     local ok, why = toChest(dr)
     if not ok then return false, why end
     ok, why = DW.chestTake(dr)
@@ -267,6 +270,7 @@ local function stepUnload(dr, J, text)
     local left = chestCount()
     DW.chestFree(dr)
     if left > 0 then return false, "the work chest is not empty (AE2 full?)" end
+    dr.dwEmpty = true
     return true
   end }
 end
@@ -276,14 +280,21 @@ local function stepLoad(dr, J, item, want)
     -- (to the chest first, THEN the chest is this drone's: other drones may be loading meanwhile)
     local ok, err = toChest(dr)
     if not ok then return false, err end
+    local tW = os.epoch("utc")
     ok, err = DW.chestTake(dr)
     if not ok then return false, err end
+    local tG = os.epoch("utc")
+    J.tWait = tG - tW                               -- (where a load's time goes: schem status)
     if chestCount() > 0 then DW.chestToAE2() end
     if chestCount() > 0 then DW.chestFree(dr) return false, "the work chest is not empty - only the base and the drones may use it" end
     local moved, why = DW.giveToChest(item, want)
     if moved <= 0 then DW.chestFree(dr) J.missing = item return false, why end
+    local tI = os.epoch("utc")
+    J.tGive = tI - tG
+    dr.dwEmpty = false
     local x, y, z = DW.chestAt()
     ok, err = act(dr, "pneumaticcraft:inventory_import", { { x = x, y = y, z = z } })
+    J.tTake = os.epoch("utc") - tI
     local left = chestCount(item)
     if left > 0 then DW.chestToAE2() end           -- (more than it could carry: the rest goes back)
     DW.chestFree(dr)
@@ -353,7 +364,7 @@ function DW.fuelRun(id, why, edge)
     return tt.pos.x, tt.pos.y + 2, tt.pos.z
   end
   local steps = {
-    stepUnload(dr, J, "Empty the drone first"),
+    stepUnload(dr, J, "Empty the drone first", true),
     stepLoad(dr, J, item, count),
     stepGo(dr, "Fly to " .. t.label, where, true),        -- (its own Chunky keeps it loaded)
     { text = "Put the fuel into " .. t.label, fn = function()
@@ -455,7 +466,7 @@ function DW.giftRun(name, item, count, cb, still)
     return playerAt(name)
   end
   local steps = {
-    stepUnload(dr, J, "Empty the drone first"),
+    stepUnload(dr, J, "Empty the drone first", true),
     stepLoad(dr, J, item, count),
     stepGo(dr, "Fly to " .. name, function()
       local p, w = here()
@@ -622,6 +633,14 @@ end
 DW.LATE = { "torch", "_button", "lever", "_sign", "ladder", "banner", "rail", "_carpet", "pressure_plate", "redstone",
             "repeater", "comparator", "tripwire", "vine", "lantern", "_door", "_bed", "candle", "_head", "_skull", "_fan",
             "flower_pot", "sapling", "flower", "_trapdoor", "chain", "bell", "item_frame", "painting", "snow" }
+-- blocks that FALL (sand, gravel, concrete powder, an anvil ...): placed only once every layer below is done - the
+-- others may go into any layer side by side (a drone places a block in mid-air)
+function DW.isGravity(item)
+  local id = tostring(item):match(":(.+)$") or tostring(item)
+  if id == "sand" or id == "red_sand" or id == "gravel" or id:find("concrete_powder", 1, true) or id:find("anvil", 1, true)
+     or id == "dragon_egg" or id == "scaffolding" or id == "pointed_dripstone" or id:find("^suspicious_") then return true end
+  return false
+end
 function DW.isLate(item)
   item = tostring(item)
   for _, w in ipairs(DW.LATE) do if item:find(w, 1, true) then return true end end
@@ -695,7 +714,7 @@ function DW.plan(s, ox, oy, oz, rot)
     elseif e then
       local it = SCHEM.itemOf(e)
       if it and it:find("_bucket", 1, true) then skipped[it] = (skipped[it] or 0) + 1     -- (fluids: not by drone)
-      elseif it then p.item, p.late = it, DW.isLate(it) or nil place[#place + 1] = p end
+      elseif it then p.item, p.late, p.grav = it, DW.isLate(it) or nil, DW.isGravity(it) or nil place[#place + 1] = p end
     end
   end
   local function ck(p) return math.floor(p.x / 16) * 100000 + math.floor(p.z / 16) end
@@ -928,7 +947,7 @@ function DW.nextTrip(J, cap, busy)
           if J.done:sub(k, k) == "0" and not bp[k] and p.item == p0.item and ck(p) == ck(p0) then idx[#idx + 1] = k end
           if #idx >= cap then break end
         end
-        return { kind = "place", item = p0.item, idx = idx, at = p0, late = p0.late }
+        return { kind = "place", item = p0.item, idx = idx, at = p0, late = p0.late, grav = p0.grav }
       end
     end
   end
@@ -948,9 +967,42 @@ local function mark(s, idx, n, ch)
 end
 
 -- the result of the finished trip
+-- WHERE A BUILD TRIP'S TIME GOES (real seconds, averaged): the steps' own times (runMission ms.ms) + the load's parts
+-- (waiting for the work chest / AE2 into the chest / the drone taking it) -> schem status
+DW.stats = DW.stats or { n = 0 }
+local function noteTimes(trip, m)
+  local T = trip.J or {}
+  local got = {}
+  for _, st in ipairs((m and m.steps) or {}) do
+    local t = tostring(st.text)
+    local k = (t:find("^Empty") and "empty") or (t:find("^Get ") and "load") or (t:find("^Fly") and "fly")
+              or ((t:find("^Place") or t:find("^Clear")) and "place") or (t:find("^Bring back") and "back") or nil
+    if k and tonumber(st.ms) then got[k] = (got[k] or 0) + st.ms / 1000 end
+  end
+  if T.tWait then got.wait = T.tWait / 1000 end
+  if T.tGive then got.give = T.tGive / 1000 end
+  if T.tTake then got.take = T.tTake / 1000 end
+  local S = DW.stats
+  S.n = S.n + 1
+  local a = (S.n == 1) and 1 or 0.25
+  for k, v in pairs(got) do S[k] = S[k] and (S[k] + (v - S[k]) * a) or v end
+  local total = 0
+  for _, k in ipairs({ "empty", "load", "fly", "place", "back" }) do total = total + (got[k] or 0) end
+  S.trip = S.trip and (S.trip + (total - S.trip) * a) or total
+end
+function DW.timesLine()
+  local S = DW.stats
+  if not S or (S.n or 0) == 0 then return nil end
+  local function f(k) return string.format("%.0f", S[k] or 0) end
+  return "Trip time (avg of " .. S.n .. "): " .. f("trip") .. " s = load " .. f("load") .. " s (chest wait " .. f("wait") ..
+         ", AE2 -> chest " .. f("give") .. ", drone takes " .. f("take") .. "), fly " .. f("fly") .. ", place " .. f("place") ..
+         ", back " .. f("back") .. ((S.empty or 0) >= 0.5 and (", empty first " .. f("empty")) or "")
+end
 local function tripDone(trip, dr)
   local m = dr and dr.mission
   local ok = m and m.state == "done"
+  if not ok and dr then dr.dwEmpty = false end           -- (a failed trip may have left items in the drone)
+  if (trip.kind == "dig" or trip.kind == "place") and m then pcall(noteTimes, trip, m) end
   local J, T = DW.job, trip.J
   if trip.kind == "gift" then
     -- delivered = what it carried minus what came back (a failed trip: nothing counted - the next
@@ -1031,6 +1083,15 @@ function DW.tick()
   end
 end
 
+-- the lowest layer with a block still to place (or out with a drone) - nil when none
+function DW.lowestOpen(J, plan, busy)
+  local low = math.huge
+  for i = 1, #J.done do
+    local p = plan.place[i]
+    if p and (J.done:sub(i, i) == "0" or (busy and busy.place[i])) and p.y < low then low = p.y end
+  end
+  return low
+end
 -- the build trips out now: busy spots, how many, their layer / kind / late
 local function buildFlying()
   local busy, n, layer, kind, late, solid = { dig = {}, place = {} }, 0, nil, nil, false, false
@@ -1059,7 +1120,23 @@ function DW.buildOne(J)
   if not dr then if flying == 0 then J.why = "waiting for a free drone" end return false end
   local bad = DW.notReady()
   if bad then J.why = bad return false end
-  local tr, waitWhy = DW.nextTrip(J, DW.slots(dr) * 64, busy)
+  -- (a group that must wait - a falling block above an open layer, a torch while walls are out - is passed over and the
+  --  NEXT group tried: test1's gravel came before its salt in the plan and kept the free drone idle)
+  local tr, waitWhy
+  for _ = 1, 20 do
+    tr, waitWhy = DW.nextTrip(J, DW.slots(dr) * 64, busy)
+    if not tr then break end
+    local blocked = flying > 0 and (tr.kind ~= fkind or (tr.kind == "dig" and tr.at.y ~= layer) or (tr.late and fsolid))
+    if not blocked and tr.grav and DW.lowestOpen(J, plan, busy) < tr.at.y then blocked = true end
+    if not blocked then break end
+    for _, k in ipairs(tr.idx) do busy[tr.kind][k] = true end
+    tr = nil
+    waitWhy = "waiting"
+  end
+  if not tr and waitWhy == "waiting" then
+    if flying == 0 then J.why = "falling blocks (sand, gravel ...) wait for the layer below - something there is short in AE2" end
+    return false
+  end
   if not tr and waitWhy then J.why = waitWhy return false end
   if not tr then
     if flying > 0 then return false end              -- (the last trips are still out - finished when they are back)
@@ -1070,9 +1147,10 @@ function DW.buildOne(J)
     DW.stopBuild("finished")
     return false
   end
-  -- SIDE BY SIDE only in the same layer and kind (bottom up stays bottom up; clearing top down), and blocks that
-  -- hang on others (torches, doors ...) only once every solid one is in
-  if flying > 0 and (tr.kind ~= fkind or (tr.at.y ~= layer) or (tr.late and fsolid)) then return false end
+  -- (SIDE BY SIDE - the owner's test1: 4 kinds in layer 1, 4 salt blocks in layer 2, "3 drones work, then 1 continues":
+  --  placing goes on in ANY layer at once - a drone places a block in mid-air; clearing stays in one layer, top down;
+  --  blocks that FALL wait for every layer below; blocks that hang - torches, doors - until every solid one is in.
+  --  Checked in the loop above.)
   -- the chunk must be loaded: else a turtle goes there first and waits above the build
   local cx, cz = math.floor(tr.at.x / 16), math.floor(tr.at.z / 16)
   local loaded = DW.loaded(tr.at.x, tr.at.z)
@@ -1113,11 +1191,12 @@ function DW.buildOne(J)
   end
   local p0 = pts[1]
   local function site() return p0.x, plan.top + 2, p0.z end
-  local steps = { stepUnload(dr, T, "Empty the drone first") }
+  local steps = { stepUnload(dr, T, "Empty the drone first", true) }
   if tr.kind == "place" then steps[#steps + 1] = stepLoad(dr, T, tr.item, #pts) end
   steps[#steps + 1] = stepGo(dr, "Fly to the build site", site, true)
   if tr.kind == "dig" then
     steps[#steps + 1] = { text = "Clear " .. #pts .. " spots", fn = function()
+      dr.dwEmpty = false
       return act(dr, "pneumaticcraft:dig", pts, 60 + 4 * #pts) end }
   else
     steps[#steps + 1] = { text = "Place " .. #pts .. " " .. prettify(tr.item), fn = function()
@@ -1322,6 +1401,8 @@ function DW.statusLines()
     elseif #cr > 0 then out[#out + 1] = "  AE2 asked to craft: " .. table.concat(cr, ", ") end
     if #np > 0 then out[#out + 1] = "  No AE2 pattern for: " .. table.concat(np, ", ") .. " - add some to AE2 by hand" end
     if J.why then out[#out + 1] = "  " .. J.why end
+    local tl = DW.timesLine()
+    if tl then out[#out + 1] = "  " .. tl end
     local a = anchorTurtle(J)
     if a then out[#out + 1] = "  Keeping the site loaded: " .. a.label end
   end

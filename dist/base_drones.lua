@@ -1913,7 +1913,9 @@ for i, st in ipairs(steps) do
 local ms = dr.mission.steps[i]
 ms.status = "run"
 os.queueEvent("inv_update")
+local t0 = os.epoch("utc")
 local ok, res, why = pcall(st.fn)
+ms.ms = os.epoch("utc") - t0
 local good = ok and res and true or false
 local err = (not ok) and res or why
 if good then

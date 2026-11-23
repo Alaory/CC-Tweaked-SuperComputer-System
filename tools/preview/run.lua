@@ -10,7 +10,7 @@ dofile(here .. "/cc_stub.lua")
 PERIPHS = W0
 PERIPHS.right.obj = MONITOR
 -- the program's own files take room on the computer (what is copied into the game)
--- (the SLIM copies from dist/ - that is what `upgrade` installs - else the full file)
+-- (the SLIM copies from dist/ - that is what `upgrade` installs - else the full file; base_* PACKED, below)
 local function codeSize(f)
   local h = io.open(SRC_DIR .. "/dist/" .. f) or io.open(SRC_DIR .. "/" .. f)
   if not h then return 0 end
@@ -19,10 +19,19 @@ local function codeSize(f)
   return n
 end
 for _, f in ipairs({ "inventory.lua", "store.lua", "startup.lua", "upgrade.lua" }) do CODE_SIZE = CODE_SIZE + codeSize(f) end   -- (node.lua: off the computer now)
+-- (the base files are PACKED on the computer now - base_*.luz, what `upgrade` installs - + unzip.lua)
+local function packedSize(name)
+  local h = io.open(SRC_DIR .. "/dist/z/" .. name:gsub("%.lua$", ".luz"), "rb")
+  if not h then return codeSize(name) end
+  local n = #h:read("a")
+  h:close()
+  return n
+end
+CODE_SIZE = CODE_SIZE + codeSize("unzip.lua")
 local ls = popen('ls "' .. SRC_DIR .. '"/base_*.lua')
 for f in ls:lines() do
   local name = f:match("([^/]+)$")
-  if name ~= "base_config.lua" then CODE_SIZE = CODE_SIZE + codeSize(name) end
+  if name ~= "base_config.lua" then CODE_SIZE = CODE_SIZE + packedSize(name) end
 end
 CODE_SIZE = CODE_SIZE + 12000                          -- (base_config.lua, the owner's own)
 ls:close()
