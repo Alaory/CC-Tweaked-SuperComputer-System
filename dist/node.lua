@@ -1128,10 +1128,19 @@ local inspect = (dir == "up" and turtle.inspectUp) or (dir == "down" and turtle.
 local okI, data = inspect()
 if not okI or type(data) ~= "table" or not natural(data.name) then return false end
 local dig = (dir == "up" and turtle.digUp) or (dir == "down" and turtle.digDown) or turtle.dig
+local before = {}
+for i = 1, 16 do before[i] = turtle.getItemCount(i) end
 local okD = withEquipped("_pickaxe", dig) == true
 
 
-if okD and freeSlots() <= 2 then pcall(dropJunk) end
+local toss = false
+for i = 1, 16 do
+if turtle.getItemCount(i) > before[i] then
+local d = turtle.getItemDetail(i)
+if d and not isFuel(d.name) and not isTool(d.name) then DUG[d.name] = true toss = true end
+end
+end
+if okD and (toss or freeSlots() <= 2) then pcall(dropJunk) end
 return okD
 end
 
@@ -1142,9 +1151,25 @@ for _, n in ipairs({ "cobblestone", "cobbled_deepslate", "dirt", "coarse_dirt", 
 "pointed_dripstone", "flint", "mud", "moss_block", "sandstone", "red_sandstone", "basalt",
 "smooth_basalt", "blackstone", "end_stone", "soul_sand", "soul_soil", "snowball", "deepslate",
 "stone", "mycelium", "podzol", "grass_block", "clay", "terracotta" }) do JUNK[n] = true end
+
+
+DUG = {}
+ORE_DROP = {}
+for _, n in ipairs({ "diamond", "emerald", "lapis_lazuli", "redstone", "quartz", "amethyst_shard", "gold_nugget",
+"ancient_debris", "glowstone_dust", "raw_iron", "raw_gold", "raw_copper" }) do ORE_DROP[n] = true end
+function isTool(n)
+for _, p in ipairs({ "pickaxe", "scanner", "modem", "chunk", "drive", "floppy", "disk", "turtle", "computer", "crafting",
+"automata", "_core", "bucket", "cell" }) do
+if n:find(p, 1, true) then return true end
+end
+return false
+end
 function isJunk(name)
-local id = tostring(name):match(":(.+)$") or tostring(name)
-return JUNK[id] == true
+name = tostring(name)
+local id = name:match(":(.+)$") or name
+if JUNK[id] then return true end
+if isFuel(name) or isTool(name) or (S.reuse and S.reuse[name]) then return false end
+return DUG[name] or ORE_DROP[id] or id:sub(1, 4) == "raw_" or id:find("_ore", 1, true) ~= nil
 end
 function freeSlots()
 local n = 0
@@ -3891,10 +3916,10 @@ msg = "first start - refuelled by myself: " .. tostring(okR and msgR or okR2) })
 end
 pcall(idleEmptyFuel)
 
-if not job and (not JUNK_TRY or os.clock() - JUNK_TRY > 60) and freeSlots() == 0 then
+if not job and (not JUNK_TRY or os.clock() - JUNK_TRY > 60) and freeSlots() <= 2 then
 JUNK_TRY = os.clock()
 local nJ = dropJunk()
-if nJ > 0 then send("result", { cmd = "junk", ok = true, msg = "inventory full - threw away " .. nJ .. " dug blocks" }) end
+if nJ > 0 then send("result", { cmd = "junk", ok = true, msg = "inventory nearly full - threw away " .. nJ .. " dug blocks / ores" }) end
 end
 
 local f = turtle.getFuelLevel()
