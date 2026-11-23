@@ -279,6 +279,10 @@ add(V.patterns, {
     if not to then to, text = t:match("^message for (%w+) (.+)$") end
     if not to then to, text = t:match("^send (%w+) a message (.+)$") end
     if not to then to, text = t:match("^leave (%w+) a message (.+)$") end
+    if not to then                              -- ("tell Steve the farm is ready": a player it knows, no "that")
+      local t2, x2 = t:match("^tell (%w+) (.+)$")
+      if t2 and not NOT_NAMES[t2] and (knownPlayer(t2) or tostring(raw):match("[Tt]ell (%u[%w_]*) ")) then to, text = t2, x2 end
+    end
     if not to or NOT_NAMES[to] or V.isOwner(to) then return nil end            -- (the owner: the old "leave a message")
     if to == tostring(who):lower() then return "You want to send yourself a message? I will just remember it then: " .. text end
     if not knownPlayer(to) then return "I do not know anyone called " .. to .. ". They have to visit me first." end
@@ -523,6 +527,7 @@ end
 function V.taxi(who, where)
   local ok, why = taxiAllowed(who)
   if not ok then return why end
+  if where == "base" and isNear(who) then return "You are at the base already!" end
   if not startRide then return "The drone taxi needs a newer base program (upgrade)." end
   local bed, p = V.bedOf(who)
   if not bed then return "No taxi: " .. tostring(p) .. "." end
@@ -574,6 +579,15 @@ V.addIntents({
       "fly me to the base" }, function(w) return V.taxi(w, "base") end),
   L("taxi", { "taxi", "free ride", "drone ride", "drone taxi", "can i get a ride", "give me a ride" }, function(w) return V.taxi(w, nil) end),
 })
+-- "take me to the base" said AT the base: the base's own name is taken out of the words, so the taxibase intent never saw
+-- "base" and the message got a STORY ("tale") - the whole message is checked here
+table.insert(V.patterns, 1, function(who, raw, ws)
+  local t = " " .. tostring(raw or ""):lower():gsub("[^%w ]", " "):gsub("%s+", " ") .. " "
+  for _, ph in ipairs({ " take me to the base ", " take me to base ", " fly me to the base ", " fly me to base ", " bring me to the base " }) do
+    if t:find(ph, 1, true) then return V.taxi(who, "base") or "OK." end
+  end
+  return nil
+end)
 -- far from the base (at home): only the taxi is answered
 add(V.farHooks, {
   function(who, text)
@@ -882,3 +896,64 @@ function V.namesOther(who, ws, raw)
   end
   return hit
 end
+
+-- DICE / COINS / NUMBERS / QUIET FOR A TIME, AS ASKED (the owner: "go over all the features - I am sure you did something silly
+-- like this" (a 24-hour reminder that became 4 hours)): "roll a d20" rolled 1-6, "roll 2 dice" one die, "pick a number from 1
+-- to 10" picked 17, "random number 1-6" 89, "flip 3 coins" one coin, "be quiet for 2 hours" = 30 min.
+RM.NUMW = { a = 1, an = 1, one = 1, two = 2, three = 3, four = 4, five = 5, six = 6, seven = 7, eight = 8, nine = 9, ten = 10 }
+function RM.chance(who, raw)
+  local t = " " .. table.concat(RM.words(raw), " ") .. " "
+  -- dice: d20, 2d6, 3 dice, a die with 12 sides
+  if t:find(" roll", 1, true) or t:find(" dice ", 1, true) or t:find(" die ", 1, true) or t:find(" d%d") then
+    local n, s = t:match(" (%d+)d(%d+) ")
+    if not n then s = t:match(" d(%d+) ") end
+    if not s then s = t:match("(%d+)%s*sided") or t:match("with (%d+) sides") end
+    if not n then n = t:match(" (%d+) dice ") or t:match(" (%d+) die ") end
+    if not n then local w = t:match(" (%a+) dice ") n = w and RM.NUMW[w] end
+    n, s = tonumber(n) or 1, tonumber(s) or 6
+    if not (t:find(" roll", 1, true) or t:find(" throw ", 1, true)) then return nil end
+    if s < 2 then return "A die needs at least 2 sides." end
+    if n > 20 then return "That is a lot of dice - I roll at most 20 at once." end
+    if s > 1000000 then return "A die with that many sides is a ball. Up to 1,000,000 sides." end
+    local out, sum = {}, 0
+    for _ = 1, math.max(1, n) do local r = math.random(1, s) out[#out + 1] = r sum = sum + r end
+    if #out == 1 then return "You rolled a " .. out[1] .. (s ~= 6 and (" (d" .. s .. ")") or "") .. "." end
+    return "You rolled " .. table.concat(out, ", ") .. " - " .. sum .. " in all."
+  end
+  -- coins: flip 3 coins
+  if t:find(" flip", 1, true) or t:find(" toss", 1, true) then
+    local n = t:match(" (%d+) coins? ")
+    if not n then local w = t:match(" (%a+) coins? ") n = w and RM.NUMW[w] end
+    n = tonumber(n) or 1
+    if n <= 1 then return nil end                                      -- (one coin: the core answers)
+    if n > 50 then return "I have only 50 coins. Ask for fewer." end
+    local out, h = {}, 0
+    for _ = 1, n do local c = math.random(2) == 1 out[#out + 1] = c and "heads" or "tails" if c then h = h + 1 end end
+    return table.concat(out, ", ") .. " - " .. h .. " heads, " .. (n - h) .. " tails."
+  end
+  -- numbers: from A to B, A-B, A to B, up to N (between A and B: pack 2)
+  if t:find(" number", 1, true) or t:find(" pick ", 1, true) then
+    local a, b = t:match(" from (%-?%d+) to (%-?%d+) ")
+    if not a then a, b = raw:lower():match("(%-?%d+)%s*%-%s*(%-?%d+)") end
+    if not a then a, b = t:match(" (%-?%d+) to (%-?%d+) ") end
+    if not a then b = t:match(" up to (%d+) ") or t:match(" under (%d+) ") or t:match(" below (%d+) ") if b then a = 1 end end
+    a, b = tonumber(a), tonumber(b)
+    if a and b and math.abs(a) <= 1e9 and math.abs(b) <= 1e9 then
+      if a > b then a, b = b, a end
+      return "I pick " .. math.random(math.floor(a), math.floor(b)) .. "."
+    end
+  end
+  -- quiet for a time: "shh for 2 hours", "be quiet until tomorrow"
+  if t:find(" quiet ", 1, true) or t:find(" shh ", 1, true) or t:find(" silence ", 1, true) or t:find(" stop talking ", 1, true) then
+    local when = RM.parse(raw)
+    if not when then return nil end                                    -- (no time: the core's half an hour)
+    local secs = when.secs or (when.tomorrow and 12 * 3600) or 3600
+    local capped = secs > 24 * 3600
+    secs = math.min(secs, 24 * 3600)
+    V.quietUntil = os.clock() + secs
+    return "OK, quiet for " .. fmtSpan(secs) .. (capped and " (the most I go quiet in one go)" or "") ..
+           ". I still answer when you ask me something - say talk to me to end it."
+  end
+  return nil
+end
+table.insert(V.patterns, 1, function(who, raw, ws) return RM.chance(who, raw) end)

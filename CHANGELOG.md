@@ -26,6 +26,10 @@ Peripherals (tested on CC:Tweaked 1.120.2, Minecraft 1.21.1, NeoForge).
 - PING is sent again until the turtle answers (survey turtles have their modem off while scanning) and says why not.
 - Drones on far trips jump into the sky above a player near the target first, then hop on from there.
 - Item wishes work at the base too, not only at spawn. The miner program is kept on a storage helper.
+- Asked = answered: "roll a d20" / "roll 2 dice" / "flip 3 coins" / "pick a number from 1 to 10" / "be quiet for 2
+  hours" now do what they say; "forget my notes" forgets them (it showed them); "take me to the base" at the base no
+  longer tells a story; the lonely base's wall / memories say when they work; `env`, `me jobs` and `me cpus` answer in the
+  console's output; `findlost` / `rescue` say when they cut the radius.
 - Reminders: "base, remind me mekanism needs fixing" keeps the text and asks when; "tomorrow" (typos too), "in 2 hours",
   "next time" all work; reminders survive restarts and wait until you are online. A message that starts with the
   beginning of another player's name ("Al, what time is it") is for that player - the base stays out.

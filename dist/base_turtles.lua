@@ -1755,8 +1755,9 @@ where = where .. " (" .. (math.abs(t.pos.x - base.x) + math.abs(t.pos.z - base.z
 end
 end
 local last = t.log and t.log[1] and (t.log[1].t .. " " .. t.log[1].msg) or "-"
-out[#out + 1] = string.format("%s #%d: silent %s | %s | task '%s' | fuel %s | %s | last: %s", t.label, t.id,
-TT.ago(t.seenEpoch), why, tostring(t.task), tostring(t.fuel), where, last)
+out[#out + 1] = string.format("%s #%d: silent %s | %s | task: %s | fuel %s | %s | last: %s", t.label, t.id,
+TT.ago(t.seenEpoch), why, tostring(t.task or (t.prevTask and ("was " .. t.prevTask)) or "none"),
+t.fuel and tostring(t.fuel) or "?", where, last)
 end
 table.insert(out, 1, #rows .. " offline: " .. count.copy .. " copies, " .. count.short .. " without fuel for the way home, " ..
 count.missing .. " missing, " .. count.atBase .. " at the base, " .. count.other .. " not known why (newest first)")

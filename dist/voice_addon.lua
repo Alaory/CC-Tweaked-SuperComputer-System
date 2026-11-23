@@ -1175,7 +1175,7 @@ if os.clock() > g.till then VOICE.games[k] = nil return nil end
 q = " " .. q .. " "
 if g.kind == "guess" then
 local n = numIn(q)
-if not n then return nil end
+if not n or (strict and not q:match("^%s*%-?%d+%s*$")) then return nil end
 g.tries = g.tries + 1
 g.till = os.clock() + 180
 if n == g.n then
@@ -1314,7 +1314,7 @@ VOICE.saveMem()
 return "Got it. I will remember: " .. m[k].notes[1] .. "."
 end
 end
-if phrase("my notes", "what do you remember", "do you remember", "my list") then
+if phrase("my notes", "what do you remember", "do you remember", "my list") and not phrase("forget my", "clear my", "delete my") then
 local m = VOICE.mem()[k]
 if not (m and m.notes and #m.notes > 0) then return "I do not have any notes for you." end
 return "Your notes: " .. table.concat(m.notes, "; ") .. "."
@@ -1540,6 +1540,7 @@ VOICE.INTENTS = {
 { id = "whereturtle", keys = { "where turtle", "find turtle", "where is turtle", "locate turtle" } },
 { id = "remind", keys = { "remind me", "reminder", "timer", "alarm clock" } },
 { id = "remember", keys = { "remember", "write down", "note down" } },
+{ id = "forgetnotes", canon = "forget my notes", keys = { "forget my notes", "clear my notes", "delete my notes" } },
 { id = "notes", canon = "my notes", keys = { "my notes", "my list", "what did i say", "notes" } },
 { id = "say", keys = { "say" } },
 { id = "clearmsg", canon = "clear messages", keys = { "clear messages", "delete messages", "remove messages" } },

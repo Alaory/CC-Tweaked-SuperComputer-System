@@ -1445,6 +1445,19 @@ PneumaticCraft drone rides, turtle mapping/surveys, and an AE2 ME network view.
   forget my reminders; `voice reminders [clear]`. SHORT NAMES (pack 3 wraps V.namesOther): the first word = the start
   (2+ letters) of exactly one other online player's name, not V.NOT_SHORT (so, me, hi ...) -> talking to that player.
   test_voice_remind.lua (the chat replayed).
+  ASKED = ANSWERED (the owner: "go over all the features - I am sure you did something silly like this"): every COMMANDS.md
+  console example and every "Say" example replayed (tools: extract the backticked commands, run handleCommand / V.chat,
+  read the answers). Fixed: RM.chance (pack 3, a pattern first) - dice NdS / dS / "N dice", coins "flip N coins", numbers
+  "from A to B" / "A-B" / "A to B" / "up to N", "quiet for <time>" (RM.parse, max 24 h, says so); core: intent forgetnotes +
+  "my notes" not for "forget my ..."; a guessing game takes a message WITH the name only when it is just a number ("base
+  count to 5" was a guess); pack 3: "take me to the base" checked on the whole message (the name "base" is taken out of the
+  words - the taxibase intent never matched; the answer was a STORY) and V.taxi says "at the base already" first; mail
+  "tell Steve <text>" without "that" for a known player or a Capitalised name (unknown -> "I do not know anyone called");
+  voice_lonely: wall / memory / days / news when NOT lonely -> says when they work (was a story / the menu); console env /
+  world / me jobs / cpus / raw / cancel used print() (nothing in the returned output) -> say; `lost` "task 'nil'" -> task:
+  none / was <prevTask>; findlost / rescue say when the radius was cut; startRide: a 2nd request while a drone is coming =
+  "already on its way", no free drone = what EACH drone does (one busy + one charging said "All drones are busy").
+  test_voice_asked.lua.
   TAXI (pack 3; the owner: "we know players' bed positions (overworld only) - offer a free drone trip from the base
   to their home or vice versa"): V.bedOf = the Player Detector's respawnPosition (respawnDimension must be the
   drone's dimension), NEVER said to anyone. V.taxi(who, "bed"|"base"|nil): the owner always; allowed list; friends

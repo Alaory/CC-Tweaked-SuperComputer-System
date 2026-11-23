@@ -275,9 +275,10 @@ say("Usage: findlost [radius] [x y z]   (default: 96 blocks around the base)")
 elseif x and not (y and z and validCoords(x, y, z)) then
 say("Usage: findlost [radius] [x y z]")
 else
-local ok, msg = TT.findLost(radius and math.max(16, math.min(160, math.floor(radius))),
-x and math.floor(x), y and math.floor(y), z and math.floor(z))
+local r = radius and math.max(16, math.min(160, math.floor(radius)))
+local ok, msg = TT.findLost(r, x and math.floor(x), y and math.floor(y), z and math.floor(z))
 say((ok and "OK: " or "Cannot: ") .. msg)
+if r and r ~= math.floor(radius) then say("  (radius " .. r .. ": it searches 16 - 160 blocks)") end
 end
 
 elseif cmd == "rescue" then
@@ -290,9 +291,10 @@ if x and not (y and z and validCoords(x, y, z)) then
 say("Usage: rescue <turtle id> [x y z]")
 else
 local radius = tonumber(words[6])
-local ok, msg = TT.rescue(id, x and math.floor(x), y and math.floor(y), z and math.floor(z),
-radius and math.max(16, math.min(128, math.floor(radius))))
+local r = radius and math.max(16, math.min(128, math.floor(radius)))
+local ok, msg = TT.rescue(id, x and math.floor(x), y and math.floor(y), z and math.floor(z), r)
 say((ok and "OK: " or "Cannot: ") .. msg)
+if r and r ~= math.floor(radius) then say("  (radius " .. r .. ": a rescue searches 16 - 128 blocks)") end
 end
 end
 
@@ -405,20 +407,20 @@ end
 
 elseif cmd == "me" and (words[2] == "jobs" or words[2] == "cpus") then
 if MEX and bridge then pcall(MEX.read) end
-for _, l in ipairs(MEX and MEX.lines() or { "no bridge" }) do print(l) end
+for _, l in ipairs(MEX and MEX.lines() or { "no bridge" }) do say(l) end
 elseif cmd == "me" and words[2] == "raw" then
 
 local ok, cpus = pcall(bridge and bridge.getCraftingCPUs or error)
-if not ok or type(cpus) ~= "table" then print("getCraftingCPUs: " .. tostring(cpus)) else
+if not ok or type(cpus) ~= "table" then say("getCraftingCPUs: " .. tostring(cpus)) else
 for _, c in pairs(cpus) do
 if type(c) == "table" and c.isBusy then
-print((c.name or "Unnamed") .. ": " .. textutils.serialize(c.craftingJob or "no job"):gsub("%s+", " "):sub(1, 400))
+say((c.name or "Unnamed") .. ": " .. textutils.serialize(c.craftingJob or "no job"):gsub("%s+", " "):sub(1, 400))
 end
 end
 end
 elseif cmd == "me" and words[2] == "cancel" and words[3] then
 local ok, err = MEX.cancel(words[3])
-print(ok and ("Cancelled the jobs for " .. words[3]) or ("Not cancelled: " .. tostring(err)))
+say(ok and ("Cancelled the jobs for " .. words[3]) or ("Not cancelled: " .. tostring(err)))
 elseif cmd == "me" and words[2] == "check" then
 
 
@@ -1122,7 +1124,7 @@ end
 
 elseif cmd == "env" or cmd == "world" then
 if envDet then pcall(ENV.read, true) end
-for _, l in ipairs(ENV.lines()) do print(l) end
+for _, l in ipairs(ENV.lines()) do say(l) end
 elseif cmd == "away" then
 
 if AWAY.on then

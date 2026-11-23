@@ -77,18 +77,24 @@ end
 end
 if not best then
 
-local busy, low, off = 0, 0, 0
+local busy, low, off, each = 0, 0, 0, {}
 for _, k in ipairs(droneOrder) do
 local dr = drones[k]
-if not dr.conn then off = off + 1
-elseif dr.busy then busy = busy + 1
-elseif dr.pressure and dr.pressure < rideMinPressure() then low = low + 1 end
+local mine = dr.busy and (tostring(dr.rider or ""):lower() == name:lower() or tostring(dr.requester or ""):lower() == name:lower())
+if mine then chatTell(name, dr.label .. " is already on its way to you (or flying you). $drone stop ends it.") return end
+if not dr.conn then off = off + 1 each[#each + 1] = dr.label .. ": not connected"
+elseif dr.busy then busy = busy + 1 each[#each + 1] = dr.label .. ": busy"
+elseif dr.pressure and dr.pressure < rideMinPressure() then
+low = low + 1
+each[#each + 1] = dr.label .. ": charging (" .. string.format("%.1f", dr.pressure) .. " of " .. rideMinPressure() .. " bar)"
+end
 end
 local why
 if #droneOrder == 0 or off == #droneOrder then why = "No drone is connected right now."
-elseif busy > 0 then why = "All drones are busy. Try again in a minute."
-elseif low > 0 then why = "The drones are low on air and charging. Try again in a few minutes."
+elseif busy > 0 and low == 0 then why = "All drones are busy. Try again in a minute."
+elseif low > 0 and busy == 0 then why = "The drones are low on air and charging. Try again in a few minutes."
 else why = "No drone is free right now. Try again in a moment." end
+if #each > 1 then why = why .. " (" .. table.concat(each, ", ") .. ")" end
 chatTell(name, why)
 return
 end

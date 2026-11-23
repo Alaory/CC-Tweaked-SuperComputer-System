@@ -447,7 +447,8 @@ a stranger's word.
 | `base, what did people say about me?` (owner) | what players said while you were away |
 | `base, how many diamonds do we have?` (owner and friends) | the AE2 count |
 | `base, take me home` / `take me to the base` (friends) | the free drone taxi between the base and your bed |
-| `base, shh` / `base, talk to me` | quiet for 30 minutes / talks again |
+| `base, shh` / `base, be quiet for 2 hours` / `base, talk to me` | quiet for 30 minutes (or as long as you say, up to a day) / talks again |
+| `base, roll a d20` / `roll 2 dice` / `flip 3 coins` / `pick a number from 1 to 10` | dice, coins, numbers as asked |
 
 While you are away (the lonely base), visitors and caretakers can also say:
 

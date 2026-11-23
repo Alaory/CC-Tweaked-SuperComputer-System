@@ -1013,7 +1013,21 @@ local oa, osp = LN.ownerAsks(who, ws, t, raw)
 if oa then return fill(oa), osp end
 if far then return nil end
 
-if not LN.lonely() then return nil end
+if not LN.lonely() then
+
+local days = tonumber(cfg("lonely", 7)) or 7
+local when = days > 0 and ("when " .. oname() .. " has been away " .. days .. "+ days") or "never (voice lonely 0)"
+if has(t, { "write on the wall", "sign the wall", "read the wall", "whats on the wall", "what is on the wall", "show the wall" }) then
+return "The wall is for visitors " .. when .. ". Nothing on it yet."
+end
+if has(t, { "tell me a memory", "how long has it been", "how long alone", "how long have you been alone" }) then
+return oname() .. " is not gone - I only count days and tell memories " .. when .. "."
+end
+if has(t, { "i have news", "news for you", "news for your owner" }) and not (V.isOwner and V.isOwner(who)) then
+return oname() .. " is around - tell them yourself! I collect news " .. when .. "."
+end
+return nil
+end
 local wtext = rawl:match("write on the wall[%s:,]+(.+)$") or rawl:match("sign the wall[%s:,]+(.+)$") or rawl:match("wall[%s]*:%s*(.+)$")
 if wtext then return fill(LN.wallWrite(who, raw:sub(-#wtext)), who) end
 if has(t, { "write on the wall", "sign the wall" }) then return fill(LN.wallWrite(who, ""), who) end
