@@ -17,6 +17,7 @@ SYSTEM > Status and with the console command `version`.
 - [What it does](#what-it-does)
 - [What you need](#what-you-need)
 - [Installation](#installation)
+- [Using it day to day](#using-it-day-to-day)
 - [Updating](#updating)
 - [Configuration](#configuration)
 - [Turtles](#turtles)
@@ -96,6 +97,21 @@ If you want, messages are also sent to you privately in chat.
 
 ## Installation
 
+**In this order** (only step 1 is needed - every other step adds its part when you want it):
+
+| Step | What | Gives you |
+|---|---|---|
+| [1](#1-the-base-computer) | the base computer, monitor, Inventory Manager | HOME, your inventory, SYSTEM, the console |
+| [2](#2-turtles) | turtles | the map, surveys, rescues, the factory |
+| [Helpers](#extra-storage-helper-computers-optional) | one or two extra computers on the cable | room for the map, the voice add-on and schematics |
+| [3](#3-me-network) | ME Bridge + a buffer chest | the AE2 tab, crafting, keep-filled storages |
+| [4](#4-drones) | drones + a Charging Station | rides, drone work, schematic builds, gifts |
+| [5](#5-players-and-chat) | Player Detector + Chat Box | the PLAYERS tab, `$drone` chat commands |
+| [6](#6-your-inventory-and-curios) | the curios barrel | taking curios off one by one, auto-equip |
+| [7](#7-the-voice-add-on) | Speakers (+ an Environment Detector) | the base talks and answers in chat |
+| [8](#8-the-turtle-factory) | a factory chest + a builder turtle | new turtles built by themselves |
+| [9](#9-the-rest) | pocket remote, mining teams, spawn speaker | see their own sections |
+
 ### 1. The base computer
 
 On the computer, make a folder and get the updater and a settings file (http must be on):
@@ -173,9 +189,104 @@ the chest by itself and remembers it.
 
 ### 4. Drones
 
-Program a PneumaticCraft drone with a ComputerCraft puzzle piece whose area
-contains the Drone Interface, and launch it. The DRONES tab shows it as
-connected. After each mission it parks on its Charging Station.
+1. **One Drone Interface per drone**, on the base's cable (a wired modem on it, right-clicked).
+2. Program the drone in a Programmer with the **Computer Control** puzzle piece (from PneumaticCraft's
+   ComputerCraft support); its area must contain the Drone Interface. Launch the drone. The
+   DRONES tab shows it as **connected**.
+3. Place a **Charging Station** and tell the base where it is: `drone.charger` in `base_config.lua`, or
+   stand next to it and type `charger <x> <y> <z>` on the computer (`charger` shows it). After every
+   mission the drone parks there and fills up with air.
+4. Set **`drone.home`** in `base_config.lua`: your "Base", where riders are dropped off. For an
+   underground base keep `drone.travel = "teleport"`.
+5. **First ride:** DRONES tab, pick a passenger and a destination, tap PICK UP, then DROP AT DEST (or FERRY
+   for both, two taps). In chat: `$drone home` (needs the Chat Box, step 5).
+6. **Drone work** (fuel runs to turtles, schematic builds, gifts) also needs a **work chest**: an EMPTY
+   chest on the cable that only the base and the drones use, with open air on top. Stand on it and
+   type `$drone workchest` in chat (or DRONES > DRONE WORK: tap CHEST until yours shows, or BLOCK UNDER ME). Test it with
+   `dw test` on the computer, standing next to the chest: one item goes AE2 -> chest -> a drone drops
+   it at your feet.
+
+### 5. Players and chat
+
+- Put a **Player Detector** on the cable: the PLAYERS tab appears (every player ever seen, where
+  they are, health, visits) and drones can find players for rides.
+- Put a **Chat Box** on the cable: the `$drone` chat commands work (try `$drone help`) and the
+  base can send you its messages in chat (`$drone notify on`).
+- **You** may use every command. Other players need you first: `allow <name>` on the computer (or
+  `$drone allow <name>` in chat); `allowed` lists them. Players not on the list can ask for a ride
+  and you answer `$drone yes <name>` / `$drone no <name>`.
+
+### 6. Your inventory and curios
+
+- The **Inventory Manager** with a **Memory Card** bound to you is what makes you the owner (`owner`
+  shows who the base thinks that is). The YOU tab shows your inventory and armour: tap an item, then
+  SEND x1 / SEND STACK / SEND ALL to put it into AE2; tap a worn piece to take it off.
+- **Curios** (rings, charms, totems ...): put an **empty barrel used only for curios** on the cable
+  and set it in `base_config.lua`:
+  ```lua
+  me = { curiosChest = "minecraft:barrel_2" },   -- its network name (chests lists them)
+  ```
+  `curios check` tells you if your worn items can be read. Then on the CURIOS tab: tap a slot,
+  take things off, put things on from AE2, or tap **AUTO** / **KEEP ONE ON** so the base puts a new one
+  on by itself (a used totem is replaced the next tick).
+
+### 7. The voice add-on
+
+1. Put a **Speaker** next to the computer or on the cable (several = all play). The server needs http
+   to `music.madefor.cc` (the free speech service).
+2. Optional but better: an **Environment Detector** next to the base - then the base only greets
+   players who really stand at the system, and knows the time and weather.
+3. Make room for it: a **storage helper** (see above) or a data floppy (`disks data`).
+4. Type `voice install` on the computer. When it is done, stand near the base and type `base, hello`
+   in chat. `voice name <word>` changes what players call it; `voice try` plays every ready-made
+   voice and `voice preset <name>` keeps one.
+
+More in [The voice add-on](#the-voice-add-on).
+
+### 8. The turtle factory
+
+1. An empty **factory chest** (or barrel) on the cable, right next to where the builder turtle stands.
+2. The **builder**: your rescuer turtle (or one you pick), at its home next to that chest, with a
+   **Disk Drive**, the **install floppy** and a **pickaxe** in its inventory.
+3. SETTINGS > FACTORY: tap the factory chest until yours shows, choose the builder (automatic =
+   the rescuer), and set "Keep this many turtles".
+4. Type `factory` on the computer: it lists every part and whether AE2 has it or can craft it.
+
+More in [Turtle factory](#turtle-factory).
+
+### 9. The rest
+
+- **Pocket remote:** [Pocket remote](#pocket-remote).
+- **Mining teams in a mining dimension:** [Mining dimension teams](#mining-dimension-teams).
+- **The spawn speaker:** [The spawn speaker](#the-spawn-speaker).
+- **A shared fuel chest for the turtles:** `turtles.fuelChest` in `base_config.lua` ([Fuel](#fuel)).
+- **A storage kept full from AE2** (a tank, a furnace's input ...): the AE2 tab, KEEP A STORAGE FILLED
+  ([ME / Curios](#me--curios)).
+- **Copying a file onto the computer:** drag it onto the open computer's screen, also while the base
+  runs ([COMMANDS.md](COMMANDS.md#dropping-files-onto-the-computer)).
+
+---
+
+## Using it day to day
+
+| You want to | Do |
+|---|---|
+| see what needs you | HOME: NEEDS YOU lists every problem with a button to its page |
+| ride somewhere | `$drone home` / `$drone to <place>` / `$drone to @<player>` / `$drone back` in chat, or the RIDE tab on the pocket |
+| save a place | stand on it, `$drone mark <name>` in chat (or `save <name> me` on the computer) |
+| take items out of AE2 | AE2 tab: pick the item, TAKE TO MY INVENTORY x1 / x16 / x64 / ALL |
+| store items | YOU tab: tap an item, then SEND x1 / SEND STACK / SEND ALL |
+| craft something | AE2 tab: pick the item, CRAFT x1 / x16 / x64 / x256; AE2 > SYSTEM shows the job and lets you cancel it |
+| keep a tank / chest filled | AE2 tab: pick the item or fluid, KEEP A STORAGE FILLED, choose the storage and an amount |
+| map the world | TURTLES > MAP: AUTO-MAP ON (turtles map in rings from the base outward), or SURVEY: ALL for what you see |
+| stop / call back the turtles | HOME quick actions: STOP ALL TURTLES / ALL TURTLES HOME (two taps) |
+| find lost turtles | HOME: FIND LOST (a search party flies out) |
+| drive a turtle yourself | TURTLES > DRIVE |
+| build a schematic | drop the `.nbt` on the computer's screen, then DRONES > DRONE WORK ([Schematics](#schematics-drones-build-them)) |
+| send a player a gift | PLAYERS > GIFTS (with the voice add-on): pick an AE2 item, the player, SEND - a drone brings it |
+| see what happened while you were away | the WELCOME BACK box when you log in, or `away` on the computer |
+| get the newest version | `upgrade` on the computer, then `voice update` if you use the voice add-on |
+| look up a command | `help` on the computer, `$drone help` in chat, or [COMMANDS.md](COMMANDS.md) |
 
 ---
 
