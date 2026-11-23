@@ -139,8 +139,34 @@ do
   q.out = q.out or {}
   q.out[id], t.queueAt, t.surveyFail = { { HOME.x + 5000, HOME.z } }, os.clock(), nil
   MAP.batchResult(id, false, "busy: idle (press STOP first)")
-  CHECK(t.surveyFail == nil, "'busy: ...' is not a refusal of the spots (" .. tostring(t.surveyFail and t.surveyFail.msg) .. ")")
+  CHECK(t.surveyFail and t.surveyFail.wait == 15, "'busy: ...' is not a refusal of the spots: 15 s, not 2 min (" ..
+        tostring(t.surveyFail and t.surveyFail.wait) .. ")")
+  CHECK(tostring(TT.idleWhy(t)):find("busy with another order", 1, true), "... and the list says so: " .. tostring(TT.idleWhy(t)))
   q.out[id], t.queueAt = { { HOME.x + 5000, HOME.z } }, os.clock()
   MAP.batchResult(id, false, "facing unknown")
   CHECK(t.surveyFail ~= nil, "a real refusal still keeps it out for 2 min")
+end
+
+-- a loose ring far from a free turtle while looking for a NEW ring runs out of time (a big mapped area round the base):
+-- the loose ring is taken - no turn lost (it returned nothing then)
+do
+  state.turtles = {}
+  state.turtles[300] = { id = 300, label = "L", log = {}, lastN = 0, fuel = 100000, fuelMax = 100000,
+    pos = { x = HOME.x, y = 70, z = HOME.z }, home = { x = HOME.x, y = 70, z = HOME.z }, task = "idle",
+    lastSeen = CLOCK, seenEpoch = os.epoch("utc") }
+  MAP.spotDone = function(x, z) return math.max(math.abs(x - HOME.x), math.abs(z - HOME.z)) < 3000 end
+  local lt = CONFIG.map.lookTime
+  CONFIG.map.lookTime = 0
+  MAP.queue = nil
+  MAP.queueSurvey(HOME.x - 5000, HOME.z - 5000, HOME.x + 5000, HOME.z + 5000, 8, nil)
+  local q = MAP.queue
+  q.rr = { next = 0, own = {}, loose = { { r = 200, s0 = 0, i = 0, j = MAP.ringLen(200) } } }
+  q.redo, q.out = {}, {}
+  local n0 = #state.tOut
+  MAP.feedSurvey()
+  local got
+  for i = n0 + 1, #state.tOut do if state.tOut[i].msg.cmd == "surveypts" and state.tOut[i].id == 300 then got = true end end
+  CONFIG.map.lookTime = lt
+  CHECK(got, "out of time looking for a new ring: the waiting loose ring is taken (" .. tostring(MAP.looking and MAP.looking.r) .. ")")
+  MAP.queue = nil
 end

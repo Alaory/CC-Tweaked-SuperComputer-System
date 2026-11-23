@@ -392,7 +392,10 @@ PneumaticCraft drone rides, turtle mapping/surveys, and an AE2 ME network view.
   "BUSY: IDLE" REFUSALS: a job taken while the worker still did idle work (fuel chest, top-up) left task "idle" - the
   base sent a 2nd order, refused "busy: idle (press STOP first)"; for survey spots that was REFUSED = left out 2 min.
   node listener: task = "starting <cmd>" when it takes a job (node_hand.lua); base MAP.batchResult: "busy: ..." is no
-  refusal (no surveyFail).
+  refusal - t.surveyFail.wait 15 s, not 120 (a turtle on an older program still says "idle": without a wait it got spots
+  every tick); idleWhy "busy with another order". REVIEW: newRing out of time while looking for a new ring takes the
+  waiting loose ring (it returned nothing); TT.codeStore on a floppy holding the old copy with no room for both
+  deletes the old one first (writeSafe writes the new one before the old goes).
 - node.lua never just ends: the main parallel.waitForAny is in a pcall; an
   error is written to `node_crash`, the turtle reboots (5 s, longer when it
   keeps crashing) and tells the base ("restarted after an ERROR: ..." in the

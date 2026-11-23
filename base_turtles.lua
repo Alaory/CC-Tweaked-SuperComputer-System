@@ -344,9 +344,10 @@ function TT.idleWhy(t)
   if t.dwAnchor then return "keeps a drone build site loaded (schem status)", C.purple end
   local fr = TT.factoryRole(t)
   if fr then return "factory " .. fr .. " - stays at the factory (no surveys)", C.label end
-  if t.surveyFail and os.clock() - t.surveyFail.at < 120 then
-    return "REFUSED its survey spots: " .. tostring(t.surveyFail.msg) .. " (tried again in " ..
-           math.ceil(120 - (os.clock() - t.surveyFail.at)) .. " s)", C.bad
+  local sfW = t.surveyFail and (t.surveyFail.wait or 120)
+  if t.surveyFail and os.clock() - t.surveyFail.at < sfW then
+    return (t.surveyFail.wait and "busy with another order: " or "REFUSED its survey spots: ") .. tostring(t.surveyFail.msg) ..
+           " (tried again in " .. math.ceil(sfW - (os.clock() - t.surveyFail.at)) .. " s)", t.surveyFail.wait and C.warn or C.bad
   end
   if t.dwWant then
     return "fuel " .. tostring(fuel) .. " - a DRONE brings fuel out here (no trip home)", C.warn
@@ -1188,7 +1189,12 @@ function TT.codeStore(text, from)
         local room = (d.free or 0) + (fs.exists(p) and fs.getSize(p) or 0)
         -- (writeSafe with this check: saveFileSafe wants size + 4 KB free - a 121 KB program did not fit an EMPTY
         --  125 KB floppy; the install floppy's limit 122500 is the one that counts)
-        if room >= #text + 2048 and writeSafe(p, text) then where = p break end
+        if room >= #text + 2048 then
+          -- (an old copy here with too little room beside it for the new one: writeSafe writes the new copy first -
+          --  the old one goes first then; the turtles' code stays in memory, a lost copy is fetched again)
+          if fs.exists(p) and (d.free or 0) < #text + 512 then pcall(fs.delete, p) end
+          if writeSafe(p, text) then where = p break end
+        end
       end
     end
   end

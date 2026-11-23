@@ -88,6 +88,12 @@ fs.open("disk5/base_data", "w").close()
 local okD, whereD = TT.codeStore(src, "dropped")
 CHECK(okD and whereD == "disk5/" .. name, "no helper: on a data floppy (" .. tostring(whereD) .. ")")
 CHECK(REMOTE[120][name] == nil, "... the old copy on the helper is deleted")
+-- a NEWER program onto that floppy: too little room beside the old copy, enough once it is gone (writeSafe writes the
+-- new one first - the old code failed: "no storage helper / data floppy")
+local src2 = src .. "\nlocal NEWER_ONE = 1\n"
+local okD2, whereD2 = TT.codeStore(src2, "dropped")
+CHECK(okD2 and whereD2 == "disk5/" .. name and FILES["disk5/" .. name] and FILES["disk5/" .. name]:find("NEWER_ONE", 1, true),
+      "a newer program replaces the old copy on a floppy with no room for both (" .. tostring(whereD2) .. ")")
 CODE = nil
 TT.codeLoad(false, true)
 CHECK(CODE ~= nil, "read back from the floppy")

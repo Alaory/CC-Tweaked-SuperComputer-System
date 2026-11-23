@@ -1715,6 +1715,7 @@ local function ringDeal(q, ids, k)
     while rr.next <= rad do
       if outOfTime() then
         MAP.looking = { r = rr.next, rad = rad, found = 0, want = 1 }
+        if bi then return takeLoose() end          -- (a loose ring waits: no turn lost looking)
         return nil
       end
       local r = rr.next
@@ -1852,11 +1853,13 @@ function MAP.batchResult(id, ok, msg)
   -- REFUSED its spots at once (position / facing unknown, the anchor, ...): it would get spots
   -- again every round and refuse them again - looking as if the base sent it nothing ("only
   -- half get sent"). Kept out for 2 min with the reason shown (TURTLES list, SURVEY: ALL report).
-  -- ("busy: ..." = it took another order a moment before - not a refusal of THESE spots: no 2-min wait)
-  if not ok and t and t.queueAt and os.clock() - t.queueAt < 30 and not tostring(msg or ""):find("^busy") then
-    t.surveyFail = { msg = tostring(msg or "no reason given"), at = os.clock() }
+  -- ("busy: ..." = it took another order a moment before - not a refusal of THESE spots: 15 s, not 2 min; a turtle
+  --  on an older program still says "idle" then - without any wait it got spots again every tick)
+  local busy = tostring(msg or ""):find("^busy") ~= nil
+  if not ok and t and t.queueAt and os.clock() - t.queueAt < 30 then
+    t.surveyFail = { msg = tostring(msg or "no reason given"), at = os.clock(), wait = busy and 15 or nil }
     if MAP.press then MAP.press.failed[id] = t.surveyFail.msg end
-    TT.log(t, "Refused its survey spots: " .. t.surveyFail.msg)
+    if not busy then TT.log(t, "Refused its survey spots: " .. t.surveyFail.msg) end
   elseif ok and t then
     t.surveyFail = nil
   end
@@ -1956,7 +1959,7 @@ function MAP.feedSurvey()
     local fuel = t and tonumber(t.fuel)
     if free and t.queueAt and os.clock() - t.queueAt < 15 then free = false busy = true end
     if free and fuel and fuel < TT.surveyFuelNeed(t) then free = false end   -- (the way home + a batch)
-    local refused = t and t.surveyFail and os.clock() - t.surveyFail.at < 120
+    local refused = t and t.surveyFail and os.clock() - t.surveyFail.at < (t.surveyFail.wait or 120)
     if free and refused then free = false end
     -- still holding a batch (idle without its result yet): not free - after 30 s
     -- idle the batch is taken back below, THEN it gets new spots (never overwrite:

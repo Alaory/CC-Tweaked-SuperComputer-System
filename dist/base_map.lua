@@ -1715,6 +1715,7 @@ local fresh
 while rr.next <= rad do
 if outOfTime() then
 MAP.looking = { r = rr.next, rad = rad, found = 0, want = 1 }
+if bi then return takeLoose() end
 return nil
 end
 local r = rr.next
@@ -1853,10 +1854,12 @@ local t = state.turtles[id]
 
 
 
-if not ok and t and t.queueAt and os.clock() - t.queueAt < 30 and not tostring(msg or ""):find("^busy") then
-t.surveyFail = { msg = tostring(msg or "no reason given"), at = os.clock() }
+
+local busy = tostring(msg or ""):find("^busy") ~= nil
+if not ok and t and t.queueAt and os.clock() - t.queueAt < 30 then
+t.surveyFail = { msg = tostring(msg or "no reason given"), at = os.clock(), wait = busy and 15 or nil }
 if MAP.press then MAP.press.failed[id] = t.surveyFail.msg end
-TT.log(t, "Refused its survey spots: " .. t.surveyFail.msg)
+if not busy then TT.log(t, "Refused its survey spots: " .. t.surveyFail.msg) end
 elseif ok and t then
 t.surveyFail = nil
 end
@@ -1956,7 +1959,7 @@ and not TT.copyStays(t)
 local fuel = t and tonumber(t.fuel)
 if free and t.queueAt and os.clock() - t.queueAt < 15 then free = false busy = true end
 if free and fuel and fuel < TT.surveyFuelNeed(t) then free = false end
-local refused = t and t.surveyFail and os.clock() - t.surveyFail.at < 120
+local refused = t and t.surveyFail and os.clock() - t.surveyFail.at < (t.surveyFail.wait or 120)
 if free and refused then free = false end
 
 
