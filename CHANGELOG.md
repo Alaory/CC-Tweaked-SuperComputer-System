@@ -36,6 +36,7 @@ Peripherals (tested on CC:Tweaked 1.120.2, Minecraft 1.21.1, NeoForge).
   story for you" was read as "I hate you"), "can I ask you a question" no longer starts a quiz, "are you ok", "thanks for
   the help", "I am back" and "I love this place" get the right answer.
 - Every voice line was read: a dozen wrong Minecraft / mod facts in the quiz, riddles, tips and mod tips are corrected.
+- A schematic dropped on the screen is stored on a storage helper first (the computer and the floppies are often full).
 - INVENTORY tab: armour and the offhand can be picked (they were un-picked at once) and taken off into your inventory or
   sent to AE2.
 - Asked = answered: "roll a d20" / "roll 2 dice" / "flip 3 coins" / "pick a number from 1 to 10" / "be quiet for 2

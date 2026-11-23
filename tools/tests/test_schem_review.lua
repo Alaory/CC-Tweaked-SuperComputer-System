@@ -187,3 +187,49 @@ CHECK(cnt <= SCHEM.KEEP and SCHEM.cache.keepme and SCHEM.cache.f, "at most " .. 
 DW.job = nil
 SCHEM.cache = {}
 pcall(fs.delete, "schematics/castle.nbt")
+
+-- 8) NO ROOM ON THE COMPUTER OR THE FLOPPIES (the owner: "how do I upload a schematic when it does not have enough storage in
+--    the main computer"): a STORAGE HELPER takes it (base64 - store.lua writes text), it is listed without asking the cable,
+--    read back the same, a newer upload replaces it, delete removes it there too
+do
+  local B = readFile(F .. "big.nbt")
+  CHECK(SCHEM.dec(SCHEM.enc(B)) == B and SCHEM.dec(SCHEM.enc("ab")) == "ab" and SCHEM.dec(SCHEM.enc("abc")) == "abc"
+        and SCHEM.dec(SCHEM.enc("a")) == "a" and SCHEM.dec(SCHEM.enc("")) == "", "base64 there and back, every length")
+  local ST0 = STORE
+  local files, calls = {}, 0
+  STORE = setmetatable({ helpers = { [41] = { free = 3000000 } }, usable = function() return true end,
+    write = function(p, t) calls = calls + 1 files[p] = t return true end,
+    read = function(p) calls = calls + 1 return files[p] end,
+    delete = function(p) files[p] = nil return true end }, { __index = ST0 })
+  local md1, gfs = mountedDisks, fs.getFreeSpace
+  mountedDisks = function() return { { mount = "disk9", data = true, free = 900 } } end      -- (a full data floppy)
+  fs.getFreeSpace = function() return 40 * 1024 end                                          -- (the computer: 40 KB left)
+  SCHEM.cache, SCHEM.where = {}, nil
+  local okH, whereH = SCHEM.store("Castle Big", B)
+  CHECK(okH and tostring(whereH):find("^store:41/schematics/Castle_Big%.b64$"), "stored on the storage helper: " .. tostring(whereH))
+  CHECK(not fs.exists("schematics/Castle_Big.nbt") and not fs.exists("disk9/schematics/Castle_Big.nbt"), "nothing on the full computer / floppy")
+  calls = 0
+  SCHEM.where = nil                                             -- (a restart: read from schem_where.dat)
+  CHECK(SCHEM.list()["Castle_Big"] == whereH and calls == 0, "listed after a restart without asking the cable")
+  SCHEM.cache = {}
+  local sB = SCHEM.load("Castle_Big")
+  local placeB
+  if sB then _, placeB = SCHEM.materials(sB) end
+  CHECK(sB and placeB == CASTLE, "read back from the helper the same (" .. tostring(placeB) .. " blocks)")
+  local quiet = STORE.read
+  STORE.read = function() return nil end
+  SCHEM.cache = {}
+  local sQ, whyQ = SCHEM.load("Castle_Big")
+  CHECK(sQ == nil and tostring(whyQ):find("did not answer", 1, true), "a quiet helper says so: " .. tostring(whyQ))
+  STORE.read = quiet
+  local okD = SCHEM.delete("Castle_Big")
+  CHECK(okD and files[whereH] == nil and SCHEM.list()["Castle_Big"] == nil, "delete removes it on the helper and from the list")
+  -- no helper with room either: the message says what to do
+  STORE.helpers[41].free = 1000
+  local okN, whyN = SCHEM.store("tiny", readFile(F .. "house.nbt"))
+  fs.getFreeSpace = gfs
+  CHECK(not okN and tostring(whyN):find("storage helper", 1, true), "nowhere at all: says to start a storage helper: " .. tostring(whyN))
+  mountedDisks, STORE = md1, ST0
+  SCHEM.cache, SCHEM.where = {}, nil
+  pcall(fs.delete, SCHEM.WHERE_FILE)
+end

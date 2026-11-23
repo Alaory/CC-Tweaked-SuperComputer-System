@@ -421,13 +421,91 @@ local function dirs()
   out[#out + 1] = { dir = SCHEM.dir, free = okF and free or 0 }
   return out
 end
--- every file of one name in every place (a copy on another floppy)
+-- ON A STORAGE HELPER (the owner: "how do I upload a schematic when the main computer does not have enough storage"):
+-- the computer keeps 96 KB free and the data floppies are full of map / voice files - a dropped schematic was refused.
+-- A storage helper (store.lua, megabytes free) takes it FIRST. store.lua reads / writes text, a schematic is binary
+-- (gzip): it goes there as base64 ("store:<id>/schematics/<name>.b64"). Which helper holds which one is kept HERE
+-- (schem_where.dat) - listing them never asks the cable (the page / the comms worker must not wait).
+local B64 = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/"
+local B64C, B64V = {}, {}
+for i = 1, 64 do B64C[i - 1] = B64:sub(i, i) B64V[B64:byte(i)] = i - 1 end
+function SCHEM.enc(data, yield)
+  local out, part, n = {}, {}, 0
+  for i = 1, #data, 3 do
+    local a, b, c = byte(data, i, i + 2)
+    local v = a * 65536 + (b or 0) * 256 + (c or 0)
+    n = n + 1
+    part[n] = B64C[floor(v / 262144) % 64] .. B64C[floor(v / 4096) % 64] .. (b and B64C[floor(v / 64) % 64] or "=") .. (c and B64C[v % 64] or "=")
+    if n >= 2048 then out[#out + 1] = table.concat(part) part, n = {}, 0 if yield then yield() end end
+  end
+  out[#out + 1] = table.concat(part)
+  return table.concat(out)
+end
+function SCHEM.dec(text, yield)
+  local out, part, n, k = {}, {}, 0, 0
+  local v, got = 0, 0
+  for i = 1, #text do
+    local x = B64V[byte(text, i)]
+    if x then
+      v, got = v * 64 + x, got + 1
+      if got == 4 then
+        n = n + 1
+        part[n] = char(floor(v / 65536) % 256, floor(v / 256) % 256, v % 256)
+        v, got = 0, 0
+        if n >= 4096 then out[#out + 1] = table.concat(part) part, n = {}, 0 if yield then yield() end end
+      end
+    end
+  end
+  if got == 3 then n = n + 1 part[n] = char(floor(v / 1024) % 256, floor(v / 4) % 256)          -- (one "=")
+  elseif got == 2 then n = n + 1 part[n] = char(floor(v / 16) % 256) end                      -- (two "=")
+  out[#out + 1] = table.concat(part)
+  return table.concat(out)
+end
+SCHEM.WHERE_FILE = "schem_where.dat"
+function SCHEM.remote()
+  if not SCHEM.where then
+    local t = readSafe and readSafe(SCHEM.WHERE_FILE)
+    SCHEM.where = {}
+    if type(t) == "table" then
+      for k, v in pairs(t) do if type(k) == "string" and type(v) == "string" and v:match("^store:%d+/") then SCHEM.where[k] = v end end
+    end
+  end
+  return SCHEM.where
+end
+local function saveWhere()
+  local w = SCHEM.remote()
+  if next(w) == nil then pcall(fs.delete, SCHEM.WHERE_FILE) return end
+  if writeSafe then writeSafe(SCHEM.WHERE_FILE, serialSmall and serialSmall(w) or textutils.serialize(w)) end
+end
+local function isRemote(p) return type(p) == "string" and p:match("^store:%d+/") ~= nil end
+local function delAny(p)
+  if isRemote(p) then if STORE and STORE.delete then pcall(STORE.delete, p) end else pcall(fs.delete, p) end
+end
+-- a helper with room: the encoded text written and read back; nil, why when none could take it
+local function toHelper(name, data, yield)
+  if not (STORE and type(STORE.helpers) == "table" and STORE.write and STORE.read) then return nil end
+  local enc = SCHEM.enc(data, yield)
+  local ids = {}
+  for id, h in pairs(STORE.helpers) do
+    if (not STORE.usable or STORE.usable(h)) and (tonumber(h.free) or 0) >= #enc + 32 * 1024 then ids[#ids + 1] = id end
+  end
+  table.sort(ids, function(a, b) return (tonumber(STORE.helpers[a].free) or 0) > (tonumber(STORE.helpers[b].free) or 0) end)
+  for _, id in ipairs(ids) do
+    local p = "store:" .. id .. "/" .. SCHEM.dir .. "/" .. name .. ".b64"
+    local okW = STORE.write(p, enc)
+    if okW and STORE.read(p) == enc then return p end
+  end
+  return nil
+end
+-- every file of one name in every place (a copy on another floppy, on a helper)
 local function allPaths(name)
   local out = {}
   for _, d in ipairs(dirs()) do
     local p = fs.combine(d.dir, name .. ".nbt")
     if fs.exists(p) then out[#out + 1] = p end
   end
+  local r = SCHEM.remote()[name]
+  if r then out[#out + 1] = r end
   return out
 end
 -- the parsed schematics kept in memory: the newest few (a big one is megabytes of tables) + the one being built
@@ -452,6 +530,7 @@ function SCHEM.list()
       end
     end
   end
+  for name, p in pairs(SCHEM.remote()) do if not out[name] then out[name] = p end end
   return out
 end
 -- a clean file name (letters, digits, - _)
@@ -465,6 +544,14 @@ function SCHEM.store(name, data, yield)
   name = SCHEM.cleanName(name)
   local okP, s = pcall(SCHEM.parse, data, yield)
   if not okP then return false, tostring(s) end
+  local rp = toHelper(name, data, yield)
+  if rp then
+    for _, other in ipairs(allPaths(name)) do if other ~= rp then delAny(other) end end
+    SCHEM.remote()[name] = rp
+    saveWhere()
+    SCHEM.remember(name, s, rp)
+    return true, rp, s
+  end
   for _, d in ipairs(dirs()) do
     local room = d.floppy and (d.free - 2048) or (d.free - 96 * 1024)
     if room > #data then
@@ -478,7 +565,8 @@ function SCHEM.store(name, data, yield)
         if okW then
           -- (an older file of the same name somewhere else goes: SCHEM.list takes the first one it finds - after a
           --  restart the OLD schematic came back)
-          for _, other in ipairs(allPaths(name)) do pcall(fs.delete, other) end
+          for _, other in ipairs(allPaths(name)) do delAny(other) end
+          if SCHEM.remote()[name] then SCHEM.remote()[name] = nil saveWhere() end
           fs.move(tmp, path)
           SCHEM.remember(name, s, path)
           return true, path, s
@@ -487,7 +575,8 @@ function SCHEM.store(name, data, yield)
       end
     end
   end
-  return false, "no room for it (" .. math.ceil(#data / 1024) .. " KB) - put an empty floppy in and type  disks data"
+  return false, "no room for it (" .. math.ceil(#data / 1024) .. " KB): no storage helper answered with room, the data floppies and " ..
+               "the computer are full - start a storage helper (store.lua) or put an empty floppy in and type  disks data"
 end
 -- the parsed one if it is in memory (no disk, nothing waits)
 function SCHEM.get(name)
@@ -522,10 +611,17 @@ end
 function SCHEM.read(name)
   local path = SCHEM.list()[name]
   if not path then return nil, "no schematic '" .. tostring(name) .. "'" end
-  local h = fs.open(path, "rb")
-  if not h then return nil, "cannot open " .. path end
-  local data = h.readAll()
-  h.close()
+  local data
+  if isRemote(path) then
+    local text = STORE and STORE.read and STORE.read(path)
+    if not text then return nil, "the storage helper with " .. name .. " did not answer (" .. path .. ") - try again" end
+    data = SCHEM.dec(text, TT and TT.workYield)
+  else
+    local h = fs.open(path, "rb")
+    if not h then return nil, "cannot open " .. path end
+    data = h.readAll()
+    h.close()
+  end
   local ok, s = pcall(SCHEM.parse, data or "", TT and TT.workYield)
   if not ok then return nil, tostring(s) end
   SCHEM.remember(name, s, path)
@@ -545,7 +641,8 @@ end
 function SCHEM.delete(name)
   local paths = allPaths(name)
   if #paths == 0 then return false end
-  for _, p in ipairs(paths) do pcall(fs.delete, p) end
+  for _, p in ipairs(paths) do delAny(p) end
+  if SCHEM.remote()[name] then SCHEM.remote()[name] = nil saveWhere() end
   SCHEM.cache[name] = nil
   return true
 end

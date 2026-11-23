@@ -825,6 +825,13 @@ PneumaticCraft drone rides, turtle mapping/surveys, and an AE2 ME network view.
   "the schematic changed"); DW.MEMORY_ONLY (plan, waitUntil, anchorSent, short - os.clock times) never saved; an item
   AE2 could not give -> J.short[item] 5 min: DW.nextTrip skips it, the rest goes on, nothing else left -> nil, why
   ("only X left - AE2 has none"); statusLines "AE2 has none of".
+  ON A STORAGE HELPER (the owner: "how do I upload a schematic when the main computer does not have enough storage"):
+  SCHEM.store tries a STORAGE HELPER FIRST (toHelper: usable, free >= encoded size + 32 KB, most room first; written +
+  read back) as "store:<id>/schematics/<name>.b64" - store.lua reads / writes TEXT, a schematic is binary gzip:
+  SCHEM.enc / SCHEM.dec = base64 (arithmetic, pauses with the yield). schem_where.dat (SCHEM.remote, SCHEM.WHERE_FILE) =
+  {name = path} on the computer: SCHEM.list merges it WITHOUT asking the cable; SCHEM.read fetches it with STORE.read
+  (the map worker), a quiet helper -> "did not answer - try again"; store / delete remove copies everywhere (delAny);
+  then the floppy, then the computer as before; nowhere -> says to start a storage helper. test_schem_review part 8.
 - DRONE WORK (base_dronework.lua DW, comms tick DW.tick; dronework.dat via dataPath): PneumaticCraft
   drones do jobs with items from AE2. Drone chunk loading is OFF on the owner's server: a drone only
   works where a player / an online turtle (its Chunky) / the drones' home chunk keeps it loaded
