@@ -697,7 +697,8 @@ function SCHEM.saveDropped(name, data)
   fs.move(tmp, path)
   local what
   if name:match("^base_.*%.lua$") or name == "inventory.lua" or name == "startup.lua" or name == "upgrade.lua" then
-    what = "Restart the base to use it (SYSTEM > RESTART BASE)."
+    what = "Restart the base to use it (SYSTEM > RESTART BASE)." ..
+           (name:match("^base_") and " It is used instead of its packed copy (.luz) until the next upgrade." or "")
   elseif name == "node.lua" then what = "The turtles get it by themselves (it is moved to storage within a minute)."
   elseif name == "miner.lua" then what = "Type  mine update  to send it to the mining turtles."
   elseif name == "store.lua" then what = "The storage helpers get it by themselves within a few minutes."

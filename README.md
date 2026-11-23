@@ -315,9 +315,11 @@ More in [Turtle factory](#turtle-factory).
 | Spawn relay | Copy the new `spawn_speaker.lua` onto it as `startup.lua` by hand when a release says it changed (it stays paired). |
 | Mining turtles | Copy `miner.lua` onto them by hand **once** (m21 or newer). After that: `mine update` on the base computer (or **UPDATE MINERS** on TURTLES > MINING). The base downloads `miner.lua`, keeps it on a data floppy (not on the computer's 1 MB), pauses each running team, sends the program to every loader and miner, and starts the team again once all of them run it. Each turtle installs it only while paused and keeps its team, field, job and unload station. |
 
-The files you get have their comments removed (about 30% smaller - a computer has only 1 MB);
-the commented ones stay on GitHub. `upgrade full` gets the commented files, `upgrade slim`
-goes back. `upgrade branch <name>` follows another branch.
+The files you get have their comments removed and, on the base, are PACKED (`base_*.luz`, about a third of
+the size - a computer has only 1 MB; `unzip.lua` unpacks them in memory when the base starts, which takes a
+few seconds). A plain `base_x.lua` you drag in is used instead of its packed copy until the next `upgrade`.
+`upgrade slim` gets plain files without comments, `upgrade full` the commented ones, `upgrade packed` goes
+back. `upgrade branch <name>` follows another branch.
 
 ---
 
@@ -745,7 +747,7 @@ Type these on the base computer. `help` lists them all.
 
 | Area | Commands |
 |---|---|
-| Program | `upgrade [check\|full\|slim\|branch <name>]` · `store [find\|update]` · `away` |
+| Program | `upgrade [check\|packed\|slim\|full\|branch <name>]` · `store [find\|update]` · `away` |
 | Turtles | `turtles` · `turtle <id> <cmd>` (`log`, `diag`, `goto x y z`, `home`, `stop`, `forget`, `setting …`) · `drive <id>` · `update` · `rescue <id>` · `findlost` · `party [stop]` · `forget base` · `exit [clear]` |
 | Map | `map [clear]` · `survey [auto on\|off]` · `disks [data\|move]` · work area: SETTINGS > MAP corners |
 | Factory | `factory [chest <name>\|builder <id>\|crafter <id>\|build\|stop\|fuel <item> [count]\|fuel reset\|learn\|recipes\|forget <item>\|items]` (or SETTINGS > FACTORY) |

@@ -1987,6 +1987,23 @@ PneumaticCraft drone rides, turtle mapping/surveys, and an AE2 ME network view.
   slim` back; an older upgrade.lua only reads the plain groups -> full files + the new
   upgrade.lua, the next run goes slim). Base files 904 KB -> 656 KB. run_tests: every dist
   file compiles (luac -s) to the SAME bytes as the full one, same line count.
+  PACKED (the default on the base; the owner's computer: "13 KB left" - the slim base files were 917 KB of the 1 MB):
+  make_manifest writes dist/z/base_*.luz = raw deflate (zlib -15, level 9) of the SLIM text, group "z:base" (917 ->
+  ~280 KB); unzip.lua (plain, its OWN group "unzip" + slim:unzip - the pre-packing upgrade.lua reads only slim:base,
+  so the step to the new upgrade.lua stays under its 8 KB margin at 13 KB free) = the schematic inflater, returns
+  inflate(bytes, yield). upgrade.lua: not full / not plain (saved.plain = `upgrade slim`; `upgrade packed` back) and
+  the manifest has z:<group> -> unzip.lua from disk if it matches, else downloaded + checked; the z entries replace
+  their slim base_*.lua (f.extra = the plain copy: deleted once the packed one is in, counted as freed room, a plain
+  copy present = "changed"); every packed download is UNPACKED + compiled before anything is written; changed files
+  are written in order of growth (the ones that free room first); the tight branch deletes the old file AND its other
+  copy first (both kept in memory, put back on a failure). Plain mode: a left-over .luz is deleted the same way.
+  inventory.lua: a module = base_x.lua if there (a file dragged in - SCHEM.saveDropped says so), else base_x.luz ->
+  unzip (fs "rb") -> load(text, "@<dir>/base_x.lua") (error messages unchanged); breathe() between files and inside
+  long ones (a unique event; other events put back - none lost); unzip.lua missing / a broken .luz / missing files
+  say so. tools/tests/upgrade_sim.lua (the owner's path at 13 KB free: the frozen pre-packing upgrade.lua +
+  inventory.lua in tools/tests/fixtures/, then the new upgrade packs; every .luz unpacks to the slim text; a dragged
+  plain copy; a broken packed download; slim / packed switch), tools/tests/inventory_load.lua (the real loader on a
+  fake disk).
 - RELEASES (the owner: "get stuff ready for a github release"): BASE_VERSION (base_state.lua, x.y.z) = the newest
   entry in CHANGELOG.md (test_version.lua fails otherwise); versionText() = "v<x.y.z> (<commit>) [from <branch>]" from
   upgrade.dat - console `version`, SYSTEM > Status "Program" (state.sys.version from sysRefresh). tools/make_release.py

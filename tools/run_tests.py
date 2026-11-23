@@ -117,6 +117,11 @@ def _():
         if os.path.exists(x): os.remove(x)
     return not bad, "\n".join(bad)
 
+@check("upgrade", "inventory.lua loads PACKED base files (inventory_load.lua)")
+def _():
+    rc, out = run(["lua5.3", "tools/tests/inventory_load.lua", ROOT])
+    return rc == 0, out.strip()
+
 @check("upgrade", "upgrade.lua on a fake disk + GitHub")
 def _():
     rc, out = run(["lua5.3", "tools/tests/upgrade_sim.lua", ROOT])

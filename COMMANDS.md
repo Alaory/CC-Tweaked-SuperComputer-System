@@ -64,7 +64,7 @@ stays). `upgrade` is still the easy way to get the newest files.
 | `version` | the program's release number and the GitHub commit `upgrade` installed |
 | `upgrade` | gets the newest program files from GitHub (only the changed ones, each checked), then restarts. Your `base_config.lua` and data files are never touched |
 | `upgrade check` | only shows what would change - nothing is written |
-| `upgrade full` / `upgrade slim` | from now on get the commented files / the smaller files without comments again (the default) |
+| `upgrade full` / `upgrade slim` / `upgrade packed` | from now on get the commented files / the smaller files without comments / the PACKED files (the default on the base: a third of the size, unpacked when the base starts) |
 | `upgrade branch <name>` | take the files from another GitHub branch from now on |
 | `parts` | blocks and data floppies the base saw and does not see now (broken, moved or their chunk is not loaded), and whether it has a screen |
 | `parts forget <n\|name\|all>` | a missing part was taken away on purpose - not listed any more; a data floppy: its files are saved somewhere else again |

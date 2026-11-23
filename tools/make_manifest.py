@@ -4,13 +4,16 @@
 Run after changing program files (run_tests.py checks it is up to date):
    python3 tools/make_manifest.py
 base_config.lua is NOT in it (the owner's settings are never replaced)."""
-import glob, os, sys
+import glob, os, sys, zlib
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.join(ROOT, "tools"))
 from slim import slim
 # SLIM copies (no comments / indentation, same lines) in dist/: listed as group
 # "slim:<group>" with their source path - `upgrade` takes those (the in-game
 # computer has 1 MB); `upgrade full` and older upgrade.lua take the full files.
+# PACKED copies of the base_*.lua files (dist/z/<name>.luz = raw deflate of the SLIM text, about a
+# third): group "z:base" - `upgrade` takes those, inventory.lua unpacks them with unzip.lua when the
+# base starts (the slim files alone were ~900 KB of the 1 MB computer).
 
 def h(data):                       # same as upgradeHash in upgrade.lua
     x = 0
@@ -22,6 +25,9 @@ def files():
     base = sorted(os.path.basename(f) for f in glob.glob(os.path.join(ROOT, "base_*.lua")))
     base = [f for f in base if f != "base_config.lua"]
     out = [("base", f) for f in ["inventory.lua", "startup.lua", "store.lua", "upgrade.lua"] + base]
+    # (the unpacker for the PACKED base files: its own group - an older upgrade.lua must not install it: at 13 KB
+    #  free the step to the new upgrade.lua would not fit; the new upgrade.lua gets it when it packs)
+    out += [("unzip", "unzip.lua")]
     out += [("node", "node.lua")]  # (the turtle program: NOT on the base computer - `upgrade` stores it on a storage helper / data floppy)
     out += [("pocket", "pocket.lua"), ("pocket", "upgrade.lua")]
     out += [("miner", "miner.lua")]
@@ -33,6 +39,10 @@ def slimmed(f):
     text = open(os.path.join(ROOT, f), "rb").read().decode("latin-1")
     return slim(text).encode("latin-1")
 
+def packed(data):                  # raw deflate (no zlib header), the same bytes every run
+    c = zlib.compressobj(9, zlib.DEFLATED, -15, 9)
+    return c.compress(data) + c.flush()
+
 def build():
     lines, dist = [], {}
     for g, f in files():
@@ -42,6 +52,12 @@ def build():
         data = dist.get(f) or slimmed(f)
         dist[f] = data
         lines.append("slim:%s %s %d %s dist/%s" % (g, f, len(data), h(data), f))
+    for g, f in files():
+        if g == "base" and f.startswith("base_"):
+            z = packed(dist[f])
+            name = f[:-4] + ".luz"
+            dist["z/" + name] = z
+            lines.append("z:%s %s %d %s dist/z/%s" % (g, name, len(z), h(z), name))
     return "\n".join(lines) + "\n", dist
 
 if __name__ == "__main__":
@@ -56,7 +72,7 @@ if __name__ == "__main__":
             sys.exit(1)
         print("manifest.txt + dist/ up to date (%d lines)" % (len(text.splitlines())))
     else:
-        os.makedirs(os.path.join(ROOT, "dist"), exist_ok=True)
+        os.makedirs(os.path.join(ROOT, "dist", "z"), exist_ok=True)
         for f, d in dist.items():
             open(os.path.join(ROOT, "dist", f), "wb").write(d)
         open(path, "w").write(text)

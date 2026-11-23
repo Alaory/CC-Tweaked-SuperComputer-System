@@ -46,18 +46,66 @@ print("Note: this computer no longer starts programs from floppy disks (the base
 end
 
 
-local missing = {}
+
+
+local function pathOf(name)
+local plain = fs.combine(dir, name .. ".lua")
+if fs.exists(plain) then return plain, false end
+local packed = fs.combine(dir, name .. ".luz")
+if fs.exists(packed) then return packed, true end
+end
+
+
+local missing, anyPacked = {}, false
 for _, name in ipairs(MODULES) do
-if not fs.exists(fs.combine(dir, name .. ".lua")) then missing[#missing + 1] = name .. ".lua" end
+local p, isPacked = pathOf(name)
+if not p then missing[#missing + 1] = name .. ".lua" end
+if isPacked then anyPacked = true end
 end
 if #missing > 0 then
 error("Missing " .. #missing .. " file(s) in '" .. (dir == "" and "/" or dir) .. "':\n  " ..
-table.concat(missing, "\n  ") .. "\nCopy them next to inventory.lua.", 0)
+table.concat(missing, "\n  ") .. "\nCopy them next to inventory.lua (or type  upgrade  on the shell).", 0)
+end
+local inflate
+if anyPacked then
+local f, e = loadfile(fs.combine(dir, "unzip.lua"), "t", env)
+inflate = f and f()
+if type(inflate) ~= "function" then
+error("unzip.lua is missing or broken (" .. tostring(e) .. ") - it unpacks the base_*.luz files. Type  upgrade  on the shell.", 0)
+end
 end
 
+
+
+local function breathe()
+os.queueEvent("base_loading")
+local kept = {}
+while true do
+local e = table.pack(os.pullEventRaw())
+if e[1] == "base_loading" then break end
+if e[1] == "terminate" then error("Terminated", 0) end
+kept[#kept + 1] = e
+end
+for _, e in ipairs(kept) do os.queueEvent(table.unpack(e, 1, e.n)) end
+end
+
+local said = false
 for _, name in ipairs(MODULES) do
-local path = fs.combine(dir, name .. ".lua")
-local fn, err = loadfile(path, "t", env)
+local path, isPacked = pathOf(name)
+local fn, err
+if isPacked then
+if not said then print("Unpacking the program ...") said = true end
+local h = fs.open(path, "rb")
+local bytes = h and h.readAll()
+if h then h.close() end
+local okU, text = pcall(inflate, bytes or "", breathe)
+if not okU then error("Error in " .. name .. ".luz: " .. tostring(text), 0) end
+
+fn, err = load(text, "@" .. fs.combine(dir, name .. ".lua"), "t", env)
+breathe()
+else
+fn, err = loadfile(path, "t", env)
+end
 if not fn then error("Error in " .. name .. ".lua: " .. tostring(err), 0) end
 fn()
 end
