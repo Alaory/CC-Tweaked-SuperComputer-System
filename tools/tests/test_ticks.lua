@@ -46,14 +46,24 @@ local JOBS = {
   { "TT.homeTick", function() TT.homeTick() end }, { "TT.avoidTick", function() TT.avoidTick() end },
   { "TT.stallTick", function() TT.stallTick() end }, { "MAP.autoTick", function() MAP.autoTick() end },
   { "AWAY.tick", function() AWAY.tick() end }, { "FACTORY.tick", function() FACTORY.tick() end },
+  { "MINE.updTick", function() MINE.updTick() end }, { "MINE.silentTick", function() MINE.silentTick() end }, { "SUPPLY.tick", function() SUPPLY.tick() end }, { "DW.tick", function() DW.tick() end },
   { "TT.saveList", function() TT.saveList() end }, { "baseAliveTick", function() baseAliveTick() end },
   { "sysRefresh", function() sysRefresh() end }, { "parkCheck", function() parkCheck() end },
   { "MAP.save", function() MAP.save() end }, { "MAP.checkSpace", function() MAP.checkSpace() end },
   { "MAP.autoSave", function() MAP.autoSave() end }, { "KNOW.save", function() KNOW.save() end },
   { "MINE.save", function() MINE.save() end }, { "SCHEM.processPending", function() SCHEM.processPending() end },
   { "POCKET.status", function() POCKET.status() end }, { "TT.codeLoad", function() TT.codeLoad() end },
+  -- (the review: these workers' jobs were not run here yet)
+  { "CURIOS.autoTick", function() CURIOS.autoTick() end }, { "ENV.tick", function() ENV.tick(true) end },
+  { "MEX.tick", function() MEX.tick(true) end }, { "MEX.jobTick", function() MEX.jobTick() end },
+  { "TT.partyTick", function() TT.partyTick() end }, { "trackPlayers", function() trackPlayers() end },
+  { "settleOwed", function() settleOwed() end }, { "MAP.offload", function() MAP.offload() end },
+  { "trimVoiceCache", function() trimVoiceCache() end }, { "TT.codeOffload", function() TT.codeOffload() end },
+  { "TT.prepareInstallFloppy", function() TT.prepareInstallFloppy(true) end },
+  { "MAP.floppySpace", function() MAP.floppySpace() end }, { "MAP.diskUse", function() MAP.diskUse() end },
+  { "CURIOS.learnWorn", function() CURIOS.learnWorn() end }, { "TT.rescueQueueTick", function() if TT.rescueQueueTick then TT.rescueQueueTick() end end },
 }
-local PAGES = { "home", "inventory", "players", "drone", "access", "turtles", "drive", "map", "mining", "system", "events", "settings", "me" }
+local PAGES = { "home", "inventory", "players", "env", "mesys", "drone", "work", "gifts", "access", "turtles", "drive", "map", "mining", "system", "events", "settings", "me" }
 local failed = {}
 for round = 1, 40 do
   CLOCK = CLOCK + 2
@@ -84,3 +94,10 @@ for round = 1, 40 do
 end
 CHECK(next(failed) == nil, "every background job and page ran without an error")
 CHECK(AWAY.on, "away mode started when the owner left")
+-- ...and the owner comes back after a long time: the WELCOME BACK report, in this messy world
+AWAY.since = os.epoch("utc") - 3 * 3600000
+state.online, state.onlineT = { alaory = true, stranger = true }, os.clock()
+local lastBefore = AWAY.last
+local okB, errB = pcall(AWAY.tick)
+CHECK(okB, "coming back runs without an error: " .. tostring(errB))
+CHECK(not AWAY.on and AWAY.last and AWAY.last ~= lastBefore and #AWAY.last.lines >= 2, "a WELCOME BACK report was made")

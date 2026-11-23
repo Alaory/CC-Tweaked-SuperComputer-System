@@ -11,7 +11,7 @@ HELP = {
 " dest <x> <y> <z>     destination = coordinates",
 " dest <waypoint>      destination = saved place",
 " dest @<player>       destination = where a player is",
-" save <name> [x y z]  save the destination",
+" save <name> [x y z|me|feet]  save a place (me = the block under you; chat: $drone mark <name>)",
 " del <name> / list    delete / show saved places",
 " players              online players and positions",
 " fly / home           fly to destination / to base",
@@ -28,9 +28,15 @@ HELP = {
 " turtle <id> log [n]  the turtle's last n log lines in full",
 " turtle <id> diag     its disk, files, saved job and gear (answer in its log)",
 " survey               the big survey: progress, what each turtle is waiting for",
+" survey stats         scans an hour + where the turtles' time goes (surveying, trips, stuck ...)",
+" lost                 every offline turtle: copy? fuel for the way home? last task, spot, log",
+" turtle <id> newchunky   a COPY with a NEW Chunky upgrade on it may move again",
+" turtle <id> chunktest   does it load its own chunk? (pinged while alone)",
+" voice [install]      the base talks (an optional add-on on a data floppy + a Speaker)",
 " survey auto [on|off] auto-map: turtles keep surveying from the base outward",
 " theme [name|random]  the monitor's colours (random = a different one each start)",
 " uptime               how long the base runs, and when it was off (and why)",
+" version              the program's release number and the commit upgrade installed",
 " store [find|update]  storage helper computers (store.lua): free space, update them now",
 " events [n] [errors]  the last n saved messages (also after a restart)",
 "      sethome [x y z], setpos x y z north, locate, move up 3, stop",
@@ -55,6 +61,17 @@ HELP = {
 " turtle <id> forget   take a turtle that is gone (server crash) off the list",
 " drive <id>   steer a turtle with the keyboard: W A S D, SPACE up, SHIFT down",
 " mine [drop|forget] <id>   mining turtles: drop = a lost miner out of its team",
+" fluidstop             end a big fluid ALL that is still moving",
+" fluidbuffer [<n>|auto]   which fluid storage AE2 fluids pass through (filling your tanks)",
+" chests               every chest / barrel / tank on the cable: how full, and what the base uses it for",
+" supply [<storage> <item> <count>|<storage> fluid <fluid> <buckets>|stop <n>|now]   keep a storage on the cable stocked from AE2",
+" dw [chest <n> me|fuel <id>|fuel item <item> [n]|auto on|off]   drone jobs: work chest, fuel runs to turtles",
+" schem build <name> <me|place|x y z> [rot 90] [clear] | status | pause | resume | stop   a drone builds it",
+" schem chain <a>,<b>*3 [place] [toward <dir>] | queue [clear] | skip   pieces one after another (a road)",
+" dw clear <corner> <corner> [block]   empty a box of water / lava (walls, fill, dig out)",
+" dw dig <corner> <corner> | dw break <x y z>   drones dig an area / break one block (into AE2)",
+" schem built | schem unbuild [<n>|<name>]   take a build down again (its blocks back into AE2)",
+" mine update [stop]    the newest miner.lua to every mining turtle (teams paused first, then started again)",
 " factory [chest <name>|builder <id>|build|stop]   build turtles from AE2 parts",
 " factory recipes|learn|forget <item>|crafter <id>   recipes TAUGHT to a crafting turtle",
 " factory fuel [<item> [count]|reset]   the fuel a new turtle gets (default 16 coal blocks)",
@@ -83,6 +100,18 @@ local fn, err = loadfile(path, "t", _ENV)
 if not fn then log("upgrade.lua is broken: " .. tostring(err)) return false end
 local okR, done, n = pcall(fn, { args = args or {}, dir = BASE_DIR or "", log = log })
 if not okR then log("Upgrade stopped by an error: " .. tostring(done)) return false end
+local a1 = tostring((args or {})[1] or "")
+
+if a1 ~= "check" and a1 ~= "branch" and TT and TT.fetchCode then
+local okN, msgN = pcall(TT.fetchCode, function() end)
+log(okN and msgN and ("Turtles: " .. tostring(msgN)) or ("Turtle program not updated: " .. tostring(msgN)))
+end
+
+if a1 ~= "check" and a1 ~= "branch" and voiceUpdate and addonInstalled and VOICE_FILES and addonInstalled(VOICE_FILES[1]) then
+pcall(voiceUpdate, log)
+
+if done then pcall(function() local h = fs.open(fs.combine(BASE_DIR or "", VOICE_FLAG or "voice_update.flag"), "w") h.write("1") h.close() end) end
+end
 if done then
 if sysLog then sysLog("Program upgraded from GitHub (" .. tostring(n) .. " files) - restarting", "INFO") end
 log("Saving the map and restarting in 3 s ...")
@@ -120,6 +149,8 @@ for i, k in ipairs(droneOrder) do
 local dr = drones[k]
 say(string.format(" %d. %s%s - %s, %s", i, dr.label, (dr == D) and " (selected)" or "",
 dr.conn and "connected" or "not connected", dr.busy and "busy" or "idle"))
+local seen = droneSeenText(dr)
+if seen and not dr.conn then say("      " .. seen) end
 end
 
 elseif cmd == "drone" then
@@ -178,11 +209,13 @@ say("'Base' comes from CONFIG.drone.home in base_config.lua - change it there.")
 else
 local x, y, z
 if #words >= 3 then
-if #words ~= 5 or not validCoords(words[3], words[4], words[5]) then
-say("Usage: save <name> <x> <y> <z>   (numbers, y -64..320)")
+local why
+x, y, z = posArg(words, 3)
+if not x then
+why = y
+say("Usage: save <name> <x> <y> <z>  |  save <name> me  (the block under you)  |  save <name> feet - " .. tostring(why))
 return out
 end
-x, y, z = math.floor(tonumber(words[3])), math.floor(tonumber(words[4])), math.floor(tonumber(words[5]))
 else
 x, y, z = resolveDest(D)
 end
@@ -246,9 +279,10 @@ say("Usage: findlost [radius] [x y z]   (default: 96 blocks around the base)")
 elseif x and not (y and z and validCoords(x, y, z)) then
 say("Usage: findlost [radius] [x y z]")
 else
-local ok, msg = TT.findLost(radius and math.max(16, math.min(160, math.floor(radius))),
-x and math.floor(x), y and math.floor(y), z and math.floor(z))
+local r = radius and math.max(16, math.min(160, math.floor(radius)))
+local ok, msg = TT.findLost(r, x and math.floor(x), y and math.floor(y), z and math.floor(z))
 say((ok and "OK: " or "Cannot: ") .. msg)
+if r and r ~= math.floor(radius) then say("  (radius " .. r .. ": it searches 16 - 160 blocks)") end
 end
 
 elseif cmd == "rescue" then
@@ -261,9 +295,10 @@ if x and not (y and z and validCoords(x, y, z)) then
 say("Usage: rescue <turtle id> [x y z]")
 else
 local radius = tonumber(words[6])
-local ok, msg = TT.rescue(id, x and math.floor(x), y and math.floor(y), z and math.floor(z),
-radius and math.max(16, math.min(128, math.floor(radius))))
+local r = radius and math.max(16, math.min(128, math.floor(radius)))
+local ok, msg = TT.rescue(id, x and math.floor(x), y and math.floor(y), z and math.floor(z), r)
 say((ok and "OK: " or "Cannot: ") .. msg)
+if r and r ~= math.floor(radius) then say("  (radius " .. r .. ": a rescue searches 16 - 128 blocks)") end
 end
 end
 
@@ -374,6 +409,22 @@ else
 say("Could not check: " .. tostring(r))
 end
 
+elseif cmd == "me" and (words[2] == "jobs" or words[2] == "cpus") then
+if MEX and bridge then pcall(MEX.read) end
+for _, l in ipairs(MEX and MEX.lines() or { "no bridge" }) do say(l) end
+elseif cmd == "me" and words[2] == "raw" then
+
+local ok, cpus = pcall(bridge and bridge.getCraftingCPUs or error)
+if not ok or type(cpus) ~= "table" then say("getCraftingCPUs: " .. tostring(cpus)) else
+for _, c in pairs(cpus) do
+if type(c) == "table" and c.isBusy then
+say((c.name or "Unnamed") .. ": " .. textutils.serialize(c.craftingJob or "no job"):gsub("%s+", " "):sub(1, 400))
+end
+end
+end
+elseif cmd == "me" and words[2] == "cancel" and words[3] then
+local ok, err = MEX.cancel(words[3])
+say(ok and ("Cancelled the jobs for " .. words[3]) or ("Not cancelled: " .. tostring(err)))
 elseif cmd == "me" and words[2] == "check" then
 
 
@@ -453,7 +504,9 @@ say("Logs:             " .. fs.getDir(cur1) .. "/  (events, system" ..
 (fs.getDir(cur2) ~= fs.getDir(cur1) and (" -> " .. fs.getDir(cur2)) or "") .. ", mining, turtles, AE2 names)")
 end
 local movedMap = 0
-local okO, nO = pcall(MAP.offload)
+local okV, nV = pcall(trimVoiceCache)
+if okV and (nV or 0) > 0 then say("Speech cache:     removed " .. nV .. " old phrase(s) to make room") end
+local okO, nO = pcall(MAP.offload, 100000)
 if okO then movedMap = nO or 0 end
 if hasData then pcall(MAP.save, true) end
 pcall(KNOW.save)
@@ -462,9 +515,10 @@ local function where(p)
 local d = dataFile(p)
 return (fs.exists(d) and (d .. " (" .. math.ceil(fs.getSize(d) / 1024) .. " KB)")) or "not saved"
 end
-local total, onPc, files = MAP.diskUse()
-if movedMap > 0 then say("Map:              moved " .. movedMap .. " file(s) off this computer") end
-say("Map:              " .. files .. " files, " .. math.ceil((total - onPc) / 1024) ..
+local total, onPc, files, remote, rfiles = MAP.diskUse()
+if movedMap > 0 then say("Map:              moved " .. movedMap .. " file(s)") end
+say("Map:              " .. files .. " files, " .. math.ceil(remote / 1024) .. " KB on storage helpers (" ..
+rfiles .. " files), " .. math.ceil((total - onPc - remote) / 1024) ..
 " KB on floppies, " .. math.ceil(onPc / 1024) .. " KB on the computer" ..
 (#MAP.order < chunks0 and ("  - trimmed to the newest " .. #MAP.order .. " chunks") or ""))
 say("Turtle knowledge: " .. where(CONFIG.turtles.knowFile) ..
@@ -497,9 +551,12 @@ else
 if #list == 0 then say("No floppy disks found (Disk Drives next to this computer or on the network).") end
 for _, d in ipairs(list) do
 local role = d.data and "DATA" or (d.installer and "INSTALLER" or (d.empty and "empty" or "other"))
-say(string.format(" %-7s %-10s %4d KB free  %s", d.mount, role, math.floor(d.free / 1024), tostring(d.label or "")))
+local vc = voiceCacheBytes(d.mount)
+say(string.format(" %-7s %-10s %4d KB free  %s", d.mount, role, math.floor(d.free / 1024), tostring(d.label or "")) ..
+(vc > 0 and ("  (speech cache " .. math.ceil(vc / 1024) .. " KB)") or ""))
 end
 say("This computer: " .. math.floor(fs.getFreeSpace("/") / 1024) .. " KB free.   'disks data' = use empty floppies for data")
+
 
 local nh = 0
 for id, h in pairs(STORE and STORE.helpers or {}) do
@@ -532,7 +589,7 @@ for i = 2, #words do a[#a + 1] = words[i] end
 baseUpgrade(a, say)
 
 elseif cmd == "update" then
-local okL, errL = pcall(TT.codeLoad, true)
+local okL, errL = pcall(TT.codeLoad, true, true)
 if not okL then say("Reading node.lua failed: " .. tostring(errL)) end
 if TT.codeError then say("The new node.lua does NOT compile (not sent): " .. TT.codeError) end
 if CODE then
@@ -540,7 +597,8 @@ say("Program file: " .. tostring(CODE.path or TT.codePath()) .. " (" .. #CODE.te
 TT.verName(CODE.ver))
 end
 if not CODE then
-say("No " .. TT.codePath() .. " on this computer - copy node.lua next to inventory.lua.")
+say("No turtle program stored yet. Type  upgrade  (it fetches node.lua onto a storage helper / data floppy)")
+say("or drag node.lua onto this computer - the base moves it off the computer by itself.")
 else
 
 local n = 0
@@ -642,7 +700,7 @@ say("No storage helpers. Put store.lua on another computer with a WIRED modem on
 say("run  store  on it once (it then starts by itself), then type  store find  here.")
 else
 local free = STORE.space()
-say("Together: " .. math.floor(free / 1024) .. " KB free for the map (used after the data floppies).")
+say("Together: " .. math.floor(free / 1024) .. " KB free for the map (used before the data floppies).")
 end
 
 elseif cmd == "factory" then
@@ -804,13 +862,158 @@ elseif cmd == "schem" or cmd == "schematics" then
 local sub = words[2]
 if sub == "delete" and words[3] then
 say(SCHEM.delete(words[3]) and ("Deleted " .. words[3]) or ("No schematic '" .. words[3] .. "'"))
+elseif sub == "build" or sub == "preview" then
+
+local name = words[3]
+if not name then
+say("Usage: schem " .. sub .. " <name> [here | <saved place> | x y z] [facing north|east|south|west | turn left|right|around] [centered] [clear]")
+say("  no place / here = in front of you, where you look (stand there first); a place / x y z = the GROUND block:")
+say("  the build stands on it with that block at its north-west corner (or centered). facing east = its north side faces east.")
+say("  schem preview ... = only where it would go.  In chat at the spot:  $" .. tostring(CONFIG.chat and CONFIG.chat.command or "drone") .. " build <name>")
+else
+local sch, why = SCHEM.load(name)
+if not sch then say(tostring(why))
+else
+local pl, whyW = DW.where(sch, words, 4, state.owner, 0)
+if not pl then say(tostring(whyW))
+elseif sub == "preview" then
+say(name .. ": " .. pl.text)
+local _, place = SCHEM.materials(sch)
+say("  " .. place .. " blocks. Turn it with  facing <dir>  or  turn left/right/around;  schem build ... starts it.")
+else
+local ok, msg = DW.startBuild(name, pl.ox, pl.oy, pl.oz, pl.rot, pl.clear)
+say(msg)
+if ok then
+local rows, missing = DW.materials(DW.job)
+for k, r in ipairs(missing) do
+if k > 12 then say("  ... " .. (#missing - 12) .. " more short") break end
+say(string.format("  short: %-32s need %d, AE2 has %d", prettify(r.item), r.need, r.have))
+end
+say("The drones build it bottom up; torches, signs, doors ... come last. Blocks face the default way.  schem status | schem stop")
+end
+end
+end
+end
+elseif sub == "craft" then
+
+local a = (words[3] or ""):lower()
+if a == "on" or a == "off" then
+setSetting("drone.buildCraft", a == "on")
+say("Auto-craft for builds: " .. a:upper())
+elseif a == "now" then
+if not DW.job then say("No build is running.")
+else
+local n = DW.craftTick(DW.job, true)
+say(n > 0 and ("Asked AE2 to craft " .. n .. " item(s).") or "Nothing to craft (enough in AE2, a craft already runs, or no pattern).")
+end
+else
+say("Auto-craft for builds: " .. (DW.craftOn() and "ON" or "OFF") .. "  (schem craft on|off|now)")
+end
+if DW.job then for _, l in ipairs(DW.statusLines()) do if l:find("craft", 1, true) or l:find("pattern", 1, true) then say(l) end end end
+elseif sub == "chain" then
+
+if not words[3] then
+say("Usage: schem chain <name>,<name>*<n>,... [here | <saved place> | x y z] [toward north|east|south|west] [facing <dir> | turn left|right|around] [clear]")
+say("  the pieces are built one after another, each right after the one before (a road in parts), all turned the same way.")
+say("  here / no place = the first in front of you, going on the way you look. Example:  schem chain road_start,road*6,road_end")
+else
+local list, text = DW.chainPlan(words[3], words, 4, state.owner)
+if not list then say(tostring(text))
+else
+say("Chain: " .. text)
+DW.enqueue(list)
+say(DW.job and ("Started: " .. DW.job.name .. ", " .. #DW.queue .. " more waiting  (schem queue, schem skip, schem stop)") or
+"Queued - it starts once the schematics are read (schem queue)")
+end
+end
+elseif sub == "queue" then
+if (words[3] or ""):lower() == "clear" then
+local n = #DW.queue
+DW.queue = {}
+DW.saveQueue()
+say("Queue cleared (" .. n .. " job(s) dropped). The running one goes on (schem stop).")
+elseif #DW.queue == 0 then say("Nothing waiting. (schem chain ..., or  dw clear  queues more)")
+else
+for k, q in ipairs(DW.queue) do
+say(k .. ". " .. q.name .. (q.kind == "drain" and "" or (" at " .. fmtPos(q.x, q.y, q.z) .. " " .. DW.turnText(q.rot or 0))))
+end
+say("schem queue clear = drop them,  schem skip = stop the running one and start the next")
+end
+elseif sub == "built" then
+local l = DW.builtList()
+if #l == 0 then say("No builds remembered yet (each  schem build  is noted; the newest 20 are kept).") end
+for k, b in ipairs(l) do say(k .. ". " .. b.name .. " at " .. fmtPos(b.x, b.y, b.z) .. " " .. DW.turnText(b.rot)) end
+if #l > 0 then say("schem unbuild <n>  takes one down again (the blocks go back into AE2)") end
+elseif sub == "unbuild" then
+
+local a = words[3] or ""
+local P = DW.unbuildPend
+if P and os.clock() - P.at > 300 then DW.unbuildPend, P = nil, nil end
+if a:lower() == "yes" or a:lower() == "go" then
+if not P then say("Nothing to start - first:  schem unbuild <n|name>")
+elseif DW.job then
+DW.unbuildPend = nil
+DW.enqueue({ { kind = "unbuild", name = P.name, x = P.x, y = P.y, z = P.z, rot = P.rot } })
+say("A job runs (" .. DW.job.name .. ") - it waits in the queue as job " .. #DW.queue)
+else
+DW.unbuildPend = nil
+local _, msg = DW.startUnbuild(P.name, P.x, P.y, P.z, P.rot)
+say(msg)
+end
+elseif a:lower() == "no" then DW.unbuildPend = nil say("OK, forgotten.")
+else
+local b = (not words[4]) and DW.findBuilt(a) or nil
+if not b and words[4] then
+local sch, why = SCHEM.load(a)
+if not sch then say(tostring(why))
+else
+local pl, whyW = DW.where(sch, words, 4, state.owner, 0)
+if not pl then say(tostring(whyW))
+elseif pl.how == "front" then say("Give the place it was built at (x y z of its ground block, or a saved place) - never 'in front of you'.")
+else b = { name = a, x = pl.ox, y = pl.oy, z = pl.oz, rot = pl.rot } end
+end
+end
+if b then
+DW.unbuildPend = { name = b.name, x = b.x, y = b.y, z = b.z, rot = b.rot, at = os.clock() }
+say("Take down " .. b.name .. " at " .. fmtPos(b.x, b.y, b.z) .. " " .. DW.turnText(b.rot) ..
+": every block the schematic has there is dug (whatever is there now) and goes into AE2. Type  schem unbuild yes")
+elseif not words[4] then
+say(#DW.builtList() == 0 and "No builds remembered.  schem unbuild <name> <x y z> [turn ..]  for one built before." or
+("No build '" .. a .. "'.  schem built  lists them."))
+end
+end
+elseif sub == "skip" then
+local _, msg = DW.stopBuild("skipped by you")
+say(msg)
+DW.queueTick()
+if DW.job then say("Next: " .. DW.job.name) end
+elseif sub == "stop" then
+local n = #DW.queue
+DW.queue = {}
+DW.saveQueue()
+local _, msg = DW.stopBuild("stopped by you")
+say(msg .. (n > 0 and (" - and " .. n .. " queued job(s) dropped") or ""))
+elseif sub == "pause" then
+if DW.job then DW.job.paused = "paused by you (schem resume)" DW.save() say("Paused.") else say("No build is running.") end
+elseif sub == "resume" then
+if DW.job then DW.job.paused, DW.job.fails, DW.job.waitUntil = nil, 0, nil DW.save() say("Going on.") else say("No build is running.") end
+elseif sub == "status" then
+for _, l in ipairs(DW.statusLines()) do say(l) end
+if DW.job then
+local rows = DW.materials(DW.job)
+for k, r in ipairs(rows) do
+if k > 10 then say("  ... " .. (#rows - 10) .. " more items") break end
+say(string.format("  %-32s still %d, AE2 has %d%s", prettify(r.item), r.need, r.have, r.have < r.need and "  SHORT" or ""))
+end
+end
 elseif sub then
 local s, err = SCHEM.load(sub)
 if not s then say(err)
 else
-local need, place, air = SCHEM.materials(s)
+local need, place, air, fluids = SCHEM.materials(s)
 say(sub .. ": " .. s.size.x .. " x " .. s.size.y .. " x " .. s.size.z .. " (x y z), " .. place .. " blocks to place, " ..
 air .. " air (cleared), " .. #s.palette .. " kinds of block")
+if (fluids or 0) > 0 then say("  " .. fluids .. " fluid blocks (water, lava ...) are left out - drones place no fluids") end
 local list = {}
 for it, n in pairs(need) do list[#list + 1] = { it, n } end
 table.sort(list, function(a, b) return a[2] > b[2] end)
@@ -828,7 +1031,159 @@ say("No schematics yet. Save one with Create's Schematic and Quill, then drag th
 say("(from .minecraft/schematics on your PC) onto this computer's screen.")
 end
 for _, n in ipairs(names) do say("  " .. n) end
-say("schem <name> = size and materials,  schem delete <name>")
+say("schem <name> = size and materials,  schem delete <name>,  schem build <name> <me|place|x y z> [rot 90] [clear]")
+say("schem chain <a>,<b>*3,<c> [place] [toward <dir>] = pieces one after another (a road),  schem queue")
+say("schem built = your builds,  schem unbuild [<n>|<name>] = take one down again (into AE2)")
+end
+
+elseif cmd == "dw" or cmd == "dronework" then
+
+local sub = (words[2] or ""):lower()
+if sub == "chest" then
+if not words[3] then
+say("The WORK CHEST: an EMPTY chest / barrel on the cable that the drones can reach (near their home).")
+say("Only the base and the drones use it. Stand ON it and type:  dw chest <n|name> me")
+local n = 0
+for _, name in ipairs(peripheral.getNames()) do
+local okI, isI = pcall(peripheral.hasType, name, "inventory")
+local okS, size = pcall(peripheral.call, name, "size")
+if okI and isI and okS and tonumber(size) and tonumber(size) <= 54 and not name:find("drive", 1, true) then
+local okL, list = pcall(peripheral.call, name, "list")
+local items = 0
+for _ in pairs(okL and list or {}) do items = items + 1 end
+local used = FACTORY.reserved(name)
+n = n + 1
+say(string.format("  %2d  %s%s", n, name, used and ("   (in use: " .. used .. ")") or (items == 0 and "   (empty)" or ("   " .. items .. " stacks - not empty"))))
+state.dwChests = state.dwChests or {}
+state.dwChests[n] = name
+end
+end
+if n == 0 then say("  none found - put a wired modem on a chest and right-click it (red)") end
+else
+local name = (state.dwChests or {})[tonumber(words[3]) or -1] or words[3]
+local used = FACTORY.reserved(name)
+if not peripheral.isPresent(name) then say("No '" .. name .. "' on the cable - type  dw chest  for the list")
+elseif used and used ~= "drone work chest" then say(name .. " is already used by the base (" .. used .. ")")
+else
+local x, y, z = posArg(words, 4)
+if not x then say("Where is it? " .. tostring(y) .. "   (stand ON it: dw chest " .. words[3] .. " me)")
+else
+setSetting("drone.workChest", name)
+setSetting("drone.workChestAt", { x = x, y = y, z = z })
+say("Work chest: " .. name .. " at " .. fmtPos(x, y, z) .. ". Keep it empty - only the base and the drones use it.")
+end
+end
+end
+elseif sub == "fuel" then
+if words[3] == "item" and words[4] then
+setSetting("drone.fuelItem", SUPPLY.fullName(words[4]))
+if tonumber(words[5]) then setSetting("drone.fuelCount", math.floor(tonumber(words[5]))) end
+local it, n = DW.fuelItem()
+say("Fuel runs bring " .. n .. " " .. prettify(it))
+elseif words[3] then
+local t = TT.find and TT.find(words[3]) or state.turtles[tonumber(words[3]) or -1]
+if not t then say("No turtle '" .. words[3] .. "'")
+else
+local _, msg = DW.fuelRun(t.id, "you")
+say(msg)
+end
+else say("Usage: dw fuel <turtle id>  |  dw fuel item <item> [count]") end
+elseif sub == "clear" or sub == "drain" then
+
+local x1, y1, z1, j = posArg(words, 3)
+local x2, y2, z2, j2
+if x1 then x2, y2, z2, j2 = posArg(words, j) end
+if not x1 or not x2 then
+say("Usage: dw clear <corner 1> <corner 2> [block]   (corners: x y z, a saved place or me)")
+say("  empties a box of water / lava for building: the drones put walls round it, fill the inside with the")
+say("  block (dirt - it comes back) and dig it out top down. EVERYTHING inside the walls goes (sea floor too).")
+say("  Put the top corner AT the surface. Drones work in their own dimension (the overworld) only.")
+if words[3] then say("  " .. tostring(x1 and y2 or y1)) end
+else
+local fill = words[j2] and SUPPLY.fullName(words[j2]) or nil
+if DW.job then
+local e = { kind = "drain", box = { x1, y1, z1, x2, y2, z2 }, fill = fill, name = "clear " .. fmtPos(x1, y1, z1),
+x = math.min(x1, x2), y = math.min(y1, y2), z = math.min(z1, z2), rot = 0 }
+DW.enqueue({ e })
+say("A job runs (" .. DW.job.name .. ") - the clearing waits in the queue as job " .. #DW.queue .. " (schem queue)")
+else
+local _, msg = DW.startDrain(x1, y1, z1, x2, y2, z2, fill)
+say(msg)
+end
+end
+elseif sub == "dig" then
+
+local a = (words[3] or ""):lower()
+local P = DW.digPend
+if P and os.clock() - P.at > 300 then DW.digPend, P = nil, nil end
+if a == "yes" or a == "go" then
+if not P then say("Nothing to start - first:  dw dig <corner> <corner>")
+else
+DW.digPend = nil
+if DW.job then
+DW.enqueue({ { kind = "dig", box = P.box, name = "dig " .. fmtPos(P.box[1], P.box[2], P.box[3]),
+x = math.min(P.box[1], P.box[4]), y = math.min(P.box[2], P.box[5]), z = math.min(P.box[3], P.box[6]), rot = 0 } })
+say("A job runs (" .. DW.job.name .. ") - the digging waits in the queue as job " .. #DW.queue)
+else
+local _, msg = DW.startDig(P.box[1], P.box[2], P.box[3], P.box[4], P.box[5], P.box[6])
+say(msg)
+end
+end
+elseif a == "no" then DW.digPend = nil say("OK, forgotten.")
+else
+local x1, y1, z1, j = posArg(words, 3)
+local x2, y2, z2
+if x1 then x2, y2, z2 = posArg(words, j) end
+if not x1 or not x2 then
+say("Usage: dw dig <corner> <corner>   (x y z, a saved place or me) - drones dig EVERY block in that box, top down;")
+say("  what they dig goes into AE2. Water / lava stay (dw clear empties those). One block:  dw break <x y z>")
+if words[3] then say("  " .. tostring(x1 and y2 or y1)) end
+else
+local n = (math.abs(x1 - x2) + 1) * (math.abs(y1 - y2) + 1) * (math.abs(z1 - z2) + 1)
+DW.digPend = { box = { x1, y1, z1, x2, y2, z2 }, at = os.clock() }
+say("Dig " .. fmtPos(x1, y1, z1) .. " to " .. fmtPos(x2, y2, z2) .. ": " .. n .. " spots - EVERYTHING in it goes. Type  dw dig yes  to start.")
+end
+end
+elseif sub == "break" then
+local x, y, z = posArg(words, 3)
+if not x then
+say("Usage: dw break <x y z | saved place | me>   - a drone breaks that one block (F3: Targeted Block shows x y z)")
+if words[3] then say("  " .. tostring(y)) end
+elseif DW.job then
+DW.enqueue({ { kind = "dig", box = { x, y, z, x, y, z }, name = "break " .. fmtPos(x, y, z), x = x, y = y, z = z, rot = 0 } })
+say("A job runs (" .. DW.job.name .. ") - it waits in the queue as job " .. #DW.queue)
+else
+local _, msg = DW.startDig(x, y, z, x, y, z)
+say(msg)
+end
+elseif sub == "test" then
+DW.test(say, words[3] and SUPPLY.fullName(words[3]) or nil)
+elseif sub == "auto" and (words[3] == "on" or words[3] == "off") then
+setSetting("drone.fuelRuns", words[3] == "on")
+DW.auto = nil
+say("Automatic drone fuel runs " .. words[3]:upper())
+else
+for _, l in ipairs(DW.statusLines()) do say(l) end
+say("dw chest [<n|name> me]  |  dw test [item]  |  dw fuel <id>  |  dw fuel item <item> [count]  |  dw auto on|off  |  dw clear <corner> <corner> [block]  |  dw dig <corner> <corner>  |  dw break <x y z>  |  schem build / chain / unbuild ...")
+end
+
+elseif cmd == "voice" then
+
+local a = (words[2] or ""):lower()
+if a == "install" or a == "update" then
+local ok = voiceUpdate(say)
+if ok then say("The base talks. Try:  voice say hello") end
+elseif a == "remove" then
+local n = 0
+for i = #VOICE_FILES, 1, -1 do n = n + removeAddon(VOICE_FILES[i]) end
+VOICE = nil
+say(n > 0 and "Removed - the base is quiet (settings kept)." or "It was not installed.")
+elseif VOICE and VOICE.command then
+for _, l in ipairs(VOICE.command(words)) do say(l) end
+else
+say("The base can TALK (an optional add-on, kept on a data floppy): greets people near the base,")
+say("says warnings out loud, answers  base, status?  in chat. Needs a Speaker next to the computer")
+say("or on the cable, data floppies with ~320 KB free in all (4 files, each ~50-80 KB) and the internet. Type:  voice install")
 end
 
 elseif cmd == "pocket" then
@@ -844,11 +1199,79 @@ if not any then say("No pocket paired. Copy pocket.lua onto your pocket computer
 say("pocket unpair <id> = it can no longer control the base")
 end
 
+elseif cmd == "fluidstop" then
+
+local n = 0
+for i = #state.actionQueue, 1, -1 do
+if state.actionQueue[i].cont then table.remove(state.actionQueue, i) n = n + 1 end
+end
+say(n > 0 and "Fluid move stopped (what was moved stays where it is)." or "No fluid move is running.")
+
+elseif cmd == "fluidbuffer" then
+
+local list = fluidStorages()
+local w = words[2]
+if w == "auto" then
+resetSetting("me.fluidBuffer")
+say("Fluid buffer: found by itself again (now: " .. tostring((fluidBuffer())) .. ")")
+elseif w then
+local name = (tonumber(w) and list[tonumber(w)]) or w
+if not peripheral.isPresent(name) then say(w .. " is not on the cable. Type  fluidbuffer  for the list.")
+elseif SUPPLY and SUPPLY.isTarget(name) then say(name .. " is kept stocked by  supply  - it cannot be the buffer.")
+else
+setSetting("me.fluidBuffer", name)
+say("Fluid buffer is now " .. name .. ". Filling / emptying your tanks goes through it.")
+end
+else
+local cur, err = fluidBuffer()
+say("Fluid buffer: " .. (cur or ("NONE - " .. tostring(err))))
+for i, n in ipairs(list) do say(string.format(" %d. %s%s", i, n, n == cur and "  <- in use" or "")) end
+say("fluidbuffer <number|name> = use that one,  fluidbuffer auto = find it by itself")
+say("(It must be YOUR storage that AE2 fluids pass through - e.g. the storage controller.)")
+end
+
+elseif cmd == "chests" or cmd == "storages" then
+
+local list = cableStorages()
+if #list == 0 then
+say("No chests, barrels or tanks reach this computer. They need a WIRED modem on them (right-click it: red = on).")
+end
+local nInv, nTank = 0, 0
+for _, c in ipairs(list) do
+if c.slots then nInv = nInv + 1 else nTank = nTank + 1 end
+end
+say(nInv .. " item storage(s), " .. nTank .. " fluid storage(s):")
+for _, c in ipairs(list) do
+local fill
+if c.slots then
+fill = c.used == 0 and "EMPTY" or (c.used .. "/" .. c.slots .. " slots, " .. c.items .. " items")
+else
+fill = c.mb == 0 and "EMPTY" or (math.floor(c.mb / 1000) .. " B " .. (c.fluid or ""))
+end
+say(" " .. c.name .. "  " .. fill)
+say("    " .. (c.job or "not used by the base"))
+end
+say("Drone work chest: " .. ((CONFIG.drone and CONFIG.drone.workChest) or "none - DRONES > DRONE WORK, or chat  $drone workchest") ..
+".  Factory chest: " .. tostring(FACTORY and FACTORY.chest or "none") .. ".")
+
+elseif cmd == "supply" then
+
+for _, l in ipairs(SUPPLY.command(words)) do say(l) end
+
 elseif cmd == "mine" then
 
 local sub, id = (words[2] or ""):lower(), tonumber(words[3])
 local u = id and MINE.units[id]
-if (sub == "drop" or sub == "forget") and not u then
+if sub == "update" then
+
+if words[3] == "stop" then
+MINE.upd = nil
+say("Miner update stopped (paused teams stay paused - START TEAM on the MINING tab).")
+else
+local c, why = MINE.loadCode(true, say)
+if not c then say(why) else for _, l in ipairs(MINE.startUpdate(c)) do say(l) end end
+end
+elseif (sub == "drop" or sub == "forget") and not u then
 say("No mining turtle #" .. tostring(words[3]) .. ". Type  mine  to see them.")
 elseif sub == "drop" then
 local _, msg = MINE.drop(id)
@@ -861,13 +1284,18 @@ else
 local any = false
 for uid, x in pairs(MINE.units) do
 any = true
-say(string.format(" #%-4d %-7s %-10s %s", uid, tostring(x.role), tostring(x.dim), MINE.online(x) and "online"
-or ("OFFLINE, last seen " .. (x.seenEpoch and TT.ago(x.seenEpoch) or "never"))))
+say(string.format(" #%-4d %-7s %-5s %-10s %s", uid, tostring(x.role), tostring(x.ver or "?"), tostring(x.dim), MINE.online(x) and "online"
+or ("OFFLINE, last seen " .. (x.seenEpoch and TT.ago(x.seenEpoch) or "never") ..
+((type(x.pos) == "table" and x.pos.x) and (" at " .. x.pos.x .. " " .. x.pos.y .. " " .. x.pos.z) or ""))))
 end
 if not any then say("No mining turtles yet.") end
 say("mine drop <id> = a lost miner out of its team,  mine forget <id> = off the base's list")
+say("mine update = the newest miner.lua to all of them (teams paused, started again after)")
 end
 
+elseif cmd == "env" or cmd == "world" then
+if envDet then pcall(ENV.read, true) end
+for _, l in ipairs(ENV.lines()) do say(l) end
 elseif cmd == "away" then
 
 if AWAY.on then
@@ -883,6 +1311,59 @@ say("No away report yet. Away mode starts " .. math.floor((tonumber(AWAY.cfg("af
 end
 local on = AWAY.ownerOnline()
 say("You are " .. (on == true and "online" or (on == false and "offline" or "unknown (no Player Detector?)")))
+
+local src = (state.online and state.onlineT and os.clock() - state.onlineT < 120)
+and ("server player list, read " .. math.floor(os.clock() - state.onlineT) .. " s ago")
+or "no fresh player list - the Player Detector's own answer"
+say("  owner: " .. tostring(state.owner or "NOT KNOWN (Memory Card in the Inventory Manager?)") .. " - " .. src)
+if AWAY.offSince then
+say("  offline (seen by this run) for " .. fmtSpan((os.epoch("utc") - AWAY.offSince) / 1000) ..
+" - away mode after " .. fmtSpan(tonumber(AWAY.cfg("after", 300)) or 300) .. (MAP.loaded and "" or ", the map is still being read"))
+end
+if AWAY.cfg("enabled", true) == false then say("  away mode is switched OFF (SETTINGS > AWAY)") end
+
+elseif cmd == "version" then
+say("Base program " .. versionText() .. "   (type  upgrade check  for a newer one)")
+
+elseif cmd == "owner" then
+if words[2] == "new" then
+OWNER_SAVED, OWNER_UUID, INV_FOREIGN, INV_FOREIGN_AT = nil, nil, nil, nil
+pcall(fs.delete, OWNER_FILE)
+PERIPH_SKIP = {}
+pcall(rescanPeripherals)
+state.force.inv = true
+say("The next memory card the Inventory Manager holds is the owner's." ..
+((type(CONFIG.owner) == "string" and CONFIG.owner ~= "") and (" (CONFIG.owner = " .. CONFIG.owner ..
+" in base_config.lua still decides - change that line too)") or ""))
+else
+say("Owner: " .. tostring(knownOwner() or "not known yet") .. (state.ownerOff and " (offline)" or ""))
+if INV_FOREIGN then say("Inventory Manager NOT USED: " .. INV_FOREIGN) end
+say("owner new = the next memory card in the Inventory Manager becomes the owner (you changed accounts)")
+end
+
+elseif cmd == "parts" then
+
+if words[2] == "forget" then
+local k = partsForget(words[3] and table.concat(words, " ", 3) or "")
+if #k == 0 then say("Usage: parts forget <n|name|all>  (n from the list)")
+else say("Forgotten: " .. table.concat(k, ", ") .. " - not listed as missing any more") end
+else
+say("Screen: " .. (mon.blank and ("NONE - " .. tostring(MON_WHY or "no monitor") .. " (the base runs without it)")
+or tostring(monName)))
+if inv == nil and INV_FOREIGN then say("Inventory Manager: NOT USED - " .. INV_FOREIGN) end
+local list = partsGone()
+if #list == 0 then say("No parts missing.") end
+local after = tonumber(CONFIG.startup and CONFIG.startup.goneAfter) or 600
+for i, g in ipairs(list) do
+say(i .. ". " .. partText(g) .. ((g.run < after and not (NET.gone[g.key] or {}).told) and "  (missing since this start - may still load)" or ""))
+end
+if #list > 0 then
+say("Broken, moved or its chunk is not loaded. Taken away on purpose:  parts forget <n|all>")
+local blocks = 0
+for _, g in ipairs(list) do if g.kind == "block" then blocks = blocks + 1 end end
+if blocks >= 3 then say(PARTS_CABLE) end
+end
+end
 
 elseif cmd == "uptime" then
 local a = BASE_ALIVE or {}
@@ -927,6 +1408,12 @@ say("Auto-map: " .. (MAP.auto.on and "ON" or "OFF") .. (MAP.auto.done and " (don
 " - surveyed around the base: " .. math.floor(MAP.autoRadius()) .. " blocks")
 say("survey auto on | off")
 
+elseif cmd == "survey" and words[2] == "stats" then
+for _, l in ipairs(TT.statLines(tonumber(words[3]) or 12)) do say(l) end
+
+elseif cmd == "lost" then
+for _, l in ipairs(TT.lostLines()) do say(l) end
+
 elseif cmd == "survey" then
 
 local q = MAP.queue
@@ -961,9 +1448,10 @@ if MAP.clear() then say("Map cleared (all scans deleted).")
 else say("The map is still loading - try again in a moment.") end
 else
 pcall(MAP.save)
-local total, onPc, files = MAP.diskUse()
+local total, onPc, files, remote = MAP.diskUse()
 say("Map: overview " .. MAP.ovN .. " chunks, detail " .. #MAP.order .. " chunks, in " .. files .. " files, " ..
-math.ceil(total / 1024) .. " KB (" .. math.ceil((total - onPc) / 1024) .. " KB on data floppies, " ..
+math.ceil(total / 1024) .. " KB (" .. math.ceil(remote / 1024) .. " KB on storage helpers, " ..
+math.ceil((total - onPc - remote) / 1024) .. " KB on data floppies, " ..
 math.ceil(onPc / 1024) .. " KB on this computer).")
 say("'map clear' deletes all scans. 'disks data' makes empty floppies data disks for the map.")
 end
@@ -995,6 +1483,39 @@ else
 local label = t.label
 TT.forget(t.id)
 say(label .. " forgotten: off the list, its survey spots go to the other turtles.")
+end
+elseif tc == "chunktest" then
+
+if words[4] == "stop" then
+t.chunkTestUntil = nil
+say(t.label .. ": chunk test stopped.")
+else
+t.chunkTestUntil = os.clock() + 600
+t.chunkPingAt = nil
+say(t.label .. ": CHUNK TEST - pinged every 20 s for 10 min. It counts while NOTHING else keeps its chunk")
+say("running: no player within " .. (((simChunks and simChunks() or 10) + 2) * 16) .. " blocks (simulation distance + 2 chunks),")
+say("not within " .. (tonumber(CONFIG.turtles.baseLoadR) or 128) .. " of the base (turtles.baseLoadR), no online turtle within 64,")
+say("not in CONFIG.turtles.loadedAreas. Answers for " .. TT.PROVE_S .. " s alone = its own Chunky works.")
+end
+say("Now: " .. TT.chunkText(t))
+if TT.isCopy(t) then
+say("A copy of turtle " .. TT.realId(t.id) .. (t.ownChunky and " - it may move (own Chunky)" or " - it stays put until proven"))
+end
+if t.chunkyLent then say("It stays put: turtle " .. t.chunkyLent .. " (its copy) holds the shared Chunky.") end
+elseif tc == "newchunky" then
+
+if not TT.isCopy(t) then
+say(t.label .. " is not a copy - its Chunky is its own already.")
+elseif words[4] == "off" then
+t.ownChunky = nil
+TT.listDirty = true
+say(t.label .. ": a copy again - it stays put (its Chunky shares turtle " .. TT.realId(t.id) .. "'s chunk loading).")
+else
+t.ownChunky = true
+TT.listDirty = true
+say(t.label .. " has its OWN Chunky now: it gets surveys and trips again.")
+say("Only if you really put a NEW Chunky upgrade on it (a fresh one from crafting / AE2) - the old one")
+say("shares turtle " .. TT.realId(t.id) .. "'s chunk loading: moving it unloads the other one.")
 end
 elseif tc == "log" then
 
@@ -1090,3 +1611,56 @@ end
 return out
 end
 
+
+
+
+
+function cableStorages()
+local out = {}
+for _, name in ipairs(peripheral.getNames()) do
+local isInv = peripheral.hasType(name, "inventory")
+local isTank = peripheral.hasType(name, "fluid_storage")
+if (isInv or isTank) and not peripheral.hasType(name, "turtle") and not peripheral.hasType(name, "computer") then
+local c = { name = name }
+if isInv then
+local okS, size = pcall(peripheral.call, name, "size")
+local okL, items = pcall(peripheral.call, name, "list")
+c.slots, c.used, c.items = okS and tonumber(size) or 0, 0, 0
+for _, it in pairs(okL and type(items) == "table" and items or {}) do
+c.used, c.items = c.used + 1, c.items + (it.count or 0)
+end
+else
+local okT, tanks = pcall(peripheral.call, name, "tanks")
+c.mb = 0
+for _, t in pairs(okT and type(tanks) == "table" and tanks or {}) do
+c.mb = c.mb + (t.amount or 0)
+c.fluid = c.fluid or (t.name and t.name:gsub("^[^:]+:", ""))
+end
+end
+local jobs = {}
+local me = CONFIG.me or {}
+local JOB = { buffer = "AE2 item buffer (items in / out of AE2 go through it)",
+giveChest = "AE2 give chest", takeChest = "AE2 take chest",
+curiosChest = "curios barrel (putting curios on / off)",
+fluidBuffer = "AE2 fluid buffer" }
+for _, k in ipairs({ "buffer", "giveChest", "takeChest", "curiosChest", "fluidBuffer" }) do
+if me[k] == name then jobs[#jobs + 1] = JOB[k] end
+end
+if fluidBufferMem and fluidBufferMem() == name and me.fluidBuffer ~= name then jobs[#jobs + 1] = "AE2 fluid buffer" end
+if FACTORY and FACTORY.chest == name then jobs[#jobs + 1] = "turtle factory chest" end
+if CONFIG.drone and CONFIG.drone.workChest == name then jobs[#jobs + 1] = "DRONE WORK CHEST (drones load / unload here)" end
+if SUPPLY and SUPPLY.isTarget and SUPPLY.isTarget(name) then
+for _, r in ipairs(SUPPLY.rules or {}) do
+if r.target == name then jobs[#jobs + 1] = "kept filled from AE2: " .. tostring(r.name) end
+end
+end
+c.job = #jobs > 0 and table.concat(jobs, "; ") or nil
+out[#out + 1] = c
+end
+end
+table.sort(out, function(a, b)
+if (a.job ~= nil) ~= (b.job ~= nil) then return a.job ~= nil end
+return a.name < b.name
+end)
+return out
+end

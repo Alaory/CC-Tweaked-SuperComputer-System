@@ -12,6 +12,7 @@ fs = {
   combine = function(a, b) return (a == "" and b) or (a .. "/" .. b) end,
   getFreeSpace = function() return CAP - used() end,
   delete = function(p) DISK[p] = nil end,
+  getSize = function(p) return #(DISK[p] or "") end,
   move = function(a, b) DISK[b] = DISK[a] DISK[a] = nil end,
   open = function(p, mode)
     if mode:sub(1, 1) == "r" then
@@ -65,8 +66,10 @@ local function upgrade(args)
 end
 -- what upgrade installs by default: the SLIM copy (dist/)
 local function slimOf(p) return readReal("dist/" .. p) end
-local function fresh(cap, full)
-  DISK, CAP = {}, cap or 1048576
+local function fresh(cap, full, packed)
+  DISK, CAP = {}, cap or 1000000   -- (CC:Tweaked computer_space_limit = 1,000,000 bytes)
+  -- (these older checks are about PLAIN files: `upgrade slim` chosen; the PACKED default is tested below)
+  if not packed then DISK["upgrade.dat"] = '{["plain"]="true"}' end
   -- an older install: every file, two changed, the owner's config
   for line in readReal("manifest.txt"):gmatch("[^\n]+") do
     local g, p = line:match("^(%S+) (%S+)")
@@ -114,21 +117,125 @@ ok, n, log = upgrade({})
 CHECK(ok and DISK["base/base_ui_core.lua"] == slimOf("base_ui_core.lua"), "tight space: still updated\n" .. log)
 
 -- a computer with the FULL files (installed by hand / an older upgrade): made slim
-fresh(nil, true)
+-- (the full files no longer fit a 1 MB computer at all: this one has a bigger disk; after the
+--  switch to slim it is back to 1 MB, so "upgrade full" below must refuse cleanly)
+fresh(1572864, true)
 local before = used()
 ok, n, log = upgrade({})
 CHECK(ok and n >= 38 and used() < before - 150000, "full files -> slim: " .. tostring(n) .. " files, " ..
       math.floor((before - used()) / 1024) .. " KB freed")
+CAP = math.max(used() + 1, 1000000)
 -- upgrade full: the commented files (and it stays so); upgrade slim: back
+-- (the commented files are bigger than a 1 MB computer now: then it must refuse cleanly and
+-- leave the slim files as they are; with room - a bigger disk - it switches and back)
+local slimMe = DISK["base/base_me.lua"]
 ok, n, log = upgrade({ "full" })
+if not ok and log:find("Not enough room") then
+  CHECK(DISK["base/base_me.lua"] == slimMe, "upgrade full on a full 1 MB disk: refused, the slim files kept\n" .. log)
+  CAP = CAP + 600000
+  ok, n, log = upgrade({ "full" })
+end
 CHECK(ok and DISK["base/base_me.lua"] == readReal("base_me.lua"), "upgrade full: the commented files\n" .. log)
 ok, n, log = upgrade({})
 CHECK(not ok and log:find("up to date"), "...and it stays full\n" .. log)
 ok, n, log = upgrade({ "slim" })
 CHECK(ok and DISK["base/base_me.lua"] == slimOf("base_me.lua"), "upgrade slim: back to slim")
 
+-- PACKED (the default on the base): the owner's computer at 13 KB free with every base file plain. The upgrade.lua
+-- there now cannot take this step (it wants the growth + 8 KB free); the NEW one, run straight from GitHub
+-- (wget run <url>: not a file on the computer - no room needed), finds the base folder and packs every base_*.lua
+-- into base_*.luz (+ unzip.lua), freeing the room as it goes.
+do
+  local OLDUP = readReal("tools/tests/fixtures/upgrade_prepack.lua")
+  local OLDINV = readReal("tools/tests/fixtures/inventory_prepack.lua")
+  DISK, CAP = {}, 1000000
+  for line in readReal("manifest.txt"):gmatch("[^\n]+") do
+    local g, p = line:match("^(%S+) (%S+)")
+    if g == "base" then DISK[(p == "startup.lua") and p or ("base/" .. p)] = slimOf(p) end
+  end
+  DISK["base/upgrade.lua"], DISK["base/inventory.lua"] = OLDUP, OLDINV
+  DISK["base/base_config.lua"] = "CONFIG = { mine = true }"
+  DISK["map/r1.dat"] = string.rep("x", 30000)
+  CAP = used() + 13 * 1024                                  -- (the owner's screen: 13 KB left)
+  -- wget run: the running program is wget, not a file next to inventory.lua
+  local rebooted, printed = false, {}
+  shell = { getRunningProgram = function() return "rom/programs/http/wget.lua" end }
+  fs.find = function(pat)
+    local out = {}
+    local lpat = "^" .. pat:gsub("%.", "%%."):gsub("%*", "[^/]+") .. "$"
+    for k in pairs(DISK) do if k:match(lpat) then out[#out + 1] = k end end
+    return out
+  end
+  fs.getDrive = function() return "hdd" end
+  local p0, s0, r0 = print, sleep, os.reboot
+  print = function(t) printed[#printed + 1] = tostring(t) end
+  sleep = function() end
+  os.reboot = function() rebooted = true end
+  local before = used()
+  assert(load(src, "=upgrade.lua", "t", _ENV))()
+  print, sleep, os.reboot, shell = p0, s0, r0, nil
+  local logP = table.concat(printed, "\n")
+  local okP = rebooted
+  CHECK(logP:find("found in /base", 1, true), "wget run: it finds the base program's folder (/base)\n" .. logP)
+  local plainLeft, luz, bad = {}, 0, {}
+  local unz = DISK["base/unzip.lua"] and assert(load(DISK["base/unzip.lua"]))()
+  for k, v in pairs(DISK) do
+    local n = k:match("^base/(base_.*)%.lua$")
+    if n and n ~= "base_config" then plainLeft[#plainLeft + 1] = n end
+    local z = k:match("^base/(base_.*)%.luz$")
+    if z then
+      luz = luz + 1
+      local okU, text = pcall(unz or error, v)
+      if not okU or text ~= slimOf(z .. ".lua") then bad[#bad + 1] = z end
+    end
+  end
+  CHECK(okP and luz >= 40 and #plainLeft == 0, "the new upgrade.lua PACKS every base file (" .. luz .. " packed, plain left: " ..
+        table.concat(plainLeft, ",") .. ")\n" .. logP)
+  CHECK(unz and #bad == 0, "every packed file unpacks to exactly the slim file (" .. table.concat(bad, ",") .. ")")
+  CHECK(before - used() > 550000, "packing frees the room: " .. math.floor((before - used()) / 1024) .. " KB")
+  CHECK(DISK["base/base_config.lua"] == "CONFIG = { mine = true }" and DISK["map/r1.dat"], "your settings and data are not touched")
+  CHECK(logP:find("PACKED", 1, true), "it says so: " .. logP)
+  local okA, _, logA = upgrade({})
+  CHECK(not okA and logA:find("up to date"), "then: up to date\n" .. logA)
+  -- a plain base file dragged in by hand: used first by inventory.lua; the next upgrade puts the packed one back alone
+  DISK["base/base_me.lua"] = "-- dragged in\n"
+  local okD = upgrade({})
+  CHECK(okD and DISK["base/base_me.lua"] == nil and DISK["base/base_me.luz"], "upgrade: a dragged plain copy goes, the packed one stays")
+  -- a cut download of a packed file: nothing written
+  DISK["base/base_map.luz"] = "old"
+  BROKEN = "dist/z/base_map.luz"
+  local okB, _, logB = upgrade({})
+  CHECK(not okB and DISK["base/base_map.luz"] == "old", "a broken packed download: nothing written\n" .. logB)
+  BROKEN = nil
+  -- upgrade slim: plain files back, the packed ones go; upgrade packed: packed again
+  local keepCap = CAP
+  local okR, _, logR = upgrade({ "slim" })
+  CHECK(not okR and logR:find("Not enough room") and DISK["base/base_me.luz"], "upgrade slim on the full 1 MB computer: refused cleanly, still packed")
+  CAP = CAP + 200000                                         -- (a bigger disk)
+  local okS, _, logS = upgrade({ "slim" })
+  CHECK(okS and DISK["base/base_me.lua"] == slimOf("base_me.lua") and DISK["base/base_me.luz"] == nil, "upgrade slim: plain files again, packed ones gone\n" .. logS)
+  local okK = upgrade({ "packed" })
+  CHECK(okK and DISK["base/base_me.lua"] == nil and DISK["base/base_me.luz"], "upgrade packed: packed again")
+  CAP = keepCap
+end
+
+-- fetch mode, PACKED (the voice files): the packed copy checked, unpacked with the caller's inflate, compiled
+do
+  DISK, CAP = {}, 1000000
+  local unz = assert(load(readReal("dist/unzip.lua")))()
+  local fn = assert(load(src, "=upgrade.lua", "t", _ENV))
+  local okF, text, ver, packed = fn({ fetch = "voice_talk3.lua", group = "voice", dir = "base", log = function() end, inflate = unz })
+  CHECK(okF and text == slimOf("voice_talk3.lua") and packed == readReal("dist/z/voice_talk3.luz"), "fetch mode: the packed copy + its text")
+  BROKEN = "dist/z/voice_talk3.luz"
+  local okB = assert(load(src, "=upgrade.lua", "t", _ENV))({ fetch = "voice_talk3.lua", group = "voice", dir = "base", log = function() end, inflate = unz })
+  CHECK(not okB, "fetch mode: a cut packed download is refused")
+  BROKEN = nil
+  local okP, textP, _, packedP = assert(load(src, "=upgrade.lua", "t", _ENV))({ fetch = "voice_talk3.lua", group = "voice", dir = "base", log = function() end })
+  CHECK(okP and textP == slimOf("voice_talk3.lua") and packedP == nil, "fetch mode without inflate: the plain copy as before")
+end
+
 -- the pocket: only pocket.lua (+ upgrade.lua)
-DISK, CAP = {}, 1048576
+DISK, CAP = {}, 1000000
 pocket = {}
 local fnP = assert(load(src, "=upgrade.lua", "t", _ENV))
 ok, n = fnP({ args = {}, dir = "", log = function() end })

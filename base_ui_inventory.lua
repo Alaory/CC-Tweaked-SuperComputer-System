@@ -1,21 +1,18 @@
 -- base_ui_inventory.lua  -  part of the base-control program (started by inventory.lua).
 -- All base_*.lua files share one namespace and are loaded in a fixed order.
 --
---   INVENTORY tab: the owner's inventory grid, equipment, overview, item list
---   and details of the selected item.
+--   INVENTORY (CONTROL ROOM look): your backpack, hotbar, armour + offhand as sunken
+--   slots (an item's colour as a stripe, the count in amber), how full you are; the item
+--   list with amount gauges and SORT; DETAILS of the picked item with SEND > AE2.
 
--- page drawing
 function drawBackpack(x, y, w, h, G)
-  card(x, y, w, h)
-  text(x + 2, y + 1, "INVENTORY", C.label, C.panel)
-  local info = state.used .. " / 36 slots"
-  text(x + w - #info - 2, y + 1, info, C.dim, C.panel)
-
+  local frac = (state.used or 0) / 36
+  local fcol = frac < 0.6 and C.good or (frac < 0.85 and C.warn or C.bad)
+  local ix, iy, iw = panel(x, y, w, h, "INVENTORY", { right = (state.used or 0) .. " / 36 slots", rcol = fcol })
   local pitch, cw, ch = G.pitch, G.cw, G.ch
   local gridW = pitch * 9 - 1
   local gx = x + 1 + math.floor((w - 2 - gridW) / 2)
-  local gy = y + 3
-
+  local gy = iy
   for row = 0, 2 do
     local cy = gy + row * (ch + 1)
     for col = 0, 8 do
@@ -26,154 +23,159 @@ function drawBackpack(x, y, w, h, G)
       addHit(cx, cy, cw, ch, "item", it and it.name)
     end
   end
-
-  local hy = gy + 3 * (ch + 1) + 2
-  text(gx, hy - 2, "HOTBAR", C.label, C.panel)
-  if state.heldIdx then
-    fill(gx + state.heldIdx * pitch, hy - 1, cw, 1, C.accent)   -- the item in your hand
-  end
+  local hy = gy + 3 * (ch + 1) + 1
+  heading(gx, hy, gridW, "HOTBAR")
+  hy = hy + 1
   for col = 0, 8 do
     local cx = gx + col * pitch
     local it = state.slots[col]
     drawCell(cx, hy, cw, ch, it, tostring(col + 1))
+    if state.heldIdx == col then frame(cx, hy, cw, ch, C.accent, C.bg) end      -- the item in your hand
     addHit(cx, hy, cw, ch, "item", it and it.name)
   end
-
-  -- armour + offhand in the same box (no separate EQUIPMENT / OVERVIEW boxes)
-  local ay = hy + ch + 2
-  text(gx, ay - 1, "ARMOUR + OFFHAND", C.label, C.panel)
-  local labels = { "Helm", "Chest", "Legs", "Boots", "Offhand" }
+  local ay = hy + ch + 1
+  heading(gx, ay, gridW, "ARMOUR + OFFHAND")
+  ay = ay + 1
+  local labels = { "HELM", "CHEST", "LEGS", "BOOTS", "OFFHAND" }
   for i = 1, 5 do
-    local cx = gx + (i - 1 + (i == 5 and 1 or 0)) * pitch    -- (a gap before the offhand)
+    local cx = gx + (i - 1 + (i == 5 and 1 or 0)) * pitch
     local it = state.equip[i]
     drawCell(cx, ay, cw, ch, it, labels[i])
-    addHit(cx, ay, cw, ch, "item", it and it.name)
+    if state.equipSel == i then frame(cx, ay, cw, ch, C.accent, C.bg) end        -- (picked: its details on the right)
+    addHit(cx, ay, cw, ch, "equip", i)
   end
-  -- how full: on the right of the armour row
+  -- how full: on the right of the armour row (big number + gauge)
   local bx = gx + 7 * pitch
   local bw = gridW - 7 * pitch
   if bw >= 8 then
-    local frac = state.used / 36
-    local col = frac < 0.6 and C.good or (frac < 0.85 and C.warn or C.bad)
-    local free = (36 - state.used) .. " free"
-    text(bx, ay + math.floor((ch - 1) / 2) - 1, trunc(free, bw), col, C.panel)
-    barW(bx, ay + math.floor((ch - 1) / 2), bw, math.floor(frac * bw + 0.5), col)
+    local free = tostring(36 - (state.used or 0))
+    local nw = big(bx, ay, free, fcol, C.panel)
+    if bw - nw - 1 >= 4 then text(bx + nw + 1, ay + 1, "free", C.dim, C.panel) end
+    if ch >= 3 then gauge(bx, ay + ch - 1, bw, frac, fcol) end
   end
 end
 
 -- the item list with the SORT button
 function drawList(x, y, w, h)
-  card(x, y, w, h, "ITEMS")
-  local label = "SORT: " .. sortMode:upper()
-  local bw = #label + 4
-  drawButton(x + w - bw - 2, y + 1, bw, 2, label, C.empty, C.text, "sort")
-
-  local ix, iw = x + 2, w - 4
-  local list = state.list
-  local avail = h - 5
-  y = y + 1                                   -- (the list starts under the 2-row SORT button)
-
-  -- 3 = name row + bar row + gap, 2 = bar behind text + gap, 1 = compact
-  local pitch = 1
-  if #list * 3 - 1 <= avail then pitch = 3
-  elseif #list * 2 - 1 <= avail then pitch = 2 end
-
-  local maxItems = pitch > 1 and #list or avail
+  local list = state.list or {}
+  local ix, iy, iw, ih = panel(x, y, w, h, "ITEMS", { right = #list .. " kinds" })
+  local label = "SORT: " .. tostring(sortMode):upper()
+  button(ix + iw - #label - 4, iy, #label + 4, 2, label, C.line, "sort")
+  local top = iy + 3
+  local avail = (y + h - 2) - top + 1
+  -- 2 = name + gauge row, 1 = compact (name + gauge on one row)
+  local pitch = (#list * 2 <= avail) and 2 or 1
+  local maxItems = (pitch == 2) and #list or math.min(#list, avail)
   local more = 0
-  if pitch == 1 and #list > avail then
-    maxItems = avail - 1
-    more = #list - maxItems
-  end
-
+  if pitch == 1 and #list > avail then maxItems = avail - 1 more = #list - maxItems end
   local maxCount = 1
   for _, t in ipairs(list) do if t.count > maxCount then maxCount = t.count end end
-
-  for i = 1, math.min(maxItems, #list) do
+  if #list == 0 then text(ix, top, "Nothing in your inventory.", C.dim, C.panel) end
+  for i = 1, maxItems do
     local t = list[i]
-    local ry = y + 3 + (i - 1) * pitch
+    local ry = top + (i - 1) * pitch
     local sel = selName == t.name
-    local col = sel and C.text or colorFor(t.name)
+    local col = colorFor(t.name)
     local vs = commas(t.count)
-    local n = math.max(1, math.floor(t.count / maxCount * iw + 0.5))
-
-    if pitch == 3 then
-      fill(ix, ry, 1, 1, col)                                   -- swatch
-      text(ix + 2, ry, trunc(t.display, iw - #vs - 4), C.text, C.panel)
-      text(ix + iw - #vs, ry, vs, col, C.panel)
-      barW(ix, ry + 1, iw, n, col)
+    if pitch == 2 then
+      local bg = sel and C.line or C.panel
+      if sel then fill(ix, ry, iw, 2, C.line) end
+      cell(ix, ry, 1 + 4 + 16, sel and C.accent or col, bg)
+      cell(ix, ry + 1, 1 + 4 + 16, sel and C.accent or col, bg)
+      text(ix + 2, ry, trunc(t.display, iw - #vs - 4), sel and C.accent or C.text, bg)
+      text(ix + iw - #vs, ry, vs, C.label, bg)
+      gauge(ix + 2, ry + 1, iw - 2, (t.count / maxCount) ^ 0.5, col, bg)
       addHit(ix, ry, iw, 2, "item", t.name)
     else
-      local str = " " .. trunc(t.display, iw - #vs - 2)
-      str = str .. (" "):rep(iw - #str - #vs - 1) .. vs .. " "
-      text(ix, ry, str:sub(1, n), C.ink, col)
-      if n < iw then text(ix + n, ry, str:sub(n + 1), C.text, C.empty) end
+      drawBarRow(ix, ry, iw, t.display, vs, t.count / maxCount, col, sel, 8)
       addHit(ix, ry, iw, 1, "item", t.name)
     end
   end
+  if more > 0 then text(ix, top + maxItems, "+" .. more .. " more...", C.dim, C.panel) end
+end
 
-  if more > 0 then
-    text(ix, y + 3 + maxItems, "+ " .. more .. " more...", C.dim, C.panel)
+EQUIP_LABEL = { "Helmet", "Chestplate", "Leggings", "Boots", "Offhand" }
+-- details of a picked armour / offhand piece: TAKE OFF (into your backpack) / SEND > AE2
+local function drawEquipDetail(x, y, w, h, i, it)
+  local ix, iy, iw, ih = panel(x, y, w, h, "DETAILS - " .. EQUIP_LABEL[i]:upper())
+  local name = it.displayName or prettify(it.name)
+  local col = colorFor(it.name)
+  cell(ix, iy, 1 + 4 + 16, col, C.panel)
+  cell(ix, iy + 1, 1 + 4 + 16, col, C.panel)
+  text(ix + 2, iy, trunc(name, iw - 2), C.text, C.panel)
+  text(ix + 2, iy + 1, trunc(it.name, iw - 2), C.dim, C.panel)
+  local r = iy + 3
+  kv(ix, r, iw, "Worn as", EQUIP_LABEL[i]) r = r + 1
+  if (it.count or 1) > 1 then kv(ix, r, iw, "Count", commas(it.count)) r = r + 1 end
+  local dur, durMax = durability(it)
+  if dur and durMax and r + 1 <= y + h - 2 then
+    local f = dur / durMax
+    meter(ix, r, iw, "Durability", commas(dur) .. " / " .. commas(durMax), f, f > 0.5 and C.good or (f > 0.2 and C.warn or C.bad))
+    r = r + 2
+  end
+  local full = (state.used or 0) >= 36
+  local offL = full and "TAKE OFF (inventory full)" or "TAKE OFF > INVENTORY"
+  local sendL = "TAKE OFF + SEND > " .. tostring(bridgeKind or "AE2")
+  local bottom = y + h - 2                         -- (the last row inside the panel)
+  local room = bottom - r                          -- (rows free under the details)
+  local bh = room >= 8 and 3 or 2
+  if not bridge or room >= 2 * bh + 1 then        -- stacked
+    local by = bottom - (bridge and (2 * bh + 1) or bh) + 1
+    actButton(ix, by, iw, bh, offL, { kind = "eqoff", name = it.name, count = 1, slotIdx = i }, false, full and C.dim or C.accent)
+    if bridge then
+      actButton(ix, by + bh + 1, iw, bh, sendL, { kind = "eqsend", name = it.name, count = 1, slotIdx = i }, false, C.purple)
+    end
+  else                                             -- side by side (a short panel)
+    local half = math.floor((iw - 1) / 2)
+    local by = bottom - 1
+    actButton(ix, by, half, 2, offL, { kind = "eqoff", name = it.name, count = 1, slotIdx = i }, false, full and C.dim or C.accent)
+    actButton(ix + half + 1, by, iw - half - 1, 2, sendL, { kind = "eqsend", name = it.name, count = 1, slotIdx = i }, false, C.purple)
   end
 end
 
 -- details of the selected item
 function drawDetail(x, y, w, h)
-  card(x, y, w, h, "DETAILS")
-  local ix, iw = x + 2, w - 4
+  local ei = state.equipSel
+  if ei and state.equip and state.equip[ei] then return drawEquipDetail(x, y, w, h, ei, state.equip[ei]) end
   local t
-  for _, e in ipairs(state.list) do if e.name == selName then t = e break end end
-
+  for _, e in ipairs(state.list or {}) do if e.name == selName then t = e break end end
+  local ix, iy, iw, ih = panel(x, y, w, h, "DETAILS")
   if not t then
-    local msg = "Touch an item to inspect it"
-    text(x + math.floor((w - #msg) / 2), y + math.floor(h / 2),
-         msg, C.dim, C.panel)
+    text(ix, iy, "Tap an item to look at it.", C.dim, C.panel)
     return
   end
-
-  local textW = bridge and (iw - 28) or iw
-  text(ix, y + 3, trunc(t.display, textW), colorFor(t.name), C.panel)
-  text(ix, y + 4, trunc(t.name, textW), C.dim, C.panel)
-
+  local bwid = bridge and 26 or 0
+  local textW = iw - (bwid > 0 and bwid + 2 or 0)
+  local col = colorFor(t.name)
+  cell(ix, iy, 1 + 4 + 16, col, C.panel)
+  cell(ix, iy + 1, 1 + 4 + 16, col, C.panel)
+  text(ix + 2, iy, trunc(t.display, textW - 2), C.text, C.panel)
+  text(ix + 2, iy + 1, trunc(t.name, textW - 2), C.dim, C.panel)
+  local nw = big(ix, iy + 3, compact(t.count), C.label, C.panel)
+  text(ix + nw + 1, iy + 4, "in " .. #t.slots .. " stack(s)", C.dim, C.panel)
   local sl = {}
   for _, sIdx in ipairs(t.slots) do sl[#sl + 1] = tostring(sIdx + 1) end
-
-  local fields = {
-    { "Total", commas(t.count) },
-    { "Stacks", tostring(#t.slots) },
-    { "In slots", trunc(table.concat(sl, ", "), textW - 11) },
-  }
-  if t.max then fields[#fields + 1] = { "Max stack", tostring(t.max) } end
+  local r = iy + 6
+  kv(ix, r, textW, "Total", commas(t.count)) r = r + 1
+  kv(ix, r, textW, "In slots", table.concat(sl, ", ")) r = r + 1
+  if t.max then kv(ix, r, textW, "Max stack", tostring(t.max)) r = r + 1 end
   local dur, durMax = durability(t.sample or {})
-  if dur and durMax then
-    fields[#fields + 1] = { "Durability",
-      string.format("%s / %s  (%d%%)", commas(dur), commas(durMax),
-                    math.floor(dur / durMax * 100 + 0.5)) }
+  if dur and durMax and r + 1 <= y + h - 2 then
+    local f = dur / durMax
+    meter(ix, r, textW, "Durability", commas(dur) .. " / " .. commas(durMax), f, f > 0.5 and C.good or (f > 0.2 and C.warn or C.bad))
+    r = r + 2
   end
-
-  local r = y + 6
-  local n = #fields
-  local step = (r + n * 2 <= y + h - 2) and 2 or 1
-  for i, f in ipairs(fields) do
-    field(ix, r + (i - 1) * step, f[1], f[2])
-  end
-
-  if bridge then
-    local bw = 24
-    local bx = x + w - bw - 2
-    local stack = math.min(t.count, t.max or 64)
-    local bh = h >= 16 and 3 or 2
-    actButton(bx, y + 3, bw, bh, "SEND x1 > " .. bridgeKind, { kind = "send", name = t.name, count = 1 })
-    actButton(bx, y + 4 + bh, bw, bh, "SEND STACK > " .. bridgeKind, { kind = "send", name = t.name, count = stack })
-    actButton(bx, y + 5 + 2 * bh, bw, bh, "SEND ALL > " .. bridgeKind, { kind = "send", name = t.name, count = t.count })
-  end
-
-  local sy = r + n * step
-  if sy <= y + h - 2 and state.total > 0 then
+  if (state.total or 0) > 0 and r + 1 <= y + h - 2 then
     local share = t.count / state.total
-    local bw = math.min(30, iw - 20)
-    text(ix, sy, "Share", C.dim, C.panel)
-    barW(ix + 11, sy, bw, math.max(1, math.floor(share * bw + 0.5)), colorFor(t.name))
-    text(ix + 12 + bw, sy, string.format("%d%%", math.floor(share * 100 + 0.5)),
-         C.text, C.panel)
+    meter(ix, r, textW, "Share of your items", math.floor(share * 100 + 0.5) .. "%", share, col)
+  end
+  if bridge then
+    local bx = ix + iw - bwid
+    local stack = math.min(t.count, t.max or 64)
+    local bh = (ih >= 12) and 3 or 2
+    local step = bh + 1
+    actButton(bx, iy, bwid, bh, "SEND x1 > " .. bridgeKind, { kind = "send", name = t.name, count = 1 }, false, C.purple)
+    actButton(bx, iy + step, bwid, bh, "SEND STACK > " .. bridgeKind, { kind = "send", name = t.name, count = stack }, false, C.purple)
+    actButton(bx, iy + 2 * step, bwid, bh, "SEND ALL > " .. bridgeKind, { kind = "send", name = t.name, count = t.count }, false, C.purple)
   end
 end

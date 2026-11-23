@@ -52,7 +52,7 @@ def _():
         if rc != 0: bad.append(out.strip())
     return not bad, "\n".join(bad)
 
-for label, files in [("base", ["inventory.lua"] + sorted(os.path.basename(f) for f in glob.glob(os.path.join(ROOT, "base_*.lua")))),
+for label, files in [("base", ["inventory.lua"] + sorted(os.path.basename(f) for f in glob.glob(os.path.join(ROOT, "base_*.lua"))) + ["voice_addon.lua", "voice_talk.lua", "voice_talk2.lua", "voice_talk3.lua"]),
                      ("miner.lua", ["miner.lua"]), ("store.lua", ["store.lua"]), ("startup.lua", ["startup.lua"]),
                      ("node.lua", ["node.lua"]), ("pocket.lua", ["pocket.lua"])]:
     @check("globals", label)
@@ -62,7 +62,7 @@ for label, files in [("base", ["inventory.lua"] + sorted(os.path.basename(f) for
 
 @check("globals", "missing locals (base)")
 def _():
-    files = ["inventory.lua"] + sorted(os.path.basename(f) for f in glob.glob(os.path.join(ROOT, "base_*.lua")))
+    files = ["inventory.lua"] + sorted(os.path.basename(f) for f in glob.glob(os.path.join(ROOT, "base_*.lua"))) + ["voice_addon.lua", "voice_talk.lua", "voice_talk2.lua", "voice_talk3.lua"]
     rc, out = run(["python3", "tools/check_globals.py", "--leaks"] + files)
     return rc == 0, out.strip()
 for f in ["miner.lua", "store.lua", "startup.lua", "node.lua", "pocket.lua"]:
@@ -117,6 +117,11 @@ def _():
         if os.path.exists(x): os.remove(x)
     return not bad, "\n".join(bad)
 
+@check("upgrade", "inventory.lua loads PACKED base files (inventory_load.lua)")
+def _():
+    rc, out = run(["lua5.3", "tools/tests/inventory_load.lua", ROOT])
+    return rc == 0, out.strip()
+
 @check("upgrade", "upgrade.lua on a fake disk + GitHub")
 def _():
     rc, out = run(["lua5.3", "tools/tests/upgrade_sim.lua", ROOT])
@@ -127,12 +132,15 @@ for t in sorted(glob.glob(os.path.join(ROOT, "tools", "tests", "test_*.lua"))):
     name = os.path.basename(t)
     @check("base", name)
     def _(t=t):
+        env = {"TESTMODE": "1"}
+        pre = os.path.join(os.path.dirname(t), os.path.basename(t).replace("test_", "pre_", 1))
+        if os.path.exists(pre): env["PRE"] = pre          # (set-up before the base loads: tools/tests/pre_<name>.lua)
         rc, out = run(["lua5.3", "run.lua", "../..", "/tmp/run_tests_%d_%s.txt" % (os.getpid(), os.path.basename(t)), "system", t],
-                      cwd=PREVIEW, env={"TESTMODE": "1"})
+                      cwd=PREVIEW, env=env)
         tail = "\n".join(l for l in out.splitlines() if l.startswith(("FAIL", "PASS", "lua5.3:")) or "ERROR" in l)
         return rc == 0 and "PASS" in out, tail or out[-800:]
 
-PAGES = ["home", "inventory", "players", "storage", "curios", "me", "drone", "access", "turtles", "drive", "map", "mining",
+PAGES = ["home", "inventory", "players", "env", "mesys", "storage", "curios", "me", "drone", "work", "gifts", "access", "turtles", "drive", "map", "mining",
          "system", "events", "settings", "chat"]
 @check("pages", "%d monitor pages draw" % len(PAGES))
 def _():
@@ -158,9 +166,54 @@ def _():
     rc, out = run(["lua5.3", "tools/tests/node_cell.lua", "node.lua", "miner.lua"])
     return rc == 0, out.strip()
 
+@check("node", "dug junk thrown away, ores/tools kept (node_junk.lua)")
+def _():
+    rc, out = run(["lua5.3", "tools/tests/node_junk.lua", "node.lua"])
+    return rc == 0, out.strip()
+
+@check("node", "storage helper program: requests, empty files, leftovers, updates (store_helper.lua)")
+def _():
+    rc, out = run(["lua5.3", "tools/tests/store_helper.lua", "store.lua"])
+    return rc == 0, out.strip()
+
+@check("node", "saving on a full disk keeps the old state (node_save_safe.lua)")
+def _():
+    rc, out = run(["lua5.3", "tools/tests/node_save_safe.lua", "node.lua"])
+    return rc == 0, out.strip()
+
+@check("node", "fuel: no lava 'endless', no hang, never the owner's wood (node_fuel.lua)")
+def _():
+    rc, out = run(["lua5.3", "tools/tests/node_fuel.lua", "node.lua"])
+    return rc == 0, out.strip()
+
 @check("node", "new turtle: first fuel ~1000 then go (node_firstfuel.lua)")
 def _():
     rc, out = run(["lua5.3", "tools/tests/node_firstfuel.lua", "node.lua"])
+    return rc == 0, out.strip()
+
+@check("node", "survey in chaos terrain: air hops, every spot (navsim/surveysim.lua)")
+def _():
+    out_all = []
+    for seed in ("1", "2"):
+        for gap, spots, maxmoves in (("60", "16", 2000), ("17", "16", 1200)):
+            env = dict(os.environ, SEED=seed, SPOTS=spots, GAP=gap, CHANGE="0.05", WHO="test")
+            p = subprocess.run(["lua5.3", "tools/navsim/surveysim.lua", "node.lua"], capture_output=True, text=True,
+                               env=env, timeout=300)
+            line = (p.stdout.strip().splitlines() or [""])[0]
+            out_all.append(line)
+            m = re.search(r"scans\s+(\d+)/(\d+)\s+moves\s+(\d+)", line)
+            if not m or int(m.group(1)) < int(m.group(2)) or int(m.group(3)) > maxmoves or "true survey done" not in line:
+                return False, "gap %s seed %s (moves must be <= %d): %s %s" % (gap, seed, maxmoves, line, p.stderr[-300:])
+    return True, "\n".join(out_all)
+
+@check("node", "survey stops while the fuel covers the way home (node_fuelhome.lua)")
+def _():
+    rc, out = run(["lua5.3", "tools/tests/node_fuelhome.lua", "node.lua"])
+    return rc == 0, out.strip()
+
+@check("node", "STUCK only when a trip could not move (node_stuck.lua)")
+def _():
+    rc, out = run(["lua5.3", "tools/tests/node_stuck.lua", "node.lua"])
     return rc == 0, out.strip()
 
 @check("node", "your commands pause a job, back after 2 min (node_hand.lua)")
@@ -215,6 +268,11 @@ def _():
     rc, out = run(["lua5.3", "tools/tests/miner_dup.lua", "miner.lua"])
     return rc == 0, out.strip()
 
+@check("node", "miner updates from the base (miner_update.lua)")
+def _():
+    rc, out = run(["lua5.3", "tools/tests/miner_update.lua", "miner.lua"])
+    return rc == 0, out.strip()
+
 @check("node", "duplicate copies (node_dup.lua)")
 def _():
     rc, out = run(["lua5.3", "tools/tests/node_dup.lua", "node.lua"])
@@ -245,9 +303,9 @@ MINING = ["plain", "team2", "team3", "team5", "caves", "reboot", "team3reboot", 
           "otherfuel", "loaderdrift", "wrongface", "gpsfix", "r1", "nofuel", "ownfull", "geoname", "corein", "modemon",
           "newfield", "team2newfield", "team3crosspause", "team3drop", "team5drop", "team3dropalive",
           "nearstation", "team3nearstation", "team3crashunload", "team2warpfail", "team3silentback",
-          "team2join", "team3join", "team2joincaves", "team2joinfar"]
+          "team2join", "team3join", "team2joincaves", "team2joinfar", "team2neighbour", "team3neighboureq", "team2update", "team3updatecaves", "team3blocker", "team4blockercaves", "team5blocker", "team4dropready", "team5dropready", "team4dropreadynopick", "team3makeway", "team5makewaycaves", "team3crashback", "team3crashbackloader", "team5crashbackcaves", "team2warpoff", "team3warpoffcaves"]
 if QUICK:
-    MINING = ["plain", "team3", "reboot", "newfield", "team3crosspause", "team3drop", "team3dropalive", "wrongface", "team3nearstation", "team3crashunload", "team2join"]
+    MINING = ["plain", "team3", "reboot", "newfield", "team3crosspause", "team3drop", "team3dropalive", "wrongface", "team3nearstation", "team3crashunload", "team2join", "team2neighbour", "team2update", "team3blocker", "team4dropready", "team3makeway"]
 HOURS = "1" if QUICK else "2"
 for scen in MINING:
     @check("mining", scen)

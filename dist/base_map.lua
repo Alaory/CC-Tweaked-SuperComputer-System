@@ -244,15 +244,62 @@ end
 
 local function dirOf(p) return tostring(p):match("^(.*)/[^/]*$") or "" end
 local function mExists(p) if STORE and STORE.isRemote(p) then return true end return fs.exists(p) end
+
+
+local STALE_FILE = "map_stale.dat"
+MAP.stale = readSafe(STALE_FILE)
+if type(MAP.stale) ~= "table" then MAP.stale = {} end
+for k in pairs(MAP.stale) do if type(k) ~= "string" then MAP.stale[k] = nil end end
+local function saveStale() writeSafe(STALE_FILE, serialSmall(MAP.stale)) end
 local function mDelete(p)
-if STORE and STORE.isRemote(p) then pcall(STORE.delete, p) else pcall(fs.delete, p) end
+if STORE and STORE.isRemote(p) then
+local okD, done = pcall(STORE.delete, p)
+if not (okD and done) then MAP.stale[p] = true saveStale() end
+else pcall(fs.delete, p) end
 end
 MAP.rsize = {}
 
+
+
+
+
+
+function MAP.helpersFirst()
+local m = CONFIG.map or {}
+if m.helpersFirst == false then return false end
+local hf = STORE and STORE.space() or 0
+return hf >= 64 * 1024
+end
+
+function MAP.floppyKeep()
+local m = CONFIG.map or {}
+local kb = tonumber(m.floppyKeepKB)
+if not kb then kb = MAP.helpersFirst() and 48 or 16 end
+return kb * 1024
+end
+
+
+
+MAP.readAt = {}
+MAP.extra = {}
+local function floppyId(d) return d.id ~= nil and tostring(d.id) or true end
+local function isRead(dir, id)
+local r = MAP.readAt[dir]
+return r ~= nil and (id == nil or r == true or id == true or r == id)
+end
 local function places()
 local out = {}
+local fkeep = MAP.floppyKeep()
 for _, d in ipairs(mountedDisks()) do
-if d.data then out[#out + 1] = { dir = fs.combine(d.mount, DIR), free = d.free, floppy = true } end
+if d.data then
+local dir = fs.combine(d.mount, DIR)
+local id = floppyId(d)
+
+if MAP.loaded and not isRead(dir, id) and not fs.exists(dir) then MAP.readAt[dir] = id end
+if not MAP.loaded or isRead(dir, id) then
+out[#out + 1] = { dir = dir, free = math.max(0, (d.free or 0) - fkeep), floppy = true, id = id }
+end
+end
 end
 local okF, free = pcall(fs.getFreeSpace, "/")
 free = okF and free or 0
@@ -266,7 +313,8 @@ local keep = (tonumber(CONFIG.map.keepFreeKB) or 96) * 1024
 out[#out + 1] = { dir = DIR, free = math.max(0, math.min(free - keep, cap)), floppy = false }
 
 for id, h in pairs(STORE and STORE.helpers or {}) do
-if not h.refused then out[#out + 1] = { dir = "store:" .. id .. "/" .. DIR, free = h.free or 0, remote = id } end
+local dir = "store:" .. id .. "/" .. DIR
+if STORE.usable(h) and (not MAP.loaded or isRead(dir)) then out[#out + 1] = { dir = dir, free = h.free or 0, remote = id } end
 end
 return out
 end
@@ -374,8 +422,34 @@ return table.concat(head, "\n") .. "\n" .. table.concat(body, "\n") .. "\n"
 end
 
 
+
+local function mergeCells(old, new, n)
+if old == new then return old, false end
+local parts, took = {}, false
+for i = 0, n - 1 do
+local a = old:sub(i * 4 + 1, i * 4 + 4)
+local b = new:sub(i * 4 + 1, i * 4 + 4)
+local use = a
+if b ~= a and #b == 4 then
+local b3, b4 = b:byte(3, 4)
+if b3 ~= 0 or b4 ~= 0 then
+local a3, a4 = a:byte(3, 4)
+if (a3 == 0 and a4 == 0) or (a:byte(1) >= 128 and b:byte(1) < 128) then use = b end
+end
+end
+if use ~= a then took = true end
+parts[i + 1] = use
+end
+return table.concat(parts), took
+end
+
+
+
+
+
 local function readText(text)
 local glob, nloc = {}, 0
+local took = false
 for line in tostring(text or ""):gmatch("[^\n]+") do
 local tag = line:sub(1, 1)
 if tag == "P" then
@@ -384,27 +458,49 @@ nloc = nloc + 1
 elseif tag == "K" then
 local cx, cz, s, data = line:match("^K (%-?%d+) (%-?%d+) (%d+) (.*)$")
 if data then
+local had = chunkAt(tonumber(cx), tonumber(cz))
 local c = chunkAt(tonumber(cx), tonumber(cz), true)
-c.s = tonumber(s)
-if c.s > MAP.tick then MAP.tick = c.s end
-c.d = readCells(data, 256, glob)
+local fs_, d = tonumber(s), readCells(data, 256, glob)
+if not had then
+c.s, c.d = fs_, d
+else
+pack(c, 256)
+if not MAP.loaded and fs_ > (c.s or 0) then
+if c.d ~= d then took = true end
+c.s, c.d = fs_, d
+else
+local t
+c.d, t = mergeCells(c.d, d, 256)
+took = took or t
+end
+end
+if fs_ > MAP.tick then MAP.tick = fs_ end
 end
 elseif tag == "V" then
 local ox, oz, data = line:match("^V (%-?%d+) (%-?%d+) (.*)$")
 if data then
+local had = ovAt(tonumber(ox) * OVR, tonumber(oz) * OVR)
 local o = ovAt(tonumber(ox) * OVR, tonumber(oz) * OVR, true)
-o.d = readCells(data, OVR * OVR, glob)
+local d = readCells(data, OVR * OVR, glob)
+if not had then o.d = d
+else
+pack(o, OVR * OVR)
+local t
+o.d, t = mergeCells(o.d, d, OVR * OVR)
+took = took or t
 end
 end
 end
+end
+return took
 end
 local function readFile(path)
 local h = fs.open(path, "r")
 if not h then return end
 local t = h.readAll()
 h.close()
-readText(t)
-return t
+local took = readText(t)
+return t, took
 end
 
 
@@ -422,7 +518,11 @@ local old = MAP.where[key]
 local need = #text + 4096
 local order = {}
 for _, p in ipairs(plc) do order[#order + 1] = p end
-local function rank(p) return p.floppy and 3 or (p.remote and 2 or 1) end
+local hFirst = MAP.helpersFirst()
+local function rank(p)
+if p.remote then return hFirst and 4 or 2 end
+return p.floppy and 3 or 1
+end
 table.sort(order, function(a, b)
 if rank(a) ~= rank(b) then return rank(a) > rank(b) end
 local aOld, bOld = old and dirOf(old) == a.dir, old and dirOf(old) == b.dir
@@ -435,14 +535,26 @@ if p.free >= need then
 local ok
 if p.remote then
 ok = STORE.write(path, text)
-if ok then MAP.rsize[key] = #text end
+if not ok then p.free = 0 end
+if ok then
+MAP.rsize[key] = #text
+if MAP.stale[path] then MAP.stale[path] = nil saveStale() end
+end
 else
 pcall(fs.makeDir, p.dir)
 ok = saveFileSafe(path, text)
 end
 if ok then
-if old and old ~= path and mExists(old) then mDelete(old) end
+if old and old ~= path and mExists(old) then
+mDelete(old)
+if not (STORE and STORE.isRemote(old)) and fs.exists(old) then pcall(fs.delete, old) end
+end
 if not p.remote then MAP.rsize[key] = nil end
+
+for _, xp in ipairs(MAP.extra[key] or {}) do
+if xp ~= path and mExists(xp) then mDelete(xp) end
+end
+MAP.extra[key] = nil
 MAP.where[key] = path
 p.free = p.free - #text
 return true
@@ -458,6 +570,7 @@ end
 
 function MAP.save(toDisks, noTrim)
 if not MAP.loaded then return false end
+pcall(MAP.readLate)
 if toDisks then
 for k, p in pairs(MAP.where) do if dirOf(p) == DIR then MAP.dirty[k] = true end end
 end
@@ -493,6 +606,18 @@ if not failed then break end
 if noTrim then return false end
 
 
+
+local need, room = 0, 0
+for k in pairs(MAP.dirty) do need = need + #(texts[k] or "") + 4096 end
+for _, pl in ipairs(places()) do room = room + (pl.free or 0) end
+if STORE then room = room + STORE.space(true) - STORE.space() end
+if room >= need * 2 + 64 * 1024 then
+MAP.saveWhy = (STORE and STORE.quietList() ~= "") and ("storage helper(s) " .. STORE.quietList() .. " did not answer")
+or "could not write every file"
+break
+end
+
+
 if MAP.claimEmptyFloppies() > 0 then
 setToast("A new floppy disk is now used for the map", C.good)
 elseif ovFailed or tries == 4 or #MAP.order <= 20 then
@@ -516,23 +641,68 @@ end
 
 
 
-function MAP.offload()
-if not MAP.loaded then return 0 end
-local before = 0
-for _, p in pairs(MAP.where) do if dirOf(p) == DIR then before = before + 1 end end
-if before == 0 then return 0 end
+
+
+
+function MAP.offload(max)
+if not MAP.loaded then return 0, nil end
+local before, onFloppy = 0, {}
+local hFirst = MAP.helpersFirst()
+for k, p in pairs(MAP.where) do
+if dirOf(p) == DIR then before = before + 1
+elseif hFirst and not (STORE and STORE.isRemote(p)) then onFloppy[#onFloppy + 1] = k end
+end
+if before == 0 and #onFloppy == 0 then return 0, 0 end
 local room = 0
 for _, pl in ipairs(places()) do if pl.floppy or pl.remote then room = room + (pl.free or 0) end end
-if room < 8192 then return 0 end
+if room < 8192 then return 0, 0 end
+
+
+local freeOf = {}
+for _, d in ipairs(mountedDisks()) do freeOf[d.mount] = d.free or 0 end
+local function fr(k) return freeOf[tostring(MAP.where[k]):match("^([^/]+)/") or ""] or 0 end
+table.sort(onFloppy, function(a, b)
+local fa, fb = fr(a), fr(b)
+if fa ~= fb then return fa < fb end
+return a < b
+end)
+local limit = max or 60
+local picked = {}
+local wasDirty = {}
+local hRoom = (STORE and STORE.space() or 0) - 32 * 1024
+local nPick = 0
+for i = 1, math.min(limit, #onFloppy) do
+local k = onFloppy[i]
+local okS, sz = pcall(fs.getSize, MAP.where[k])
+local size = (okS and tonumber(sz) or 0) + 4096
+if size > hRoom then break end
+hRoom = hRoom - size
+nPick = nPick + 1
+picked[k] = MAP.where[k]
+wasDirty[k] = MAP.dirty[k]
+MAP.dirty[k] = true
+end
 pcall(MAP.save, true, true)
-local after = 0
-for _, p in pairs(MAP.where) do if dirOf(p) == DIR then after = after + 1 end end
+for k, was in pairs(picked) do
+if MAP.dirty[k] and not wasDirty[k] and MAP.where[k] == was and fs.exists(was) then MAP.dirty[k] = nil end
+end
+local after, toHelpers = 0, 0
+for k, p in pairs(MAP.where) do if dirOf(p) == DIR then after = after + 1 end end
+for k, was in pairs(picked) do
+if MAP.where[k] ~= was and STORE and STORE.isRemote(MAP.where[k] or "") then toHelpers = toHelpers + 1 end
+end
 local moved = before - after
 if moved > 0 and sysLog then
-sysLog("Map: moved " .. moved .. " map file(s) off this computer onto the floppies / storage helpers" ..
+sysLog("Map: moved " .. moved .. " map file(s) off this computer onto the " ..
+(hFirst and "storage helpers / floppies" or "floppies / storage helpers") ..
 (after > 0 and (" (" .. after .. " still here - no room left)") or ""), "INFO")
 end
-return moved
+if toHelpers > 0 and sysLog then
+sysLog("Map: moved " .. toHelpers .. " map file(s) from the data floppies onto the storage helpers" ..
+(#onFloppy > toHelpers and (" (" .. (#onFloppy - toHelpers) .. " to go)") or ""), "INFO")
+end
+if nPick == 0 then return moved, 0 end
+return moved + toHelpers, #onFloppy - toHelpers
 end
 
 
@@ -580,7 +750,7 @@ if d.data then free, count = free + (d.free or 0), count + 1 end
 end
 
 if STORE then
-local hf, hn = STORE.space()
+local hf, hn = STORE.space(true)
 free, count = free + hf, count + hn
 end
 return free, count
@@ -598,6 +768,25 @@ free, count = MAP.floppySpace()
 end
 end
 local failed = next(MAP.dirty) ~= nil
+
+
+
+if failed and free >= LOW_KB * 1024 * 4 then
+MAP.full = false
+MAP.failSince = MAP.failSince or os.clock()
+local msg = "Map: some changes wait to be saved - " .. tostring(MAP.saveWhy or "a write did not work") ..
+" (tries again every minute)"
+if os.clock() - MAP.failSince >= 600 then
+state.diskLow = msg
+if os.clock() - lastWarn >= 1800 then
+lastWarn = os.clock()
+if sysLog then sysLog(msg, "WARNING") end
+end
+end
+return
+end
+if not failed then MAP.failSince, MAP.saveWhy = nil, nil end
+if state.diskLow and state.diskLow:find("wait to be saved", 1, true) and not failed then state.diskLow = nil end
 local dropping = (MAP.lastDrop or 0) > 0
 
 MAP.full = failed or (dropping and free < LOW_KB * 1024)
@@ -621,17 +810,18 @@ end
 
 
 function MAP.diskUse()
-local total, onPc, files = 0, 0, 0
+local total, onPc, files, remote, rfiles = 0, 0, 0, 0, 0
 for k, p in pairs(MAP.where) do
 if STORE and STORE.isRemote(p) then
 total, files = total + (MAP.rsize[k] or 0), files + 1
+remote, rfiles = remote + (MAP.rsize[k] or 0), rfiles + 1
 elseif fs.exists(p) then
 local s = fs.getSize(p)
 total, files = total + s, files + 1
 if dirOf(p) == DIR then onPc = onPc + s end
 end
 end
-return total, onPc, files
+return total, onPc, files, remote, rfiles
 end
 
 
@@ -639,7 +829,8 @@ function MAP.clear()
 if not MAP.loaded then return false end
 MAP.version = MAP.version + 1
 for _, p in pairs(MAP.where) do if mExists(p) then mDelete(p) end end
-MAP.ch, MAP.order, MAP.ov, MAP.where, MAP.dirty = {}, {}, {}, {}, {}
+for _, list in pairs(MAP.extra) do for _, p in ipairs(list) do if mExists(p) then mDelete(p) end end end
+MAP.ch, MAP.order, MAP.ov, MAP.where, MAP.dirty, MAP.extra = {}, {}, {}, {}, {}, {}
 MAP.names, MAP.nameIdx = {}, {}
 MAP.scans, MAP.tick, MAP.ovN = 0, 0, 0
 for _, p in ipairs({ CONFIG.map.file, dataFile(CONFIG.map.file, true) }) do
@@ -684,53 +875,90 @@ end
 
 
 
-function MAP.load()
 
-if STORE and next(STORE.known) then pcall(STORE.find, true) end
-for _, p in ipairs(places()) do
+
+
+
+
+
+local function noteFile(k, path, took, size)
+local cur = MAP.where[k]
+if not cur then
+MAP.where[k] = path
+if STORE and STORE.isRemote(path) then MAP.rsize[k] = size end
+if took then MAP.dirty[k] = true end
+elseif cur ~= path then
+MAP.extra[k] = MAP.extra[k] or {}
+local seen = false
+for _, p in ipairs(MAP.extra[k]) do if p == path then seen = true end end
+if not seen then MAP.extra[k][#MAP.extra[k] + 1] = path end
+MAP.dirty[k] = true
+end
+end
+local function readPlace(p)
 if p.remote then
-
 local okL, list = pcall(STORE.list, p.remote, DIR)
-local want = {}
-for f, size in pairs(okL and list or {}) do
+if not okL or type(list) ~= "table" then return false end
+local want, sizes = {}, {}
+local staleGone = false
+for f, size in pairs(list) do
 local k = f:match("^(o?%-?%d+_%-?%d+)%.dat$")
-if k and not MAP.where[k] then
+local path = p.dir .. "/" .. f
+if k and MAP.stale[path] then
+local okD, done = pcall(STORE.delete, path)
+if okD and done then MAP.stale[path] = nil staleGone = true end
+elseif k and MAP.where[k] ~= path then
 want[#want + 1] = f
-MAP.where[k] = p.dir .. "/" .. f
-MAP.rsize[k] = size
+sizes[f] = size
 end
 end
-local i = 1
-while i <= #want do
+if staleGone then saveStale() end
+table.sort(want)
+local left = want
+while #left > 0 do
 local batch = {}
-for j = i, math.min(#want, i + 19) do batch[#batch + 1] = DIR .. "/" .. want[j] end
+for j = 1, math.min(#left, 20) do batch[#batch + 1] = DIR .. "/" .. left[j] end
 local okR, files = pcall(STORE.readMany, p.remote, batch)
-local got = 0
-for name, text in pairs(okR and files or {}) do pcall(readText, text) got = got + 1 end
-loadYield()
-if got == 0 then break end
-i = i + got
+local got, rest = {}, {}
+for name, text in pairs(okR and type(files) == "table" and files or {}) do
+local f = tostring(name):match("([^/]+)$")
+if type(text) == "string" and f and sizes[f] then
+local okT, took = pcall(readText, text)
+if okT then
+noteFile(f:match("^(o?%-?%d+_%-?%d+)%.dat$"), p.dir .. "/" .. f, took, #text)
+got[f] = true
 end
-elseif fs.exists(p.dir) and fs.isDir(p.dir) then
+end
+end
+for _, f in ipairs(left) do if not got[f] then rest[#rest + 1] = f end end
+loadYield()
+if #rest == #left then return false end
+left = rest
+end
+MAP.readAt[p.dir] = true
+return true
+end
+if fs.exists(p.dir) and fs.isDir(p.dir) then
 for _, f in ipairs(fs.list(p.dir)) do
 local k = f:match("^(o?%-?%d+_%-?%d+)%.dat$")
-if k and not MAP.where[k] then
-MAP.where[k] = fs.combine(p.dir, f)
-local okR, t = pcall(readFile, MAP.where[k])
+local path = fs.combine(p.dir, f)
+if k and MAP.where[k] ~= path then
+local okR, t, took = pcall(readFile, path)
+if okR and type(t) == "string" then
+noteFile(k, path, took)
 
-if okR and type(t) == "string" and k:sub(1, 1) ~= "o" and t:find("\nO ", 1, true) then MAP.dirty[k] = true end
+if k:sub(1, 1) ~= "o" and t:find("\nO ", 1, true) then MAP.dirty[k] = true end
+end
 loadYield()
 end
 end
 end
+MAP.readAt[p.dir] = p.id or true
+return true
 end
-local oldFiles = {}
-for _, f in ipairs({ CONFIG.map.file, dataFile(CONFIG.map.file) }) do
-if fs.exists(f) then oldFiles[f] = true end
-end
-if next(oldFiles) and not next(MAP.ch) then
-for f in pairs(oldFiles) do pcall(loadOld, f) break end
-end
+
+
+local function afterRead()
 
 countOverview()
 
@@ -740,7 +968,49 @@ local h, _, partial = MAP.getOverview(c.cx * 16, c.cz * 16)
 if not h or not partial then summarize(c) end
 end
 for _, o in pairs(MAP.ov) do pack(o, OVR * OVR) end
+countOverview()
 table.sort(MAP.order, function(a, b) return MAP.ch[a].s < MAP.ch[b].s end)
+end
+
+
+
+
+function MAP.readLate()
+if not MAP.loaded then return 0 end
+local n = 0
+for _, d in ipairs(mountedDisks()) do
+if d.data then
+local dir = fs.combine(d.mount, DIR)
+local id = floppyId(d)
+if not isRead(dir, id) and readPlace({ dir = dir, floppy = true, id = id }) then n = n + 1 end
+end
+end
+for id, h in pairs(STORE and STORE.helpers or {}) do
+local dir = "store:" .. id .. "/" .. DIR
+if STORE.usable(h) and not isRead(dir) and readPlace({ dir = dir, remote = id }) then n = n + 1 end
+end
+if n > 0 then
+afterRead()
+MAP.version = MAP.version + 1
+if sysLog then sysLog("Map: read " .. n .. " storage place(s) that were away at the start - joined with the new scans", "INFO") end
+end
+return n
+end
+
+
+
+function MAP.load()
+
+if STORE and next(STORE.known) then pcall(STORE.find, true) end
+for _, p in ipairs(places()) do readPlace(p) end
+local oldFiles = {}
+for _, f in ipairs({ CONFIG.map.file, dataFile(CONFIG.map.file) }) do
+if fs.exists(f) then oldFiles[f] = true end
+end
+if next(oldFiles) and not next(MAP.ch) then
+for f in pairs(oldFiles) do pcall(loadOld, f) break end
+end
+afterRead()
 MAP.trim()
 if next(oldFiles) then
 
@@ -956,11 +1226,19 @@ end
 do
 local qf = dataFile(QUEUE_FILE)
 if not fs.exists(qf) then qf = QUEUE_FILE end
-if fs.exists(qf) then
-local h = fs.open(qf, "r")
-local t = h and textutils.unserialize(h.readAll() or "")
-if h then h.close() end
-if type(t) == "table" and t.cols then MAP.queue = t end
+do
+local t = readSafe(qf)
+
+local good = type(t) == "table" and tonumber(t.cols) and tonumber(t.rows or 0)
+if good then
+for _, k in ipairs({ "cursor", "sent", "skipped", "step", "x1", "z1", "x2", "z2", "cx", "cz", "r", "y" }) do
+if t[k] ~= nil and type(t[k]) ~= "number" then good = false end
+end
+for _, k in ipairs({ "out", "redo", "rr", "rect" }) do
+if t[k] ~= nil and type(t[k]) ~= "table" then good = false end
+end
+end
+if good then MAP.queue = t end
 end
 end
 
@@ -1051,6 +1329,10 @@ return -k + 1 + m, -k
 end
 MAP.spiral = spiral
 
+function MAP.ringStart(r) if r <= 0 then return 0 end return (2 * r - 1) * (2 * r - 1) end
+function MAP.ringLen(r) if r <= 0 then return 1 end return 8 * r end
+function MAP.ringOf(i) if i <= 0 then return 0 end return math.ceil((math.sqrt(i + 1) - 1) / 2) end
+
 
 
 
@@ -1059,11 +1341,9 @@ MAP.spiral = spiral
 local AUTO_FILE = "auto_survey.dat"
 MAP.auto = { on = (CONFIG.map.autoSurvey ~= false), cursor = 0 }
 do
-if fs.exists(AUTO_FILE) then
-local h = fs.open(AUTO_FILE, "r")
-local t = h and textutils.unserialize(h.readAll() or "")
-if h then h.close() end
-if type(t) == "table" then MAP.auto = t end
+local t = readSafe(AUTO_FILE)
+if type(t) == "table" then
+MAP.auto = { on = t.on and true or false, cursor = tonumber(t.cursor) or 0, done = t.done and true or nil }
 end
 end
 function MAP.saveAuto() saveFileSafe(AUTO_FILE, serialSmall(MAP.auto)) end
@@ -1111,7 +1391,7 @@ end
 
 function MAP.autoRadius()
 local q = MAP.queue
-local cur = (q and q.auto) and q.cursor or (MAP.auto.cursor or 0)
+local cur = (q and q.auto) and MAP.queuePos(q) or (MAP.auto.cursor or 0)
 local step = (q and q.step) or (2 * (CONFIG.map.scanRadius or 8) + 1)
 return math.max(0, math.ceil((math.sqrt(cur + 1) - 1) / 2) - 1) * step
 end
@@ -1143,6 +1423,18 @@ return who ~= nil
 end
 q.lastWhy = why
 q.redo = q.redo or {}
+
+
+
+
+if q.rr then
+local minR = q.rr.next or 0
+for _, rec in pairs(q.rr.own or {}) do if rec.i < rec.j then minR = math.min(minR, rec.r) end end
+for _, rec in ipairs(q.rr.loose or {}) do if rec.i < rec.j then minR = math.min(minR, rec.r) end end
+q.cursor = math.min(q.cursor, MAP.ringStart(minR))
+q.rr = nil
+end
+q.band, q.pend, q.wave = nil, nil, nil
 
 local n0 = #q.redo
 for _ = 1, n0 do
@@ -1192,6 +1484,352 @@ end
 
 
 
+
+
+
+
+
+
+
+
+
+local function near(a, b) return math.abs(a[1] - b[1]) + math.abs(a[2] - b[2]) end
+
+
+
+
+
+
+local function dealEven(spots, ids, step)
+local out = {}
+if #spots == 0 or #ids == 0 then return out end
+step = step or 17
+table.sort(spots, function(a, b)
+local ra, rb = math.floor(a[2] / step), math.floor(b[2] / step)
+if ra ~= rb then return ra < rb end
+if ra % 2 == 0 then return a[1] < b[1] end
+return a[1] > b[1]
+end)
+local n = math.min(#ids, #spots)
+local rate, rs = {}, 0
+for _, id in ipairs(ids) do
+local t = state.turtles[id]
+rate[id] = (t and tonumber(t.packRate)) or 0.01
+end
+
+local use = {}
+for _, id in ipairs(ids) do use[#use + 1] = id end
+table.sort(use, function(a, b) return rate[a] > rate[b] end)
+while #use > n do table.remove(use) end
+for _, id in ipairs(use) do rs = rs + rate[id] end
+
+local pieces, at, acc = {}, 1, 0
+for i = 1, n do
+acc = acc + rate[use[i]]
+local upto = (i == n) and #spots or math.max(at, math.floor(#spots * acc / rs + 0.5))
+local piece = {}
+for c = at, upto do piece[#piece + 1] = spots[c] end
+if #piece > 0 then pieces[#pieces + 1] = piece end
+at = upto + 1
+end
+
+local left = {}
+for _, id in ipairs(use) do left[id] = true end
+for _, piece in ipairs(pieces) do
+local mid = piece[math.floor((#piece + 1) / 2)]
+local best, bd
+for id in pairs(left) do
+local t = state.turtles[id]
+local d = (t and t.pos and t.pos.x) and near({ t.pos.x, t.pos.z }, mid) or 1e9
+if not best or d < bd or (d == bd and id < best) then best, bd = id, d end
+end
+if best then out[best], left[best] = piece, nil end
+end
+return out
+end
+MAP.dealEven = dealEven
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+local function ringSpot(q, r, s0, off)
+local dx, dz = spiral(MAP.ringStart(r) + (s0 + off) % MAP.ringLen(r))
+return q.cx + dx * q.step, q.cz + dz * q.step
+end
+
+MAP.REDO_NEAR = 800
+local function ringDeal(q, ids, k)
+local total = q.cols * q.rows
+local rad = math.floor((q.cols - 1) / 2)
+local threats, range = {}, 0
+if TT and TT.threats then threats, range = TT.threats() end
+local why = { near = 0, done = 0, redo = 0 }
+local function nearPlayer(x, z)
+if #threats == 0 then return false end
+local who = TT.nearThreat(x, z, threats, range)
+if who then why.near, why.who = why.near + 1, who end
+return who ~= nil
+end
+q.lastWhy = why
+q.redo = q.redo or {}
+q.band, q.pend, q.wave = nil, nil, nil
+local rr = q.rr or { next = MAP.ringOf(q.cursor) }
+q.rr = rr
+rr.own, rr.loose = rr.own or {}, rr.loose or {}
+MAP.looking = nil
+local pos = {}
+for _, id in ipairs(ids) do
+local t = state.turtles[id]
+pos[id] = { t.pos.x, t.pos.z }
+end
+
+local nowE = os.epoch("utc")
+for oid, rec in pairs(rr.own) do
+local t = state.turtles[oid]
+if not t or t.held or (q.excluded and q.excluded[oid])
+or (not TT.online(t) and t.seenEpoch and nowE - t.seenEpoch > (tonumber(CONFIG.map.reclaimOffline) or 600) * 1000) then
+rr.own[oid] = nil
+if rec.i < rec.j then rr.loose[#rr.loose + 1] = rec end
+end
+end
+
+local busySpot = {}
+for _, l in pairs(q.out or {}) do for _, p in ipairs(l) do busySpot[p[1] .. "," .. p[2]] = true end end
+local out, solo = {}, {}
+
+
+local n0, cand = #q.redo, {}
+local cap = #ids * 2 * k
+local cx, cz = 0, 0
+for _, id in ipairs(ids) do cx, cz = cx + pos[id][1], cz + pos[id][2] end
+cx, cz = cx / #ids, cz / #ids
+for _ = 1, n0 do
+local p = table.remove(q.redo, 1)
+if MAP.spotDone(p[1], p[2]) or not MAP.inArea(p[1], p[2]) or busySpot[p[1] .. "," .. p[2]] then
+
+elseif nearPlayer(p[1], p[2]) then q.redo[#q.redo + 1] = p
+else cand[#cand + 1] = p end
+end
+
+
+
+
+local nearR = MAP.REDO_NEAR
+local function dist(p, id) return math.abs(p[1] - pos[id][1]) + math.abs(p[2] - pos[id][2]) end
+local take = {}
+for _, p in ipairs(cand) do
+local ok = p[3]
+if not ok then for _, id in ipairs(ids) do if dist(p, id) <= nearR then ok = true break end end end
+if ok then take[#take + 1] = p else q.redo[#q.redo + 1] = p end
+end
+if #take > 0 then
+table.sort(take, function(a, b) return math.abs(a[1] - cx) + math.abs(a[2] - cz) < math.abs(b[1] - cx) + math.abs(b[2] - cz) end)
+for i = #take, cap + 1, -1 do q.redo[#q.redo + 1] = table.remove(take, i) end
+for id, l in pairs(dealEven(take, ids, q.step)) do
+local got = {}
+for _, p in ipairs(l) do
+if p[3] or dist(p, id) <= nearR then got[#got + 1] = p else q.redo[#q.redo + 1] = p end
+end
+if #got > 0 then out[id] = got end
+end
+end
+if #cand > 0 then
+local rest = {}
+for _, id in ipairs(ids) do if not out[id] then rest[#rest + 1] = id else solo[id] = true end end
+ids = rest
+end
+why.redo = #q.redo
+
+
+local checked, outside = 0, 0
+local stopAt = os.clock() + (tonumber(CONFIG.map.lookTime) or 0.3)
+local function outOfTime()
+return (checked >= 3000 and os.clock() >= stopAt) or checked >= 60000 or outside >= 200000
+end
+local function skip(x, z)
+return (q.rect and (x < q.x1 or x > q.x2 or z < q.z1 or z > q.z2)) or not MAP.inArea(x, z)
+end
+local function usable(x, z)
+if skip(x, z) then outside = outside + 1 return false end
+checked = checked + 1
+if busySpot[x .. "," .. z] then return false end
+if MAP.spotDone(x, z) then q.skipped = q.skipped + 1 why.done = why.done + 1 return false end
+if nearPlayer(x, z) then q.redo[#q.redo + 1] = { x, z } return false end
+return true
+end
+
+
+
+
+
+
+local function nearestOff(rec, p, from)
+local lo = math.max(rec.i, from or rec.i)
+if lo >= rec.j then return nil end
+local best, bd
+local function try(off)
+if off < lo or off >= rec.j then return end
+local x, z = ringSpot(q, rec.r, rec.s0, off)
+local d = math.abs(x - p[1]) + math.abs(z - p[2])
+if not bd or d < bd then best, bd = off, d end
+end
+for off = lo, rec.j - 1, 4 do try(off) end
+try(rec.j - 1)
+if best then local b0 = best for off = b0 - 3, b0 + 3 do try(off) end end
+return best, bd
+end
+
+local function splitAt(rec, m)
+local tail = { r = rec.r, s0 = rec.s0, i = m, j = rec.j }
+rec.j = m
+return tail
+end
+
+
+local function newRing(id)
+local p = pos[id]
+local bi, bm, bd
+for i, rec in ipairs(rr.loose) do
+if rec.i < rec.j then
+local m, d = nearestOff(rec, p)
+if m and (not bd or d < bd) then bi, bm, bd = i, m, d end
+end
+end
+local function takeLoose()
+local rec = rr.loose[bi]
+if bm > rec.i then return splitAt(rec, bm) end
+return table.remove(rr.loose, bi)
+end
+if bi and bd <= 400 then return takeLoose() end
+local fresh
+while rr.next <= rad do
+if outOfTime() then
+MAP.looking = { r = rr.next, rad = rad, found = 0, want = 1 }
+if bi then return takeLoose() end
+return nil
+end
+local r = rr.next
+rr.next = r + 1
+local P, best, bdist = MAP.ringLen(r), nil, nil
+for s = 0, P - 1 do
+local dx, dz = spiral(MAP.ringStart(r) + s)
+local x, z = q.cx + dx * q.step, q.cz + dz * q.step
+if skip(x, z) then outside = outside + 1
+else
+checked = checked + 1
+if not MAP.spotDone(x, z) then
+local d = math.abs(x - p[1]) + math.abs(z - p[2])
+if not best or d < bdist then best, bdist = s, d end
+end
+end
+end
+if best then fresh = { r = r, s0 = best, i = 0, j = P, d = bdist } break end
+end
+if fresh and (not bi or fresh.d <= bd) then
+fresh.d = nil
+return fresh
+end
+if fresh then fresh.d = nil rr.loose[#rr.loose + 1] = fresh end
+if bi then return takeLoose() end
+return nil
+end
+
+local function walk(rec, n, backward)
+local got = {}
+while rec.i < rec.j and #got < n do
+local off
+if backward then rec.j = rec.j - 1 off = rec.j else off = rec.i rec.i = rec.i + 1 end
+local x, z = ringSpot(q, rec.r, rec.s0, off)
+if usable(x, z) then
+got[#got + 1] = { x, z }
+busySpot[x .. "," .. z] = true
+end
+if outOfTime() then break end
+end
+return got
+end
+
+table.sort(ids)
+local helpers = {}
+for _, id in ipairs(ids) do
+local mine, tries = {}, 0
+while #mine == 0 and tries < 4 and not outOfTime() do
+tries = tries + 1
+local rec = rr.own[id]
+if not rec or rec.i >= rec.j then
+rec = newRing(id)
+rr.own[id] = rec
+if not rec then break end
+end
+mine = walk(rec, k)
+end
+if #mine > 0 then out[id] = mine else helpers[#helpers + 1] = id end
+end
+
+
+for _, id in ipairs(helpers) do
+local best, bm, bd
+for _, rec in pairs(rr.own) do
+if rec.j - rec.i > 3 * k then
+local m, d = nearestOff(rec, pos[id], rec.i + 2 * k)
+if m and (not bd or d < bd) then best, bm, bd = rec, m, d end
+end
+end
+for _, rec in ipairs(rr.loose) do
+if rec.i < rec.j then
+local m, d = nearestOff(rec, pos[id])
+if m and (not bd or d < bd) then best, bm, bd = rec, m, d end
+end
+end
+if best and not outOfTime() then
+local mine = (bm > best.i) and splitAt(best, bm) or best
+if mine == best then for i2, r2 in ipairs(rr.loose) do if r2 == best then table.remove(rr.loose, i2) break end end end
+rr.own[id] = mine
+local m = walk(mine, k)
+if #m > 0 then out[id] = m end
+end
+
+if not out[id] and #q.redo > 0 then
+local p0 = pos[id]
+table.sort(q.redo, function(a, b)
+return math.abs(a[1] - p0[1]) + math.abs(a[2] - p0[2]) < math.abs(b[1] - p0[1]) + math.abs(b[2] - p0[2])
+end)
+local got = {}
+while #q.redo > 0 and #got < 2 * k do
+local p = table.remove(q.redo, 1)
+if not MAP.spotDone(p[1], p[2]) and not busySpot[p[1] .. "," .. p[2]] then got[#got + 1] = p end
+end
+if #got > 0 then out[id] = got solo[id] = true end
+end
+end
+
+local minR = rr.next
+for _, rec in pairs(rr.own) do if rec.i < rec.j then minR = math.min(minR, rec.r) end end
+for i = #rr.loose, 1, -1 do
+local rec = rr.loose[i]
+if rec.i < rec.j then minR = math.min(minR, rec.r) else table.remove(rr.loose, i) end
+end
+if minR > rad then q.cursor = total
+else q.cursor = math.max(q.cursor, math.min(total, MAP.ringStart(minR))) end
+why.redo = #q.redo
+return out, solo
+end
+MAP.ringDeal = ringDeal
+
+
+
+
+
 function MAP.reclaim(id)
 local q = MAP.queue
 if not (q and q.out and q.out[id]) then return 0 end
@@ -1207,11 +1845,24 @@ end
 
 
 
-function MAP.batchResult(id, ok)
+function MAP.batchResult(id, ok, msg)
 local q = MAP.queue
 if not (q and q.out and q.out[id]) then return end
 
 local t = state.turtles[id]
+
+
+
+
+
+local busy = tostring(msg or ""):find("^busy") ~= nil
+if not ok and t and t.queueAt and os.clock() - t.queueAt < 30 then
+t.surveyFail = { msg = tostring(msg or "no reason given"), at = os.clock(), wait = busy and 15 or nil }
+if MAP.press then MAP.press.failed[id] = t.surveyFail.msg end
+if not busy then TT.log(t, "Refused its survey spots: " .. t.surveyFail.msg) end
+elseif ok and t then
+t.surveyFail = nil
+end
 if ok and t and t.queueAt and os.clock() - t.queueAt > 1 then
 local r = #q.out[id] / (os.clock() - t.queueAt)
 t.packRate = t.packRate and (t.packRate * 0.5 + r * 0.5) or r
@@ -1235,7 +1886,16 @@ MAP.queueSurvey(x1, z1, x2, z2, r, nil)
 return #spots, skipped
 end
 q.redo = q.redo or {}
-for i = #spots, 1, -1 do table.insert(q.redo, 1, spots[i]) end
+
+local have = {}
+for _, p in ipairs(q.redo) do have[p[1] .. "," .. p[2]] = true end
+for _, l in pairs(q.out or {}) do for _, p in ipairs(l) do have[p[1] .. "," .. p[2]] = true end end
+for i = #spots, 1, -1 do
+if not have[spots[i][1] .. "," .. spots[i][2]] then
+spots[i][3] = 1
+table.insert(q.redo, 1, spots[i])
+end
+end
 for _, id in ipairs(TT.available()) do
 local t = state.turtles[id]
 if t and t.held then t.held = nil TT.listDirty = true end
@@ -1295,10 +1955,12 @@ local free = t and TT.online(t) and t.pos and t.pos.x and (t.task == nil or t.ta
 and not (q.excluded and q.excluded[id])
 and not t.rescuerRole and not t.held
 and not TT.factoryRole(t)
+and not TT.copyStays(t)
 local fuel = t and tonumber(t.fuel)
-if t then t.packWait = nil end
 if free and t.queueAt and os.clock() - t.queueAt < 15 then free = false busy = true end
-if free and fuel and fuel < minFuel then free = false end
+if free and fuel and fuel < TT.surveyFuelNeed(t) then free = false end
+local refused = t and t.surveyFail and os.clock() - t.surveyFail.at < (t.surveyFail.wait or 120)
+if free and refused then free = false end
 
 
 
@@ -1311,9 +1973,11 @@ if not TT.online(t) then w = "offline"
 elseif not (t.pos and t.pos.x) then w = "position unknown"
 elseif t.task and t.task ~= "idle" then w = "busy"
 elseif t.held or (q.excluded and q.excluded[id]) then w = "STOPPED - give it a command first"
-elseif fuel and fuel < minFuel then w = "fuel " .. fuel .. " (needs " .. minFuel .. ")"
+elseif fuel and fuel < TT.surveyFuelNeed(t) then w = "fuel " .. fuel .. " (needs " .. TT.surveyFuelNeed(t) .. ": the way home + a batch)"
 elseif t.anchor then w = "anchor" elseif t.rescuerRole then w = "rescuer"
-elseif TT.factoryRole(t) then w = "factory " .. TT.factoryRole(t) end
+elseif TT.factoryRole(t) then w = "factory " .. TT.factoryRole(t)
+elseif refused then w = "refused its spots: " .. t.surveyFail.msg end
+if MAP.press and w then MAP.press.why[id] = w end
 if w then why[#why + 1] = (t.label or ("#" .. id)) .. ": " .. w end
 end
 if free then anyFree = true end
@@ -1323,19 +1987,8 @@ if t and q.out and q.out[id] and TT.online(t) and (t.task == nil or t.task == "i
 and (not t.queueAt or os.clock() - t.queueAt > 30) then
 MAP.reclaim(id)
 end
-if free and pack then
+if free then
 packFree[#packFree + 1] = id
-elseif free and (q.cursor < total or (q.redo and #q.redo > 0)) then
-local spots = nextBatch(q)
-if #spots > 0 then
-TT.sendSpots(id, spots, q.r)
-q.out = q.out or {}
-q.out[id] = spots
-t.queueAt = os.clock()
-q.sent = q.sent + #spots
-busy = true
-q.changed = true
-end
 end
 end
 
@@ -1350,59 +2003,54 @@ end
 end
 
 
-if pack and #packFree > 0 and (q.cursor < total or (q.redo and #q.redo > 0)) then
-local open = false
-if q.wave then
-
-
-if (q.wave.t or 0) > os.clock() then q.wave.t = os.clock() end
-for _, wid in ipairs(q.wave.ids or {}) do if q.out and q.out[wid] then open = true end end
-if open and os.clock() - (q.wave.t or 0) > (tonumber(CONFIG.map.packWait) or 300) then open = false end
-end
-if open then
-busy = true
-for _, id in ipairs(packFree) do state.turtles[id].packWait = true end
-else
+if not pack and #packFree > 0 and (q.cursor < total or (q.redo and #q.redo > 0)) then
 table.sort(packFree)
-local n = math.min(#packFree, tonumber(CONFIG.map.packSize) or 8)
-local k = tonumber(CONFIG.map.packSpots) or 3
-local spots = nextBatch(q, n * k)
-n = math.min(n, #spots)
-local ids = {}
-
-
-local lists, cnt = {}, {}
-for i = 1, n do lists[i], cnt[i] = {}, 0 end
-for _, p in ipairs(spots) do
-local best, bestV
-for i = 1, n do
-local rate = tonumber(state.turtles[packFree[i]].packRate) or 0.01
-local v = (cnt[i] + 1) / rate
-if not best or v < bestV then best, bestV = i, v end
-end
-cnt[best] = cnt[best] + 1
-lists[best][#lists[best] + 1] = p
-end
-for i = 1, n do
-local mine = lists[i]
-local id = packFree[i]
+local spots = nextBatch(q, BATCH * #packFree)
+local lists = dealEven(spots, packFree, q.step)
+for _, id in ipairs(packFree) do
+local mine = lists[id]
+if mine and #mine > 0 then
 local t = state.turtles[id]
-if #mine == 0 then mine = nil end
-if mine then
 TT.sendSpots(id, mine, q.r)
 q.out = q.out or {}
 q.out[id] = mine
-t.queueAt, t.packWait = os.clock(), nil
+t.queueAt = os.clock()
 q.sent = q.sent + #mine
-ids[#ids + 1] = id
-end
-end
-if n > 0 then
-q.wave = { t = os.clock(), ids = ids }
+if MAP.press then MAP.press.sent[id] = true end
 busy, q.changed = true, true
 end
 end
 end
+
+if pack and #packFree > 0 and (q.cursor < total or (q.redo and #q.redo > 0)) then
+
+
+
+local k = math.max(1, tonumber(CONFIG.map.packSpots) or 16)
+table.sort(packFree)
+local lists, solo = {}, {}
+if q.spiral then
+lists, solo = ringDeal(q, packFree, k)
+else
+
+local spots = nextBatch(q, #packFree * k)
+lists = dealEven(spots, packFree, q.step)
+end
+for _, id in ipairs(packFree) do
+local mine = lists[id]
+local t = state.turtles[id]
+if mine and #mine > 0 then
+TT.sendSpots(id, mine, q.r)
+q.out = q.out or {}
+q.out[id] = mine
+t.queueAt = os.clock()
+q.sent = q.sent + #mine
+if MAP.press then MAP.press.sent[id] = true end
+busy, q.changed = true, true
+end
+end
+end
+MAP.pressReport()
 
 
 
@@ -1436,25 +2084,63 @@ end
 end
 
 
+
+function MAP.pressStart()
+MAP.press = { at = os.clock(), free = TT.available(), sent = {}, failed = {}, why = {} }
+end
+function MAP.pressReport()
+local P = MAP.press
+if not P or os.clock() - P.at < 20 then return end
+MAP.press = nil
+local went, not_ = 0, {}
+for _, id in ipairs(P.free) do
+local t = state.turtles[id]
+if P.sent[id] and not P.failed[id] then went = went + 1
+elseif t then
+local w = P.failed[id] and ("refused: " .. P.failed[id]) or P.why[id]
+if not w and t.task and t.task ~= "idle" then w = "busy (" .. tostring(t.task) .. ") - joins when free" end
+not_[#not_ + 1] = (t.label or ("#" .. id)) .. ": " .. (w or "free, got nothing yet")
+end
+end
+local msg = went .. " of " .. #P.free .. " free turtles went."
+if #not_ > 0 then msg = msg .. " Not: " .. table.concat(not_, "; ") end
+if sysLog then sysLog("SURVEY: ALL - " .. msg, #not_ > 0 and "WARNING" or "INFO") end
+setPopup("SURVEY: ALL", msg, #not_ > 0 and C.warn or C.good)
+end
+
+
+
+function MAP.queuePos(q)
+if not q then return 0 end
+local rr = q.rr
+if not rr then return q.cursor end
+
+local pos = MAP.ringStart(rr.next or 0)
+for _, rec in pairs(rr.own or {}) do pos = pos - math.max(0, rec.j - rec.i) end
+for _, rec in ipairs(rr.loose or {}) do pos = pos - math.max(0, rec.j - rec.i) end
+return math.max(q.cursor, math.min(q.cols * q.rows, pos))
+end
+
 function MAP.surveyProgress()
 local q = MAP.queue
 if not q then return nil end
 local total = q.cols * q.rows
+local cur = MAP.queuePos(q)
 if q.rect then
 
 
 local inArea = math.max(1, (math.floor((q.x2 - q.x1) / q.step) + 1) * (math.floor((q.z2 - q.z1) / q.step) + 1))
-local k = math.max(0, math.ceil((math.sqrt(q.cursor + 1) - 1) / 2))
+local k = math.max(0, (math.sqrt(cur + 1) - 1) / 2)
 local half = k * q.step
 local w = math.min(q.x2, q.cx + half) - math.max(q.x1, q.cx - half)
 local h = math.min(q.z2, q.cz + half) - math.max(q.z1, q.cz - half)
 local passed = (math.floor(math.max(0, w) / q.step) + 1) * (math.floor(math.max(0, h) / q.step) + 1)
-if q.cursor >= total then passed = inArea end
+if cur >= total then passed = inArea end
 local again = q.redo and #q.redo or 0
 return math.min(1, passed / inArea), inArea, q.sent, q.skipped, again
 end
 local again = q.redo and #q.redo or 0
-return q.cursor / total, total, q.sent, q.skipped, again
+return cur / total, total, q.sent, q.skipped, again
 end
 
 

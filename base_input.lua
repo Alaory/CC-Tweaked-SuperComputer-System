@@ -90,6 +90,63 @@ function handleTouch(tx, ty)
               MINE.cmd(tonumber(id), cmd, {})
               setToast(cmd:upper() .. " sent to the loader - it tells the miners", C.label, 5)
             end
+          elseif a.kind == "mineupdate" then
+            -- MINING tab UPDATE MINERS: the newest miner.lua (GitHub / data floppy) to every mining turtle
+            local last = "Miner update: getting miner.lua ..."
+            setToast(last, C.label, 4)
+            local c, why = MINE.loadCode(true, function(s2) last = s2 end)
+            if not c then setPopup("MINER UPDATE", tostring(why), C.warn)
+            else setPopup("MINER UPDATE", table.concat(MINE.startUpdate(c), "  "), C.label) end
+          elseif a.kind == "dwchesthere" then          -- DRONE WORK: the work chest = the block under you
+            local ok, msg = DW.chestHere()
+            setToast(msg, ok and C.good or C.warn, 6)
+          elseif a.kind == "dwfuel" then
+            local ok, msg = DW.fuelRun(tonumber(a.name), "you")
+            setToast(msg, ok and C.good or C.warn, 6)
+          elseif a.kind == "dwmark" then
+            local ok, msg = DW.markHere()
+            setToast(msg, ok and C.good or C.warn, 6)
+          elseif a.kind == "dwunmark" then
+            removeWaypoint(a.name)
+            DW.ui.at = 0
+            setToast("Forgot " .. a.name, C.label, 4)
+          elseif a.kind == "dwstop" then
+            local _, msg = DW.stopBuild("stopped by you")
+            setToast(msg, C.label, 6)
+          elseif a.kind == "dwbuild" then
+            local sch, whyS = SCHEM.load(a.name)
+            local pl, why = nil, whyS
+            if sch then pl, why = DW.buildSpot(sch) end
+            if not pl then setToast("Where? " .. tostring(why), C.warn, 6)
+            else
+              local ok, msg = DW.startBuild(a.name, pl.ox, pl.oy, pl.oz, pl.rot, DW.ui.clear)
+              if ok then setPopup("DRONE BUILD", msg, C.good) else setToast(msg, C.warn, 8) end
+            end
+          elseif a.kind == "giftsend" then             -- GIFTS page: an AE2 item for a player (a drone brings it)
+            local ok, msg = GIFTS.send(a.target, a.name, a.count)
+            setToast(msg, ok and C.good or C.warn, 8)
+          elseif a.kind == "giftadd" then              -- GIFTS page: the item becomes part of a reward
+            local ok, msg = GIFTS.addTo(a.target, a.name, a.count)
+            setToast(msg, ok and C.good or C.warn, 6)
+          elseif a.kind == "giftdel" then
+            local ok, msg = GIFTS.delFrom(a.target, a.name)
+            setToast(msg, ok and C.label or C.warn, 6)
+          elseif a.kind == "giftreset" then
+            local _, msg = GIFTS.reset(a.name)
+            setToast(msg, C.label, 5)
+          elseif a.kind == "giftcancel" then
+            local ok, msg = false, "the voice add-on is not loaded"
+            if VOICE and VOICE.giftCancel then ok, msg = VOICE.giftCancel(a.count, a.name) end
+            setToast(msg, ok and C.label or C.warn, 5)
+          elseif a.kind == "supplyset" then
+            -- AE2 tab KEEP A STORAGE FILLED
+            local ok, msg = SUPPLY.add(a.target, a.skind, a.name, a.count)
+            setToast(msg, ok and C.good or C.warn, 8)
+            os.queueEvent("supply_wake")                -- (starts filling at once)
+          elseif a.kind == "supplystop" then
+            local _, idx = SUPPLY.ruleFor(a.target, a.skind, a.name)
+            if idx then table.remove(SUPPLY.rules, idx) SUPPLY.save() end
+            setToast(idx and ("No longer kept filled: " .. tostring(a.target) .. " (what is in it stays)") or "It was not kept filled", C.label, 6)
           elseif a.kind == "quick" then
             -- HOME > QUICK ACTIONS (the same actions as the pocket remote)
             local okQ, okA, msgQ = pcall(POCKET.act, a.name, a.args or {})
@@ -199,6 +256,7 @@ function handleTouch(tx, ty)
                 setToast("No free turtle (online, idle, position known)", C.warn, 5)
               else
                 local n = MAP.queueSurvey(x1, z1, x2, z2, r, ids)
+                if a.kind == "surveyall" and n > 0 then MAP.pressStart() end
                 if n == 0 then
                   setToast("Nothing to survey here - this view is outside your work area (SETTINGS > MAP)", C.warn, 6)
                 else
@@ -214,6 +272,7 @@ function handleTouch(tx, ty)
                 setToast("No free turtle (online, idle, position known)", C.warn, 5)
               else
                 local n, skipped = MAP.addSurvey(x1, z1, x2, z2, r)
+                if n > 0 then MAP.pressStart() end
                 if n == 0 then
                   setToast("This area is already mapped (" .. skipped .. " spots)", C.label, 5)
                 else
@@ -357,6 +416,60 @@ function handleTouch(tx, ty)
         if st and TT.online(st) then TT.drive(h[6], "look") end        -- what is around it, at once
       elseif h[5] == "tcmd" then
         TT.send(h[6][1], h[6][2], h[6][3])
+      elseif h[5] == "giftletter" then                 -- GIFTS page
+        state.giftLetter, state.giftOff = h[6] or nil, 0
+      elseif h[5] == "giftitem" then
+        state.giftItem = (state.giftItem ~= h[6]) and h[6] or nil
+      elseif h[5] == "giftcount" then
+        local n, nxt = GIFTS.count(), GIFTS.COUNTS[1]
+        for i, c in ipairs(GIFTS.COUNTS) do if c == n then nxt = GIFTS.COUNTS[i % #GIFTS.COUNTS + 1] end end
+        state.giftCount = nxt
+      elseif h[5] == "giftto" then
+        local list, cur = GIFTS.players(), GIFTS.to()
+        local nxt = list[1]
+        for i, n in ipairs(list) do if n == cur then nxt = list[i % #list + 1] end end
+        state.giftTo = nxt
+      elseif h[5] == "giftwhy" then
+        state.giftReward = h[6]
+      elseif h[5] == "giftnow" then
+        if VOICE and VOICE.giftNow then
+          local okN, lines = pcall(VOICE.giftNow)
+          setPopup("GIFTS", okN and table.concat(lines, "  ") or tostring(lines), C.label)
+        end
+      elseif h[5] == "dwnext" then                     -- DRONE WORK: the next empty chest on the cable
+        local ok, msg = DW.nextChest()
+        setToast(msg, ok and C.good or C.warn, 6)
+      elseif h[5] == "dwfuelnext" then                 -- DRONE WORK: the next fuel AE2 has
+        local ok, msg = DW.nextFuel()
+        setToast(msg, ok and C.good or C.warn, 5)
+      elseif h[5] == "dwfuelcount" then
+        local _, msg = DW.nextFuelCount()
+        setToast(msg, C.good, 4)
+      elseif h[5] == "dwauto" then
+        setSetting("drone.fuelRuns", not DW.autoOn())
+        DW.auto = nil
+        setToast("Drone fuel runs " .. (DW.autoOn() and "ON" or "OFF"), C.label, 4)
+      elseif h[5] == "dwsel" then
+        DW.select(h[6])
+      elseif h[5] == "dwrot" then                       -- TURN RIGHT (clockwise, seen from above)
+        DW.ui.rot = ((DW.ui.rot or 0) + 90) % 360
+      elseif h[5] == "dwrotl" then                      -- TURN LEFT
+        DW.ui.rot = ((DW.ui.rot or 0) + 270) % 360
+      elseif h[5] == "dwclear" then
+        DW.ui.clear = not DW.ui.clear
+      elseif h[5] == "dwat" then
+        DW.ui.at = ((DW.ui.at or 0) + 1) % (#(state.waypoints or {}) + 1)
+      elseif h[5] == "dwpause" then
+        if DW.job then
+          if DW.job.paused then DW.job.paused, DW.job.fails, DW.job.waitUntil = nil, 0, nil
+          else DW.job.paused = "paused by you (RESUME)" end
+          DW.save()
+        end
+      elseif h[5] == "supnext" then
+        -- KEEP A STORAGE FILLED: the next storage on the cable
+        state.supIdx = state.supIdx or {}
+        local n = #(((SUPPLY or {}).cache or {})[h[6]] or {})
+        state.supIdx[h[6]] = ((state.supIdx[h[6]] or 1) % math.max(1, n)) + 1
       elseif h[5] == "minecmd" then
         -- a new field starts where the LOADER stands: every miner must be in its chunk
         local lu = MINE.units[h[6][1]]
@@ -390,6 +503,14 @@ function handleTouch(tx, ty)
           msg = CONFIG.chat.command .. (h[5] == "acc_yes" and " yes " or " no ") .. h[6] }
         os.queueEvent("chat_cmd")
         setToast((h[5] == "acc_yes" and "Approved " or "Declined ") .. h[6], C.label, 4)
+      elseif h[5] == "patsel" then
+        state.patSel = (state.patSel ~= h[6]) and h[6] or nil       -- (AE2 SYSTEM: pick a pattern; again = let go)
+      elseif h[5] == "pattype" then
+        state.patType = (h[6] ~= "all") and h[6] or nil
+        state.patOff, MEX.pv = 0, nil
+      elseif h[5] == "patletter" then
+        state.patLetter = (h[6] ~= "all") and h[6] or nil
+        state.patOff, MEX.pv = 0, nil
       elseif h[5] == "dscroll" then
         state[h[6][1]] = math.max(0, (state[h[6][1]] or 0) + h[6][2])
       elseif h[5] == "dsel" then
@@ -421,8 +542,15 @@ function handleTouch(tx, ty)
         state[h[6][1]] = state[h[6][1]] + h[6][2]
       elseif h[5] == "praw" then
         state.rawView[h[6]] = not state.rawView[h[6]] or nil
+      elseif h[5] == "psel" then
+        state.playerSel = h[6]                       -- (PLAYERS page: the picked player)
       elseif h[5] == "item" then
         if h[6] and h[6] ~= selName then selName = h[6] else selName = nil end
+        state.equipSel = nil
+      elseif h[5] == "equip" then                    -- (INVENTORY: an armour / offhand slot)
+        if h[6] and h[6] ~= state.equipSel and state.equip and state.equip[h[6]] then state.equipSel = h[6]
+        else state.equipSel = nil end
+        selName = nil
       elseif h[5] == "ndismiss" then
         dismissNote(h[6])
       elseif h[5] == "nclear" then

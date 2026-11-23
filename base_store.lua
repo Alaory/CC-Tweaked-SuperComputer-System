@@ -3,7 +3,7 @@
 --
 --   STORAGE HELPERS: other computers on the WIRED network that run store.lua
 --   keep files for the base (1 MB each = about 8 floppies). The map uses them
---   after the data floppies and before this computer's own disk.
+--   FIRST (CONFIG.map.helpersFirst), then the data floppies, then this computer.
 --   A helper answers only the first base computer that talks to it.
 --   A file name on a helper looks like "store:<id>/map/o1_2.dat".
 --   Every call waits for the answer (rednet), so it is only used where a short
@@ -14,15 +14,14 @@ STORE = { PROTO = "basestore", helpers = {}, lastFind = -1000, n = 0 }
 -- (fast); looking for new ones takes ~2 s and is done by the map worker
 local KNOWN_FILE = "store_helpers.dat"
 STORE.known = {}
-if fs.exists(KNOWN_FILE) then
-  local h = fs.open(KNOWN_FILE, "r")
-  local t = h and textutils.unserialize(h.readAll() or "")
-  if h then h.close() end
-  if type(t) == "table" then STORE.known = t end
+do
+  local t = readSafe(KNOWN_FILE)
+  if type(t) == "table" then
+    for id, v in pairs(t) do if tonumber(id) then STORE.known[tonumber(id)] = type(v) == "table" and v or true end end
+  end
 end
 local function saveKnown()
-  local h = fs.open(KNOWN_FILE, "w")
-  if h then h.write(textutils.serialize(STORE.known)) h.close() end
+  writeSafe(KNOWN_FILE, textutils.serialize(STORE.known))
 end
 
 -- rednet on the WIRED modems (the helpers sit on the cable network)
@@ -100,7 +99,8 @@ function STORE.kickSilent()
     local okT, isC = pcall(peripheral.hasType, name, "computer")
     if okT and isC then
       local okI, id = pcall(peripheral.call, name, "getID")
-      if okI and (STORE.known[id] or STORE.known[tostring(id)]) and not STORE.helpers[id]
+      local h = okI and STORE.helpers[id]
+      if okI and (STORE.known[id] or STORE.known[tostring(id)]) and (not h or (h.misses or 0) >= 2)
          and (not kicked[id] or os.clock() - kicked[id] > 600) then
         local okO, on = pcall(peripheral.call, name, "isOn")
         if okO and on and pcall(peripheral.call, name, "reboot") then
@@ -141,6 +141,12 @@ function STORE.find(quick)
                       label = r.label, ver = r.ver }
       elseif err and err:find("belongs", 1, true) then
         found[id] = { id = id, free = 0, cap = 0, refused = err }
+      elseif STORE.helpers[id] and not STORE.helpers[id].refused and (STORE.helpers[id].misses or 0) < 2 then
+        -- it answered before: one missed hello (busy / lag) does not make it gone - kept, marked
+        -- quiet (not written to for 60 s); gone only after 3 looks in a row without an answer
+        local h = STORE.helpers[id]
+        h.misses, h.down = (h.misses or 0) + 1, os.clock()
+        found[id] = h
       end
     end
   end
@@ -153,7 +159,7 @@ function STORE.find(quick)
     saveKnown()
     local n = 0
     for _ in pairs(found) do n = n + 1 end
-    if setToast then setToast("Storage helper(s) found: " .. n .. " - the map uses them when the floppies are full", C.good) end
+    if setToast then setToast("Storage helper(s) found: " .. n .. " - the map is kept on them (the floppies stay free for the rest)", C.good) end
     if sysLog then sysLog("Storage helpers: " .. n .. " found", "DONE") end
   end
   return found
@@ -214,7 +220,12 @@ function STORE.isRemote(path) return STORE.parse(path) ~= nil end
 function STORE.write(path, text)
   local id, name = STORE.parse(path)
   local r, err = STORE.call(id, { op = "put", name = name, data = text }, 6)
-  if r and STORE.helpers[id] then STORE.helpers[id].free = tonumber(r.free) or STORE.helpers[id].free end
+  local h = STORE.helpers[id]
+  if r and h then h.free = tonumber(r.free) or h.free end
+  -- gone quiet (busy, switched off, store.lua stopped): not used for 60 s - else every map file
+  -- waited 6 s for it. Its room is still KNOWN (STORE.space(true)): a quiet helper is not "full".
+  if not r and h and err == "no answer" then h.down = os.clock() end
+  if r and h then h.down, h.misses = nil, 0 end
   return r ~= nil, err
 end
 function STORE.read(path)
@@ -225,23 +236,42 @@ end
 -- several files of one helper in one go (start-up): { [name] = text }
 function STORE.readMany(id, names)
   local r = STORE.call(id, { op = "get", names = names }, 15)
-  return r and r.files or {}
+  return r and type(r.files) == "table" and r.files or {}
 end
 function STORE.delete(path)
   local id, name = STORE.parse(path)
   local r = STORE.call(id, { op = "del", name = name }, 4)
   return r ~= nil
 end
--- the files in a folder of a helper: { [name] = size }
+-- the files in a folder of a helper: { [name] = size } - nil when it did not answer (an empty list
+-- would look like "no files there": the map then wrote over the ones it never read)
 function STORE.list(id, dir)
-  local r = STORE.call(id, { op = "list", dir = dir }, 6)
-  return r and r.files or {}
+  local r, err = STORE.call(id, { op = "list", dir = dir }, 6)
+  if not r then
+    local h = STORE.helpers[id]
+    if h and err == "no answer" then h.down = os.clock() end
+    return nil, err
+  end
+  return type(r.files) == "table" and r.files or {}
 end
 -- all helpers together: free bytes, count
-function STORE.space()
+-- a helper the base may write to now (answers; not quiet in the last 60 s)
+function STORE.usable(h)
+  return h and not h.refused and not (h.down and os.clock() - h.down < 60 and os.clock() >= h.down)
+end
+-- all helpers together: free bytes, count. known = also the ones quiet right now (their room is
+-- still there - a helper that did not answer once is not "full")
+function STORE.space(known)
   local free, n = 0, 0
   for _, h in pairs(STORE.helpers) do
-    if not h.refused then free, n = free + (h.free or 0), n + 1 end
+    if (known and not h.refused) or STORE.usable(h) then free, n = free + (h.free or 0), n + 1 end
   end
   return free, n
+end
+-- the helpers that are quiet right now: "#120, #121"
+function STORE.quietList()
+  local q = {}
+  for id, h in pairs(STORE.helpers) do if not h.refused and not STORE.usable(h) then q[#q + 1] = "#" .. id end end
+  table.sort(q)
+  return table.concat(q, ", ")
 end

@@ -132,3 +132,52 @@ do
   CHECK(txt:find("MISSING", 1, true) and txt:find("Goner", 1, true), "report: turtles marked missing overnight")
   AWAY.on = false
 end
+
+-- MINING WHILE AWAY survives a miner RESTART (its counters start at 0 again): before, the
+-- report said "+0 ores" after a server restart overnight. Away time counts from when you LEFT.
+do
+  local nowA = os.epoch("utc")
+  MINE.units = {
+    [10] = { id = 10, role = "loader", dim = "overworld", ci = 4, lastSeen = os.clock(), log = {}, queue = {} },
+    [11] = { id = 11, role = "miner", dim = "overworld", leader = 10, stats = { ores = 500 }, got = { ["minecraft:diamond"] = 40 },
+             lastSeen = os.clock(), log = {}, queue = {} } }
+  AWAY.offSince = nowA - 600000                          -- you left 10 min ago
+  AWAY.start()
+  CHECK(AWAY.left == nowA - 600000, "away counts from when you LEFT, not from 5 min later")
+  MINE.units[11].stats.ores, MINE.units[11].got["minecraft:diamond"] = 800, 60   -- +300 ores, +20 diamonds
+  MINE.units[10].ci = 6                                                          -- +2 chunks
+  AWAY.track()
+  MINE.units[11].stats.ores, MINE.units[11].got["minecraft:diamond"] = 0, 0      -- the miner restarted
+  AWAY.track()
+  MINE.units[11].stats.ores, MINE.units[11].got["minecraft:diamond"] = 250, 15   -- +250, +15 after it
+  local txt = {}
+  for _, l in ipairs(AWAY.report()) do txt[#txt + 1] = l.t end
+  txt = table.concat(txt, " | ")
+  CHECK(txt:find("+2 chunks, +550 ores", 1, true), "mining while away counted across a miner restart (" .. txt .. ")")
+  CHECK(txt:find("diamond 35", 1, true), "items counted across the restart too")
+  CHECK(txt:find("Away 10 min", 1, true) or txt:find("Away 9 min", 1, true), "away time from when you left (" .. txt:sub(1, 40) .. ")")
+  -- the report must never leave away mode stuck ON (before: no report ever again)
+  local rep0 = AWAY.report
+  AWAY.report = function() error("broken report") end
+  CLOCK = CLOCK + 10
+  online = { "Alaory" } refreshPlayers(true)
+  AWAY.tick()
+  AWAY.report = rep0
+  CHECK(not AWAY.on, "an error in the report: away mode still ends")
+  CHECK(AWAY.last and tostring(AWAY.last.lines[2] and AWAY.last.lines[2].t):find("could not be made", 1, true), "...and says the report failed")
+  -- the base says in the SYSTEM log that it saw you go offline
+  local logged = {}
+  local sl0 = sysLog
+  sysLog = function(m) logged[#logged + 1] = m end
+  online = {} refreshPlayers(true)
+  AWAY.tick()
+  AWAY.tick()
+  sysLog = sl0
+  local n = 0
+  for _, m in ipairs(logged) do if m:find("You are offline", 1, true) then n = n + 1 end end
+  CHECK(n == 1, "going offline is noted once in the SYSTEM log (" .. n .. ")")
+  local out = table.concat(handleCommand("away") or {}, "\n")
+  CHECK(out:find("owner: Alaory", 1, true) and out:find("server player list", 1, true), "away shows what the base sees")
+  online = { "Alaory" } refreshPlayers(true)
+  AWAY.tick()
+end

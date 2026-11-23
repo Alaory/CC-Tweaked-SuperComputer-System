@@ -9,7 +9,8 @@ local a = src:find("-- the base's no-dig zone", 1, true)
 local b = src:find("function isOre(b)", a or 1, true)
 if not (a and b) then print("FAIL: no base no-dig zone in node.lua") print("FAILED") os.exit(1) end
 local DUG = 0
-turtle = { inspect = function() return true, { name = "minecraft:stone" } end, dig = function() DUG = DUG + 1 return true end }
+turtle = { inspect = function() return true, { name = "minecraft:stone" } end, dig = function() DUG = DUG + 1 return true end,
+           getItemCount = function() return 0 end }   -- (empty inventory: nothing to throw away)
 function natural() return true end
 function withEquipped(_, f) return f() end
 CONFIG = { dig = true, digNearHome = 24, baseAt = "-5271,64,10845", noDigBase = 96 }

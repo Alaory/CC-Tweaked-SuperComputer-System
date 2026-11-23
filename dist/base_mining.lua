@@ -39,14 +39,19 @@ end
 
 function MINE.load()
 local path = dataPath and dataPath(FILE) or FILE
-if not fs.exists(path) then return end
-local h = fs.open(path, "r")
-local t = h and textutils.unserialize(h.readAll() or "")
-if h then h.close() end
+local t = readSafe(path)
 if type(t) == "table" then
 for id, u in pairs(t) do
-u.id, u.log, u.queue = tonumber(id) or u.id, u.log or {}, {}
-MINE.units[u.id] = u
+local uid = tonumber(id) or (type(u) == "table" and tonumber(u.id))
+if uid and type(u) == "table" then
+
+local c = { label = u.label, role = u.role, dim = u.dim, got = u.got, stats = u.stats, pos = u.pos }
+if TT.clean then TT.clean(c) end
+local log = {}
+for _, e in ipairs(type(u.log) == "table" and u.log or {}) do if type(e) == "table" then log[#log + 1] = e end end
+c.id, c.log, c.queue, c.seenEpoch = uid, log, {}, tonumber(u.seenEpoch)
+MINE.units[uid] = c
+end
 end
 end
 end
@@ -120,7 +125,7 @@ u.lastN = m.n
 u.lastSeen, u.seenEpoch = os.clock(), os.epoch("utc")
 for _, k in ipairs({ "label", "role", "dim", "task", "fuel", "fuelMax", "free", "pos", "partner", "running", "err",
 "ci", "li", "nl", "phase", "station", "carry", "got", "stats", "ver", "rowLength",
-"team", "leader", "ready", "idx", "transit" }) do
+"team", "leader", "ready", "idx", "transit", "code", "updReady" }) do
 u[k] = m[k]
 end
 
@@ -254,4 +259,327 @@ MINE.units[id] = nil
 pcall(MINE.save)
 return true, "the loader #" .. l.id .. " takes miner #" .. id .. " out of the team (its layer goes to the others)" ..
 (MINE.online(l) and "" or " - the loader is offline: it gets this when it reports again")
+end
+
+
+
+
+
+
+
+
+
+
+
+
+MINE.CODE_FILE = "miner_code.lua"
+MINE.PIECE = 8000
+function MINE.codeHash(text)
+local h = 0
+for i = 1, #text, 64 do
+local b = { string.byte(text, i, math.min(#text, i + 63)) }
+for k = 1, #b do h = (h * 31 + b[k]) % 4294967296 end
+end
+return string.format("%08x", h)
+end
+local function readAll(p)
+if not (p and fs.exists(p)) or fs.isDir(p) then return nil end
+local h = fs.open(p, "rb")
+if not h then return nil end
+local s = h.readAll()
+h.close()
+return s
+end
+
+function MINE.setCode(text, from)
+local fn, err = load(text, "=miner.lua", "t", {})
+if not fn then return nil, "miner.lua does not compile: " .. tostring(err) end
+if not text:find("MYVER", 1, true) then return nil, "that is not miner.lua" end
+local pieces = {}
+for i = 1, #text, MINE.PIECE do pieces[#pieces + 1] = text:sub(i, i + MINE.PIECE - 1) end
+local mv = text:match('MYVER%s*=%s*"([^"]+)"')
+MINE.code = { text = text, ver = MINE.codeHash(text), pieces = pieces, from = from, myver = mv }
+return MINE.code
+end
+
+
+
+MINE.WHERE_FILE = "miner_where.dat"
+function MINE.codeWhere()
+local okR, w = pcall(readSafe, MINE.WHERE_FILE)
+if okR and type(w) == "table" and type(w.path) == "string" then return w end
+return nil
+end
+
+function MINE.readStored()
+local w = MINE.codeWhere()
+if w then
+if STORE and STORE.isRemote(w.path) then
+local okR, t = pcall(STORE.read, w.path)
+if okR and type(t) == "string" and #t > 0 then return t end
+else
+local t = readAll(w.path)
+if t then return t end
+end
+end
+return readAll(dataFile and dataFile(MINE.CODE_FILE) or MINE.CODE_FILE)
+end
+
+function MINE.storeCode(text)
+local w = MINE.codeWhere()
+if w and MINE.readStored() == text then return true, w.path end
+local where
+if STORE and STORE.helpers then
+local ids = {}
+for id, h in pairs(STORE.helpers) do
+if STORE.usable(h) and (h.free or 0) >= #text + 32 * 1024 then ids[#ids + 1] = id end
+end
+local oldId = w and STORE.parse(w.path)
+table.sort(ids, function(a, b)
+if (a == oldId) ~= (b == oldId) then return a == oldId end
+return (STORE.helpers[a].free or 0) > (STORE.helpers[b].free or 0)
+end)
+for _, id in ipairs(ids) do
+local p = "store:" .. id .. "/" .. MINE.CODE_FILE
+local okW = pcall(STORE.write, p, text)
+local okR, back = pcall(STORE.read, p)
+if okW and okR and back == text then where = p break end
+end
+end
+if not where then
+local p = dataFile and dataFile(MINE.CODE_FILE, true) or MINE.CODE_FILE
+if readAll(p) == text then where = p
+else
+local okS = saveFileSafe(p, text)
+if okS ~= false and fs.exists(p) then where = p end
+end
+end
+if not where then
+return false, "no room for miner.lua (" .. math.ceil(#text / 1024) .. " KB): no storage helper / data floppy with that much free"
+end
+writeSafe(MINE.WHERE_FILE, serialSmall({ path = where }))
+
+if w and w.path ~= where then
+if STORE and STORE.isRemote(w.path) then pcall(STORE.delete, w.path) elseif fs.exists(w.path) then pcall(fs.delete, w.path) end
+end
+if STORE and STORE.isRemote(where) then
+for _, d in ipairs(mountedDisks and mountedDisks() or {}) do
+local p = fs.combine(d.mount, MINE.CODE_FILE)
+if fs.exists(p) then pcall(fs.delete, p) end
+end
+if fs.exists(MINE.CODE_FILE) then pcall(fs.delete, MINE.CODE_FILE) end
+end
+return true, where
+end
+
+
+
+
+
+function MINE.verNum(text)
+return tonumber(tostring(text or ""):match('MYVER%s*=%s*"m(%d+)"')) or -1
+end
+function MINE.loadCode(download, log)
+log = log or function() end
+local cands = {}
+local here = fs.combine(BASE_DIR or "", "miner.lua")
+local hereText = readAll(here)
+if hereText then cands[#cands + 1] = { text = hereText, from = "miner.lua on this computer" } end
+if download and http then
+local path = fs.combine(BASE_DIR or "", "upgrade.lua")
+local fn = fs.exists(path) and loadfile(path, "t", _ENV)
+if fn then
+local okR, done, body, v = pcall(fn, { fetch = "miner.lua", group = "miner", dir = BASE_DIR or "", log = log })
+if okR and done and type(body) == "string" then cands[#cands + 1] = { text = body, from = "GitHub " .. tostring(v) }
+else log("Download did not work - using what is here") end
+end
+end
+local stored = MINE.readStored()
+if stored then cands[#cands + 1] = { text = stored, from = "the stored copy" } end
+if #cands == 0 then
+return nil, "no miner.lua: drag one onto this computer (next to inventory.lua) or allow http for  mine update"
+end
+local best, why
+for _, c in ipairs(cands) do
+local okC, e = MINE.setCode(c.text, c.from)
+if okC then
+c.n = MINE.verNum(c.text)
+if not best or c.n > best.n then best = c end
+else
+why = e
+end
+end
+if not best then return nil, why end
+if #cands > 1 then
+local list = {}
+for _, c in ipairs(cands) do list[#list + 1] = c.from .. " = m" .. tostring(c.n or "?") end
+log("Found " .. table.concat(list, ", ") .. " - using the newest: " .. best.from)
+end
+local c = MINE.setCode(best.text, best.from)
+local okS, where = MINE.storeCode(best.text)
+if okS and hereText then
+pcall(fs.delete, here)
+log("miner.lua next to inventory.lua " .. (best.text == hereText and "moved onto the data storage" or "was older - removed"))
+elseif not okS then
+log("Not kept: " .. tostring(where))
+end
+return c
+end
+
+
+function MINE.updPlan(ver)
+local teams = MINE.teams()
+local plan = { send = {}, old = {}, skipDim = {} }
+for d, team in pairs(teams) do
+local members = { team.loader }
+for _, m in ipairs(team.miners) do members[#members + 1] = m end
+local oldIds = {}
+for _, u in ipairs(members) do
+if u and MINE.online(u) and u.code == nil then oldIds[#oldIds + 1] = "#" .. u.id end
+end
+if #oldIds > 0 then
+plan.skipDim[d] = oldIds
+for _, s in ipairs(oldIds) do plan.old[#plan.old + 1] = s end
+else
+for _, u in ipairs(members) do
+if u and MINE.online(u) and u.code ~= ver then plan.send[#plan.send + 1] = u end
+end
+end
+end
+return plan
+end
+
+
+function MINE.startUpdate(code)
+local out = {}
+MINE.code = code or MINE.code
+local c = MINE.code
+if not c then return { "No miner.lua to send." } end
+local plan = MINE.updPlan(c.ver)
+local U = { ver = c.ver, t0 = os.clock(), last = -99, resume = {}, dims = {}, sent = 0 }
+for d, team in pairs(MINE.teams()) do
+if not plan.skipDim[d] then
+U.dims[d] = true
+local l = team.loader
+if l and l.running and MINE.online(l) then
+MINE.cmd(l.id, "pause")
+U.resume[l.id] = d
+out[#out + 1] = "Team in " .. tostring(d) .. " PAUSED for the update - started again when all of it runs the new program"
+end
+else
+out[#out + 1] = "Team in " .. tostring(d) .. " left alone: " .. table.concat(plan.skipDim[d], " ") ..
+" run m20 or older - copy miner.lua onto them by hand once, after that  mine update  works"
+end
+end
+if #plan.send == 0 then
+out[#out + 1] = "Every mining turtle that can be updated already runs this program (" .. tostring(c.myver) .. ")."
+for id in pairs(U.resume) do MINE.cmd(id, "start") end
+MINE.upd = nil
+return out
+end
+MINE.upd = U
+out[#out + 1] = ("Sending miner.lua %s (%s, %d KB) to %d turtle(s); each installs it while paused and restarts.")
+:format(tostring(c.myver), c.from or "?", math.ceil(#c.text / 1024), #plan.send)
+MINE.updTick()
+return out
+end
+
+
+function MINE.sendCode(u)
+local c = MINE.code
+if not c then return end
+for i, p in ipairs(c.pieces) do
+local n = os.epoch("utc")
+if n <= state.tLastN then n = state.tLastN + 1 end
+state.tLastN = n
+local a = { c.ver, tostring(i), tostring(#c.pieces), p }
+local ses = (u.dups and #u.dups > 0) and u.mainSes or nil
+state.tOut[#state.tOut + 1] = { id = u.id, msg = { t = "cmd", n = n, cmd = "upd", args = a, ses = ses,
+sig = TT.sign(CONFIG.turtles.key, "cmd", n, "upd", a) } }
+end
+u.updSentAt = os.clock()
+os.queueEvent("turtle_send")
+end
+
+
+
+function MINE.updTick()
+local U, c = MINE.upd, MINE.code
+if not U or not c or c.ver ~= U.ver then return end
+if os.clock() - U.last < 20 then return end
+U.last = os.clock()
+local teams = MINE.teams()
+local left = 0
+for d in pairs(U.dims) do
+local team = teams[d]
+local members = team and { team.loader } or {}
+for _, m in ipairs(team and team.miners or {}) do members[#members + 1] = m end
+local todo = 0
+
+
+local busyTwin = {}
+for _, u in ipairs(members) do
+if u and u.code ~= U.ver and u.updSentAt and os.clock() - u.updSentAt <= 60 then busyTwin[(tonumber(u.id) or 0) % 100000] = u.id end
+end
+for _, u in ipairs(members) do
+if u and MINE.online(u) and u.code ~= nil and u.code ~= U.ver then
+todo = todo + 1
+local twin = busyTwin[(tonumber(u.id) or 0) % 100000]
+
+if u.updReady ~= U.ver and os.clock() - (u.updSentAt or -999) > 60 and not (twin and twin ~= u.id) then
+busyTwin[(tonumber(u.id) or 0) % 100000] = u.id
+MINE.sendCode(u)
+U.sent = U.sent + 1
+MINE.log(u, "> update " .. tostring(c.myver) .. " sent")
+end
+end
+end
+left = left + todo
+if todo == 0 then
+for id, dd in pairs(U.resume) do
+if dd == d then
+MINE.cmd(id, "start")
+U.resume[id] = nil
+pushNote("DONE", "Mining team in " .. tostring(d) .. " updated to " .. tostring(c.myver) .. " - started again", C.good)
+end
+end
+U.dims[d] = nil
+end
+end
+if left == 0 and not next(U.dims) then
+MINE.upd = nil
+pushNote("DONE", "Mining turtles updated to " .. tostring(c.myver), C.good)
+if sysLog then sysLog("Mining turtles updated to miner.lua " .. tostring(c.myver), "INFO") end
+elseif os.clock() - U.t0 > 3600 then
+for id in pairs(U.resume) do MINE.cmd(id, "start") end
+MINE.upd = nil
+pushNote("WARNING", "Miner update: " .. left .. " turtle(s) did not take the new program in 1 h - teams started again", C.warn)
+end
+end
+
+
+
+
+
+function MINE.silentTick()
+local limit = tonumber(MINE.cfg("silentWarn", 900)) or 900
+for id, u in pairs(MINE.units) do
+if u.lastSeen and os.clock() - u.lastSeen > limit then
+if not u.silentSaid then
+u.silentSaid = true
+local p = u.pos
+local where = (type(p) == "table" and p.x) and (p.x .. " " .. p.y .. " " .. p.z) or "unknown"
+local last = u.log and u.log[1] and u.log[1].msg or "-"
+local line = (u.label or ("#" .. id)) .. " (" .. tostring(u.role) .. ", " .. tostring(u.dim) .. ") is SILENT for " ..
+math.floor((os.clock() - u.lastSeen) / 60) .. " min - last seen at " .. where ..
+" doing '" .. tostring(u.task or "?") .. "'; last note: " .. tostring(last)
+MINE.log(u, line)
+if sysLog then sysLog("Mining: " .. line, "WARNING") end
+pushNote("WARNING", line, C.warn)
+end
+elseif u.silentSaid and u.lastSeen and os.clock() - u.lastSeen < 60 then
+u.silentSaid = nil
+MINE.log(u, "It reports again")
+end
+end
 end

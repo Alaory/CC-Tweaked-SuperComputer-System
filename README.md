@@ -1,11 +1,15 @@
 # CC:Tweaked Base Control
 
 **One computer and one big monitor that run your whole Minecraft base:** your
-inventory, players, backpacks, curios, an AE2 network, drone rides, a team of
-mapping turtles and a map of the world.
+inventory, players, backpacks, curios, an AE2 network, drone rides and drone-built
+schematics, a team of mapping turtles, a map of the world, mining teams - and, if you
+want, a base that talks.
 
 > Made for **CC:Tweaked 1.120.2** on **Minecraft 1.21.1 (NeoForge)** with
 > **Advanced Peripherals** · optional: **PneumaticCraft**, **AE2 / Refined Storage**, **Curios**
+
+**Version 1.0.0** - see [CHANGELOG.md](CHANGELOG.md) for what is new. The base shows its version on
+SYSTEM > Status and with the console command `version`.
 
 ---
 
@@ -14,6 +18,7 @@ mapping turtles and a map of the world.
 - [What it does](#what-it-does)
 - [What you need](#what-you-need)
 - [Installation](#installation)
+- [Using it day to day](#using-it-day-to-day)
 - [Updating](#updating)
 - [Configuration](#configuration)
 - [Turtles](#turtles)
@@ -22,11 +27,16 @@ mapping turtles and a map of the world.
 - [While you are away](#while-you-are-away)
 - [Turtle factory](#turtle-factory)
 - [Pocket remote](#pocket-remote)
-- [Schematics (builder turtles)](#schematics-builder-turtles)
+- [Schematics (drones build them)](#schematics-drones-build-them)
 - [Mining dimension teams](#mining-dimension-teams)
+- [The voice add-on](#the-voice-add-on)
+  - [Talking to it](#talking-to-it)
+  - [When you are gone a long time (the lonely base)](#when-you-are-gone-a-long-time-the-lonely-base)
+- [The spawn speaker](#the-spawn-speaker)
 - [The map](#the-map)
 - [Chat commands](#chat-commands)
 - [Console commands](#console-commands)
+- [COMMANDS.md](COMMANDS.md): every command with its usage
 - [Themes & the message log](#themes--the-message-log)
 - [Tips & troubleshooting](#tips--troubleshooting)
 - [Files](#files)
@@ -45,13 +55,26 @@ The top row has the tab groups; a group with several pages shows them as small t
 |---|---|---|
 | **HOME** | | Everything at a glance, every page one tap away, quick actions. |
 | **YOU** | Inventory · Backpacks · Curios | Your inventory, armour and item list · what is inside your backpacks and tanks · your curios: store in ME, put on from ME, **auto-equip** (keep one on). |
-| **AE2** (or **RS**) | | Network status, item / fluid browser, take and store items, fill fluid containers, craft. |
-| **PLAYERS** | Players · Chat & rides | A card per online player (dimension, health, position) · who may use the `$drone` chat commands, ride requests, the base's messages in your chat. |
-| **DRONES** | | PneumaticCraft drones: air, mission steps, log. Pick a passenger and a destination, then fly, pick up, drop or ferry. |
+| **AE2** (or **RS**) | Storage · System | Network status, item / fluid browser, take and store items, fill fluid containers, craft, keep a storage filled · crafting CPUs, running jobs (cancel), your craft requests, drives, patterns you can craft from. |
+| **PLAYERS** | Players · World · Chat & rides · Gifts | Every player ever seen (where they are, health, visits, time on the server) · game time, weather, moon, mobs around the base · who may use the `$drone` chat commands, ride requests, the base's messages in your chat · AE2 items sent to players by drone (with the voice add-on). |
+| **DRONES** | Drones · Drone work | PneumaticCraft drones: air, mission steps, log. Pick a passenger and a destination, then fly, pick up, drop or ferry · the drones' work chest, fuel runs to turtles, saved places, schematic builds. |
 | **TURTLES** | Turtles · Drive · Map · Mining | Every turtle with status, fuel, gear, log and a control pad; the **FLEET** card when none is selected · **steer one turtle by hand** and see the blocks around it · the terrain map: zoom 1-512 blocks per cell, surveys, **AUTO-MAP** · the mining teams. |
 | **SYSTEM** | Status · Messages · Settings | How the base is doing, a **system log**, the times it was off, UPGRADE PROGRAM · every message (kept after restarts) · **settings** you change by tapping (saved in `settings.dat`; your `base_config.lua` stays as it is). |
 
 A tab only shows up when the block it needs is connected.
+
+### What it looks like
+
+Real screens of the program (an example base, drawn with `tools/preview` - in game the letters are the Minecraft font).
+
+| | |
+|---|---|
+| ![HOME](docs/images/home.png) **HOME** - live numbers, what needs you, recent messages, quick actions | ![AE2](docs/images/me.png) **AE2 > STORAGE** - find, take, store and craft; keep a storage filled |
+| ![TURTLES](docs/images/turtles.png) **TURTLES** - every turtle's state and fuel, what needs a look | ![MAP](docs/images/map.png) **TURTLES > MAP** - the land the turtles mapped, surveys, auto-map |
+| ![DRONES](docs/images/drone.png) **DRONES** - rides: a passenger, a destination, FERRY | ![DRONE WORK](docs/images/work.png) **DRONES > DRONE WORK** - the work chest, fuel runs, a schematic build seen from above |
+| ![YOU](docs/images/inventory.png) **YOU > INVENTORY** - your backpack, hotbar, armour; send items to AE2 | ![PLAYERS](docs/images/players.png) **PLAYERS** - everyone ever seen: where, health, visits |
+| ![DRIVE](docs/images/drive.png) **TURTLES > DRIVE** - steer one turtle by hand, the blocks around it | ![AE2 SYSTEM](docs/images/mesys.png) **AE2 > SYSTEM** - crafting CPUs, jobs, drives, patterns |
+| ![SYSTEM](docs/images/system.png) **SYSTEM > STATUS** - disk, floppies, helpers, the system log | ![SETTINGS](docs/images/settings.png) **SYSTEM > SETTINGS** - change settings by tapping |
 
 **Messages:** warnings and errors pop up as small boxes in the bottom-right corner; everything
 else goes to SYSTEM > Messages (and `events.log`). What you just tapped always gets a box.
@@ -63,21 +86,28 @@ If you want, messages are also sent to you privately in chat.
 
 ### Required
 
-- A **Computer** (CC:Tweaked)
-- A big **Advanced (gold) Monitor**. If it is too small, the screen tells you.
-- An **Inventory Manager** (Advanced Peripherals) with a **Memory Card** bound to you
+- A **Computer** (CC:Tweaked) - an Advanced Computer is best
+- A big **Advanced (gold) Monitor**. If it is too small, the screen tells you. (The base even
+  starts without one - it uses the monitor as soon as you place it.)
+
+### Strongly recommended
+
+- An **Inventory Manager** (Advanced Peripherals) with a **Memory Card** bound to you: it tells the
+  base who the owner is and gives you the YOU tab
 
 ### Optional: each one adds features
 
 | Block | Adds |
 |---|---|
 | Player Detector | PLAYERS tab, finding players for drone rides |
-| Environment Detector | which dimension the base is in |
+| Environment Detector | WORLD page (time, weather, moon, mobs), who is at the base for the voice add-on |
+| Speaker | the voice add-on (the base talks) |
 | ME Bridge / RS Bridge + a buffer chest | ME / RS tab |
 | Drone Interface (one per drone) + Charging Station | DRONES tab |
 | Chat Box | `$drone` chat commands, CHAT tab, messages in chat |
 | Ender Modem (or Wireless Modem) on the computer | TURTLES and MAP tabs |
 | Disk Drive + floppy | turtle install floppy, extra room for the map |
+| Another computer on the cable running `store.lua` | 1 MB more room - the map, schematics and the voice add-on go there first |
 
 > **Connecting the blocks:** blocks can touch the computer, or sit anywhere on a
 > **wired network**. For that, put a Wired Modem on each block and on the computer,
@@ -86,6 +116,21 @@ If you want, messages are also sent to you privately in chat.
 ---
 
 ## Installation
+
+**In this order** (only step 1 is needed - every other step adds its part when you want it):
+
+| Step | What | Gives you |
+|---|---|---|
+| [1](#1-the-base-computer) | the base computer, monitor, Inventory Manager | HOME, your inventory, SYSTEM, the console |
+| [2](#2-turtles) | turtles | the map, surveys, rescues, the factory |
+| [Helpers](#extra-storage-helper-computers-optional) | one or two extra computers on the cable | room for the map, the voice add-on and schematics |
+| [3](#3-me-network) | ME Bridge + a buffer chest | the AE2 tab, crafting, keep-filled storages |
+| [4](#4-drones) | drones + a Charging Station | rides, drone work, schematic builds, gifts |
+| [5](#5-players-and-chat) | Player Detector + Chat Box | the PLAYERS tab, `$drone` chat commands |
+| [6](#6-your-inventory-and-curios) | the curios barrel | taking curios off one by one, auto-equip |
+| [7](#7-the-voice-add-on) | Speakers (+ an Environment Detector) | the base talks and answers in chat |
+| [8](#8-the-turtle-factory) | a factory chest + a builder turtle | new turtles built by themselves |
+| [9](#9-the-rest) | pocket remote, mining teams, spawn speaker | see their own sections |
 
 ### 1. The base computer
 
@@ -99,9 +144,11 @@ wget https://raw.githubusercontent.com/Alaory/CC-Tweaked-SuperComputer-System/ma
 upgrade
 ```
 
-`upgrade` downloads every program file, checks each one and restarts the computer.
-(No internet on the server? Copy `inventory.lua`, every `base_*.lua`, `node.lua`, `store.lua`
-and `startup.lua` by hand instead - drag the files onto the computer's screen.)
+`upgrade` downloads every program file, checks each one and restarts the computer. The turtle
+program (`node.lua`) is NOT kept on the computer: it goes onto a storage helper or a data floppy.
+(No internet on the server? Take the zips from the [GitHub release](https://github.com/Alaory/CC-Tweaked-SuperComputer-System/releases):
+drag the files of `base-control-<version>.zip` onto the computer's screen, and put `node.lua` from
+`turtle-program-<version>.zip` onto a floppy in one of the base's disk drives - the base finds it there.)
 
 1. Open `base_config.lua` and set at least:
    - `turtles.key`: a secret word of your own (not `"change-me"`). Turtles
@@ -137,14 +184,16 @@ A new turtle refuels by itself and gets a home by itself (see [Turtles](#turtles
 
 ### Extra storage: helper computers (optional)
 
-Each extra computer gives the map **1 MB** more (about 8 floppies):
+Each extra computer gives the base **1 MB** more (about 8 floppies). The base uses helpers
+**first**: the map, the voice add-on, the stored turtle and miner programs, and schematics you
+drop on the screen all go there before the floppies and the computer itself.
 
 1. Put a computer near the base, **in the same chunk if you can** (it must stay
    loaded), with a **Wired Modem** connected to the base's cable. Right-click
    the modem so it turns on.
 2. Copy `store.lua` onto it and run `store` once. It then starts by itself.
-3. On the base computer, type `store find`. The map uses the helpers when the
-   data floppies are full.
+3. On the base computer, type `store find` (it also finds new helpers by itself within a few
+   minutes). `store` shows each helper and how much room it has.
 
 A helper belongs to the first base that uses it (`store reset` on the helper
 changes that) and only listens on wired modems.
@@ -160,9 +209,107 @@ the chest by itself and remembers it.
 
 ### 4. Drones
 
-Program a PneumaticCraft drone with a ComputerCraft puzzle piece whose area
-contains the Drone Interface, and launch it. The DRONES tab shows it as
-connected. After each mission it parks on its Charging Station.
+1. **One Drone Interface per drone**, on the base's cable (a wired modem on it, right-clicked).
+2. Program the drone in a Programmer with the **Computer Control** puzzle piece (from PneumaticCraft's
+   ComputerCraft support); its area must contain the Drone Interface. Launch the drone. The
+   DRONES tab shows it as **connected**.
+3. Place a **Charging Station** and tell the base where it is: `drone.charger` in `base_config.lua`, or
+   stand next to it and type `charger <x> <y> <z>` on the computer (`charger` shows it). After every
+   mission the drone parks there and fills up with air.
+4. Set **`drone.home`** in `base_config.lua`: your "Base", where riders are dropped off. For an
+   underground base keep `drone.travel = "teleport"`.
+5. **First ride:** DRONES tab, pick a passenger and a destination, tap PICK UP, then DROP AT DEST (or FERRY
+   for both, two taps). In chat: `$drone home` (needs the Chat Box, step 5).
+6. **Drone work** (fuel runs to turtles, schematic builds, gifts) also needs a **work chest**: an EMPTY
+   chest on the cable that only the base and the drones use, with open air on top. Stand on it and
+   type `$drone workchest` in chat (or DRONES > DRONE WORK: tap CHEST until yours shows, or BLOCK UNDER ME). Test it with
+   `dw test` on the computer, standing next to the chest: one item goes AE2 -> chest -> a drone drops
+   it at your feet.
+
+### 5. Players and chat
+
+- Put a **Player Detector** on the cable: the PLAYERS tab appears (every player ever seen, where
+  they are, health, visits) and drones can find players for rides.
+- Put a **Chat Box** on the cable: the `$drone` chat commands work (try `$drone help`) and the
+  base can send you its messages in chat (`$drone notify on`).
+- **You** may use every command. Other players need you first: `allow <name>` on the computer (or
+  `$drone allow <name>` in chat); `allowed` lists them. Players not on the list can ask for a ride
+  and you answer `$drone yes <name>` / `$drone no <name>`.
+
+### 6. Your inventory and curios
+
+- The **Inventory Manager** with a **Memory Card** bound to you is what makes you the owner (`owner`
+  shows who the base thinks that is). The YOU tab shows your inventory and armour: tap an item, then
+  SEND x1 / SEND STACK / SEND ALL to put it into AE2; tap a worn piece to take it off.
+- **Curios** (rings, charms, totems ...): put an **empty barrel used only for curios** on the cable
+  and set it in `base_config.lua`:
+  ```lua
+  me = { curiosChest = "minecraft:barrel_2" },   -- its network name (chests lists them)
+  ```
+  `curios check` tells you if your worn items can be read. Then on the CURIOS tab: tap a slot,
+  take things off, put things on from AE2, or tap **AUTO** / **KEEP ONE ON** so the base puts a new one
+  on by itself (a used totem is replaced the next tick).
+
+### 7. The voice add-on
+
+1. Put a **Speaker** next to the computer or on the cable (several = all play). The server needs http
+   to `music.madefor.cc` (the free speech service).
+2. Optional but better: an **Environment Detector** next to the base - then the base only greets
+   players who really stand at the system, and knows the time and weather.
+3. Make room for it: a **storage helper** (see above) or a data floppy (`disks data`).
+4. Type `voice install` on the computer. When it is done, stand near the base and type `base, hello`
+   in chat. `voice name <word>` changes what players call it; `voice try` plays every ready-made
+   voice and `voice preset <name>` keeps one.
+
+More in [The voice add-on](#the-voice-add-on).
+
+### 8. The turtle factory
+
+1. An empty **factory chest** (or barrel) on the cable, right next to where the builder turtle stands.
+2. The **builder**: your rescuer turtle (or one you pick), at its home next to that chest, with a
+   **Disk Drive**, the **install floppy** and a **pickaxe** in its inventory.
+3. SETTINGS > FACTORY: tap the factory chest until yours shows, choose the builder (automatic =
+   the rescuer), and set "Keep this many turtles".
+4. Type `factory` on the computer: it lists every part and whether AE2 has it or can craft it.
+
+More in [Turtle factory](#turtle-factory).
+
+### 9. The rest
+
+- **Pocket remote:** [Pocket remote](#pocket-remote).
+- **Mining teams in a mining dimension:** [Mining dimension teams](#mining-dimension-teams).
+- **The spawn speaker:** [The spawn speaker](#the-spawn-speaker).
+- **A shared fuel chest for the turtles:** `turtles.fuelChest` in `base_config.lua` ([Fuel](#fuel)).
+- **A storage kept full from AE2** (a tank, a furnace's input ...): the AE2 tab, KEEP A STORAGE FILLED
+  ([ME / Curios](#me--curios)).
+- **Copying a file onto the computer:** drag it onto the open computer's screen, also while the base
+  runs ([COMMANDS.md](COMMANDS.md#dropping-files-onto-the-computer)).
+
+---
+
+## Using it day to day
+
+| You want to | Do |
+|---|---|
+| see what needs you | HOME: NEEDS YOU lists every problem with a button to its page |
+| ride somewhere | `$drone home` / `$drone to <place>` / `$drone to @<player>` / `$drone back` in chat, or the RIDE tab on the pocket |
+| save a place | stand on it, `$drone mark <name>` in chat (or `save <name> me` on the computer) |
+| take items out of AE2 | AE2 tab: pick the item, TAKE TO MY INVENTORY x1 / x16 / x64 / ALL |
+| store items | YOU tab: tap an item, then SEND x1 / SEND STACK / SEND ALL |
+| craft something | AE2 tab: pick the item, CRAFT x1 / x16 / x64 / x256; AE2 > SYSTEM shows the job and lets you cancel it |
+| keep a tank / chest filled | AE2 tab: pick the item or fluid, KEEP A STORAGE FILLED, choose the storage and an amount |
+| map the world | TURTLES > MAP: AUTO-MAP ON (turtles map in rings from the base outward), or SURVEY: ALL for what you see |
+| stop / call back the turtles | HOME quick actions: STOP ALL TURTLES / ALL TURTLES HOME (two taps) |
+| find lost turtles | HOME: FIND LOST (a search party flies out) |
+| drive a turtle yourself | TURTLES > DRIVE |
+| build a schematic | drop the `.nbt` on the computer's screen, then DRONES > DRONE WORK ([Schematics](#schematics-drones-build-them)) |
+| build a road in pieces | `schem chain road_start,road*6,road_end` ([Schematics](#schematics-drones-build-them)) |
+| empty a lake or a lava pool to build in | `$drone clear here` on two corners, then `$drone clear yes` |
+| take a build down / dig out an area / break a block | `schem unbuild` · `$drone dig here` (two corners) · `$drone break x y z` |
+| send a player a gift | PLAYERS > GIFTS (with the voice add-on): pick an AE2 item, the player, SEND - a drone brings it |
+| see what happened while you were away | the WELCOME BACK box when you log in, or `away` on the computer |
+| get the newest version | `upgrade` on the computer (the voice add-on updates itself right after) |
+| look up a command | `help` on the computer, `$drone help` in chat, or [COMMANDS.md](COMMANDS.md) |
 
 ---
 
@@ -174,11 +321,22 @@ connected. After each mission it parks on its Charging Station.
 | Turtles | They get the new `node.lua` from the base by themselves - while you are **offline** (an update restarts them), or at once with **UPDATE TURTLES**. A busy turtle installs it after its job. A full disk never breaks a turtle: the update is then refused and the old program keeps running. |
 | Pocket | Type `upgrade` on the pocket computer. |
 | Storage helpers | By themselves, a few minutes after the base was upgraded (`store update` does it at once). |
-| Mining turtles | `miner.lua` is copied onto them by hand. |
+| Voice add-on | `voice update` (also run by itself about 15 s after an `upgrade` restart). |
+| Spawn relay | Copy the new `spawn_speaker.lua` onto it as `startup.lua` by hand when a release says it changed (it stays paired). |
+| Mining turtles | Copy `miner.lua` onto them by hand **once** (m21 or newer). After that: `mine update` on the base computer (or **UPDATE MINERS** on TURTLES > MINING). The base downloads `miner.lua`, keeps it on a storage helper or a data floppy (not on the computer's 1 MB), pauses each running team, sends the program to every loader and miner, and starts the team again once all of them run it. Each turtle installs it only while paused and keeps its team, field, job and unload station. |
 
-The files you get have their comments removed (about 30% smaller - a computer has only 1 MB);
-the commented ones stay on GitHub. `upgrade full` gets the commented files, `upgrade slim`
-goes back. `upgrade branch <name>` follows another branch.
+The files you get have their comments removed and, on the base, are PACKED (`base_*.luz`, about a third of
+the size - a computer has only 1 MB; `unzip.lua` unpacks them in memory when the base starts, which takes a
+few seconds). A plain `base_x.lua` you drag in is used instead of its packed copy until the next `upgrade`.
+`upgrade slim` gets plain files without comments, `upgrade full` the commented ones, `upgrade packed` goes
+back. `upgrade branch <name>` follows another branch.
+
+A computer so full that `upgrade` says "Not enough room": stop the base (Ctrl+T) and run the newest upgrade
+straight from GitHub - it needs no room for itself and packs the files, which frees the space:
+
+```
+wget run https://raw.githubusercontent.com/Alaory/CC-Tweaked-SuperComputer-System/main/upgrade.lua
+```
 
 ---
 
@@ -206,7 +364,7 @@ The settings you will most likely touch:
 | `map.up` | Which way is up on the map (`"north"`, `"east"`, `"south"`, `"west"`) |
 | `map.computerKB` | How much of the computer's disk the map may use (default 200) |
 | `chat.command` | The chat command word (`$drone …`) |
-| `theme` | Fix the monitor's colours, e.g. `theme = "bedrock"` (default: a random one on every start) |
+| `theme` | The monitor's colours: `"teal"` (default), `"amber"`, `"ice"`, `"violet"`, `"graphite"`, `"crimson"` or `"random"` |
 | `names.*` | Pick one block by its network name when you have several of a kind |
 
 > Many settings can also be changed while the program runs: `charger`, `theme`,
@@ -245,12 +403,12 @@ base) through the base.
 
 ### Rescue, anchor and stop
 
-- ** ANCHOR:** one turtle parked in the base computer's chunk keeps the base
+- **ANCHOR:** one turtle parked in the base computer's chunk keeps the base
   running while you are offline.
-- ** RESCUER:** a permanent rescue turtle. It flies to a turtle that has gone
+- **RESCUER:** a permanent rescue turtle. It flies to a turtle that has gone
   silent (for example an unloaded chunk: arriving wakes it up), that is stuck, or
   that has no fuel. It goes home afterwards.
-- ** SEARCH PARTY** (FIND LOST on HOME, the FLEET card or the pocket): all free turtles
+- **SEARCH PARTY** (FIND LOST on HOME, the FLEET card or the pocket): all free turtles
   meet at the base, fly over the sky highway to each lost turtle in turn, drop down to just
   above the ground and scan. A turtle they find is fetched by the rescuer (one at a time); one
   that wakes up when they arrive counts as found; one that is gone is marked **MISSING**.
@@ -258,10 +416,10 @@ base) through the base.
 - **Lost near the base:** a turtle that went silent within 1024 blocks of the base was most
   likely picked up or broken - no rescue goes there. **FORGET THEM** on the FLEET card
   (or `forget base`) clears them.
-- ** STOP** really stops a turtle, also after its chunk was unloaded and loaded
+- **STOP** really stops a turtle, also after its chunk was unloaded and loaded
   again. A stopped turtle shows **STOPPED** and is left alone by automatic jobs.
   Any button (for example PING) makes it normal again.
-- ** Your commands go first:** a button, pocket or console command to a busy turtle pauses
+- **Your commands go first:** a button, pocket or console command to a busy turtle pauses
   its trip or survey, runs yours at once, and the turtle goes back to its job 2 minutes after
   your last command. A build, a craft or a rescue is never cut halfway - it finishes first.
 - **Keeping away from players:** a surveying turtle with another player within
@@ -335,8 +493,30 @@ again …)", "after an update" or "after an ERROR: …".
   SYSTEM > Messages.
 - **Auto-equip:** on the CURIOS tab, **AUTO** next to an item (or **KEEP ONE ON** on one you
   wear) makes the base put a new one on from AE2 whenever it is gone - a used totem, for
-  example. `curios auto` lists the rules. An empty slot lists what fits; SHOW ALL lists
-  everything in AE2.
+  example. It checks every game tick and puts the new one on at once, even while other buttons
+  are busy (made for hardcore). `curios auto` lists the rules. An empty slot lists what fits;
+  SHOW ALL lists everything in AE2.
+- **Armour and off hand:** on the INVENTORY tab, tap a worn piece (helmet, chestplate, leggings,
+  boots, off hand) to see it, then **TAKE OFF > INVENTORY** or **TAKE OFF + SEND > AE2**.
+- **Keep a storage stocked:** put a **wired modem** on any chest, barrel, drawer or tank and
+  right-click the modem (it turns red). On the **AE2** tab pick a fluid or item: under it,
+  **KEEP A STORAGE FILLED** - tap the storage button to choose the storage, then an amount or
+  **FULL** (tap twice). The row then shows **KEPT AT ... - STOP**. Or on the base computer:
+  - `supply` lists the storages on the cable (with numbers) and what is kept stocked.
+  - `supply 1 coal 128` keeps 128 coal in storage 1. `supply 2 fluid water 16` keeps 16 buckets of water.
+  - `supply stop <n|all>` stops a rule. `supply now` checks at once.
+  - Not listed? `supply` also shows **other blocks** on the cable; `supply check <n>` lists what one
+    offers. Not there at all: the wired modem on it is off (right-click it, it turns red).
+
+  The base counts what is in it and sends the difference from AE2 - non-stop while the storage
+  still takes more, then it checks again every second (`supply every <seconds>` changes that). It only ever puts
+  things **in**, never takes anything out, and never sends your own enchanted, renamed or used
+  items. If AE2 runs out, you get one warning. The base's own buffers can't be used.
+  Fluids for your own tanks pass through ONE fluid storage (the fluid buffer, normally your
+  storage controller). With several fluid storages on the cable, `fluidbuffer` shows which one;
+  `fluidbuffer <n>` picks it.
+  A wireless or ender modem can't do this: it only carries messages, so the storage has to
+  be on the cable.
 
 ---
 
@@ -352,6 +532,9 @@ When you come back: a **WELCOME BACK** box, a private chat message, your pocket 
 how long you were away, what was mined and mapped, what the factory built, which turtles were
 found again or marked MISSING, what went wrong and what needs you now.
 Type `away` on the computer to see it again. Settings: SETTINGS > AWAY.
+
+Gone for a week or more? With the voice add-on the base looks after itself and its visitors:
+see [the lonely base](#when-you-are-gone-a-long-time-the-lonely-base).
 
 ## Turtle factory
 
@@ -384,11 +567,48 @@ or back where you died) · **BOTS** (STOP / HOME / GPS / FORGET / DRIVE IT; STOP
 `pocket` on the base lists paired pockets, `pocket unpair <id>` locks one out.
 `upgrade` on the pocket gets the newest `pocket.lua`.
 
-## Schematics (builder turtles)
+## Schematics (drones build them)
 
-Save a build with Create's **Schematic and Quill**, then drag the `.nbt` file (from
-`.minecraft/schematics` on your PC) onto the base computer's screen. `schem` lists them,
-`schem <name>` shows the size and the materials. (Building them with turtles comes next.)
+1. Save a build with Create's **Schematic and Quill**.
+2. Open the base computer and drag the `.nbt` file (from `.minecraft/schematics` on your PC) onto
+   its screen - the base can keep running. It is stored on a **storage helper** first (the
+   computer and the floppies are usually full), else a data floppy, else the computer.
+3. On the monitor: **DRONES > DRONE WORK**, tap the schematic. You see what it needs from AE2 and a
+   picture of it from above. WHERE: in front of you (stand where it should go and look that way)
+   or a saved place; **TURN LEFT / TURN RIGHT**; then **BUILD ... THERE** (tap twice).
+   Or in chat at the spot: `$drone build <name>`, `$drone build turn right`, `$drone build yes`.
+
+The drones need a **work chest** (an empty chest on the cable, see DRONE WORK) and take plain items
+from AE2 - never your enchanted or renamed ones. They build bottom up; torches, doors and other
+things that hang on walls come last. Blocks are placed the default way round (stairs and logs may
+face another way), fluids are left out. Blocks AE2 is short of are CRAFTED by AE2 automatically
+(items it has a pattern for - `schem status` names the ones without a pattern; `schem craft off` to stop
+it, or SETTINGS > DRONES). An item AE2 has none of waits (it looks again every 5 minutes) while the
+rest is built. All free drones work at once, always a few blocks apart so they do not get in each other's way.
+A site nobody keeps loaded gets a turtle in each chunk that has work (a turtle loads only its own chunk); it waits
+above the build. `schem` lists them, `schem <name>` shows the size and the materials, `schem status` / `pause` /
+`stop` for a running build.
+
+**A chain of pieces (a road):** `schem chain road_start,road*6,road_end [x y z] [toward east]` - each piece right
+after the one before, centred, all turned the same way; they are built one after another (`schem queue`, `schem
+skip`). In chat: `$drone chain road_start,road*6,road_end`, then `$drone chain yes`.
+
+**Taking things down:** `schem unbuild` takes your newest build down again, top down - its blocks go back
+into AE2 (`schem built` lists your builds, `schem unbuild <n>` picks one). `dw dig <corner> <corner>` digs out
+every block in an area (in chat: `$drone dig here` on two corners, then `$drone dig yes`), `dw break <x y z>` /
+`$drone break x y z` breaks one block (F3 shows its "Targeted Block"). The work chest, the charger and the drones'
+home spot are never dug. Each start asks for a `yes` first (one block does not). Stone, ores and bricks need a
+PICKAXE: a drone with only one inventory slot cannot carry one, so it leaves those blocks alone (dug by hand they
+would be destroyed). Give the drones an Inventory Upgrade and set SETTINGS > DRONES "Drone inventory slots" to 2: they
+then take a plain pickaxe from AE2 for every dig trip and bring it back.
+
+**Clearing water or lava:** `dw clear <corner> <corner>` (or in chat: `$drone clear here` on the top corner at the
+surface, again on the opposite bottom corner, then `$drone clear yes`). The drones put walls round the box, fill it
+with dirt and dig it out again - an empty, dry hole to build in. Everything inside the walls goes. Drones
+work in the overworld only (their own dimension).
+
+Other files can be dropped onto the computer's screen too - program files are saved next to
+`inventory.lua` (it tells you when a restart is needed). See [COMMANDS.md](COMMANDS.md#dropping-files-onto-the-computer).
 
 ## Mining dimension teams
 
@@ -433,6 +653,9 @@ itself otherwise, so give it plenty of coal blocks if there is no endless item.
    lanes, and the team waits for it before the next crossing. Too far away, or during a crossing:
    the loader says so in the team's LOG and it joins as soon as it can. (Loader and the new miner
    need miner.lua m19 or newer.)
+7. **New version of miner.lua:** `mine update` on the base computer (or **UPDATE MINERS**, two
+   taps). The team is paused first, every turtle gets the new program and restarts, then the team
+   goes on where it was. Turtles with m20 or older need one hand copy first; the base says which.
 
 Optional lines in `base_config.lua`:
 ```lua
@@ -449,23 +672,99 @@ mining = {
 - **Two layers:** *detail* (every block column, newest chunks) and *overview* (one
   colour and height per chunk, never dropped). You see the overview when zoomed
   out to 16 blocks per cell or more.
-- Saved in small files on **data floppies** first. Empty floppies become data
-  disks by themselves, and you are told when to add another one.
-- **SURVEY: ALL TURTLES** maps the area on screen. Big areas are handed out in
-  batches of 64 spots per turtle. `survey` on the computer shows the progress, and
-  what each turtle is waiting for.
+- Saved in small files on **storage helpers** and **data floppies** first (the computer keeps
+  room for itself). Empty floppies become data disks by themselves, and you are told when to
+  add another one.
+- **AUTO-MAP** (on by default) maps outward from the base: every turtle owns a **ring** round
+  the base and works it at its own pace, so nobody waits for anybody and no two turtles map
+  the same line. Turtles far out get fuel by drone instead of flying all the way home.
+- **SURVEY: ALL TURTLES** maps the area on screen. `survey` on the computer shows the progress
+  and what each turtle is waiting for; `survey stats` how fast it goes; `lost` every turtle
+  that went quiet.
 - **Work area** (SETTINGS > MAP, two corners - or SET CORNER on the pocket): turtles survey
   only inside it (auto-map too); its edge is drawn on the map with `+`. Tap "Work area" for
   the whole world again.
-- Turtles survey as a **pack** (side by side), so after a server crash one visit wakes them all.
 - The letters on the map: **B** base · **@** you · **D** drone · **T** turtle.
 
 ---
+
+## The voice add-on
+
+Optional: the base talks through **Speakers** next to the computer (and answers in chat). It
+greets you and visitors, reads out warnings, answers questions ("base, status?", "base, where is
+turtle 5?"), plays games and quizzes, tells jokes, has long conversations and remembers what each
+player likes. It never takes orders from other players, and it stays humble: call it a god and it
+tells you it is just a bot.
+
+- Install: `voice install` on the base computer (needs http on). The files go onto a DATA floppy
+  (`disks data` makes one) or a storage helper - never onto the computer's own 1 MB.
+- Update: nothing to do - it updates itself about 15 s after an `upgrade` restart (`voice update` does
+  it at once). Remove: `voice remove`. The files are kept packed (about a third of the size).
+- Settings: `voice` lists them - `voice on|off`, `voice name <word>` (what players call it),
+  `voice preset <name>` (ready-made voices, try them with `voice try`), `voice speed`, `voice volume`.
+- The speech comes from the free CC text-to-speech service (music.madefor.cc) - the server needs
+  http to that site.
+
+### Talking to it
+
+Everything goes through **chat**. Start a message with its name (`base` unless you changed it with
+`voice name`); once it is talking to you, the name is not needed any more.
+
+| Type in chat | You get |
+|---|---|
+| `base, status?` / `base, where is turtle 5?` | how the base is doing / where a turtle is |
+| `base, let's talk` / `base, i'm bored` / `base, ask me something` / just `base` | a **long conversation**: it asks, you answer, it reacts and asks the next thing |
+| `base, let's talk about mods` | a conversation about one topic: mods, mobs, food, building, mining, redstone, adventure, pets, music, games, the server, dreams, your day, or about it |
+| `what about you?` / `skip` / `something else` / `bye` (mid-chat) | its own answer / another question / another topic / the end |
+| `base, tell me a joke` / `roast me` / `play a game` / `quiz me` / `hangman` | jokes, roasts, games and quizzes (each said 100+ ways) |
+| `base, what do you remember about me?` / `who am I?` | what it learned about you: favourites, likes, how you play |
+| `base, help` | what you can say |
+
+It remembers what players tell it (favourite mob, the mods they like, what they are building, what
+gets in their way) and brings it up later. Server staff can be named with `voice staff add <name>
+<role>` (admin, maintainer, mod, builder ...) and get their own greetings and roasts. Every chat
+phrase is in [COMMANDS.md](COMMANDS.md).
+
+### When you are gone a long time (the lonely base)
+
+After `voice lonely` days without you online (default 7), the base changes the way it talks to
+visitors. The longer you are away, the more it changes (missing you, worried, lonely, keeper,
+legend - all within the 6 months a server world often lasts). It has a mood, writes you a
+**letter** every week, asks visitors for news, keeps a **wall** they can write on, tells them
+stories about you (`voice memory add <text>`) and reaches out to regular visitors.
+
+- **Caretakers**: `voice caretaker add <name> [status guard taxi supplies turtles wall]` lets
+  trusted players look after things while you are away (a turtle report, being told about
+  strangers at the base, the free drone taxi, a few items from AE2, stopping / calling home every
+  turtle). Everything they do is logged for you (`voice caretaker log`).
+- **AFK players**: a player standing still far from the base can be flown to the base by drone.
+  By default it only does this for players who said yes (`base, afk yes`); `voice afk everyone` /
+  `voice afk off` change that.
+- **The world reset**: if your server starts a new world on a schedule, tell the base the date
+  (`voice reset 2027-05-01`; it moves on by 6 months by itself, `voice reset every <months>`). It
+  counts down in its talk and letters, and anyone can ask `base, when does the world reset?`.
+- **When you come back**: one report in chat - days away, letters, who kept it company, wall notes,
+  news, what caretakers did. `base, read my letters` / `base, news` / `base, read the wall`.
+
+## The spawn speaker
+
+Optional, needs the voice add-on: the base also talks **at spawn**, through a small relay computer
+there with a Speaker and an **Ender Modem**. It has its own voice and call word (`voice spawn name
+<word>`), helps players who have never seen it, plays games, and grants item wishes from AE2 by drone
+(at most 64 per wish, a few a day; half of every item always stays in AE2). With many players at spawn it switches to a crowd mode (it does
+not talk over everyone, comments on fights, duels, group quiz, roast battles). No friendship or
+rewards at spawn.
+
+1. On the relay computer: copy `spawn_speaker.lua` there as `startup.lua` and start it. It shows a
+   6-digit code.
+2. Stand at spawn and type `$drone spawn pair <code>` in chat, then `$drone spawn here`.
+3. `voice spawn` shows its state and settings.
 
 ## Chat commands
 
 These start with `$`, which hides the message from other players. The replies are
 private.
+All of them, and how to talk to the base in chat: [COMMANDS.md](COMMANDS.md#chat-commands-drone).
 
 | Command | What it does |
 |---|---|
@@ -486,18 +785,21 @@ private.
 
 Type these on the base computer. `help` lists them all.
 
+**Every command with its usage and examples: [COMMANDS.md](COMMANDS.md).** The table below is the short version.
+
 | Area | Commands |
 |---|---|
-| Program | `upgrade [check\|full\|slim\|branch <name>]` · `store [find\|update]` · `away` |
+| Program | `upgrade [check\|packed\|slim\|full\|branch <name>]` · `store [find\|update]` · `away` |
 | Turtles | `turtles` · `turtle <id> <cmd>` (`log`, `diag`, `goto x y z`, `home`, `stop`, `forget`, `setting …`) · `drive <id>` · `update` · `rescue <id>` · `findlost` · `party [stop]` · `forget base` · `exit [clear]` |
 | Map | `map [clear]` · `survey [auto on\|off]` · `disks [data\|move]` · work area: SETTINGS > MAP corners |
 | Factory | `factory [chest <name>\|builder <id>\|crafter <id>\|build\|stop\|fuel <item> [count]\|fuel reset\|learn\|recipes\|forget <item>\|items]` (or SETTINGS > FACTORY) |
-| Mining | `mine [drop\|forget] <id>` |
+| Mining | `mine [drop\|forget] <id>` · `mine update [stop]` |
 | Pocket | `pocket [unpair <id>]` |
-| Schematics | `schem [<name>\|delete <name>]` |
+| Schematics | `schem [<name>\|delete <name>]` · `schem build …` · `schem chain …` · `schem queue [clear]` · `schem status\|pause\|resume\|skip\|stop` · `schem craft [on\|off\|now]` |
+| Drone work | `dw` · `dw chest …` · `dw test [item]` · `dw fuel <id>` · `dw clear <corner> <corner> [block]` · `dw dig <corner> <corner>` · `dw break <x y z>` · `schem built` · `schem unbuild [<n>]` |
 | Drones | `drones` · `drone <n>` · `dest …` · `save <name>` · `list` · `fly` · `pickup` · `drop` · `ferry` · `home` · `stop` · `charger [x y z]` |
 | Chat | `allow <name>` · `deny <name>` · `allowed` |
-| ME | `mesetup` · `me check` · `me add <id>` · `tanks` · `curios check` · `curios probe` · `curios auto [clear]` |
+| ME | `mesetup` · `me check` · `me add <id>` · `tanks` · `fluidbuffer [<n>\|auto]` · `fluidstop` · `supply [<storage> <item> <count>\|<storage> fluid <fluid> <buckets>\|stop <n>\|now]` · `curios check` · `curios probe` · `curios auto [clear]` |
 | Screen | `theme [name\|random]` · `events [n] [errors]` |
 | Checks | `report` (every block and its functions, uploaded to pastebin) · `uptime` (when the base was off, and why) |
 
@@ -505,12 +807,12 @@ Type these on the base computer. `help` lists them all.
 
 ## Themes & the message log
 
-- **7 themes named after Minecraft:** bedrock, stone, deepslate, oak, nether, ender, ocean.
-  By default a **different one is picked on every start**. `theme bedrock` keeps one, and
-  `theme random` goes back to random (also on SYSTEM > Settings). A theme only changes the
-  frame; the map and status colours mean the same in every theme.
-- **Message log:** every message is also saved in `events.log` (about 32 KB at
-  most). The EVENTS tab keeps its list after a restart; CLEAR LIST only empties
+- **6 colour themes** for the "control room" look: teal (the default), amber, ice, violet,
+  graphite and crimson. `theme amber` switches at once and keeps it; `theme random` picks a
+  different one on every start (also on SYSTEM > Settings). A theme only changes the frame; the
+  map and status colours mean the same in every theme.
+- **Message log:** every message is also saved in `events.log` (16 KB, then the older half goes
+  to `events.old.log`). The EVENTS tab keeps its list after a restart; CLEAR LIST only empties
   the list on screen. `events 30 errors` shows the last 30 errors.
 
 ---
@@ -531,7 +833,13 @@ Type these on the base computer. `help` lists them all.
 | A drone will not let you off | It stays where it is: press DROP again, or sneak to get off. |
 | `upgrade` says it cannot read the file list | The branch it follows is gone or renamed: `upgrade branch main`, then `upgrade`. |
 | You want the messages in chat | `$drone notify on`, or the buttons on the CHAT tab. |
-| The computer's disk is full | `disks data` puts the map on floppies; the footer warns before anything is lost. |
+| The computer's disk is full | `disks data` puts the map on floppies; the footer warns before anything is lost. A storage helper computer takes the map, the voice files and schematics first. |
+| You want to copy a file onto the base computer | Drag it onto the open computer's screen - the base does not need to be stopped. Program files are saved next to `inventory.lua`; restart the base for `base_*.lua` files. |
+| The base does not answer in chat | Start with its name (`base, ...` or your `voice name`), stand near the base, and check `voice` (is it on?). Still nothing after an `upgrade`: `voice update`. |
+| `voice install` / `voice update` says there is no room | Add a storage helper computer (the voice files go there first) or `disks data` for one more data floppy. |
+| Someone broke parts of the base while it was off | The base still starts, even without its monitor (it runs blind and uses a new Advanced Monitor as soon as you place one). Type `parts`: everything it saw before and does not see now, with how long it has been gone. HOME and SYSTEM show it too, and you get one warning. A new block of the same kind (say a new ME Bridge) replaces the old one by itself; `parts forget <n>` for something you removed on purpose. Several parts missing at once usually means a broken cable or wired modem - a new wired modem must be right-clicked before the block next to it joins. An Inventory Manager with someone else's memory card in it is never used (`owner new` if you changed accounts). |
+| After a server restart the base says "waiting for its blocks to load" | It saw those blocks / data floppies last time and their chunks are not loaded yet. It waits up to a minute (tap the screen to start at once) and finds them later by itself. A block you removed for good is forgotten after 3 days. |
+| The voice talks too fast or is hard to hear | `voice speed 70`, `voice preset narrator`, or `voice try` to hear every voice. |
 
 > **Server tips:** the base and the turtles only work while their chunks are
 > loaded. Use the ANCHOR turtle for the base and the Chunky upgrade on every
@@ -544,16 +852,18 @@ Type these on the base computer. `help` lists them all.
 
 | File | Purpose |
 |---|---|
-| `inventory.lua` | Starts the program: checks the files, loads them in order, runs the workers |
+| `inventory.lua` | Starts the program: checks the files, loads them in order (unpacking the packed ones), runs the workers |
+| `unzip.lua` | unpacks the packed program files (`base_*.luz`) in memory when the base starts |
 | `startup.lua` | Autostart (goes in the computer's top level) |
 | `upgrade.lua` | Gets the newest program files from GitHub (base and pocket) |
-| `manifest.txt` · `dist/` | the file list `upgrade` reads · the comment-free copies it downloads (made by `tools/make_manifest.py`) |
+| `manifest.txt` · `dist/` | the file list `upgrade` reads · the comment-free (`dist/*.lua`) and packed (`dist/z/*.luz`) copies it downloads (made by `tools/make_manifest.py`) |
 | `base_config.lua` | **All settings** |
 | `base_devices.lua` · `base_state.lua` · `base_theme.lua` | finding blocks · shared state · colours, themes, safe saving, floppies |
 | `base_storage.lua` · `base_players.lua` | backpacks, curios · players, dimensions, `$drone back` |
 | `base_me.lua` | ME / RS network, transfers, fluids, crafting, messages and their log |
 | `base_drones.lua` | drone missions, charging, parking |
 | `base_store.lua` | talking to the storage helper computers |
+| `base_supply.lua` | `supply`: storages on the cable kept stocked from AE2 |
 | `base_turtles.lua` · `base_map.lua` | turtle communication, homes, fuel, rescue, updates · map data and surveys |
 | `base_console.lua` · `base_chat.lua` · `base_input.lua` · `base_workers.lua` | keyboard commands · chat commands · monitor touches · background workers |
 | `base_ui_*.lua` | one file per page (`base_ui_core.lua` = header and shared drawing, `base_ui_home.lua` = HOME, `base_ui_drive.lua` = Drive, `base_ui_system.lua` = Status, `base_ui_settings.lua` = Settings) |
@@ -563,6 +873,19 @@ Type these on the base computer. `help` lists them all.
 | `miner.lua` | the mining dimension team program (miner + loader) |
 | `base_mining.lua` / `base_ui_mining.lua` | the mining teams on the base / the MINING tab |
 | `store.lua` | the storage helper program (for extra computers) |
+| `base_dronework.lua` · `base_ui_work.lua` | drone jobs: work chest, fuel runs, schematic builds, chains, clearing water / lava · the DRONE WORK page |
+| `base_meplus.lua` · `base_ui_mesys.lua` | crafting CPUs, jobs, drives, patterns · the AE2 SYSTEM page |
+| `base_env.lua` · `base_ui_env.lua` | the Environment Detector · the WORLD page |
+| `base_ui_gifts.lua` | the GIFTS page (needs the voice add-on) |
+| `voice_addon.lua` | the optional voice add-on: speech, greetings, warnings, chat answers (kept on a data floppy or a storage helper, not on the computer) |
+| `voice_talk.lua` · `voice_talk2.lua` · `voice_talk3.lua` | its talk packs: games, friendship, badges, drone gifts, the taxi, mail between players, recipes |
+| `voice_lines.lua` · `voice_idle.lua` · `voice_lore.lua` · `voice_vary.lua` | many ways to say each thing, idle talk, questions about the base and the modpack |
+| `voice_convo.lua` · `voice_staff.lua` · `voice_profile.lua` | long conversations and what each player likes · server staff · how each player plays |
+| `voice_spawn.lua` · `voice_crowd.lua` | the spawn speaker · a crowd at spawn |
+| `voice_lonely.lua` | the lonely base: caretakers, AFK rescue, the wall, letters, the world reset countdown |
+| `spawn_speaker.lua` | the spawn relay computer (Speaker + Ender Modem) |
+| `CHANGELOG.md` | what changed in each release |
+| `COMMANDS.md` | every command with its usage |
 
 **Data files the program creates** (keep them; delete one only to reset that part):
 `waypoints.dat`, `drone_logs.dat`, `drone_charger.dat`, `chat_access.dat`,
@@ -571,11 +894,14 @@ Type these on the base computer. `help` lists them all.
 `me_setup.dat`, `me_names.dat`, `me_owed.dat`, `curios_last.dat`, `ui_page.dat`,
 `theme.dat`, `settings.dat`, `auto_survey.dat`, `survey_queue.dat`, `base_alive.dat`, `away.dat`,
 `factory.dat`, `recipes.dat`, `mining.dat`, `pockets.dat`, `curios_fits.dat`, `curios_auto.dat`,
-`store_helpers.dat`, `upgrade.dat`, `schematics/`, `events.log` + `events.old.log`, `system.log` + `system.old.log`.
+`store_helpers.dat`, `upgrade.dat`, `owner.dat`, `players_seen.dat`, `supply.dat`, `dronework.dat`, `dronequeue.dat`,
+`drone_seen.dat`, `drone_arrive.dat`, `fluid_buffer.dat`, `node_where.dat`, `miner_where.dat`, `schem_where.dat`, `voice_where.dat`, `net_seen.dat`, `voice_memory.dat`, `map_stale.dat`, `schematics/`, `events.log` + `events.old.log`,
+`system.log` + `system.old.log`.
 With a data floppy in a drive, the logs and the bigger data files live there.
 
-A computer has only **1 MB** of disk. The big files (map, turtle knowledge) can
-live on data floppies (`disks data` / `disks move`).
+A computer has only **1 MB** of disk. The program itself is packed (~300 KB); the big files
+(map, turtle knowledge, schematics, the voice add-on) live on storage helpers and data floppies
+(`disks` shows where everything is, `disks data` / `disks move`).
 
 ### For developers
 
@@ -588,3 +914,8 @@ live on data floppies (`disks data` / `disks move`).
   base test, every page drawn, the turtle tests and the mining simulator. Run it after every change.
 - `python3 tools/make_manifest.py`: rebuilds `manifest.txt` and `dist/` - run it after every
   change too (`upgrade` downloads what it lists; the tests fail when it is stale).
+- `python3 tools/make_release.py`: builds `release/` for a GitHub release (zips for servers
+  without internet, the release notes, checksums). It refuses when `BASE_VERSION`
+  (`base_state.lua`) is not the newest entry in `CHANGELOG.md` or the manifest is stale.
+  To release: raise `BASE_VERSION`, add the `CHANGELOG.md` entry, run the tests, merge into
+  `main`, then make the release with the tag `v<version>` and attach the files from `release/`.

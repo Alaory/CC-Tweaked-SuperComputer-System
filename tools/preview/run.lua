@@ -10,7 +10,7 @@ dofile(here .. "/cc_stub.lua")
 PERIPHS = W0
 PERIPHS.right.obj = MONITOR
 -- the program's own files take room on the computer (what is copied into the game)
--- (the SLIM copies from dist/ - that is what `upgrade` installs - else the full file)
+-- (the SLIM copies from dist/ - that is what `upgrade` installs - else the full file; base_* PACKED, below)
 local function codeSize(f)
   local h = io.open(SRC_DIR .. "/dist/" .. f) or io.open(SRC_DIR .. "/" .. f)
   if not h then return 0 end
@@ -18,11 +18,20 @@ local function codeSize(f)
   h:close()
   return n
 end
-for _, f in ipairs({ "inventory.lua", "node.lua", "store.lua", "startup.lua", "upgrade.lua" }) do CODE_SIZE = CODE_SIZE + codeSize(f) end
+for _, f in ipairs({ "inventory.lua", "store.lua", "startup.lua", "upgrade.lua" }) do CODE_SIZE = CODE_SIZE + codeSize(f) end   -- (node.lua: off the computer now)
+-- (the base files are PACKED on the computer now - base_*.luz, what `upgrade` installs - + unzip.lua)
+local function packedSize(name)
+  local h = io.open(SRC_DIR .. "/dist/z/" .. name:gsub("%.lua$", ".luz"), "rb")
+  if not h then return codeSize(name) end
+  local n = #h:read("a")
+  h:close()
+  return n
+end
+CODE_SIZE = CODE_SIZE + codeSize("unzip.lua")
 local ls = popen('ls "' .. SRC_DIR .. '"/base_*.lua')
 for f in ls:lines() do
   local name = f:match("([^/]+)$")
-  if name ~= "base_config.lua" then CODE_SIZE = CODE_SIZE + codeSize(name) end
+  if name ~= "base_config.lua" then CODE_SIZE = CODE_SIZE + packedSize(name) end
 end
 CODE_SIZE = CODE_SIZE + 12000                          -- (base_config.lua, the owner's own)
 ls:close()
@@ -30,9 +39,9 @@ if getenv("PRE") then dofile(getenv("PRE")) end   -- set-up before the program l
 local env = _ENV
 local MODULES = {
   "base_config", "base_devices", "base_theme", "base_state", "base_storage",
-  "base_me", "base_curios", "base_players", "base_drones", "base_turtles", "base_mining", "base_away", "base_factory", "base_schem", "base_pocket", "base_store", "base_map", "base_console",
-  "base_chat", "base_ui_core", "base_ui_inventory", "base_ui_players",
-  "base_ui_storage", "base_ui_me", "base_ui_drone", "base_ui_turtles", "base_ui_mining", "base_ui_drive", "base_ui_home", "base_ui_map",
+  "base_me", "base_meplus", "base_curios", "base_players", "base_env", "base_drones", "base_turtles", "base_mining", "base_away", "base_factory", "base_supply", "base_schem", "base_dronework", "base_pocket", "base_store", "base_map", "base_console",
+  "base_chat", "base_ui_core", "base_ui_inventory", "base_ui_players", "base_ui_env",
+  "base_ui_storage", "base_ui_me", "base_ui_mesys", "base_ui_drone", "base_ui_work", "base_ui_gifts", "base_ui_turtles", "base_ui_mining", "base_ui_drive", "base_ui_home", "base_ui_map",
   "base_ui_chat", "base_ui_events", "base_ui_system", "base_ui_settings", "base_input", "base_workers",
 }
 for _, name in ipairs(MODULES) do

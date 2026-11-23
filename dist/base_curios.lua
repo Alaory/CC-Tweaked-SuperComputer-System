@@ -13,7 +13,9 @@
 
 
 
+
 CURIOS = { fits = {}, auto = {}, busy = {}, lastRead = -100 }
+CURIO_BUSY = false
 local FITS_FILE, AUTO_FILE = "curios_fits.dat", "curios_auto.dat"
 
 local function load(path)
@@ -23,8 +25,23 @@ local t = h and textutils.unserialize(h.readAll() or "")
 if h then h.close() end
 return type(t) == "table" and t or nil
 end
-CURIOS.fits = load(FITS_FILE) or {}
-CURIOS.auto = load(AUTO_FILE) or {}
+
+do
+local fits, auto = {}, {}
+for slot, list in pairs(load(FITS_FILE) or {}) do
+if type(slot) == "string" and type(list) == "table" then
+local l = {}
+for n, v in pairs(list) do if type(n) == "string" and v then l[n] = true end end
+fits[slot] = l
+end
+end
+for _, r in ipairs(load(AUTO_FILE) or {}) do
+if type(r) == "table" and type(r.slot) == "string" and type(r.item) == "string" then
+auto[#auto + 1] = { slot = r.slot, item = r.item, display = type(r.display) == "string" and r.display or nil }
+end
+end
+CURIOS.fits, CURIOS.auto = fits, auto
+end
 for _, list in pairs(CURIOS.fits) do
 for n in pairs(list) do if meRememberName then meRememberName(n) end end
 end
@@ -69,6 +86,7 @@ CURIOS.auto[#CURIOS.auto + 1] = { slot = slot, item = name, display = display }
 CURIOS.learn(slot, name)
 CURIOS.save()
 CURIOS.lastRead = -100
+os.queueEvent("curios_wake")
 return true
 end
 
@@ -88,10 +106,15 @@ end
 
 
 
-function CURIOS.autoTick()
-if #CURIOS.auto == 0 or not inv or not bridge or not fetchCurios then return end
 
-if os.clock() - CURIOS.lastRead < 1.5 then return end
+
+function CURIOS.every()
+local v = tonumber(CONFIG.curios and CONFIG.curios.every)
+return math.max(0.05, v or 0.05)
+end
+function CURIOS.autoTick(direct)
+if #CURIOS.auto == 0 or not inv or not bridge or not fetchCurios then return end
+if os.clock() - CURIOS.lastRead < CURIOS.every() - 0.001 then return end
 CURIOS.lastRead = os.clock()
 local ok, rows, msg, note = pcall(fetchCurios)
 if not ok or type(rows) ~= "table" then return end
@@ -109,15 +132,24 @@ if slotNo then
 local okI, it = callx(bridge, "getItem", { name = r.item })
 local have = okI and type(it) == "table" and (tonumber(it.count) or 0) or 0
 if have > 0 then
-CURIOS.busy[key] = os.clock() + 20
 r.why = nil
+local a = { kind = "cequip", name = r.item, count = 1, slotType = r.slot, slotNo = slotNo, auto = true,
+key = "auto:" .. key, display = r.display }
+if direct and runAction then
+if CURIO_BUSY then return end
+CURIOS.busy[key] = os.clock() + 20
+local okR, errR = pcall(runAction, a)
+if not okR then r.why = tostring(errR) CURIOS.busy[key] = os.clock() + 15 end
+CURIOS.lastRead = -100
+else
+CURIOS.busy[key] = os.clock() + 20
 
-table.insert(state.actionQueue, 1, { kind = "cequip", name = r.item, count = 1, slotType = r.slot,
-slotNo = slotNo, auto = true, key = "auto:" .. key })
+table.insert(state.actionQueue, 1, a)
 os.queueEvent("inv_action")
+end
 else
 r.why = "none left in AE2"
-CURIOS.busy[key] = os.clock() + 60
+CURIOS.busy[key] = os.clock() + 10
 end
 end
 end
@@ -131,8 +163,9 @@ if r.slot == a.slotType and r.item == a.name then r.why = (n > 0) and nil or tos
 end
 if n > 0 then
 CURIOS.learn(a.slotType, a.name)
+CURIOS.busy[key] = nil
 if pushNote then pushNote("DONE", "Auto-equipped " .. (a.display or prettify(a.name)) .. " (" .. a.slotType .. ")", C.good) end
 else
-CURIOS.busy[key] = os.clock() + 60
+CURIOS.busy[key] = os.clock() + 15
 end
 end

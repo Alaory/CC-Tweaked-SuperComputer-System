@@ -117,6 +117,11 @@ function fs.delete(p) FILES[p] = nil DIRS[p] = nil end
 function fs.move(a, b) FILES[b] = FILES[a] FILES[a] = nil end
 function fs.copy(a, b) FILES[b] = FILES[a] end
 function fs.combine(a, b) if a == "" then return b end return a .. "/" .. b end
+function fs.isDriveRoot(p)
+  if p == "" then return true end
+  for _, m in pairs(DRIVES or {}) do if m == p then return true end end
+  return false
+end
 function fs.getDir(p) return p:match("^(.*)/[^/]*$") or "" end
 function fs.getName(p) return p:match("([^/]*)$") end
 function fs.getFreeSpace(p)
@@ -147,9 +152,9 @@ function textutils.serializeJSON(v) return ser(v) end
 local realOs = os
 os = { clock = function() return CLOCK end, time = function() return 14.5 end,
        epoch = function() return 1761990000000 + CLOCK * 1000 end,
-       date = function(f)
-         if f == "%H:%M" then return "14:30" elseif f == "%d.%m %H:%M" then return "01.11 14:30" end
-         return REALDATE(f, 1761990000 + math.floor(CLOCK)) end, queueEvent = function() end,
+       date = function(f, t)
+         if t == nil and f == "%H:%M" then return "14:30" elseif t == nil and f == "%d.%m %H:%M" then return "01.11 14:30" end
+         return REALDATE(f, t or (1761990000 + math.floor(CLOCK))) end, queueEvent = function() end,   -- (a given time is used: it was ignored)
        startTimer = function() return 1 end, cancelTimer = function() end,
        getComputerID = function() return 1 end, getComputerLabel = function() return "base" end,
        setComputerLabel = function() end, pullEvent = function() error("no events") end,

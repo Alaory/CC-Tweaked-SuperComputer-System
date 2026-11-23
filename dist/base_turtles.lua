@@ -84,6 +84,154 @@ v = tonumber(v) or 0
 return v % TT.COPYSTEP, math.floor(v / TT.COPYSTEP)
 end
 
+
+
+
+
+
+function TT.isCopy(t)
+if not (t and t.id) then return false end
+local _, n = TT.realId(t.id)
+return n > 0
+end
+function TT.copyStays(t)
+if not t then return false end
+if t.chunkyLent then return true end
+return TT.isCopy(t) and not t.ownChunky
+end
+
+function TT.stayTwin(t)
+if t.chunkyLent then return t.chunkyLent end
+return (TT.realId(t.id))
+end
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+TT.PROVE_S, TT.PROVE_N = 180, 3
+function TT.notAloneWhy(t)
+local p = t.pos
+if not (p and tonumber(p.x) and tonumber(p.z)) then return "its position is not known" end
+local sim = ((simChunks and simChunks() or 10) + 2) * 16
+local on = state.online
+for _, e in ipairs(state.players or {}) do
+local online = (not on) or on[tostring(e.name):lower()]
+if online then
+local dimOk = not e.dim or not DRONE_DIM or e.dim == DRONE_DIM
+if dimOk then
+if not (e.p and tonumber(e.p.x) and tonumber(e.p.z)) then
+if e.dim then return "player " .. tostring(e.name) .. "'s position is not known" end
+else
+local d = math.max(math.abs(e.p.x - p.x), math.abs(e.p.z - p.z))
+if d <= sim then return "player " .. tostring(e.name) .. " is " .. math.floor(d) .. " blocks away" end
+end
+end
+end
+end
+local h = CONFIG.drone and CONFIG.drone.home
+local br = tonumber(CONFIG.turtles.baseLoadR) or 128
+if h and tonumber(h.x) and math.max(math.abs(h.x - p.x), math.abs(h.z - p.z)) <= br then
+return "it is " .. math.floor(math.max(math.abs(h.x - p.x), math.abs(h.z - p.z))) .. " blocks from the base"
+end
+for _, a in ipairs(type(CONFIG.turtles.loadedAreas) == "table" and CONFIG.turtles.loadedAreas or {}) do
+local ax, az = tonumber(a.x or a[1]), tonumber(a.z or a[2])
+local ar = tonumber(a.r or a[3]) or 32
+if ax and az and math.max(math.abs(ax - p.x), math.abs(az - p.z)) <= ar then return "it is in a force-loaded area" end
+end
+for oid, o in pairs(state.turtles) do
+if oid ~= t.id and TT.online(o) and o.pos and tonumber(o.pos.x) and tonumber(o.pos.z) then
+local d = math.max(math.abs(o.pos.x - p.x), math.abs(o.pos.z - p.z))
+if d <= 64 then return (o.label or ("turtle " .. oid)) .. " is " .. math.floor(d) .. " blocks away" end
+end
+end
+return nil
+end
+
+function TT.chunkCheck(t)
+local why = TT.notAloneWhy(t)
+t.chunkWhy = why
+if why then t.alone = nil return end
+local now = os.clock()
+if not t.alone or now - (t.alone.last or now) > (CONFIG.turtles.offlineAfter or 60) then t.alone = { from = now, n = 0 } end
+t.alone.n, t.alone.last = t.alone.n + 1, now
+if now - t.alone.from >= TT.PROVE_S and t.alone.n >= TT.PROVE_N then
+t.loadsSelf = now
+pcall(TT.chunkProve, t)
+end
+end
+local function provenNow(t) return t and t.loadsSelf and os.clock() - t.loadsSelf < 600 and TT.online(t) end
+function TT.chunkProve(t)
+local real = TT.realId(t.id)
+local function tell(msg)
+TT.log(t, msg)
+if sysLog then sysLog(t.label .. ": " .. msg) end
+if pushNote then pcall(pushNote, "INFO", t.label .. ": " .. msg, C and C.info) end
+TT.listDirty = true
+end
+if TT.isCopy(t) and not t.ownChunky then
+local twin = state.turtles[real]
+if provenNow(twin) then
+t.ownChunky, t.chunkyProof = true, "its own Chunky: it answered alone while turtle " .. real .. " did too"
+tell("CHUNK TEST: loads its own chunk while turtle " .. real .. " does too - two Chunkies, it may move again")
+elseif not (twin and TT.online(twin)) then
+t.ownChunky, t.chunkyProof = true, "holds the shared Chunky: it answered alone while turtle " .. real .. " was offline"
+if twin then twin.chunkyLent = t.id end
+tell("CHUNK TEST: loads its own chunk while turtle " .. real .. " is OFFLINE - it holds the Chunky: it moves, " ..
+"turtle " .. real .. " stays put from now on")
+end
+end
+
+
+local other = t.chunkyLent and t
+if not other then
+local tw = state.turtles[real]
+if tw and tw.chunkyLent == t.id and provenNow(tw) then other = tw end
+end
+if other then
+local holder = state.turtles[other.chunkyLent]
+if other ~= t or provenNow(holder) or not holder then
+t = other
+TT.log(t, "CHUNK TEST: loads its own chunk while " .. (holder and holder.label or ("turtle " .. t.chunkyLent)) ..
+" does too - two Chunkies, it may move again")
+if sysLog then sysLog(t.label .. ": CHUNK TEST - two Chunkies, it may move again") end
+TT.listDirty = true
+t.chunkyLent = nil
+end
+end
+end
+
+function TT.chunkTick()
+local now = os.clock()
+for id, t in pairs(state.turtles) do
+local want = TT.copyStays(t) or (t.chunkTestUntil and now < t.chunkTestUntil)
+if want and TT.online(t) and not t.chunkWhy and now - (t.chunkPingAt or -999) >= 20 then
+t.chunkPingAt = now
+TT.send(id, "ping", {}, true)
+end
+end
+end
+
+function TT.chunkText(t)
+if t.chunkyProof then return "proven: " .. t.chunkyProof end
+if not TT.online(t) then return "offline - cannot be tested now" end
+if t.chunkWhy then return "cannot tell here: " .. t.chunkWhy end
+if t.alone then
+return "alone - answered " .. t.alone.n .. " times in " .. math.floor(os.clock() - t.alone.from) .. " s (needs " ..
+TT.PROVE_N .. " in " .. TT.PROVE_S .. " s)"
+end
+return "waiting for its next answer"
+end
+
 TT.copyRes = {}
 function TT.freeCopyNo(id)
 local real = TT.realId(id)
@@ -132,23 +280,84 @@ local ok2, c = pcall(function() return FACTORY.crafterTurtle and FACTORY.crafter
 if ok2 and c == t then return "crafter" end
 return nil
 end
-local QUIET_TASK = { "waiting", "refuel", "gps", "install" }
+
+
+
+
+function TT.homeCost(t, raw)
+if not (t and t.pos and t.pos.x and t.home and t.home.x) then return 0 end
+local flat = math.abs(t.pos.x - t.home.x) + math.abs(t.pos.z - t.home.z)
+if flat <= 48 then return flat + math.abs((t.pos.y or 0) - (t.home.y or 0)) end
+local full = tonumber(t.homeFuel) or
+(math.floor((flat + math.max(0, 150 - (t.pos.y or 0)) + math.max(0, 150 - (t.home.y or 0))) * 1.15) + 300)
+if raw then return math.floor((full - 300) / 1.15) end
+return full
+end
+
+
+function TT.surveyFuelNeed(t)
+local minFuel = tonumber(CONFIG.map.surveyMinFuel) or 500
+if t and t.endless then return minFuel end
+return math.max(minFuel, TT.homeCost(t) + (tonumber(CONFIG.map.batchFuel) or 800))
+end
+
+
+local QUIET_TASK = { "waiting", "refuel", "gps", "install", "building", "starting the new turtle", "crafting", "scanning",
+"looking around", "checking the end automata", "driven by hand", "restarted", "duplicate" }
+
+
+
+
+TT.MOVE_FAIL = { "blocked", "could not reach", "no progress", "going in circles", "out of fuel", "gave up after", "no way" }
+function TT.isStuck(t)
+if not (t and t.stuck) then return false end
+local s = tostring(t.stuck):lower()
+local mv = false
+for _, w in ipairs(TT.MOVE_FAIL) do if s:find(w, 1, true) then mv = true break end end
+if not mv then return false end
+
+local sp, p = t.stuckPos, t.pos
+if sp and sp.x and p and p.x and math.abs(p.x - sp.x) + math.abs((p.y or 0) - (sp.y or 0)) + math.abs(p.z - sp.z) > 3 then
+return false
+end
+return true
+end
 local TROUBLE_TASK = { "backing up", "retracing", "planning a route", "following a planned route" }
 function TT.stillFor(t)
 return os.clock() - math.max(t.movedAt or os.clock(), t.taskAt or 0)
 end
 function TT.idleWhy(t)
 local fuel = tonumber(t.fuel)
-local minFuel = tonumber(CONFIG.map.surveyMinFuel) or 500
+local minFuel = TT.surveyFuelNeed(t)
 local q = MAP and MAP.queue
 if not (t.pos and t.pos.x) then return "position unknown - press GPS LOCATE", C.warn end
 if t.anchor then return "anchor - keeps the base loaded", C.purple end
+if TT.copyStays(t) then
+if t.chunkyLent then
+return "stays put - turtle " .. t.chunkyLent .. " (its copy) holds the shared Chunky (CHUNK TEST)", C.purple
+end
+return "a COPY - its Chunky shares turtle " .. TT.realId(t.id) .. "'s chunk loading: it stays put " ..
+"(chunk test: " .. TT.chunkText(t) .. "; new Chunky on it, then: turtle " .. t.id .. " newchunky)", C.purple
+end
 if t.rescuerRole then return "rescuer - waits for a turtle in trouble", C.warn end
 if t.party then return "in the SEARCH PARTY - waits for the others", C.label end
+if t.dwAnchor then return "keeps a drone build site loaded (schem status)", C.purple end
 local fr = TT.factoryRole(t)
 if fr then return "factory " .. fr .. " - stays at the factory (no surveys)", C.label end
+local sfW = t.surveyFail and (t.surveyFail.wait or 120)
+if t.surveyFail and os.clock() - t.surveyFail.at < sfW then
+return (t.surveyFail.wait and "busy with another order: " or "REFUSED its survey spots: ") .. tostring(t.surveyFail.msg) ..
+" (tried again in " .. math.ceil(sfW - (os.clock() - t.surveyFail.at)) .. " s)", t.surveyFail.wait and C.warn or C.bad
+end
+if t.dwWant then
+return "fuel " .. tostring(fuel) .. " - a DRONE brings fuel out here (no trip home)", C.warn
+end
+if t.fuelShort then
+return "fuel " .. tostring(fuel) .. " is not enough to get home (" .. TT.homeCost(t, true) .. ") - waits there for a " ..
+"drone / the rescuer to bring fuel", C.bad
+end
 if fuel and fuel < minFuel then
-return "fuel " .. fuel .. " is below " .. minFuel .. " - " ..
+return "fuel " .. fuel .. " is below " .. minFuel .. " (the way home + a batch) - " ..
 ((CONFIG.turtles.fuelChest and CONFIG.turtles.fuelChest.x) and "waiting for the fuel chest"
 or "needs fuel at home (fuel chest under / next to its home)"), C.warn
 end
@@ -161,9 +370,6 @@ end
 if q.excluded and q.excluded[t.id] then return "taken off the survey by STOP - any button gives it back", C.warn end
 if q.auto and MAP.full then return "auto-map paused - the map floppies are full", C.warn end
 if t.queueAt and os.clock() - t.queueAt < 30 then return "just got survey spots - starting", C.good end
-if t.packWait and q.wave then
-return "waiting for the rest of the pack (they survey together, so one visit wakes them all)", C.label
-end
 local idle = t.idleSince and os.clock() - t.idleSince or 0
 
 local w = q.lastWhy
@@ -203,15 +409,11 @@ local low = task:lower()
 local fuel = tonumber(t.fuel)
 if fuel and fuel < 20 then return "nofuel", "NO FUEL", C.bad, "fuel " .. fuel .. " - it cannot move" end
 
-if t.stuck and not busy then
-local sp, p = t.stuckPos, t.pos
-local moved = sp and p and p.x and (math.abs(p.x - sp.x) + math.abs(p.z - sp.z) > 3)
-if not moved then return "stuck", "STUCK", C.bad, tostring(t.stuck) end
-end
+if not busy and TT.isStuck(t) then return "stuck", "STUCK", C.bad, tostring(t.stuck) end
 if t.held then return "held", "STOPPED", C.warn, "stopped by you - any button (e.g. PING) releases it" end
 if busy then
 for _, w in ipairs(TROUBLE_TASK) do
-if low:find(w, 1, true) then return "trouble", "FINDING A WAY", C.warn, "blocked - " .. task end
+if low:find(w, 1, true) then return "trouble", "FINDING A WAY", C.warn, "going round something in its way - " .. task end
 end
 local quiet = false
 for _, w in ipairs(QUIET_TASK) do if low:find(w, 1, true) then quiet = true end end
@@ -392,6 +594,79 @@ return (#t.dups == 1 and "1 COPY" or (#t.dups .. " COPIES")) .. " of it (server 
 table.concat(where, ", ") .. " - break them"
 end
 
+
+
+
+
+
+local CLEAN = {
+str = { "label", "task", "gear", "ver", "msg", "cmd", "want", "mode", "name", "scan", "route", "walls", "dead", "clears",
+"dim", "role", "phase", "code", "err", "ses", "scanErr", "updReady", "refused" },
+strOrFalse = { "front", "up", "down" },
+num = { "fuel", "fuelMax", "items", "freeSlots", "homeFuel", "free", "ci", "li", "nl", "idx", "transit", "rowLength", "nextDump",
+"lastCmd", "scanR", "tx", "tz", "fx", "fz", "py", "x", "y", "z", "trail", "copy", "leader", "partner" },
+pos = { "pos", "home", "at", "station" },
+tbl = { "seen", "recipe", "missing", "notes", "team", "stats", "carry", "got" },
+}
+local function cleanPos(p)
+if type(p) ~= "table" then return nil end
+local x, y, z = tonumber(p.x), tonumber(p.y), tonumber(p.z)
+if not (x and z) or x ~= x or z ~= z or math.abs(x) > 3e7 or math.abs(z) > 3e7 then return nil end
+local out = {}
+for k, v in pairs(p) do out[k] = v end
+out.x, out.y, out.z = x, (y and y == y and math.abs(y) < 1e5) and y or nil, z
+return out
+end
+function TT.clean(m)
+for _, k in ipairs(CLEAN.str) do
+local v = m[k]
+if type(v) == "number" then m[k] = tostring(v) elseif v ~= nil and type(v) ~= "string" then m[k] = nil end
+end
+for _, k in ipairs(CLEAN.strOrFalse) do
+local v = m[k]
+if v ~= nil and v ~= false and type(v) ~= "string" then m[k] = nil end
+end
+for _, k in ipairs(CLEAN.num) do
+local v = m[k]
+if v ~= nil then
+v = tonumber(v)
+if v and (v ~= v or v == math.huge or v == -math.huge) then v = nil end
+m[k] = v
+end
+end
+for _, k in ipairs(CLEAN.pos) do if m[k] ~= nil then m[k] = cleanPos(m[k]) end end
+for _, k in ipairs(CLEAN.tbl) do if m[k] ~= nil and type(m[k]) ~= "table" then m[k] = nil end end
+
+for _, k in ipairs({ "carry", "got" }) do
+if m[k] then
+local o = {}
+for name, n in pairs(m[k]) do
+n = tonumber(n)
+if type(name) == "string" and n and n == n and n ~= math.huge then o[name] = n end
+end
+m[k] = o
+end
+end
+for _, k in ipairs({ "team", "missing" }) do
+if m[k] then
+local o = {}
+for _, v in ipairs(m[k]) do v = tonumber(v) if v then o[#o + 1] = v end end
+m[k] = o
+end
+end
+if m.seen then
+local o = {}
+for _, p in ipairs(m.seen) do p = cleanPos(p) if p then o[#o + 1] = p end end
+m.seen = o
+end
+if m.notes then
+local o = {}
+for _, v in ipairs(m.notes) do if type(v) == "string" or type(v) == "number" then o[#o + 1] = tostring(v) end end
+m.notes = o
+end
+return m
+end
+
 function TT.receive(id, m)
 if type(m) ~= "table" or type(m.n) ~= "number" or type(m.t) ~= "string" then return end
 if m.sig ~= TT.sign(CONFIG.turtles.key, m.t, m.n) then
@@ -405,6 +680,7 @@ pushNote("WARNING", "Turtle #" .. id .. (type(m.label) == "string" and (" (" .. 
 end
 return
 end
+TT.clean(m)
 
 local cn = tonumber(m.copy)
 if cn and cn >= 1 and cn < 100 then id = cn * TT.COPYSTEP + TT.realId(id) end
@@ -423,6 +699,7 @@ if sysLog then sysLog((m.label or t.label or ("Turtle " .. id)) .. " reports aga
 end
 if type(m.label) == "string" then t.label = m.label end
 t.fuel, t.fuelMax, t.items = m.fuel, m.fuelMax, m.items
+t.endless = m.endless and true or nil
 
 local op, np = t.pos, m.pos
 
@@ -434,7 +711,9 @@ if type(np) == "table" and np.x and (not (op and op.x) or math.abs(np.x - op.x) 
 t.movedAt = os.clock()
 end
 if m.task ~= t.task then t.taskAt = os.clock() end
+pcall(TT.statAdd, t, prevSeen)
 t.pos, t.task, t.home = m.pos, m.task, m.home
+pcall(TT.chunkCheck, t)
 
 if m.stuck and not t.stuck and type(np) == "table" and np.x then t.stuckPos = { x = np.x, y = np.y, z = np.z } end
 if not m.stuck then t.stuckPos = nil end
@@ -472,7 +751,33 @@ t.updReady = m.updReady
 if oldVer and oldVer ~= "?" and m.ver and m.ver ~= oldVer and CODE and m.ver == CODE.ver then
 pcall(TT.updated, t, oldVer)
 end
+if m.task and m.task ~= "idle" and not tostring(m.task):find("^waiting") then t.prevTask = m.task end
+t.freeSlots = tonumber(m.freeSlots)
+t.homeFuel = tonumber(m.homeFuel)
+
+
+if m.refused and m.refused ~= (t.refused and t.refused.raw) then
+local c, k = tostring(m.refused):match("^([^:]*):(.*)$")
+local why = (k == "ses" and "it was for another session (a copy of this id)") or (k == "dup" and "it is a stopped duplicate")
+or (k and k:sub(1, 1) == "n" and ("an old message number (it last took " .. k:sub(2) .. ")")) or tostring(m.refused)
+t.refused = { raw = m.refused, why = tostring(c or "?") .. " - " .. why, at = os.clock() }
+end
 if m.gear then
+
+local function has(g, w) for part in tostring(g or ""):gmatch("[^,]+") do if part == w then return true end end end
+if t.gear then
+for _, w in ipairs({ "scanner", "pick" }) do
+if has(t.gear, w) and not has(m.gear, w) then
+local what = (w == "scanner") and "Geo Scanner" or "pickaxe"
+local where = (type(m.pos) == "table" and m.pos.x) and (m.pos.x .. " " .. m.pos.y .. " " .. m.pos.z) or "?"
+local line = (t.label or ("Turtle " .. id)) .. " LOST its " .. what .. " (last job: " .. tostring(t.prevTask or "?") ..
+", now at " .. where .. ", " .. tostring(m.freeSlots or "?") .. " free slots)"
+TT.log(t, line)
+if sysLog then sysLog(line, "WARNING") end
+pushNote("WARNING", line, C.warn)
+end
+end
+end
 t.gear = m.gear
 
 local bad = (m.gear:find("NO CHUNKY", 1, true) and "has NO Chunky upgrade equipped (its chunk unloads when you leave)")
@@ -506,6 +811,11 @@ TT.send(id, "setting", { "dig", tostring(CONFIG.turtles.dig == true) }, true)
 t.zoneSent = nil
 elseif m.t == "scan" then
 local ok = pcall(MAP.addScan, m)
+if ok then
+TT.statNew(t)
+t.stat.scans = t.stat.scans + 1
+TT.statScans = (TT.statScans or 0) + 1
+end
 TT.log(t, ok and ("Scan received at " .. tostring(m.x) .. " " .. tostring(m.z))
 or "Scan could not be stored")
 
@@ -572,13 +882,21 @@ pcall(TT.partySeen, id, m.seen)
 elseif m.t == "recipe" then
 if FACTORY and type(m.recipe) == "table" then pcall(FACTORY.learned, id, m.recipe) end
 elseif m.t == "result" then
+if m.cmd == "ping" and t.pingAsk then
+local p = t.pingAsk
+t.pingAsk = nil
+local msg = t.label .. " answered PING after " .. math.floor(os.clock() - p.at + 0.5) .. " s" ..
+(p.tries > 1 and (" (try " .. p.tries .. " - it did not hear the first one)") or "")
+TT.log(t, msg)
+setToast(msg, C.good, 6)
+end
 if m.cmd == "drive" then
 t.driveMsg = { ok = m.ok, msg = tostring(m.msg), at = os.clock() }
 
 t.driveAnyway = (not m.ok and tostring(m.msg):find("DIG ANYWAY", 1, true)) and t.driveLast or nil
 end
 if m.cmd == "fuelup" and TT.fuelTrip and TT.fuelTrip.id == id then TT.fuelTrip = nil end
-if m.cmd == "surveypts" and MAP.batchResult then pcall(MAP.batchResult, id, m.ok) end
+if m.cmd == "surveypts" and MAP.batchResult then pcall(MAP.batchResult, id, m.ok, m.msg) end
 if m.cmd == "build" and FACTORY then pcall(FACTORY.result, id, m.ok, m.msg) end
 
 if FACTORY and FACTORY.leaving and FACTORY.leaving.id == id and not m.ok
@@ -755,11 +1073,13 @@ local CHUNK = 8000
 local VER_FILE = "turtle_versions.dat"
 TT.versions = { next = 1, byHash = {} }
 do
-if fs.exists(VER_FILE) then
-local h = fs.open(VER_FILE, "r")
-local t = h and textutils.unserialize(h.readAll() or "")
-if h then h.close() end
-if type(t) == "table" and type(t.byHash) == "table" then TT.versions = t end
+local t = readSafe(VER_FILE)
+if type(t) == "table" and type(t.byHash) == "table" then
+local by, top = {}, 0
+for h, n in pairs(t.byHash) do
+if type(h) == "string" and tonumber(n) then by[h] = tonumber(n) top = math.max(top, tonumber(n)) end
+end
+TT.versions = { next = math.max(tonumber(t.next) or 1, top + 1), byHash = by }
 end
 end
 
@@ -804,21 +1124,144 @@ local ok, a = pcall(function() return fs.attributes and fs.attributes(p) end)
 return (ok and type(a) == "table" and tonumber(a.modified)) or 0
 end
 
-function TT.codePath()
+
+
+function TT.localCode()
 local name = CONFIG.turtles.codeFile or "node.lua"
 local here = fs.combine(BASE_DIR or "", name)
-
-
 local top = name
-if top ~= here and fs.exists(top) and (not fs.exists(here) or modTime(top) > modTime(here)) then
-return top
-end
+if top ~= here and fs.exists(top) and (not fs.exists(here) or modTime(top) > modTime(here)) then return top end
 if fs.exists(here) then return here end
+end
+
+
+
+
+TT.WHERE_FILE = "node_where.dat"
+function TT.codeWhere()
+local w = readSafe(TT.WHERE_FILE)
+return type(w) == "table" and type(w.path) == "string" and w or nil
+end
+function TT.codePath()
+local l = TT.localCode()
+if l then return l end
+local w = TT.codeWhere()
+if w then return w.path end
+local name = CONFIG.turtles.codeFile or "node.lua"
 for _, d in ipairs(mountedDisks()) do
 local p = fs.combine(d.mount, name)
 if fs.exists(p) then return p end
 end
-return here
+return fs.combine(BASE_DIR or "", name)
+end
+
+
+function TT.codeStore(text, from)
+local okS, small = pcall(TT.shrinkCode, text)
+if okS and type(small) == "string" and load(small, "node", "t", {}) then text = small end
+if not load(text, "node", "t", {}) then return false, "it does not compile" end
+local name = CONFIG.turtles.codeFile or "node.lua"
+local hash = codeHash(text)
+local old = TT.codeWhere()
+local where
+
+if STORE then
+local ids = {}
+for id, h in pairs(STORE.helpers) do
+if STORE.usable(h) and (h.free or 0) >= #text + 32 * 1024 then ids[#ids + 1] = id end
+end
+local oldId = old and STORE.parse(old.path)
+table.sort(ids, function(a, b)
+if (a == oldId) ~= (b == oldId) then return a == oldId end
+return (STORE.helpers[a].free or 0) > (STORE.helpers[b].free or 0)
+end)
+for _, id in ipairs(ids) do
+local p = "store:" .. id .. "/" .. name
+local okW = STORE.write(p, text)
+if okW and STORE.read(p) == text then where = p break end
+end
+end
+
+if not where then
+for _, d in ipairs(mountedDisks()) do
+if d.data and not d.installer then
+local p = fs.combine(d.mount, name)
+local room = (d.free or 0) + (fs.exists(p) and fs.getSize(p) or 0)
+
+
+if room >= #text + 2048 then
+
+
+if fs.exists(p) and (d.free or 0) < #text + 512 then pcall(fs.delete, p) end
+if writeSafe(p, text) then where = p break end
+end
+end
+end
+end
+if not where then return false, "no storage helper / data floppy with " .. math.ceil(#text / 1024) .. " KB free" end
+writeSafe(TT.WHERE_FILE, serialSmall({ path = where, hash = hash, size = #text, from = from }))
+
+if old and old.path ~= where then
+if STORE and STORE.isRemote(old.path) then pcall(STORE.delete, old.path)
+elseif fs.exists(old.path) then pcall(fs.delete, old.path) end
+end
+return true, where
+end
+
+function TT.codeRead(w)
+w = w or TT.codeWhere()
+if not w then return nil end
+local text
+if STORE and STORE.isRemote(w.path) then
+local ok, t = pcall(STORE.read, w.path)
+text = ok and t or nil
+elseif fs.exists(w.path) then
+local h = fs.open(w.path, "r")
+text = h and h.readAll()
+if h then h.close() end
+end
+if text and w.hash and codeHash(text) ~= w.hash then return nil end
+return text
+end
+
+function TT.codeOffload()
+local l = TT.localCode()
+if not l then return false end
+local h = fs.open(l, "r")
+local text = h and h.readAll()
+if h then h.close() end
+if not text or not load(text, "node", "t", {}) then return false end
+
+local from = TT.codeWhere() and "dropped" or "old"
+local ok, where = TT.codeStore(text, from)
+if not ok then return false, where end
+local name = CONFIG.turtles.codeFile or "node.lua"
+for _, p in ipairs({ fs.combine(BASE_DIR or "", name), name }) do
+if fs.exists(p) then pcall(fs.delete, p) end
+end
+if sysLog then sysLog("node.lua moved off this computer (" .. math.ceil(#text / 1024) .. " KB) - kept on " .. where, "INFO") end
+return true, where
+end
+
+function TT.fetchCode(log)
+log = log or function() end
+if not http then return false, "no internet (http is off)" end
+local up = fs.combine(BASE_DIR or "", "upgrade.lua")
+local fn = fs.exists(up) and loadfile(up, "t", _ENV)
+if not fn then return false, "upgrade.lua is missing next to inventory.lua" end
+local okR, done, body, v = pcall(fn, { fetch = CONFIG.turtles.codeFile or "node.lua", group = "node", dir = BASE_DIR or "", log = log })
+if not (okR and done and type(body) == "string") then return false, "the download did not work" end
+local w = TT.codeWhere()
+local okS, small = pcall(TT.shrinkCode, body)
+local cmp = (okS and type(small) == "string" and load(small, "node", "t", {})) and small or body
+if w and w.hash == codeHash(cmp) then
+if w.from ~= "github" then w.from = "github" writeSafe(TT.WHERE_FILE, serialSmall(w)) end
+return true, "turtle program up to date (" .. tostring(v) .. ")"
+end
+local ok, where = TT.codeStore(body, "github")
+if not ok then return false, where end
+pcall(TT.codeLoad, true, true)
+return true, "turtle program " .. tostring(v) .. " stored on " .. where
 end
 
 
@@ -899,16 +1342,39 @@ return table.concat(out, "\n") .. "\n"
 end
 
 
-function TT.codeLoad(force)
-local path = TT.codePath()
-if not fs.exists(path) then CODE = nil return end
 
-local mod = path .. ":" .. modTime(path) .. ":" .. fs.getSize(path)
+
+function TT.codeLoad(force, canWait)
+local path, mod, text
+local l = TT.localCode()
+if l then
+path = l
+
+mod = path .. ":" .. modTime(path) .. ":" .. fs.getSize(path)
 if CODE and CODE.mod == mod and not force then return end
 local h = fs.open(path, "r")
 if not h then return end
-local text = h.readAll() or ""
+text = h.readAll() or ""
 h.close()
+else
+local w = TT.codeWhere()
+if w then
+path, mod = w.path, w.path .. "#" .. tostring(w.hash)
+if CODE and CODE.mod == mod and not force then return end
+if STORE and STORE.isRemote(w.path) and not canWait then return end
+text = TT.codeRead(w)
+if not text then return end
+else
+path = TT.codePath()
+if not fs.exists(path) then CODE = nil return end
+mod = path .. ":" .. modTime(path) .. ":" .. fs.getSize(path)
+if CODE and CODE.mod == mod and not force then return end
+local h = fs.open(path, "r")
+if not h then return end
+text = h.readAll() or ""
+h.close()
+end
+end
 text = setStr(text, "protocol", CONFIG.turtles.protocol)
 text = setStr(text, "baseName", CONFIG.turtles.hostname)
 text = setStr(text, "key", CONFIG.turtles.key)
@@ -1012,10 +1478,16 @@ else
 busy = busy + 1
 end
 end
+
+
+local sharing = {}
+for id in pairs(TT.sending) do sharing[(TT.realId(id))] = true end
 for _, t in ipairs(TT.list()) do
 if busy >= 3 then break end
 if TT.online(t) and TT.outdated(t) and t.updReady ~= CODE.ver and not TT.sending[t.id]
+and not sharing[(TT.realId(t.id))]
 and (not t.updRetry or now > t.updRetry) and (not only or t.id == only) then
+sharing[(TT.realId(t.id))] = true
 TT.pushCode(t.id)
 TT.sending[t.id], t.updState = now, "sending"
 busy = busy + 1
@@ -1191,12 +1663,123 @@ end
 
 TT.listDirty = false
 
+
+
+TT.statSince = TT.statSince or os.clock()
+TT.STAT_KINDS = { "survey", "sky", "way", "home", "fuel", "idle", "other", "offline" }
+TT.STAT_NAME = { survey = "surveying", sky = "long trips (sky highway)", way = "finding a way (stuck)",
+home = "going home", fuel = "fuel", idle = "idle / waiting", other = "other jobs", offline = "offline" }
+function TT.statKind(task)
+task = tostring(task or "idle")
+if task == "idle" or task:find("^waiting") then return "idle" end
+if task:find("^survey") then return "survey" end
+if task:find("sky highway", 1, true) or task:find("climbing", 1, true) then return "sky" end
+for _, w in ipairs({ "backing up", "retracing", "planning a route", "following a planned route",
+"scanning the surroundings", "going back" }) do
+if task:find(w, 1, true) then return "way" end
+end
+if task:find("home", 1, true) then return "home" end
+if task:find("fuel", 1, true) then return "fuel" end
+return "other"
+end
+function TT.statNew(t)
+if not t.stat then
+t.stat = { scans = 0 }
+for _, k in ipairs(TT.STAT_KINDS) do t.stat[k] = 0 end
+end
+end
+function TT.statAdd(t, prevSeen)
+TT.statNew(t)
+local now = os.clock()
+if t.statAt and prevSeen then
+local dt = now - t.statAt
+if dt > 0 then
+local k = (now - prevSeen > CONFIG.turtles.offlineAfter) and "offline" or TT.statKind(t.task)
+t.stat[k] = t.stat[k] + dt
+end
+end
+t.statAt = now
+end
+
+function TT.statLines(n)
+local out, all, tot = {}, { scans = 0 }, 0
+for _, k in ipairs(TT.STAT_KINDS) do all[k] = 0 end
+local rows = {}
+for _, t in pairs(state.turtles) do
+if t.stat then
+local sum = 0
+for _, k in ipairs(TT.STAT_KINDS) do all[k] = all[k] + t.stat[k] sum = sum + t.stat[k] end
+all.scans = all.scans + t.stat.scans
+tot = tot + sum
+rows[#rows + 1] = { t = t, sum = sum }
+end
+end
+local hours = (os.clock() - TT.statSince) / 3600
+out[#out + 1] = string.format("Since the base started (%.1f h of game clock): %d scans = %.0f an hour (~%.0f chunks an hour)",
+hours, all.scans, all.scans / math.max(0.01, hours), all.scans * 1.13 / math.max(0.01, hours))
+if tot > 0 then
+local parts = {}
+for _, k in ipairs(TT.STAT_KINDS) do
+if all[k] > 0 then parts[#parts + 1] = TT.STAT_NAME[k] .. " " .. math.floor(all[k] * 100 / tot + 0.5) .. "%" end
+end
+out[#out + 1] = "The fleet's time: " .. table.concat(parts, ", ")
+end
+table.sort(rows, function(a, b) return a.t.stat.scans > b.t.stat.scans end)
+for i, r in ipairs(rows) do
+if i > (n or 12) then out[#out + 1] = "  ... and " .. (#rows - i + 1) .. " more" break end
+local s, best, bk = r.t.stat, 0, "idle"
+for _, k in ipairs(TT.STAT_KINDS) do if s[k] > best then best, bk = s[k], k end end
+out[#out + 1] = string.format("  %s: %d scans (%.0f/h), mostly %s (%d%%)", r.t.label, s.scans,
+s.scans / math.max(0.01, r.sum / 3600), TT.STAT_NAME[bk],
+r.sum > 0 and math.floor(best * 100 / r.sum + 0.5) or 0)
+end
+return out
+end
+
+
+function TT.lostLines()
+local out, rows = {}, {}
+local base = CONFIG.drone and CONFIG.drone.home
+local count = { copy = 0, missing = 0, atBase = 0, short = 0, other = 0 }
+for _, t in pairs(state.turtles) do
+if not TT.online(t) then rows[#rows + 1] = t end
+end
+table.sort(rows, function(a, b) return (a.seenEpoch or 0) > (b.seenEpoch or 0) end)
+for _, t in ipairs(rows) do
+local fuel = tonumber(t.fuel)
+local why
+if TT.isCopy(t) then why = "COPY (shares turtle " .. TT.realId(t.id) .. "'s Chunky)" count.copy = count.copy + 1
+elseif t.missing then why = "MISSING (looked for, not found)" count.missing = count.missing + 1
+elseif TT.atBase(t) then why = "at the base" count.atBase = count.atBase + 1
+elseif fuel and t.home and fuel < TT.homeCost(t, true) then
+why = "fuel " .. fuel .. " < way home " .. TT.homeCost(t, true)
+count.short = count.short + 1
+else why = "?" count.other = count.other + 1 end
+local where = "position unknown"
+if t.pos and t.pos.x then
+where = t.pos.x .. " " .. tostring(t.pos.y) .. " " .. t.pos.z
+if base and base.x then
+where = where .. " (" .. (math.abs(t.pos.x - base.x) + math.abs(t.pos.z - base.z)) .. " from the base)"
+end
+end
+local last = t.log and t.log[1] and (t.log[1].t .. " " .. t.log[1].msg) or "-"
+out[#out + 1] = string.format("%s #%d: silent %s | %s | task: %s | fuel %s | %s | last: %s", t.label, t.id,
+TT.ago(t.seenEpoch), why, tostring(t.task or (t.prevTask and ("was " .. t.prevTask)) or "none"),
+t.fuel and tostring(t.fuel) or "?", where, last)
+end
+table.insert(out, 1, #rows .. " offline: " .. count.copy .. " copies, " .. count.short .. " without fuel for the way home, " ..
+count.missing .. " missing, " .. count.atBase .. " at the base, " .. count.other .. " not known why (newest first)")
+return out
+end
+
+
 function TT.saveList()
 local out = {}
 for id, t in pairs(state.turtles) do
 out[#out + 1] = { id = id, label = t.label, pos = t.pos, home = t.home, seen = t.seenEpoch,
 task = t.task, ver = t.ver, gear = t.gear, anchor = t.anchor, rescuerRole = t.rescuerRole,
-held = t.held, recall = t.recall, missing = t.missing }
+held = t.held, recall = t.recall, missing = t.missing, ownChunky = t.ownChunky,
+fuel = tonumber(t.fuel), chunkyLent = t.chunkyLent, chunkyProof = t.chunkyProof }
 end
 saveFileSafe(dataPath(CONFIG.turtles.listFile), serialSmall(out))
 TT.listDirty = false
@@ -1204,22 +1787,26 @@ end
 
 function TT.loadList()
 local lp = dataPath(CONFIG.turtles.listFile)
-if not fs.exists(lp) then return end
-local h = fs.open(lp, "r")
-if not h then return end
-local list = textutils.unserialize(h.readAll() or "")
-h.close()
+local list = readSafe(lp)
 if type(list) ~= "table" then return end
 for _, e in ipairs(list) do
 if type(e) == "table" and tonumber(e.id) then
 local t = TT.get(tonumber(e.id))
-if e.label then t.label = e.label end
-t.pos, t.home, t.seenEpoch, t.task = e.pos, e.home, e.seen, e.task
-t.ver, t.gear, t.anchor = e.ver, e.gear, e.anchor
+
+local seen = tonumber(e.seen)
+local c = { label = e.label, pos = e.pos, home = e.home, task = e.task, ver = e.ver, gear = e.gear }
+if TT.clean then TT.clean(c) end
+if c.label then t.label = c.label end
+t.pos, t.home, t.seenEpoch, t.task = c.pos, c.home, seen, c.task
+t.ver, t.gear, t.anchor = c.ver, c.gear, e.anchor
 t.rescuerRole = e.rescuerRole
 t.held = e.held
 t.recall = e.recall
 t.missing = e.missing
+t.ownChunky = e.ownChunky == true or nil
+t.chunkyLent = tonumber(e.chunkyLent)
+t.chunkyProof = type(e.chunkyProof) == "string" and e.chunkyProof or nil
+t.fuel = t.fuel or tonumber(e.fuel)
 end
 end
 end
@@ -1430,13 +2017,18 @@ end
 local function problemOf(t)
 local now = os.clock()
 if t.missing and not TT.online(t) then return nil end
+if TT.copyStays(t) then return nil end
 if TT.online(t) then
 t.offlineNoted = nil
 local idle = (t.task == nil or t.task == "idle")
 local fuel = tonumber(t.fuel)
 if fuel and fuel < 20 then t.lowFuelSince = t.lowFuelSince or now else t.lowFuelSince = nil end
-if t.stuck and idle then t.stuckSince = t.stuckSince or now else t.stuckSince = nil end
-if t.lowFuelSince and now - t.lowFuelSince > 60 then return "fuel" end
+if idle and TT.isStuck(t) then t.stuckSince = t.stuckSince or now else t.stuckSince = nil end
+
+if t.lowFuelSince and now - t.lowFuelSince > 60 and not (DW and DW.fuelBusy and DW.fuelBusy(t)) then return "fuel" end
+
+if t.fuelShort and idle then t.shortSince = t.shortSince or now else t.shortSince = nil end
+if t.shortSince and now - t.shortSince > 120 and not (DW and DW.fuelBusy and DW.fuelBusy(t)) then return "fuel" end
 if t.stuckSince and now - t.stuckSince > 60 then return "stuck" end
 return nil
 end
@@ -1447,6 +2039,7 @@ local after = tonumber(CONFIG.turtles.rescueAfter) or 180
 if (os.epoch("utc") - t.seenEpoch) / 1000 < after then return nil end
 return "lost"
 end
+TT.problemOf = problemOf
 
 
 function TT.patrolTick()
@@ -1684,6 +2277,14 @@ end
 end
 
 
+
+TT.COPY_MOVES = { "survey", "scanning", "sky highway", "climbing", "going home", "going to", "fuel", "party",
+"finding", "backing up", "retracing", "planning a route", "following a planned route" }
+function TT.copyMoveTask(task)
+task = tostring(task or "")
+for _, w in ipairs(TT.COPY_MOVES) do if task:find(w, 1, true) then return true end end
+return false
+end
 function TT.homeTick()
 local now = os.clock()
 local idleHome = tonumber(CONFIG.turtles.idleHome or 120) or 0
@@ -1718,9 +2319,48 @@ local fuel = tonumber(t.fuel)
 local low = fuel and fuel < (tonumber(CONFIG.turtles.lowFuel) or 2000) * ((AWAY and AWAY.on) and 3 or 1)
 
 
+
+if fuel and not low and not t.endless and fuel < TT.surveyFuelNeed(t) then low = true end
+if low and t.endless and fuel >= 20 then low = false end
+
+
+local cost = TT.homeCost(t, true)
+if low and on and idle and fuel and not t.endless and not TT.copyStays(t) and fuel < cost and cost > 300 then
+low = false
+if not t.fuelShort then
+t.fuelShort = true
+TT.log(t, "Fuel " .. fuel .. " is not enough for the way home (" .. cost .. ") - waits for fuel to be brought")
+end
+elseif not (fuel and fuel < cost) or TT.copyStays(t) then
+t.fuelShort = nil
+end
+
+
+
+if t.dwWant and not (low and on and idle) then t.dwWant = nil end
+if low and low ~= "wait" and on and idle and not t.endless and not t.fuelShort and not TT.copyStays(t)
+and cost >= (tonumber(CONFIG.turtles.droneFuelFrom) or 600)
+and DW and DW.canFuel and DW.canFuel() and not (t.dwEdgeFail and now - t.dwEdgeFail < 1800) then
+if not t.dwWant then
+t.dwWant = true
+TT.log(t, "Low on fuel " .. "(" .. tostring(fuel) .. ") " .. cost .. " blocks out - a drone brings fuel (no trip home)")
+end
+low = false
+end
+
+
 local fc = CONFIG.turtles.fuelChest
 if TT.fuelTrip and (not state.turtles[TT.fuelTrip.id] or now - TT.fuelTrip.t0 > 600) then TT.fuelTrip = nil end
-if low and fc and fc.x and idle and on and t.pos and t.pos.x and not t.held and not t.anchor and not t.stuck
+if TT.copyStays(t) then
+low = false
+if on and not idle and t.task and TT.copyMoveTask(t.task) and (not t.copyStopAt or now - t.copyStopAt > 600) then
+t.copyStopAt = now
+TT.send(id, "stop", {}, true, true)
+TT.log(t, "A COPY on a trip ('" .. tostring(t.task) .. "') - stopped: moving it unloads turtle " ..
+TT.stayTwin(t) .. "'s chunk")
+end
+end
+if low and fc and fc.x and idle and on and t.pos and t.pos.x and not t.held and not t.anchor and not TT.isStuck(t)
 and not t.rescuer and not TT.fuelTrip and now - t.idleSince > 10
 and (not t.fuelTripAt or now - t.fuelTripAt > 600) then
 t.fuelTripAt = now
@@ -1733,8 +2373,9 @@ elseif low and fc and fc.x and (not t.fuelTripAt or now - t.fuelTripAt > 600) th
 low = "wait"
 end
 local wait = low and 10 or idleHome
-if low ~= "wait" and idleHome > 0 and idle and t.home and t.pos and t.pos.x and not t.held and not t.anchor and not t.party
-and not t.stuck and not t.rescuer and now - t.idleSince > wait
+if low ~= "wait" and idleHome > 0 and idle and t.home and t.pos and t.pos.x and not t.held and not t.anchor and not t.party and not t.dwAnchor
+and not TT.copyStays(t)
+and not TT.isStuck(t) and not t.rescuer and now - t.idleSince > wait
 and (not t.idleHomeAt or now - t.idleHomeAt > 600) then
 local away = math.abs(t.pos.x - t.home.x) + math.abs(t.pos.y - t.home.y) + math.abs(t.pos.z - t.home.z)
 local needed = false
@@ -1754,8 +2395,9 @@ end
 
 
 
-if not t.stuck then t.digOutTries = nil end
-if on and idle and t.stuck and t.home and not t.held and not t.anchor and not t.missing
+local stuckNow = TT.isStuck(t)
+if not stuckNow then t.digOutTries = nil end
+if on and idle and stuckNow and t.home and not t.held and not t.anchor and not t.missing
 and tostring(t.gear or ""):find("pick", 1, true)
 and now - (t.idleSince or now) > 30 and (t.digOutTries or 0) < 3
 and (not t.digOutAt or now - t.digOutAt > 600) then
@@ -1836,7 +2478,7 @@ function TT.available()
 local list = {}
 for id, t in pairs(state.turtles) do
 if TT.online(t) and t.pos and t.pos.x and (t.task == nil or t.task == "idle") and not t.anchor
-and not t.rescuerRole and not t.party and not TT.factoryRole(t) then
+and not t.rescuerRole and not t.party and not t.dwAnchor and not TT.factoryRole(t) and not TT.copyStays(t) then
 list[#list + 1] = id
 end
 end
@@ -1942,6 +2584,40 @@ end
 
 
 
+
+
+function TT.pingWhy(t)
+local why = {}
+local ago = t.lastSeen and math.floor(os.clock() - t.lastSeen) or nil
+if not ago then why[#why + 1] = "it never reported"
+elseif ago > 60 then why[#why + 1] = "its last report was " .. ago .. " s ago (offline?)"
+else why[#why + 1] = "it still reports (" .. ago .. " s ago) but did not hear me" end
+if t.refused and os.clock() - t.refused.at < 600 then
+why[#why + 1] = "it REFUSED a command lately: " .. t.refused.why
+elseif ago and ago <= 60 then
+why[#why + 1] = "the modem may be off (scanning / digging: " .. tostring(t.task) .. ") or the base is out of its radio range"
+end
+return table.concat(why, "; ")
+end
+function TT.pingTick()
+for _, t in pairs(state.turtles) do
+local p = t.pingAsk
+if p and os.clock() - p.last >= 3 then
+if p.tries >= 10 then
+t.pingAsk = nil
+local msg = t.label .. ": no answer to PING after " .. math.floor(os.clock() - p.at) .. " s - " .. TT.pingWhy(t)
+TT.log(t, msg)
+setToast(msg, C.warn, 10)
+else
+p.tries, p.last = p.tries + 1, os.clock()
+TT.send(t.id, "ping", {}, true, true)
+end
+end
+end
+end
+
+
+
 function TT.send(id, cmd, args, quiet, again, ses)
 local n = os.epoch("utc")
 if n <= state.tLastN then n = state.tLastN + 1 end
@@ -1957,6 +2633,7 @@ state.tOut[#state.tOut + 1] = { id = id, msg = { t = "cmd", n = n, cmd = cmd, ar
 sig = TT.sign(CONFIG.turtles.key, "cmd", n, cmd, a) } }
 
 if t and t.held and cmd ~= "stop" and not quiet then t.held = nil TT.listDirty = true end
+if cmd == "ping" and t and not again and not quiet then t.pingAsk = { tries = 1, last = os.clock(), at = os.clock() } end
 if cmd == "stop" and t and not again then
 t.stopAsk = { tries = 1, last = os.clock() }
 t.held = true
@@ -2021,7 +2698,9 @@ local function flat(a, b) return math.abs(a.x - b.x) + math.abs(a.z - b.z) end
 function TT.lostList()
 local out = {}
 for _, t in pairs(state.turtles) do
-if not TT.online(t) and not t.missing and t.pos and t.pos.x and not TT.atBase(t) then out[#out + 1] = t end
+if not TT.online(t) and not t.missing and t.pos and t.pos.x and not TT.atBase(t) and not TT.copyStays(t) then
+out[#out + 1] = t
+end
 end
 return out
 end
@@ -2036,7 +2715,7 @@ local members = {}
 for id, t in pairs(state.turtles) do
 local fuel = tonumber(t.fuel) or 0
 if TT.online(t) and t.pos and t.pos.x and not t.anchor and not t.rescuerRole and not t.held and fuel > 2000
-and not TT.factoryRole(t) then
+and not TT.factoryRole(t) and not TT.copyStays(t) then
 members[#members + 1] = id
 end
 end

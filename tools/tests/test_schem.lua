@@ -1,5 +1,8 @@
 -- Schematics: gzip (stored / fixed / dynamic blocks) + NBT + Create's structure
 -- format, the materials list, storing a dropped file, the schem console command.
+-- (where it is stored is not this test: a fixed program size, not the real one - that
+-- grows with every feature and left the stand-in computer under its 96 KB margin)
+CODE_SIZE = 800000
 local function readFile(path)
   local h = fs.open(path, "rb")
   local d = h.readAll()
@@ -67,7 +70,33 @@ CHECK(#SCHEM.pending == 0, "all read")
 notes = { notes[2], notes[3], notes[1] }        -- (order: stored, broken, not .nbt)
 CHECK(notes[1] and notes[1]:find("^DONE") and notes[1]:find("5 x 4 x 5"), "dropped schematic stored: " .. tostring(notes[1]))
 CHECK(notes[2] and notes[2]:find("^WARNING"), "a broken file is refused: " .. tostring(notes[2]))
-CHECK(notes[3] and notes[3]:find("only Create schematics"), "a non-.nbt file is refused")
+CHECK(notes[3] and notes[3]:find("Saved notes.txt", 1, true), "any other file is SAVED next to inventory.lua (no need to stop the base): " .. tostring(notes[3]))
+local np = fs.combine(BASE_DIR or "", "notes.txt")
+local hN = fs.open(np, "rb")
+CHECK(hN and hN.readAll() == "hello", "with what was dropped")
+if hN then hN.close() end
+pcall(fs.delete, np)
+-- a base file: replaced, "restart" said; a voice file: sent to voice update; no room: refused, the old file kept
+local bp = fs.combine(BASE_DIR or "", "base_dropped_test.lua")
+local w0 = fs.open(bp, "w") w0.write("old") w0.close()
+local okB, msgB = SCHEM.saveDropped("base_dropped_test.lua", "-- new")
+local hB = fs.open(bp, "r") local gotB = hB.readAll() hB.close()
+CHECK(okB and gotB == "-- new" and msgB:find("Restart the base", 1, true), "a base file is replaced + restart said: " .. tostring(msgB))
+local okV, msgV = SCHEM.saveDropped("voice_talk.lua", "x")
+CHECK(not okV and msgV:find("voice update", 1, true), "a voice file -> voice update: " .. tostring(msgV))
+local gfs0 = fs.getFreeSpace
+fs.getFreeSpace = function() return 1000 end
+local okR, msgR = SCHEM.saveDropped("base_dropped_test.lua", string.rep("x", 50000))
+fs.getFreeSpace = gfs0
+local hB2 = fs.open(bp, "r") local gotB2 = hB2.readAll() hB2.close()
+CHECK(not okR and msgR:find("not saved", 1, true) and gotB2 == "-- new", "no room: refused, the old file kept: " .. tostring(msgR))
+pcall(fs.delete, bp)
+-- the drop worker takes a drop even while the screen loop is busy (its own worker, waiting only for file_transfer)
+CHECK(type(dropWorker) == "function", "a drop worker exists")
+local invSrc = io.open(SRC_DIR .. "/inventory.lua"):read("a")
+CHECK(invSrc:find("dropWorker", 1, true), "inventory.lua starts the drop worker")
+local wSrc = io.open(SRC_DIR .. "/base_workers.lua"):read("a")
+CHECK(not wSrc:find('ev == "file_transfer"', 1, true), "the screen loop no longer handles drops (they would be taken twice)")
 CHECK(SCHEM.list()["My_House"], "listed under a clean name (My_House)")
 SCHEM.cache = {}
 local again = SCHEM.load("My_House")

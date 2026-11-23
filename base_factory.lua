@@ -47,21 +47,24 @@ end
 local function saveRecipes() saveFileSafe(RECIPE_FILE, serialSmall(FACTORY.recipes)) end
 FACTORY.save = save
 do
-  if fs.exists(FILE) then
-    local h = fs.open(FILE, "r")
-    local t = h and textutils.unserialize(h.readAll() or "")
-    if h then h.close() end
+  do
+    local t = readSafe(FILE)
     if type(t) == "table" then
-      FACTORY.job, FACTORY.builder, FACTORY.chest = t.job, t.builder, t.chest
-      FACTORY.fails, FACTORY.last, FACTORY.built = t.fails or 0, t.last, t.built
-      FACTORY.crafter = t.crafter
+      -- (an odd / old file: only what has the right kind - a broken job is dropped)
+      FACTORY.job = type(t.job) == "table" and type(t.job.step) == "string" and t.job or nil
+      FACTORY.builder, FACTORY.crafter = tonumber(t.builder), tonumber(t.crafter)
+      FACTORY.chest = type(t.chest) == "string" and t.chest or nil
+      FACTORY.fails = tonumber(t.fails) or 0
+      FACTORY.last = type(t.last) == "table" and t.last or nil
+      FACTORY.built = tonumber(t.built)
     end
   end
-  if fs.exists(RECIPE_FILE) then
-    local h = fs.open(RECIPE_FILE, "r")
-    local t = h and textutils.unserialize(h.readAll() or "")
-    if h then h.close() end
-    if type(t) == "table" then FACTORY.recipes = t end
+  do
+    local t = readSafe(RECIPE_FILE)
+    if type(t) == "table" then
+      FACTORY.recipes = {}
+      for k, r in pairs(t) do if type(k) == "string" and type(r) == "table" then FACTORY.recipes[k] = r end end
+    end
   end
 end
 
@@ -168,6 +171,7 @@ local function variants(name)
   return plain, own, fp
 end
 FACTORY.variants = variants
+FACTORY.meCraftable = meCraftable
 
 -- every part: { part, have (plain ones), own (yours - never taken), craftable, ok } - and the missing ones
 function FACTORY.check()
@@ -311,6 +315,8 @@ function FACTORY.reserved(name)
   for _, k in ipairs({ "buffer", "giveChest", "takeChest", "curiosChest", "fluidBuffer" }) do
     if me[k] == name then return k end
   end
+  if SUPPLY and SUPPLY.isTarget and SUPPLY.isTarget(name) then return "supply" end   -- (kept stocked: console supply)
+  if CONFIG.drone and CONFIG.drone.workChest == name then return "drone work chest" end
 end
 
 -- why no turtle is built now (nil = it can build)

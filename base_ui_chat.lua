@@ -64,8 +64,8 @@ function drawAccessPage(G)
   local qh = math.max(8, math.min(16, 4 + #reqs * 3))
   card(rx, y0, rw, qh, "WAITING FOR YOUR OK")
   if #reqs == 0 then
-    text(rix, y0 + 3, trunc("No requests. Players who are not allowed and type  " .. c ..
-         " home  show up here.", riw), C.dim, C.panel)
+    para(rix, y0 + 3, riw, "No requests. Players who are not allowed and type  " .. c ..
+         " home  show up here.", C.dim, qh - 4)
   end
   for i = 1, math.min(#reqs, math.floor((qh - 4) / 3)) do
     local r = reqs[i]
@@ -86,8 +86,8 @@ function drawAccessPage(G)
   card(rx, ny, rw, nh, "BASE MESSAGES IN YOUR CHAT")
   local sub = owner and state.notifySubs and state.notifySubs[tostring(owner):lower()]
   local level = sub and sub.level or "off"
-  text(rix, ny + 3, trunc("The monitor's messages, sent privately to " .. tostring(owner) ..
-       " in chat (at most 6 a minute)", riw), C.dim, C.panel)
+  para(rix, ny + 3, riw, "The monitor's messages, sent privately to " .. tostring(owner) ..
+       " in chat (at most 6 a minute)", C.dim, 1)
   local opts = { { "off", "OFF" }, { "important", "WARNINGS + ERRORS" }, { "all", "EVERYTHING" } }
   local bw = math.floor((riw - 2) / 3)
   for i, o in ipairs(opts) do

@@ -24,46 +24,25 @@
 
 
 
-
 local SLOTS = { colors.black, colors.gray, colors.magenta, colors.lightGray, colors.white,
 colors.brown, colors.blue, colors.lightBlue, colors.cyan, colors.green,
 colors.yellow, colors.orange, colors.red, colors.pink, colors.purple, colors.lime }
+local FIXED = { 0x060A0B, 0x0C1315, 0x1E3A37, 0x6F8D87, 0xE6F2EE, 0x9C968C, 0x3D7BFF, 0xFFB238,
+0x3FE0C8, 0x5BD46A, 0xFFD34D, 0xFF8A3D, 0xFF4D5E, 0xFF6FA8, 0xB18CFF, 0xA6E05A }
 
-local FIXED = { 0x141414, 0x2E2E2E, 0x4A4A4A, 0x6F6F6F, 0xFFFFFF, 0xA89F92, 0x5A7CE6, 0xF2B33D,
-0x52CFCF, 0x5CBF5C, 0xF0DE5C, 0xEE9F34, 0xE85C5C, 0xDE7BD6, 0xA374E6, 0x92D25C }
 THEMES = {
-
-
-
-stone     = { 0x121212, 0x262626, 0x3A3A3A, 0x505050, 0xFFFFFF, 0xA8A8A8, 0x5B7FE0, 0xF2B33D },
-deepslate = { 0x0F0F13, 0x212129, 0x34343F, 0x4A4A57, 0xF2F2F8, 0x9A9AA8, 0x6A84E0, 0xF2B33D },
-oak       = { 0x15100A, 0x2C2117, 0x433325, 0x5E4730, 0xFFF6E8, 0xC2AE94, 0x6A9A3C, 0xF5C451 },
-nether    = { 0x130909, 0x281414, 0x3E1F1F, 0x572B2B, 0xFFEEEE, 0xC09898, 0xCC4433, 0xF5A93A },
-ender     = { 0x0C0A12, 0x1B1725, 0x2D2640, 0x413758, 0xF6F0FF, 0xA89CC0, 0x8C62E8, 0xEFE39C },
-ocean     = { 0x071116, 0x112129, 0x1C3640, 0x284E5A, 0xEAFBFF, 0x94B8C2, 0x2FA8B8, 0xF5C451 },
-
-
-bedrock   = { 0x1B1B1C, 0x313233, 0x48494A, 0xD0D1D4, 0xFFFFFF, 0xA6A6AA, 0x5A7CE6, 0xFFFFFF },
+teal     = { bg = 0x060A0B, panel = 0x0C1315, line = 0x1E3A37, dim = 0x6F8D87, title = 0xFFB238 },
+amber    = { bg = 0x0A0805, panel = 0x130E08, line = 0x3D2D15, dim = 0x9E8862, title = 0xFFC14D },
+ice      = { bg = 0x070A10, panel = 0x0D131C, line = 0x23364F, dim = 0x7D90AB, title = 0x8CC8FF },
+violet   = { bg = 0x09070F, panel = 0x110D1B, line = 0x31264B, dim = 0x8F83AE, title = 0xF2C14E },
+graphite = { bg = 0x0A0A0A, panel = 0x141414, line = 0x323232, dim = 0x8E8E8E, title = 0xFFB238 },
+crimson  = { bg = 0x0D0607, panel = 0x170B0D, line = 0x47212B, dim = 0xA27E84, title = 0xFFB238 },
 }
-THEME_ORDER = { "bedrock", "stone", "deepslate", "oak", "nether", "ender", "ocean" }
-
-
-
-
-THEME_STYLE = { bedrock = { light = true, accent = colors.green } }
+THEME_ORDER = { "teal", "amber", "ice", "violet", "graphite", "crimson" }
+local FRAME = { [colors.black] = "bg", [colors.gray] = "panel", [colors.magenta] = "line",
+[colors.lightGray] = "dim", [colors.lightBlue] = "title" }
 LIGHT_FG = nil
-function themeStyle()
-if not C then return end
-local st = THEME_STYLE[THEME_NAME] or {}
-C.accent = st.accent or colors.blue
-if not st.light then LIGHT_FG = nil return end
-local dark = {}
-for _, c in ipairs({ C.text, C.label, colors.yellow, colors.lime, colors.cyan, colors.green,
-colors.orange, colors.pink, colors.lightBlue }) do dark[c] = C.ink end
-dark[C.dim] = C.head
-local onAccent = { [C.text] = C.ink, [C.label] = C.ink, [C.dim] = C.ink, [colors.green] = C.ink }
-LIGHT_FG = { [C.empty] = dark, [C.accent] = onAccent }
-end
+function themeStyle() end
 local THEME_FILE = "theme.dat"
 
 
@@ -71,14 +50,15 @@ local THEME_FILE = "theme.dat"
 
 local function chooseTheme()
 local saved = {}
-if fs.exists(THEME_FILE) then
-local h = fs.open(THEME_FILE, "r")
-local t = h and textutils.unserialize(h.readAll() or "")
-if h then h.close() end
-if type(t) == "table" then saved = t end
+do
+local t = readSafe(THEME_FILE)
+if type(t) == "table" then
+saved = { mode = type(t.mode) == "string" and t.mode or nil, last = type(t.last) == "string" and t.last or nil }
 end
-local want = saved.mode or CONFIG.theme or "random"
+end
+local want = saved.mode or CONFIG.theme or "teal"
 if THEMES[want] then return want, saved end
+if want ~= "random" then return "teal", saved end
 local pick
 for _ = 1, 10 do
 pick = THEME_ORDER[math.random(#THEME_ORDER)]
@@ -88,31 +68,22 @@ return pick, saved
 end
 
 
-
-
-local MAP_SLOTS = { [colors.green] = true, [colors.lime] = true, [colors.blue] = true, [colors.yellow] = true,
-[colors.orange] = true, [colors.white] = true, [colors.brown] = true, [colors.red] = true,
-[colors.cyan] = true, [colors.purple] = true, [colors.pink] = true }
-
-
 function setTheme(name)
 if not THEMES[name] then return false end
 THEME_NAME = name
 PALETTE = {}
 for i, c in ipairs(SLOTS) do
-PALETTE[c] = (MAP_SLOTS[c] or not THEMES[name][i]) and FIXED[i] or THEMES[name][i]
+PALETTE[c] = FRAME[c] and THEMES[name][FRAME[c]] or FIXED[i]
 end
 if mon then pcall(applyPalette, mon) end
 if win then pcall(applyPalette, win) end
-themeStyle()
 shownRows = {}
 return true
 end
 
 
 function saveTheme(mode)
-local h = fs.open(THEME_FILE, "w")
-if h then h.write(textutils.serialize({ mode = mode, last = THEME_NAME })) h.close() end
+writeSafe(THEME_FILE, textutils.serialize({ mode = mode, last = THEME_NAME }))
 end
 
 do
@@ -122,15 +93,15 @@ THEME_MODE = saved.mode or CONFIG.theme or "random"
 saveTheme(saved.mode)
 end
 
-C = {
-bg = colors.black, panel = colors.gray, empty = colors.lightGray, head = colors.magenta,
-text = colors.white, dim = colors.brown, ink = colors.black,
-accent = colors.blue, label = colors.lightBlue,
-good = colors.green, warn = colors.yellow, bad = colors.red,
-red = colors.red, purple = colors.purple,
-}
 
-themeStyle()
+C = {
+bg = colors.black, panel = colors.gray, line = colors.magenta, dim = colors.lightGray,
+text = colors.white, label = colors.lightBlue, accent = colors.cyan, info = colors.cyan,
+good = colors.green, warn = colors.yellow, bad = colors.red, ink = colors.black,
+orange = colors.orange, purple = colors.purple, pink = colors.pink, lime = colors.lime,
+blue = colors.blue, red = colors.red,
+head = colors.magenta, empty = colors.magenta,
+}
 
 
 ITEM_COLORS = {
@@ -165,26 +136,162 @@ if ok and type(s) == "string" then return s end
 return textutils.serialize(t)
 end
 
+
+
+
+
+
+
+
+
+
+
+
+
+function voiceCacheFiles()
+local out = {}
+for _, d in ipairs(mountedDisks()) do
+local dir = fs.combine(d.mount, "voice")
+if fs.isDir(dir) then
+for _, f in ipairs(fs.list(dir)) do
+local p = fs.combine(dir, f)
+local okA, at = pcall(fs.attributes, p)
+out[#out + 1] = { path = p, size = fs.getSize(p) or 0, mount = d.mount,
+at = okA and type(at) == "table" and (at.modified or at.created) or 0 }
+end
+end
+end
+table.sort(out, function(a, b) if a.at ~= b.at then return a.at < b.at end return a.path < b.path end)
+return out
+end
+function voiceCacheBytes(mount)
+local n = 0
+for _, f in ipairs(voiceCacheFiles()) do if not mount or f.mount == mount then n = n + f.size end end
+return n
+end
+
+function floppyReserve()
+if MAP and MAP.floppyKeep then
+local ok, k = pcall(MAP.floppyKeep)
+if ok and type(k) == "number" then return k end
+end
+return 16 * 1024
+end
+
+function freeFloppyRoom(mount, need)
+if fs.getFreeSpace(mount) >= need then return true end
+for _, f in ipairs(voiceCacheFiles()) do
+if f.mount == mount then
+pcall(fs.delete, f.path)
+if fs.getFreeSpace(mount) >= need then return true end
+end
+end
+return fs.getFreeSpace(mount) >= need
+end
+
+
+function trimVoiceCache()
+local v = CONFIG.voice or {}
+local max = (tonumber(v.cacheKB) or 200) * 1024
+local files = voiceCacheFiles()
+local total, n = 0, 0
+for _, f in ipairs(files) do total = total + f.size end
+local keep = floppyReserve()
+for _, f in ipairs(files) do
+local low = fs.getFreeSpace(f.mount) < keep
+if total > max or low then
+if pcall(fs.delete, f.path) then total, n = total - f.size, n + 1 end
+end
+end
+return n, total
+end
+
+local MOVED_AT = {}
+function moveDataFile(path, text)
+local dir, name = fs.getDir(path), fs.getName(path)
+local disks = mountedDisks()
+local here
+for _, d in ipairs(disks) do if d.data and d.mount == dir then here = d end end
+if not here then return nil end
+
+if freeFloppyRoom(dir, #text + 4096) then
+if writeSafe(path, text) then return path end
+end
+if name:find("%.lua$") or name:find("%.luz$") or name:find("%.log$") then return nil end
+
+
+
+
+local need = 2 * #text + 8192
+local best, bestRoom
+for _, d in ipairs(disks) do
+if d.data and d ~= here then
+local room = (d.free or 0) + voiceCacheBytes(d.mount)
+if room >= need and (not best or room > bestRoom) then best, bestRoom = d, room end
+end
+end
+if not best then return nil end
+if not freeFloppyRoom(best.mount, need) then return nil end
+local np = fs.combine(best.mount, name)
+if not writeSafe(np, text) then pcall(fs.delete, np) return nil end
+pcall(fs.delete, path)
+if dataPathReset then dataPathReset() end
+if sysLog and os.clock() - (MOVED_AT[name] or -9999) > 3600 then
+MOVED_AT[name] = os.clock()
+sysLog(name .. " did not fit on " .. dir .. " any more - moved to " .. best.mount, "INFO")
+end
+return np
+end
+
+
+
+
+
+local function goneFloppy(path)
+local top = tostring(path):match("^([^/]+)/")
+if not top or not top:find("^disk%d*$") or not fs.isDriveRoot then return false end
+if not fs.exists(top) then return true end
+local okR, root = pcall(fs.isDriveRoot, top)
+return okR and root == false
+end
 function saveFileSafe(path, text)
+
+
+local awayId = dataAway and dataAway(path)
+if awayId then
+return false, fs.getName(path) .. " not saved: its data floppy #" .. awayId .. " is not loaded yet (the drive's " ..
+"chunk) - the base restarts once it is"
+end
+if goneFloppy(path) then
+if dataPathReset then dataPathReset() end
+local np = dataFile(fs.getName(path), true)
+if np ~= path and not goneFloppy(np) then
+local ok, err = saveFileSafe(np, text)
+if ok then return true, np end
+return false, err
+end
+end
 local dir = fs.getDir(path)
 local okF, free = pcall(fs.getFreeSpace, dir == "" and "/" or dir)
 if okF and type(free) == "number" and free < #text + 4096 then
+local okM, np = pcall(moveDataFile, path, text)
+if okM and np then
+if state.diskLow and state.diskLow:find(path, 1, true) then state.diskLow = nil end
+return true, np
+end
+
+
+state.offloadAt, state.offloadLeft = nil, nil
+if os.queueEvent then pcall(os.queueEvent, "map_save") end
 state.diskLow = string.format("DISK ALMOST FULL: %s not saved (%d KB free, needs %d KB) - type disks",
 path, math.floor(free / 1024), math.ceil(#text / 1024))
 return false, state.diskLow
 end
-local tmp = path .. ".tmp"
-local h = fs.open(tmp, "w")
-if not h then return false, "cannot write " .. tmp end
-local ok, err = pcall(h.write, text)
-pcall(h.close)
+local ok, err = writeSafe(path, text)
 if not ok then
-pcall(fs.delete, tmp)
 state.diskLow = "DISK FULL: " .. path .. " not saved (" .. tostring(err) .. ")"
 return false, state.diskLow
 end
-if fs.exists(path) then fs.delete(path) end
-fs.move(tmp, path)
 
 if state.diskLow and state.diskLow:find(path, 1, true) then state.diskLow = nil end
 return true
@@ -201,7 +308,8 @@ if peripheral.getType(n) == "drive" and disk.isPresent(n) and disk.hasData(n) th
 local m = disk.getMountPath(n)
 if m then
 local okF, free = pcall(fs.getFreeSpace, m)
-out[#out + 1] = { name = n, mount = m, label = disk.getLabel(n), free = okF and free or 0,
+local okI, id = pcall(disk.getID or function() end, n)
+out[#out + 1] = { name = n, mount = m, label = disk.getLabel(n), free = okF and free or 0, id = okI and id or nil,
 data = fs.exists(fs.combine(m, "base_data")),
 installer = fs.exists(fs.combine(m, "turtle_installer")),
 empty = #fs.list(m) == 0 }
@@ -233,7 +341,10 @@ local p = fs.combine(best.mount, name)
 if fs.exists(path) then
 if fs.getSize(path) + 2048 < best.free then
 pcall(fs.copy, path, p)
-if fs.exists(p) then pcall(fs.delete, path) end
+
+
+if fs.exists(p) and fs.getSize(p) == fs.getSize(path) then pcall(fs.delete, path)
+else pcall(fs.delete, p) return path end
 elseif not forSave then
 return path
 end
@@ -316,19 +427,44 @@ end
 
 
 
+
+
+
+CLIP = nil
+function clip(x, y, w, h) CLIP = { x, y, x + w - 1, y + h - 1 } end
+function unclip() CLIP = nil end
+local function bounds()
+local x1, y1, x2, y2 = 1, 1, W or 9999, H or 9999
+if CLIP then
+x1, y1 = math.max(x1, CLIP[1]), math.max(y1, CLIP[2])
+x2, y2 = math.min(x2, CLIP[3]), math.min(y2, CLIP[4])
+end
+return x1, y1, x2, y2
+end
 function fill(x, y, w, h, bg)
-if w < 1 or h < 1 then return end
+local x1, y1, x2, y2 = bounds()
+local a, b = math.max(x, x1), math.min(x + w - 1, x2)
+if b < a then return end
 win.setBackgroundColor(bg)
-local line = (" "):rep(w)
-for j = 0, h - 1 do
-win.setCursorPos(x, y + j)
+local line = (" "):rep(b - a + 1)
+for j = math.max(y, y1), math.min(y + h - 1, y2) do
+win.setCursorPos(a, j)
 win.write(line)
 end
 end
 
 
 function text(x, y, s, fg, bg)
-if bg and LIGHT_FG and LIGHT_FG[bg] then fg = LIGHT_FG[bg][fg] or fg end
+s = tostring(s)
+local x1, y1, x2, y2 = bounds()
+if y < y1 or y > y2 then return end
+if x < x1 then s = s:sub(x1 - x + 1) x = x1 end
+local room = x2 - x + 1
+if room <= 0 or #s == 0 then return end
+if #s > room then
+s = s:sub(1, room)
+if room >= 3 and s:byte(room) < 128 and s:sub(room - 1, room) ~= "  " then s = s:sub(1, room - 1) .. "~" end
+end
 if bg then win.setBackgroundColor(bg) end
 win.setTextColor(fg)
 win.setCursorPos(x, y)
@@ -340,7 +476,18 @@ function trunc(s, n)
 if n <= 0 then return "" end
 if #s <= n then return s end
 if n == 1 then return s:sub(1, 1) end
-return s:sub(1, n - 1) .. "."
+return s:sub(1, n - 1) .. "~"
+end
+
+
+function shorten(s, n)
+s = tostring(s)
+if #s <= n then return s end
+local a = s:gsub("%s*%b()%s*$", "")
+if #a <= n and #a > 0 then return a end
+local b = a:match("^(.-)%s+%-%s+.*$")
+if b and #b > 0 and #b <= n then return b end
+return trunc(a, n)
 end
 
 
@@ -358,7 +505,19 @@ local s = string.format("%.1f", n / 1000):gsub("%.0$", "")
 return s .. "k"
 end
 if n < 1000000 then return math.floor(n / 1000) .. "k" end
-return string.format("%.1fm", n / 1000000):gsub("%.0m$", "m")
+
+if n < 1e9 then return (string.format("%.1fm", n / 1000000):gsub("%.0m$", "m")) end
+if n < 1e12 then return (string.format("%.2fb", n / 1e9):gsub("%.?0+b$", "b")) end
+return (string.format("%.2ft", n / 1e12):gsub("%.?0+t$", "t"))
+end
+
+function fmtBytes(n)
+n = tonumber(n) or 0
+local units = { "B", "KB", "MB", "GB", "TB", "PB" }
+local i = 1
+while n >= 1024 and i < #units do n, i = n / 1024, i + 1 end
+if i == 1 then return math.floor(n) .. " B" end
+return (string.format(n < 10 and "%.1f" or "%.0f", n):gsub("%.0$", "")) .. " " .. units[i]
 end
 
 
@@ -386,7 +545,7 @@ end
 function wrap(s, w, maxLines)
 local lines, cur = {}, ""
 for word in s:gmatch("%S+") do
-if #word > w then word = trunc(word, w) end
+if #word > w then word = (w > 1) and (word:sub(1, w - 1) .. ".") or word:sub(1, w) end
 if cur == "" then
 cur = word
 elseif #cur + 1 + #word <= w then
@@ -434,3 +593,356 @@ end
 end
 end
 
+
+
+
+
+function removeOldFiles(dir)
+local gone = {}
+local function del(p)
+if fs.exists(p) and not fs.isDir(p) and pcall(fs.delete, p) then gone[#gone + 1] = p end
+end
+dir = dir or ""
+del(fs.combine(dir, "remote.lua"))
+del(fs.combine(dir, "base_remote.lua"))
+del("cloud.lua")
+for _, d in ipairs(mountedDisks()) do del(fs.combine(d.mount, "cloud.lua")) end
+local pp = fs.combine(dir, "pocket.lua")
+if fs.exists(pp) then
+local h = fs.open(pp, "r")
+local text = h and h.readAll() or ""
+if h then h.close() end
+if text:find("POCKET_LOCAL", 1, true) then del(pp) end
+end
+return gone
+end
+
+
+
+
+
+
+VOICE_FILES = { "voice_addon.lua", "voice_talk.lua", "voice_talk2.lua", "voice_talk3.lua", "voice_lines.lua", "voice_idle.lua", "voice_lore.lua", "voice_convo.lua", "voice_staff.lua", "voice_profile.lua", "voice_vary.lua", "voice_spawn.lua", "voice_crowd.lua", "voice_lonely.lua" }
+
+
+
+
+
+
+VOICE_WHERE_FILE = "voice_where.dat"
+VOICE_WHERE = {}
+do
+local t = readSafe and readSafe(VOICE_WHERE_FILE)
+if type(t) == "table" then
+for k, v in pairs(t) do
+if type(k) == "string" and type(v) == "string" and v:match("^store:%d+/") then VOICE_WHERE[k] = v end
+end
+end
+end
+local function saveVoiceWhere() saveFileSafe(VOICE_WHERE_FILE, textutils.serialize(VOICE_WHERE)) end
+
+function addonInstalled(file) return addonPath(file) ~= nil or (VOICE_WHERE[file] ~= nil) end
+
+
+
+local function luzName(file) return (file:gsub("%.lua$", ".luz")) end
+local function readBytes(p)
+local h = fs.open(p, "rb")
+if not h then return nil end
+local s = h.readAll()
+h.close()
+return s
+end
+local function writeBytes(p, data)
+local tmp = p .. ".tmp"
+local h = fs.open(tmp, "wb")
+if not h then return false end
+local okW = pcall(h.write, data)
+pcall(h.close)
+if not okW or not fs.exists(tmp) or fs.getSize(tmp) < #data then pcall(fs.delete, tmp) return false end
+if fs.exists(p) then fs.delete(p) end
+fs.move(tmp, p)
+return true
+end
+local function unpackVoice(bytes)
+local okU, text = pcall(SCHEM.inflate, bytes, 1)
+if okU and type(text) == "string" then return text end
+return nil, "the packed copy is broken (" .. tostring(text) .. ") - type  voice update"
+end
+
+local function voiceToHelper(file, body, name)
+if not STORE then return nil, "no storage helpers" end
+if not next(STORE.helpers or {}) then pcall(STORE.find, true) end
+local oldId = VOICE_WHERE[file] and STORE.parse(VOICE_WHERE[file])
+local list = {}
+for id, h in pairs(STORE.helpers or {}) do
+local room = (h.free or 0) + (id == oldId and #body or 0)
+if STORE.usable(h) and room >= #body + 16 * 1024 then list[#list + 1] = { id = id, room = room } end
+end
+table.sort(list, function(a, b) if (a.id == oldId) ~= (b.id == oldId) then return a.id == oldId end return a.room > b.room end)
+for _, c in ipairs(list) do
+local path = "store:" .. c.id .. "/voice/" .. (name or file)
+local okW = STORE.write(path, body)
+local back = okW and STORE.read(path)
+if back == body then return path end
+pcall(STORE.delete, path)
+end
+return nil, #list == 0 and "no storage helper with room" or "the storage helper did not keep it"
+end
+
+function addonPath(file)
+local z = luzName(file)
+for _, d in ipairs(mountedDisks()) do
+local p = fs.combine(d.mount, file)
+if fs.exists(p) then return p, false end
+p = fs.combine(d.mount, z)
+if fs.exists(p) then return p, true end
+end
+local here = fs.combine(BASE_DIR or "", file)
+if fs.exists(here) then return here, false end
+here = fs.combine(BASE_DIR or "", z)
+if fs.exists(here) then return here, true end
+return nil
+end
+
+local function loadOne(file, remoteOK)
+local p, packed = addonPath(file)
+local text
+if p then
+if packed then
+local bytes = readBytes(p)
+if not bytes then return false, "cannot read " .. p end
+local e
+text, e = unpackVoice(bytes)
+if not text then return false, e end
+else
+local h = fs.open(p, "r")
+if not h then return false, "cannot read " .. p end
+text = h.readAll() or ""
+h.close()
+end
+elseif VOICE_WHERE[file] and remoteOK and STORE then
+p = VOICE_WHERE[file]
+if not next(STORE.helpers or {}) then pcall(STORE.find, true) end
+local okR, t = pcall(STORE.read, p)
+if not (okR and type(t) == "string" and #t > 0) then return false, "the storage helper with " .. file .. " did not answer" end
+text = t
+if p:match("%.luz%.b64$") then
+local okD, bytes = pcall(SCHEM.dec, t)
+local e
+text, e = unpackVoice(okD and bytes or "")
+if not text then return false, e end
+end
+else
+return false, VOICE_WHERE[file] and "on a storage helper - loaded a little after start" or "not installed"
+end
+local fn, err = load(text, "@" .. p, "t", _ENV)
+if not fn then return false, tostring(err) end
+local ok, e = pcall(fn)
+if not ok then return false, tostring(e) end
+os.queueEvent("addon_loaded")
+return true, p
+end
+
+
+
+function loadVoiceChain(file, remoteOK)
+local res = {}
+for i, f in ipairs(VOICE_FILES or {}) do
+if addonPath(f) or (remoteOK and VOICE_WHERE[f]) then
+if i == 1 or (VOICE and VOICE.addIntents) then res[f] = { loadOne(f, remoteOK) } end
+elseif i == 1 then
+res[f] = { false, "not installed" }
+break
+end
+end
+local r = res[file or VOICE_FILES[1]] or { false, "not installed" }
+return r[1], r[2]
+end
+function loadAddon(file, remoteOK)
+for _, f in ipairs(VOICE_FILES or {}) do
+if f == file then return loadVoiceChain(file, remoteOK) end
+end
+return loadOne(file, remoteOK)
+end
+
+
+function installAddon(file, group, log, noLoad)
+log = log or function() end
+local up = fs.combine(BASE_DIR or "", "upgrade.lua")
+local fn = fs.exists(up) and loadfile(up, "t", _ENV)
+if not fn then return false, "upgrade.lua is missing next to inventory.lua" end
+local inflate = (group == "voice" and SCHEM and SCHEM.inflate) and function(b) return (SCHEM.inflate(b, 1)) end or nil
+local okR, done, text, _, packed = pcall(fn, { fetch = file, group = group, dir = BASE_DIR or "", log = log, inflate = inflate })
+if not (okR and done and type(text) == "string") then return false, "the download did not work (see above)" end
+if type(packed) ~= "string" then packed = nil end
+
+local fname = packed and luzName(file) or file
+local blob = packed or text
+local hname = packed and (luzName(file) .. ".b64") or file
+local hblob = packed and SCHEM.enc(packed) or text
+local old = addonPath(file)
+local oldRemote = VOICE_WHERE[file]
+
+local function dropOthers(keep)
+for _, d in ipairs(mountedDisks()) do
+for _, n in ipairs({ file, luzName(file) }) do
+local q = fs.combine(d.mount, n)
+if q ~= keep and fs.exists(q) then pcall(fs.delete, q) end
+end
+end
+for _, n in ipairs({ file, luzName(file) }) do
+local q = fs.combine(BASE_DIR or "", n)
+if q ~= keep and fs.exists(q) then pcall(fs.delete, q) end
+end
+if oldRemote and oldRemote ~= keep and STORE then pcall(STORE.delete, oldRemote) end
+if VOICE_WHERE[file] ~= keep then VOICE_WHERE[file] = nil saveVoiceWhere() end
+end
+
+if not old and oldRemote and STORE and oldRemote:match("/" .. hname:gsub("%p", "%%%0") .. "$") then
+local okC, cur = pcall(STORE.read, oldRemote)
+if okC and cur == hblob then
+if noLoad then return true, oldRemote, "same" end
+local okL, where = loadAddon(file, true)
+return okL, where, "same"
+end
+end
+local oldSame = old and fs.getName(old) == fname and readBytes(old) == blob
+
+if group == "voice" and (type(CONFIG.voice) ~= "table" or CONFIG.voice.onHelpers ~= false) and STORE and not oldSame then
+local hp = voiceToHelper(file, hblob, hname)
+if hp then
+VOICE_WHERE[file] = hp
+saveVoiceWhere()
+dropOthers(hp)
+if noLoad then return true, hp end
+return loadAddon(file, true)
+end
+end
+if oldSame then
+if noLoad then return true, old, "same" end
+local okL, where = loadAddon(file)
+return okL, where, "same"
+end
+
+
+
+local need = #blob + 5 * 1024
+local function cacheBytes(m)
+local dir, n = fs.combine(m, "voice"), 0
+if fs.isDir(dir) then for _, f in ipairs(fs.list(dir)) do n = n + (fs.getSize(fs.combine(dir, f)) or 0) end end
+return n
+end
+local function oldHere(m)
+local n = 0
+for _, nm in ipairs({ file, luzName(file) }) do
+local q = fs.combine(m, nm)
+if fs.exists(q) then n = n + fs.getSize(q) end
+end
+return n
+end
+local oldMount = old and fs.getDir(old)
+local best, bestRoom
+for _, d in ipairs(mountedDisks()) do
+if d.data then
+local room = (d.free or 0) + oldHere(d.mount) + cacheBytes(d.mount)
+
+if room >= need and (not best or (d.mount == oldMount) or (best.mount ~= oldMount and room > bestRoom)) then
+best, bestRoom = d, room
+end
+end
+end
+if not best then
+return false, "no storage helper and no DATA floppy with room (" .. math.ceil(need / 1024) .. " KB, counting old speech that can go) - add-ons are kept off the computer. Type  store  to check the helpers, or put an empty floppy in a drive and type  disks data"
+end
+local p = fs.combine(best.mount, fname)
+
+local function free() return fs.getFreeSpace(best.mount) end
+for _, nm in ipairs({ file, luzName(file) }) do
+local q = fs.combine(best.mount, nm)
+if free() < need and fs.exists(q) then pcall(fs.delete, q) end
+end
+local vdir = fs.combine(best.mount, "voice")
+if free() < need and fs.isDir(vdir) then
+local list, age = fs.list(vdir), {}
+for _, f in ipairs(list) do
+local okA, at = pcall(fs.attributes, fs.combine(vdir, f))
+age[f] = okA and type(at) == "table" and (at.modified or at.created) or 0
+end
+table.sort(list, function(a, b) return age[a] < age[b] end)
+for _, f in ipairs(list) do
+if free() >= need then break end
+pcall(fs.delete, fs.combine(vdir, f))
+end
+end
+local okS
+if packed then okS = writeBytes(p, blob) else okS = saveFileSafe(p, blob) end
+if not okS then return false, "could not save it on " .. best.mount end
+dropOthers(p)
+if noLoad then return true, p end
+return loadAddon(file, true)
+end
+
+function voiceUpdate(say)
+say = say or function() end
+local ok, msg, same = installAddon(VOICE_FILES[1], "voice", say, true)
+say(ok and ((same and "Voice add-on: up to date (" or "Voice add-on: updated on ") .. tostring(msg) .. (same and ")" or ""))
+or ("Voice add-on not installed: " .. tostring(msg)))
+for i = 2, #VOICE_FILES do
+if ok then
+local okP, msgP, sameP = installAddon(VOICE_FILES[i], "voice", say, true)
+say(okP and ("Talk pack " .. VOICE_FILES[i] .. (sameP and ": up to date" or (" on " .. tostring(msgP))))
+or ("Talk pack " .. VOICE_FILES[i] .. " not installed: " .. tostring(msgP) .. " (the old copy stays)"))
+end
+end
+
+local okL, errL = loadVoiceChain(nil, true)
+if ok and not okL then say("Voice add-on did not start: " .. tostring(errL)) end
+
+local SPk = VOICE and VOICE.SPAWN
+if okL and SPk and SPk.updateRelay and SPk.paired and SPk.paired() and SPk.online and SPk.online() then
+pcall(SPk.updateRelay, function(l) say("Spawn speaker: " .. tostring(l)) end)
+end
+return ok and okL, msg
+end
+
+
+
+
+
+VOICE_FLAG = "voice_update.flag"
+function voiceRepair()
+if not (VOICE_FILES and addonInstalled and addonInstalled(VOICE_FILES[1])) then return false, "the voice add-on is not installed" end
+local missing = {}
+for _, f in ipairs(VOICE_FILES) do if not addonInstalled(f) then missing[#missing + 1] = f end end
+local flag = fs.combine(BASE_DIR or "", VOICE_FLAG)
+local flagged = fs.exists(flag)
+if #missing == 0 and not flagged then return false, "nothing to do" end
+local lines = {}
+local okU = pcall(voiceUpdate, function(l) lines[#lines + 1] = tostring(l) end)
+pcall(fs.delete, flag)
+local bad = {}
+for _, l in ipairs(lines) do if l:find("not installed", 1, true) or l:find("did not start", 1, true) then bad[#bad + 1] = l end end
+local why = flagged and "after the upgrade" or ("missing: " .. table.concat(missing, ", "))
+if sysLog then pcall(sysLog, "Voice files updated (" .. why .. "): " .. table.concat(lines, "; "), #bad > 0 and "WARNING" or "INFO") end
+if #bad > 0 and pushNote then
+pcall(pushNote, "WARNING", "Voice update: " .. table.concat(bad, "; ") .. " - type  disks  to see where there is room, then  voice update", C and C.warn)
+end
+return okU and #bad == 0, table.concat(lines, "; ")
+end
+function removeAddon(file)
+local n = 0
+if VOICE_WHERE[file] then
+if STORE then pcall(STORE.delete, VOICE_WHERE[file]) end
+VOICE_WHERE[file] = nil
+saveVoiceWhere()
+n = n + 1
+end
+while true do
+local p = addonPath(file)
+if not p then break end
+if not pcall(fs.delete, p) or fs.exists(p) then break end
+n = n + 1
+end
+return n
+end

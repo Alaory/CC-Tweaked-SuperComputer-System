@@ -93,6 +93,7 @@ function pushNote(title, msg, col, secs)
   if state.page ~= "events" then state.noteUnread = (state.noteUnread or 0) + 1 end
   if notifyChat then pcall(notifyChat, title, msg, col) end    -- '$drone notify' (base_chat.lua)
   if POCKET then pcall(POCKET.note, title, msg, col) end        -- the pocket remote (base_pocket.lua)
+  if VOICE and VOICE.note then pcall(VOICE.note, title, msg, col) end   -- out loud (voice_addon.lua)
   os.queueEvent("inv_update")
 end
 
@@ -184,6 +185,8 @@ function setPopup(title, msg, col) pushNote(title, msg, col or C.warn) end
 
 -- pcall wrapper: returns ok, r1, r2
 function callx(obj, fn, ...)
+  -- (no peripheral at all - the ME Bridge not connected / found again yet: `factory items` crashed here)
+  if type(obj) ~= "table" then return false, "not connected" end
   if type(obj[fn]) ~= "function" then return false, "missing function " .. fn end
   return pcall(obj[fn], ...)
 end
@@ -194,6 +197,7 @@ end
 -- trying both is safe; the order that worked is remembered.
 local ORDER = {}                     -- [function name] = "it" (item first) or "ti" (target first)
 function transfer(obj, names, target, item)
+  if type(obj) ~= "table" then return false, "not connected" end   -- (the bridge / manager gone right now)
   for _, fn in ipairs(names) do
     if type(obj[fn]) == "function" then
       local function call(order)
@@ -339,6 +343,8 @@ function fetchME()
     local ok, r = callx(bridge, fn, ...)
     if ok then return r end
   end
+  -- a NUMBER or nil (an odd answer - true, a table - stopped the AE2 page: drawing compares and divides them - fuzz)
+  local function getN(fn, ...) return tonumber((get(fn, ...))) end
 
   -- every question is asked at the same time
   local ok, items, e
@@ -349,13 +355,13 @@ function fetchME()
     function() ok, items, e = callx(bridge, "getItems", {}) end,
     function() me.connected = get("isConnected") end,
     function() me.online = get("isOnline") end,
-    function() me.energy.stored = get("getStoredEnergy") end,
-    function() me.energy.cap = get("getEnergyCapacity") end,
-    function() me.energy.usage = get("getEnergyUsage") end,
+    function() me.energy.stored = getN("getStoredEnergy") end,
+    function() me.energy.cap = getN("getEnergyCapacity") end,
+    function() me.energy.usage = getN("getEnergyUsage") end,
     -- newer Advanced Peripherals renamed some functions: try the new name, then the old
-    function() me.energy.inj = get("getAverageEnergyInput") or get("getAvgPowerInjection") end,
-    function() me.storage.used = get("getUsedItemStorage") end,
-    function() me.storage.max = get("getTotalItemStorage") or get("getMaxItemStorage") end,
+    function() me.energy.inj = getN("getAverageEnergyInput") or getN("getAvgPowerInjection") end,
+    function() me.storage.used = getN("getUsedItemStorage") end,
+    function() me.storage.max = getN("getTotalItemStorage") or getN("getMaxItemStorage") end,
     function() tasks = get("getCraftingTasks") end,
     -- the chests next to the Inventory Manager (needed for taking / sending items)
     function()
@@ -393,14 +399,14 @@ function fetchME()
         me.fluidBufTanks = okT and type(t) == "table" and t or {}
       end
     end,
-    function() me.fstorage.used = get("getUsedFluidStorage") end,
-    function() me.fstorage.max = get("getTotalFluidStorage") end,
+    function() me.fstorage.used = getN("getUsedFluidStorage") end,
+    function() me.fstorage.max = getN("getTotalFluidStorage") end,
     function() cellsRaw = get("getCells") end,
   }
   if me.hasChem then
     fns[#fns + 1] = function() chemRaw = get("getChemicals", {}) end
-    fns[#fns + 1] = function() me.cstorage.used = get("getUsedChemicalStorage") end
-    fns[#fns + 1] = function() me.cstorage.max = get("getTotalChemicalStorage") end
+    fns[#fns + 1] = function() me.cstorage.used = getN("getUsedChemicalStorage") end
+    fns[#fns + 1] = function() me.cstorage.max = getN("getTotalChemicalStorage") end
   end
   if state.meCraftOnly then
     fns[#fns + 1] = function() craftables = get("getCraftableItems", {}) end
@@ -875,6 +881,72 @@ function sendToME(name, count)
     if remaining <= 0 then break end
   end
   return sent
+end
+
+-- ===== ARMOUR + OFFHAND (the owner: "equipment can't be selected or moved" on the INVENTORY tab) =====
+-- The Inventory Manager sees the player's whole inventory: 0-35 the backpack, 36 boots .. 39 helmet, 40 the offhand.
+-- exportItem with {name, count = 1, fromSlot = <that slot>} takes the piece OFF into the buffer chest; then it goes to the
+-- ME network (toME) or back into the backpack (a free slot). Checked by reading the inventory before and after: a manager
+-- that ignores fromSlot would take the same item from the BACKPACK - then it is put back and the move refused.
+EQUIP_SLOT = { 39, 38, 37, 36, 40 }      -- state.equip index (helm, chest, legs, boots, offhand) -> the manager's slot
+-- (IN GAME: "the Inventory Manager moved nothing" for boots at 36 - the owner's manager lists armour as 100-103, the
+--  old Minecraft numbering, and the off hand as -106. The slot the manager itself reported is tried first, then both
+--  numberings; every try is checked: the worn slot must be empty after, the backpack must not have lost one)
+EQUIP_TRY = { { 103, 39 }, { 102, 38 }, { 101, 37 }, { 100, 36 }, { -106, 40, 98, 106 } }
+local function equipName(i) local e = state.equip and state.equip[i] return e and e.name end
+local function packCount(name)
+  local n = 0
+  for _, t in ipairs(state.list or {}) do if t.name == name then n = n + (t.count or 0) end end
+  return n
+end
+function equipMove(i, toME)
+  i = tonumber(i)
+  local slot = i and EQUIP_SLOT[i]
+  if not slot then return 0, "no such equipment slot" end
+  pcall(refreshInventory)
+  local name = equipName(i)
+  if not name then return 0, "nothing is worn there" end
+  if not toME and (state.used or 0) >= 36 then return 0, "your inventory is full - make room first" end
+  local before = packCount(name)
+  local cands, seen = {}, {}
+  local worn = state.equip and state.equip[i]
+  local function cand(n) n = tonumber(n) if n and not seen[n] then seen[n] = true cands[#cands + 1] = n end end
+  cand(worn and worn.slot)
+  for _, n in ipairs(EQUIP_TRY[i] or { slot }) do cand(n) end
+  local got, lastErr = 0, nil
+  for _, sl in ipairs(cands) do
+    local ok, r = transfer(inv, INV_FROM_PLAYER, chestManagerDir("take"), { name = name, count = 1, fromSlot = sl })
+    if ok then got = tonumber(r) or numOf(r) or 0 else lastErr = tostring(r) end
+    if got > 0 then slot = sl break end
+  end
+  if got <= 0 then
+    local tried = {}
+    for _, n in ipairs(cands) do tried[#tried + 1] = tostring(n) end
+    return 0, "the Inventory Manager could not take it off (tried slots " .. table.concat(tried, ", ") .. ")" ..
+              (lastErr and (": " .. lastErr) or "") .. " - your Advanced Peripherals version may not reach worn armour"
+  end
+  pcall(refreshInventory)
+  if packCount(name) < before or equipName(i) == name then
+    -- (it came out of the backpack, not off the body: put it back, say why)
+    local back = bufferToPlayer(name, got, "take")
+    if back < got then owe(name, got - back, "player", "take") end
+    return 0, "this Inventory Manager cannot take worn items off by slot (it took one from your backpack - put back)"
+  end
+  if toME then
+    local sent = bufferToME(name, got, "take")
+    if sent < got then
+      local back = bufferToPlayer(name, got - sent, "take")
+      if back < got - sent then owe(name, got - sent - back, "player", "take") end
+      return sent, "the network did not take it - it went into your backpack"
+    end
+    return sent
+  end
+  local back = bufferToPlayer(name, got, "take")
+  if back < got then
+    owe(name, got - back, "player", "take")
+    return back, "no room in your backpack - kept in the buffer, given back when there is room"
+  end
+  return back
 end
 
 -- ===== Curios: worn items <-> ME network / inventory (through the buffer chest) =====
@@ -1438,6 +1510,44 @@ end
 -- ===== fluids: between the ME network and a fluid storage on the network =====
 -- CONFIG.me.fluidBuffer (network name), else the item buffer if it also holds
 -- fluids, else the only fluid storage on the network
+-- the one found by itself is REMEMBERED (fluid_buffer.dat): a second fluid storage put
+-- on the cable later (a tank, an Entangled block) no longer stops every fluid move
+local FB_FILE = "fluid_buffer.dat"
+FB_MEM = nil
+function fluidBufferMem()
+  if FB_MEM == nil then
+    FB_MEM = false
+    local p = dataPath and dataPath(FB_FILE) or FB_FILE
+    if fs.exists(p) then
+      local h = fs.open(p, "r")
+      local t = h and h.readAll()
+      if h then h.close() end
+      t = t and t:match("^%s*(%S+)")
+      if t then FB_MEM = t end
+    end
+  end
+  return FB_MEM or nil
+end
+local function fbRemember(n)
+  if fluidBufferMem() == n then return end
+  FB_MEM = n
+  pcall(saveFileSafe, dataPath and dataPath(FB_FILE) or FB_FILE, n)
+end
+-- every fluid storage that could be the buffer (not bridges, not supplied tanks)
+function fluidStorages()
+  local list = {}
+  for _, n in ipairs(peripheral.getNames()) do
+    local okT, ty = pcall(peripheral.getType, n)
+    ty = (okT and type(ty) == "string") and ty or ""
+    local ok, isF = pcall(peripheral.hasType, n, "fluid_storage")
+    if ok and isF and not ty:find("me_bridge", 1, true) and not ty:find("inventory_manager", 1, true)
+       and not (SUPPLY and SUPPLY.isTarget(n)) then
+      list[#list + 1] = n
+    end
+  end
+  table.sort(list)
+  return list
+end
 function fluidBuffer()
   if CONFIG.me.fluidBuffer then return CONFIG.me.fluidBuffer end
   local function isFluid(n)
@@ -1449,25 +1559,35 @@ function fluidBuffer()
   for _, n in ipairs(peripheral.getNames()) do
     local okT, ty = pcall(peripheral.getType, n)
     ty = (okT and type(ty) == "string") and ty or ""
-    if isFluid(n) and not ty:find("me_bridge", 1, true) and not ty:find("inventory_manager", 1, true) then
+    if isFluid(n) and not ty:find("me_bridge", 1, true) and not ty:find("inventory_manager", 1, true)
+       and not (SUPPLY and SUPPLY.isTarget(n)) then                  -- (a tank the base keeps stocked: not the buffer)
       list[#list + 1] = n
     end
   end
   table.sort(list)
-  if #list == 1 then return list[1] end
+  if #list == 1 then fbRemember(list[1]) return list[1] end
   if #list == 0 then return nil, "no fluid storage on the network" end
-  return nil, "several fluid storages - set fluidBuffer in base_config.lua (me): " .. table.concat(list, ", ")
+  local mem = fluidBufferMem()
+  for _, n in ipairs(list) do if n == mem then return n end end
+  return nil, "several fluid storages (" .. table.concat(list, ", ") .. ") - type  fluidbuffer  on the computer to pick yours"
 end
 
 local FL_OUT, FL_IN = { "exportFluid" }, { "importFluid" }
 -- dir "take": ME -> fluid storage; "store": fluid storage -> ME. Returns mB moved.
-function moveFluid(dir, name, mb)
+-- Each call moves only a part (Advanced Peripherals / the storage cap it), so it keeps
+-- calling while something moves - until done, or `budget` seconds (default 20) are
+-- used up: then the 3rd result is true (the caller carries on later). Before: at most
+-- 64 calls - "ALL" of a big amount stopped half way although the storage had room.
+function moveFluid(dir, name, mb, budget)
   local b, err = fluidBuffer()
   if not b then return 0, err end
   local moved, left = 0, mb
-  for _ = 1, 64 do
+  local stopAt, calls = os.clock() + (budget or 20), 0
+  while true do
+    calls = calls + 1
+    if os.clock() >= stopAt or calls > 4000 then return moved, nil, true end
     local ok, r, e = transfer(bridge, dir == "take" and FL_OUT or FL_IN, b,
-                              { name = name, amount = math.min(left, 2147483647) })
+                              { name = name, amount = math.min(left, FLUID_MAX or 2147483647) })
     if not ok then return moved, tostring(r) end
     local n = tonumber(r) or 0
     if n <= 0 then return moved, (moved == 0) and tostring(e or "nothing moved") or nil end
@@ -1711,6 +1831,7 @@ end
 
 -- ask the ME network to craft a fluid
 function craftFluidME(name, mb)
+  if MEX then return MEX.craft(name, mb, true) end      -- (followed to the end: AE2 SYSTEM page)
   local ok, r, e = callx(bridge, "craftFluid", { name = name, amount = mb })
   if not ok then return false, tostring(r) end
   if not r then return false, tostring(e or "craft request failed") end
@@ -1719,6 +1840,7 @@ end
 
 -- ask the ME network to craft an item
 function craftME(name, count)
+  if MEX then return MEX.craft(name, count, false) end  -- (followed to the end: AE2 SYSTEM page)
   local ok, r, e = callx(bridge, "craftItem", { name = name, count = count })
   if not ok then return false, tostring(r) end
   if r == nil then return false, tostring(e or "craft request failed") end
@@ -1727,6 +1849,13 @@ end
 
 -- runs a confirmed action {kind, name, count, label}
 function runAction(a)
+  -- AE2 SYSTEM page: cancel the crafting jobs for an item (no inventory / buffer needed)
+  if a.kind == "mecancel" then
+    local ok, err = MEX.cancel(a.name, a.key)
+    setToast(ok and ("Cancelled: " .. tostring(a.label or a.name)) or ("Not cancelled: " .. tostring(err)), ok and C.good or C.warn, 8)
+    MEX.readAt = -1e9                                 -- (read the job list again at once)
+    return
+  end
   local disp = prettify(a.name)
   local known = state.me and state.me.byName and state.me.byName[a.name]
   if known then disp = known.display end
@@ -1752,9 +1881,19 @@ function runAction(a)
 
   if a.kind == "cstore" or a.kind == "cunequip" or a.kind == "cequip" then
     local n, err
-    if a.kind == "cstore" then n, err = curioToME(a.name, a.count, a.slotType, a.slotNo)
-    elseif a.kind == "cunequip" then n, err = curioToInventory(a.name, a.count, a.slotType, a.slotNo)
-    else n, err = meToCurio(a.name, a.count, a.slotType, a.slotNo) end
+    -- CURIO_BUSY: the auto-equip worker puts things on by itself every tick - never two curios moves at once
+    -- (both use the curios chest)
+    local w = 0
+    while CURIO_BUSY and w < 100 do sleep(0.05) w = w + 1 end
+    CURIO_BUSY = true
+    local okC, n1, e1 = pcall(function()
+      if a.kind == "cstore" then return curioToME(a.name, a.count, a.slotType, a.slotNo)
+      elseif a.kind == "cunequip" then return curioToInventory(a.name, a.count, a.slotType, a.slotNo) end
+      return meToCurio(a.name, a.count, a.slotType, a.slotNo)
+    end)
+    CURIO_BUSY = false
+    if okC then n, err = n1, e1 else n, err = 0, tostring(n1) end
+    n = tonumber(n) or 0
     if a.kind == "cequip" and CURIOS then
       if a.auto then CURIOS.autoResult(a, n, err)
       elseif n > 0 then CURIOS.learn(a.slotType, a.name) end   -- (it fits: shown for this slot type from now on)
@@ -1765,6 +1904,17 @@ function runAction(a)
     else setToast("Curios: " .. disp .. " not moved - " .. tostring(err or "nothing happened"), C.bad, 12) end
     state.force.curios = true
     state.meForce = true
+    os.queueEvent("inv_wake")
+    return
+  end
+
+  if a.kind == "eqoff" or a.kind == "eqsend" then
+    local n, err = equipMove(a.slotIdx, a.kind == "eqsend")
+    local what = a.kind == "eqsend" and ("Sent to " .. tostring(bridgeKind or "AE2") .. ": ") or "Taken off: "
+    if n > 0 then setToast(what .. disp .. (err and (" - " .. err) or ""), err and C.warn or C.good, 8)
+    else setToast("Not moved: " .. disp .. " - " .. tostring(err or "nothing happened"), C.bad, 12) end
+    if n > 0 then state.equipSel = nil end
+    state.force.inv = true
     os.queueEvent("inv_wake")
     return
   end
@@ -1830,8 +1980,18 @@ function runAction(a)
       setToast("Craft failed: " .. tostring(err), C.bad, 10)
     end
   elseif fluid then
-    local n, err = moveFluid(a.kind == "ftake" and "take" or "store", a.name, a.count)
+    local n, err, more = moveFluid(a.kind == "ftake" and "take" or "store", a.name, a.count)
     local where = a.kind == "ftake" and "into the fluid storage" or "into the ME network"
+    a.done = (a.done or 0) + n
+    if more and n > 0 and a.count - n > 0 then
+      -- a big "ALL": the rest goes on at the END of the queue (other buttons are not kept waiting)
+      state.actionQueue[#state.actionQueue + 1] = { kind = a.kind, name = a.name, count = a.count - n, done = a.done, cont = true }
+      os.queueEvent("inv_action")
+      setToast(string.format("Moving %s %s: %s so far - carrying on (fluidstop on the computer ends it)", disp, where, fmtBuckets(a.done)), C.label, 6)
+      state.meForce = true
+      return
+    end
+    n = a.done
     if n == 0 then
       setToast("Fluid not moved: " .. tostring(err), C.bad, 10)
     else
@@ -1861,11 +2021,8 @@ local SIDES = { "north", "south", "east", "west", "up", "down" }
 
 -- use the buffer chest found by 'mesetup' (me_setup.dat)
 function loadMESetup()
-  if not fs.exists(SETUP_FILE) then return end
-  local h = fs.open(SETUP_FILE, "r")
-  local t = h and textutils.unserialize(h.readAll() or "")
-  if h then h.close() end
-  if type(t) == "table" and t.managerSide and t.bridge then
+  local t = readSafe(SETUP_FILE)
+  if type(t) == "table" and type(t.managerSide) == "string" and type(t.bridge) == "string" then
     CONFIG.me.bufferFromManager = t.managerSide
     CONFIG.me.giveFromManager, CONFIG.me.takeFromManager = nil, nil   -- one chest for both ways
     CONFIG.me.giveChest, CONFIG.me.takeChest = nil, nil
@@ -1881,11 +2038,7 @@ end
 
 -- save what 'mesetup' found and report it
 local function saveSetup(side, cd, say)
-  local h = fs.open(SETUP_FILE, "w")
-  if h then
-    h.write(textutils.serialize({ managerSide = side, bridge = cd.target, bridgeIsName = cd.isName or false }))
-    h.close()
-  end
+  writeSafe(SETUP_FILE, textutils.serialize({ managerSide = side, bridge = cd.target, bridgeIsName = cd.isName or false }))
   loadMESetup()
   state.meChests, state.meChestsT = nil, nil
   say("SETUP DONE: the Inventory Manager reaches the buffer " ..
@@ -2051,11 +2204,7 @@ function meSetup(say)
       local after = countIn()
       transfer(bridge, ME_OUT, cd.target, { name = marker, count = 1 })      -- put it back
       if after < before then
-        local h = fs.open(SETUP_FILE, "w")
-        if h then
-          h.write(textutils.serialize({ managerSide = c.side, bridge = cd.target, bridgeIsName = cd.isName or false }))
-          h.close()
-        end
+        writeSafe(SETUP_FILE, textutils.serialize({ managerSide = c.side, bridge = cd.target, bridgeIsName = cd.isName or false }))
         loadMESetup()
         state.meChests, state.meChestsT = nil, nil
         say("SETUP DONE: the buffer chest is on the " .. c.side .. " side of the Inventory Manager;")

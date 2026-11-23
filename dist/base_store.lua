@@ -14,15 +14,14 @@ STORE = { PROTO = "basestore", helpers = {}, lastFind = -1000, n = 0 }
 
 local KNOWN_FILE = "store_helpers.dat"
 STORE.known = {}
-if fs.exists(KNOWN_FILE) then
-local h = fs.open(KNOWN_FILE, "r")
-local t = h and textutils.unserialize(h.readAll() or "")
-if h then h.close() end
-if type(t) == "table" then STORE.known = t end
+do
+local t = readSafe(KNOWN_FILE)
+if type(t) == "table" then
+for id, v in pairs(t) do if tonumber(id) then STORE.known[tonumber(id)] = type(v) == "table" and v or true end end
+end
 end
 local function saveKnown()
-local h = fs.open(KNOWN_FILE, "w")
-if h then h.write(textutils.serialize(STORE.known)) h.close() end
+writeSafe(KNOWN_FILE, textutils.serialize(STORE.known))
 end
 
 
@@ -100,7 +99,8 @@ for _, name in ipairs(peripheral.getNames()) do
 local okT, isC = pcall(peripheral.hasType, name, "computer")
 if okT and isC then
 local okI, id = pcall(peripheral.call, name, "getID")
-if okI and (STORE.known[id] or STORE.known[tostring(id)]) and not STORE.helpers[id]
+local h = okI and STORE.helpers[id]
+if okI and (STORE.known[id] or STORE.known[tostring(id)]) and (not h or (h.misses or 0) >= 2)
 and (not kicked[id] or os.clock() - kicked[id] > 600) then
 local okO, on = pcall(peripheral.call, name, "isOn")
 if okO and on and pcall(peripheral.call, name, "reboot") then
@@ -141,6 +141,12 @@ found[id] = { id = id, free = tonumber(r.free) or 0, cap = tonumber(r.cap) or 0,
 label = r.label, ver = r.ver }
 elseif err and err:find("belongs", 1, true) then
 found[id] = { id = id, free = 0, cap = 0, refused = err }
+elseif STORE.helpers[id] and not STORE.helpers[id].refused and (STORE.helpers[id].misses or 0) < 2 then
+
+
+local h = STORE.helpers[id]
+h.misses, h.down = (h.misses or 0) + 1, os.clock()
+found[id] = h
 end
 end
 end
@@ -153,7 +159,7 @@ if changed then
 saveKnown()
 local n = 0
 for _ in pairs(found) do n = n + 1 end
-if setToast then setToast("Storage helper(s) found: " .. n .. " - the map uses them when the floppies are full", C.good) end
+if setToast then setToast("Storage helper(s) found: " .. n .. " - the map is kept on them (the floppies stay free for the rest)", C.good) end
 if sysLog then sysLog("Storage helpers: " .. n .. " found", "DONE") end
 end
 return found
@@ -214,7 +220,12 @@ function STORE.isRemote(path) return STORE.parse(path) ~= nil end
 function STORE.write(path, text)
 local id, name = STORE.parse(path)
 local r, err = STORE.call(id, { op = "put", name = name, data = text }, 6)
-if r and STORE.helpers[id] then STORE.helpers[id].free = tonumber(r.free) or STORE.helpers[id].free end
+local h = STORE.helpers[id]
+if r and h then h.free = tonumber(r.free) or h.free end
+
+
+if not r and h and err == "no answer" then h.down = os.clock() end
+if r and h then h.down, h.misses = nil, 0 end
 return r ~= nil, err
 end
 function STORE.read(path)
@@ -225,7 +236,7 @@ end
 
 function STORE.readMany(id, names)
 local r = STORE.call(id, { op = "get", names = names }, 15)
-return r and r.files or {}
+return r and type(r.files) == "table" and r.files or {}
 end
 function STORE.delete(path)
 local id, name = STORE.parse(path)
@@ -233,15 +244,34 @@ local r = STORE.call(id, { op = "del", name = name }, 4)
 return r ~= nil
 end
 
+
 function STORE.list(id, dir)
-local r = STORE.call(id, { op = "list", dir = dir }, 6)
-return r and r.files or {}
+local r, err = STORE.call(id, { op = "list", dir = dir }, 6)
+if not r then
+local h = STORE.helpers[id]
+if h and err == "no answer" then h.down = os.clock() end
+return nil, err
+end
+return type(r.files) == "table" and r.files or {}
 end
 
-function STORE.space()
+
+function STORE.usable(h)
+return h and not h.refused and not (h.down and os.clock() - h.down < 60 and os.clock() >= h.down)
+end
+
+
+function STORE.space(known)
 local free, n = 0, 0
 for _, h in pairs(STORE.helpers) do
-if not h.refused then free, n = free + (h.free or 0), n + 1 end
+if (known and not h.refused) or STORE.usable(h) then free, n = free + (h.free or 0), n + 1 end
 end
 return free, n
+end
+
+function STORE.quietList()
+local q = {}
+for id, h in pairs(STORE.helpers) do if not h.refused and not STORE.usable(h) then q[#q + 1] = "#" .. id end end
+table.sort(q)
+return table.concat(q, ", ")
 end

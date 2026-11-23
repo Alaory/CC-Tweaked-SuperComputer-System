@@ -33,12 +33,13 @@ drones, droneOrder = {}, {}
 savedLogs = {}
 do
   local f = dataFile(CONFIG.drone.logFile)
-  if f and fs.exists(f) then
-    local h = fs.open(f, "r")
-    if h then
-      local t = textutils.unserialize(h.readAll() or "")
-      h.close()
-      if type(t) == "table" then savedLogs = t end
+  if f then
+    do
+      local t = readSafe(f)
+      if type(t) == "table" then
+        savedLogs = {}
+        for k, l in pairs(t) do if type(l) == "table" then savedLogs[k] = l end end   -- (odd entries out)
+      end
     end
   end
 end
@@ -51,7 +52,7 @@ function saveLogs()
     all[k] = dr.log
     savedLogs[k] = dr.log
   end
-  local okS, text = pcall(textutils.serialize, all)
+  local okS, text = pcall(serialSmall, all)          -- (compact: a third of the size)
   if okS then
     local path = dataFile(CONFIG.drone.logFile, true)
     if saveFileSafe(path, text) then dropOldCopy(CONFIG.drone.logFile, path, next(all) == nil) end
@@ -147,32 +148,37 @@ scanDrones()
 if #droneOrder > 0 then print("Drone interfaces: " .. table.concat(droneOrder, ", ")) end
 
 -- private chat reply (sent by the chat worker, needs a Chat Box)
-function chatTell(name, text)
+-- urgent = an ANSWER to something a player just asked: it goes before the lines that are only waiting
+-- (notes, digests, menus queued earlier) - the owner: "I ask it something and it takes like a minute to respond"
+function chatTell(name, text, urgent)
   if not name or name == "" then return end
-  state.chatOut[#state.chatOut + 1] = { name = name, text = text }
+  local item = { name = name, text = text, urgent = urgent or nil }
+  local at = #state.chatOut + 1
+  if urgent then
+    for i, o in ipairs(state.chatOut) do if not o.urgent then at = i break end end
+  end
+  table.insert(state.chatOut, at, item)
   os.queueEvent("chat_send")
 end
 
 -- who may use "$drone" in chat -----------------------------------------
 function loadAccess()
   local f = CONFIG.chat.accessFile
-  if fs.exists(f) then
-    local h = fs.open(f, "r")
-    if h then
-      local t = textutils.unserialize(h.readAll() or "")
-      h.close()
-      if type(t) == "table" and type(t.allowed) == "table" then state.access = t end
+  do
+    local t = readSafe(f)
+    if type(t) == "table" and type(t.allowed) == "table" then
+      -- (an odd / old file: only entries with a name)
+      local ok = {}
+      for k, e in pairs(t.allowed) do if type(e) == "table" and type(e.name) == "string" then ok[k] = e end end
+      t.allowed = ok
+      state.access = t
     end
   end
 end
 
 -- save the chat allow list
 function saveAccess()
-  local h = fs.open(CONFIG.chat.accessFile, "w")
-  if h then
-    h.write(textutils.serialize(state.access))
-    h.close()
-  end
+  writeSafe(CONFIG.chat.accessFile, textutils.serialize(state.access))
 end
 
 loadAccess()
@@ -221,24 +227,26 @@ end
 -- saved places ---------------------------------------------------------
 function loadWaypoints()
   local f = CONFIG.drone.waypointFile
-  if fs.exists(f) then
-    local h = fs.open(f, "r")
-    if h then
-      local txt = h.readAll()
-      h.close()
-      local t = textutils.unserialize(txt or "")
-      if type(t) == "table" then state.waypoints = t end
+  do
+    local t = readSafe(f)
+    if type(t) == "table" then
+      -- (only places with a name and x y z: an odd / old file never stops the base)
+      local out = {}
+      for _, w in ipairs(t) do
+        if type(w) == "table" and (type(w.name) == "string" or type(w.name) == "number")
+           and tonumber(w.x) and tonumber(w.y) and tonumber(w.z) then
+          w.name, w.x, w.y, w.z = tostring(w.name), tonumber(w.x), tonumber(w.y), tonumber(w.z)
+          out[#out + 1] = w
+        end
+      end
+      state.waypoints = out
     end
   end
 end
 
 -- save the saved places
 function saveWaypoints()
-  local h = fs.open(CONFIG.drone.waypointFile, "w")
-  if h then
-    h.write(textutils.serialize(state.waypoints))
-    h.close()
-  end
+  writeSafe(CONFIG.drone.waypointFile, textutils.serialize(state.waypoints))
 end
 
 -- a saved place by name (any case), or nil
@@ -277,6 +285,47 @@ if CONFIG.drone.home then
     if w then removeWaypoint(w.name) end
     addWaypoint("Base", h.x, h.y, h.z)
   end
+end
+
+-- MARKING PLACES (the owner: "annoying to write the coords each time for each block / chest"):
+-- stand ON a block (a chest, a corner of a build site ...) and mark it - chat  $drone mark <name>
+-- or console  save <name> me . Commands that need a spot take a saved name instead of x y z.
+-- the block under a player's feet (standing ON a chest = that chest), or where they stand (feet)
+function playerBlock(name, feet)
+  local x, y, z = playerPos(canonPlayer(name or state.owner or ""))
+  if not x then return nil, y end
+  -- the block UNDER the feet = floor(y - 0.01): standing on a CHEST (0.875 high) or a slab the feet are
+  -- INSIDE that block's space - "floor(y) - 1" gave the block under the chest (the drone test: "the drone
+  -- took nothing from the work chest"). On a full block both are the same.
+  if feet then return math.floor(x), math.floor(y + 0.001), math.floor(z) end
+  return math.floor(x), math.floor(y - 0.01), math.floor(z)
+end
+-- a spot from command words, starting at words[i]: "x y z" | a saved place | "me" (the block
+-- under you) | "feet" (where you stand) | "@player" (the block under them).
+-- returns x, y, z, next index  -  or nil, why
+function posArg(words, i, who)
+  local a = words[i]
+  if not a then return nil, "where? give x y z, a saved place, or me (the block under you)" end
+  if tonumber(a) then
+    if validCoords(words[i], words[i + 1], words[i + 2]) then
+      return math.floor(tonumber(words[i])), math.floor(tonumber(words[i + 1])), math.floor(tonumber(words[i + 2])), i + 3
+    end
+    return nil, "x y z: three numbers (y -64..320)"
+  end
+  local l = a:lower()
+  if l == "me" or l == "here" or l == "under" or l == "feet" then
+    local x, y, z = playerBlock(who or state.owner, l == "feet")
+    if not x then return nil, y end
+    return x, y, z, i + 1
+  end
+  if a:sub(1, 1) == "@" then
+    local x, y, z = playerBlock(a:sub(2))
+    if not x then return nil, y end
+    return x, y, z, i + 1
+  end
+  local w = findWaypoint(a)
+  if w then return w.x, w.y, w.z, i + 1 end
+  return nil, "no saved place called '" .. a .. "' (stand on it and type  $" .. tostring(CONFIG.chat and CONFIG.chat.command or "drone") .. " mark " .. a .. "  in chat)"
 end
 
 -- sensible Minecraft coordinates? (stops typos like 1e309 or y = 9000)
@@ -330,7 +379,7 @@ function playerPos(name)
   local fn = det.getPlayer or det.getPlayerPos
   if not fn then return nil, "Detector has no getPlayer()" end
   local ok, p = pcall(fn, name)
-  if ok and type(p) == "table" and p.x then
+  if ok and type(p) == "table" and cleanPlayerData(p).x then
     local d = playerDimNow(name, p)
     if d and d ~= DRONE_DIM then
       return nil, tostring(name) .. " is in " .. dimName(d) .. " - drones only fly in the overworld", d
@@ -398,11 +447,73 @@ end
 -- drone status -----------------------------------------------------------
 function parsePos(t)
   if type(t) ~= "table" then return nil end
-  local x, y, z = t[1] or t.x, t[2] or t.y, t[3] or t.z
-  if x and y and z then return tonumber(x), tonumber(y), tonumber(z) end
+  local x, y, z = tonumber(t[1] or t.x), tonumber(t[2] or t.y), tonumber(t[3] or t.z)
+  -- (all three numbers, or none: a half position reached the drone page / the MAP and stopped the base - fuzz)
+  if x and y and z then return x, y, z end
 end
 
 -- read one drone's status (connected, air, position, action) all at once
+-- WHERE A DRONE WAS LAST SEEN (the owner: "can you show where the drone was last seen" - lost drones): every position
+-- the interface reports is kept (DRONE_SEEN[interface] = {x, y, z, at, doing}, drone_seen.dat - written when it moved
+-- 32+ blocks or once a minute), so a drone that stops answering (an unloaded chunk) can be found: the DRONES page, the
+-- `drones` console, `$drone status`, and ONE WARNING when it goes missing.
+DRONE_SEEN = {}
+do
+  local okR, t = pcall(readSafe, "drone_seen.dat")
+  if okR and type(t) == "table" then
+    for k, e in pairs(t) do
+      if type(k) == "string" and type(e) == "table" and tonumber(e.x) and tonumber(e.y) and tonumber(e.z) and tonumber(e.at) then
+        DRONE_SEEN[k] = { x = math.floor(e.x), y = math.floor(e.y), z = math.floor(e.z), at = tonumber(e.at),
+                          doing = type(e.doing) == "string" and e.doing or nil }
+      end
+    end
+  end
+end
+local seenSaved = { at = -999 }
+local function epochNow() return (os.epoch and os.epoch("utc")) or 0 end
+function droneSeen(dr, x, y, z)
+  if not (dr and dr.key and tonumber(x)) then return end
+  local old = DRONE_SEEN[dr.key]
+  local m = dr.mission
+  local e = { x = math.floor(x), y = math.floor(y), z = math.floor(z), at = epochNow(),
+              doing = (m and m.state == "running" and m.title) and tostring(m.title) or nil }
+  DRONE_SEEN[dr.key] = e
+  if dr.lostAt then
+    dr.lostAt = nil
+    pcall(droneLog, dr, "Found again at " .. fmtPos(e.x, e.y, e.z))
+  end
+  local last = seenSaved[dr.key]
+  local d = last and (math.abs(last.x - e.x) + math.abs(last.y - e.y) + math.abs(last.z - e.z)) or 999
+  -- (written when it moved 32+ since the last save, or moved at all and a minute passed - never for a parked drone)
+  if d > 32 or (d > 0 and os.clock() - seenSaved.at > 60) then
+    seenSaved.at, seenSaved[dr.key] = os.clock(), e
+    if saveFileSafe then pcall(saveFileSafe, "drone_seen.dat", serialSmall and serialSmall(DRONE_SEEN) or textutils.serialize(DRONE_SEEN)) end
+  end
+  return old
+end
+-- "last seen at x y z (N blocks from the base), 3 h ago - doing: Gift for Bob", or nil
+function droneSeenText(dr)
+  local e = dr and dr.key and DRONE_SEEN[dr.key]
+  if not e then return nil end
+  local h = CONFIG.drone.home
+  local far = (type(h) == "table" and tonumber(h.x)) and math.floor(math.sqrt((e.x - h.x) ^ 2 + (e.z - h.z) ^ 2)) or nil
+  local age = math.max(0, epochNow() - e.at) / 1000
+  local ago = (spanWords and spanWords(age)) or (fmtSpan and fmtSpan(age)) or (math.floor(age) .. " s")
+  return "last seen at " .. fmtPos(e.x, e.y, e.z) .. (far and (" (" .. far .. " blocks from the base)") or "") .. ", " ..
+         ago .. " ago" .. (e.doing and (" - doing: " .. e.doing) or "")
+end
+-- connected before, not now: it is in a chunk that is not loaded (or it broke)
+function droneLost(dr)
+  if dr.lostAt then return end
+  dr.lostAt = epochNow()
+  local where = droneSeenText(dr) or "never seen where"
+  local msg = tostring(dr.label) .. " LOST CONTACT with its drone - " .. where ..
+              ". It is probably there in a chunk that is not loaded: go there and it comes back"
+  pcall(droneLog, dr, msg)
+  if sysLog then pcall(sysLog, msg, "WARNING") end
+  if pushNote then pcall(pushNote, "WARNING", msg, C and C.warn) end
+end
+
 function refreshDrone(dr)
   local d = dr.periph
   local r = {}
@@ -419,6 +530,9 @@ function refreshDrone(dr)
   dr.pressure = r.conn and r.pressure or nil
   local x, y, z = parsePos(r.pos)
   dr.pos = (r.conn and x) and { x = x, y = y, z = z } or nil
+  if dr.pos then pcall(droneSeen, dr, x, y, z) end
+  if not r.conn and dr.wasConn then pcall(droneLost, dr) end
+  dr.wasConn = r.conn
   dr.action = r.conn and r.action or nil
   dr.done = r.done
 end
@@ -497,7 +611,10 @@ function teleportCost(dr) return dr.tpCost or CONFIG.drone.teleportCost or 0.85 
 function canTeleport(dr, extra)
   local p = dronePressure(dr)
   if not p then return true end
-  return p >= teleportCost(dr) * (1 + (extra or 0)) + (CONFIG.drone.airReserve or 1.5)
+  -- (dr.useReserve: an EMPTY trip whose only other way is a flight out of the loaded area - travelTo - may use the
+  --  reserve: a drone sitting where it is can be found, one that flew into unloaded land is lost)
+  local reserve = dr.useReserve and 0 or (CONFIG.drone.airReserve or 1.5)
+  return p >= teleportCost(dr) * (1 + (extra or 0)) + reserve
 end
 
 -- WHO IS ON BOARD - asked the DRONE itself (PneumaticCraft's "drone_condition_entity":
@@ -573,10 +690,16 @@ function droneMoveTo(dr, action, x, y, z, limit)
   local d = dr.periph
   if not d or dr.gone then return false, "Drone Interface disconnected" end
   local isTp = action == "pneumaticcraft:teleport"
+  -- (a teleport happens 120 ticks after it was asked for - PneumaticCraft's TELEPORT_TICKS - or not at all; the
+  --  base sees it within 6 ticks: 7 s of game clock = 140 ticks is enough. os.clock counts ticks, so this holds on a
+  --  slow server too. Was CONFIG.drone.travelTimeout 8 = 40 ticks more for every refused try.)
+  if isTp then limit = math.min(limit or 7, CONFIG.drone.tpLimit or 7) end
   -- a passenger on board: still with me? Never go on (into unloaded land) without them
   if dr.rider and riderGoneNow(dr) then return false, "passenger got off" end
   if isTp and not canTeleport(dr) then return false, "low on air" end
   local pBefore = isTp and dronePressure(dr) or nil
+  local fromX, _, fromZ
+  if isTp then fromX, _, fromZ = droneXYZ(dr) end
   local okS, errS = pcall(areaPoint, dr, x, y, z)
   if not okS then return false, cleanErr(errS) end
   local ok, err = pcall(d.setAction, action)
@@ -591,6 +714,7 @@ function droneMoveTo(dr, action, x, y, z, limit)
     local okP, a, b, c = pcall(d.getDronePosition)
     local px, py, pz
     if okP then px, py, pz = parsePos((type(a) == "number") and { a, b, c } or a) end
+    if px then pcall(droneSeen, dr, px, py, pz) end
     local near = px and math.abs(px - (x + 0.5)) <= 2.5 and math.abs(py - (y + 0.5)) <= 2.5
                  and math.abs(pz - (z + 0.5)) <= 2.5
     local t = os.clock() - t0
@@ -599,6 +723,7 @@ function droneMoveTo(dr, action, x, y, z, limit)
         local pAfter = dronePressure(dr)
         local used = pAfter and (pBefore - pAfter)
         if used and used > 0.05 and used < 5 then dr.tpCost = used end   -- what a teleport really costs
+        pcall(learnArrive, dr, x, y, z, fromX, fromZ)
       end
       return true
     end
@@ -647,10 +772,160 @@ function droneXYZ(dr)
   if not okP then return nil end
   return parsePos((type(a) == "number") and { a, b, c } or a)
 end
--- far + not loaded: teleport in hops high above the terrain until close
+-- ===== SPEED (the owner: "the drones are slow" + "a server will have a low TPS") =====
+-- PneumaticCraft (source, 1.21): a TELEPORT always waits 120 server ticks first (EntityPathNavigateDrone
+-- TELEPORT_TICKS) and happens only into a LOADED chunk - a refused one costs the same 120 ticks AND its air
+-- (10,000 mL = 0.83 bar of a 12,000 mL drone). FLYING moves 0.15 blocks a tick + 0.015 per Speed Upgrade
+-- (DroneEntity), no air; with no flight path PneumaticCraft teleports anyway. Everything counts in TICKS - a slow
+-- server stretches all of it the same - so the drones save TICKS: no teleport that cannot work, fly only when
+-- that is quicker than the 120-tick warm-up. tools/tests/lib/drone_sim.lua times the real missions.
+function droneSpeed(dr)
+  if dr.speedBT then return dr.speedBT end
+  local n = 0
+  local ok, up = pcall(dr.periph and dr.periph.getUpgrades)
+  if ok and type(up) == "table" then
+    for k, v in pairs(up) do
+      local name, cnt = k, v
+      if type(v) == "table" then name, cnt = v.name or v.id or k, v.count or v.amount or 1 end
+      if tostring(name):lower():find("speed", 1, true) and tonumber(cnt) then n = n + tonumber(cnt) end
+    end
+  end
+  dr.speedBT = 0.15 + math.min(10, n) * 0.015
+  return dr.speedBT
+end
+-- flying there takes fewer ticks than a teleport's warm-up?
+function flyQuicker(dr, dist) return dist / droneSpeed(dr) < 110 end
+-- how long a flight may take (game seconds): the ticks it needs, half as much again, + 3 s
+function flyLimit(dr, dist) return dist / droneSpeed(dr) / 20 * 1.5 + 3 end
+-- an area the base KNOWS is loaded (a teleport there can work): the base itself, a player there (the Player
+-- Detector), an online turtle (its Chunky). nil = nothing known - a straight teleport would most likely be refused.
+function knownLoaded(x, z, r)
+  r = r or math.min(CONFIG.drone.loadedRange or 128, (simChunks() - 1) * 16)
+  local h = CONFIG.drone.home
+  if h and tonumber(h.x) and math.abs(x - h.x) <= r and math.abs(z - h.z) <= r then return "the base" end
+  for _, e in ipairs(state.players or {}) do
+    local p = type(e) == "table" and e.p
+    if type(p) == "table" and tonumber(p.x) and tonumber(p.z) and (e.dim == nil or e.dim == DRONE_DIM) and not e.dimOther
+       and math.abs(p.x - x) <= r and math.abs(p.z - z) <= r then return tostring(e.name) end
+  end
+  for _, t in pairs(state.turtles or {}) do
+    if type(t) == "table" and t.pos and tonumber(t.pos.x) and TT and TT.online and TT.online(t)
+       and math.abs(t.pos.x - x) <= 24 and math.abs(t.pos.z - z) <= 24 then return tostring(t.label) end
+  end
+  return nil
+end
+
+-- LOST DRONES (the owner: "drone gifts - I see them teleport up to the sky and get lost, and I never see them
+-- again"): a drone that FLIES out of the loaded area goes into a chunk nobody keeps loaded - it is saved there and never
+-- comes back. A trip to a far player (a gift) started with 2 bar, a teleport needs 0.85 + the 1.5 reserve: "low on air
+-- - flying instead" across thousands of blocks; or the teleport out used the air for the one home. flySafe: a flight
+-- WITHOUT a rider (a rider loads the chunks round them as they go) only within CONFIG.drone.safeFly (64) blocks, or
+-- along a line the base KNOWS is loaded all the way (knownLoaded every 32 blocks: the base, players, online turtles).
+function flySafe(dr, x, z)
+  if dr.rider then return true end
+  local px, _, pz = droneXYZ(dr)
+  if not px then return false end
+  local dx, dz = x - px, z - pz
+  local d = math.sqrt(dx * dx + dz * dz)
+  if d <= (tonumber(CONFIG.drone.safeFly) or 64) then return true end
+  local n = math.ceil(d / 32)
+  for i = 0, n do
+    if not knownLoaded(px + dx * i / n, pz + dz * i / n) then return false end
+  end
+  return true
+end
+-- THE ARRIVAL SPOT (the owner: "it is like hopping to the base instead of teleporting directly - the base is underground,
+-- which is hard for drones to teleport to"): a far trip into the base area teleports to an open spot there first -
+-- CONFIG.drone.arrive (SETTINGS > DRONES / $drone arrive, stand there) or the last spot near the base a teleport from far
+-- away really reached, close to where it was sent (DRONE_ARRIVE, drone_arrive.dat) - then FLIES in (inside the loaded
+-- base: safe). Before, a refused teleport into the underground base was taken for "not loaded": hops at Y 200 from the
+-- player towards the base, out of every loaded chunk - the drone was lost.
+DRONE_ARRIVE = nil
+BASE_TP_REFUSED = nil      -- a teleport from far away straight into the base area was refused (memory only)
+do
+  local okR, t = pcall(readSafe, "drone_arrive.dat")
+  if okR and type(t) == "table" and tonumber(t.x) and tonumber(t.y) and tonumber(t.z) then
+    DRONE_ARRIVE = { x = math.floor(t.x), y = math.floor(t.y), z = math.floor(t.z) }
+  end
+end
+local function nearHome(x, z, r)
+  local h = CONFIG.drone.home
+  return type(h) == "table" and tonumber(h.x) and tonumber(h.z) and math.abs(x - h.x) <= r and math.abs(z - h.z) <= r
+end
+function arriveSpot()
+  local a = CONFIG.drone.arrive
+  if type(a) == "table" and tonumber(a.x) and tonumber(a.y) and tonumber(a.z) then
+    return { x = math.floor(a.x), y = math.floor(a.y), z = math.floor(a.z) }, "set"
+  end
+  if DRONE_ARRIVE then return DRONE_ARRIVE, "learned" end
+  return nil
+end
+-- (droneMoveTo) a teleport from far away worked near the base, within 6 blocks of where it was sent
+function learnArrive(dr, x, y, z, fromX, fromZ)
+  local g = dr.tpGoal
+  if not (g and fromX and nearHome(x, z, 64) and not nearHome(fromX, fromZ, 64)) then return end
+  if math.abs(x - g.x) + math.abs(y - g.y) + math.abs(z - g.z) > 6 then return end
+  local a = DRONE_ARRIVE
+  if a and a.x == x and a.y == y and a.z == z then return end
+  DRONE_ARRIVE = { x = x, y = y, z = z }
+  if saveFileSafe then pcall(saveFileSafe, "drone_arrive.dat", serialSmall and serialSmall(DRONE_ARRIVE) or textutils.serialize(DRONE_ARRIVE)) end
+  droneLog(dr, "Arrival spot at the base learned: " .. fmtPos(x, y, z) .. " (far trips teleport here first)")
+end
+
+-- the drone may not fly there (it would be lost): it stays where it is - one WARNING per drone in 10 min
+function strandedWhy(dr, x, y, z)
+  local px, py, pz = droneXYZ(dr)
+  local msg = string.format("%s stays at %s with %.1f bar: too little air to teleport to %s, and flying there would " ..
+                            "take it out of the loaded area, where it would be lost. Charge it (or pick it up there)",
+                            tostring(dr.label), px and fmtPos(px, py, pz) or "?", dronePressure(dr) or 0, fmtPos(x, y, z))
+  droneLog(dr, msg)
+  if not dr.strandAt or os.clock() - dr.strandAt > 600 then
+    dr.strandAt = os.clock()
+    if pushNote then pcall(pushNote, "WARNING", msg, C and C.warn) end
+  end
+  return "too little air to teleport and too far to fly safely (it would be lost) - it waits where it is"
+end
+
+-- A PLAYER AS A SPRINGBOARD (the owner: "make drones teleport to a player - up in the sky - who is near the wanted area,
+-- and the drone hops from there"): a player keeps their own area loaded AND running, so the air high above them always
+-- takes a teleport. A far trip into land nothing loads first jumps into the sky above the online overworld player
+-- nearest the target - when that saves at least two hops - and hops on from there (every hop is ~121 ticks + air).
+function springboard(dr, x, z)
+  local px, _, pz = droneXYZ(dr)
+  if not px then return nil end
+  local hop = safeHop()
+  local dNow = math.sqrt((x - px) ^ 2 + (z - pz) ^ 2)
+  local best, bd
+  for _, e in ipairs(state.players or {}) do
+    local p = type(e) == "table" and e.p
+    local online = not state.online or state.online[tostring(e.name):lower()]
+    if online and type(p) == "table" and tonumber(p.x) and tonumber(p.z) and e.dim == DRONE_DIM and not e.dimOther then
+      local d = math.sqrt((x - p.x) ^ 2 + (z - p.z) ^ 2)
+      if d < dNow - 2 * hop and (not bd or d < bd) then best, bd = e, d end
+    end
+  end
+  return best, bd
+end
+
+-- SIMULATION DISTANCE (the owner: "when a drone hop-teleports I get stuck in an unloaded chunk and see the world
+-- unloading, I never move even when I am on it - teleports to loaded chunks work great"): PneumaticCraft accepts a
+-- teleport into any LOADED chunk (level.isLoaded - the VIEW distance), but the server only RUNS (entity-ticks) chunks
+-- within its SIMULATION distance of a player - smaller. A 160-block hop landed in a chunk that is loaded but not run:
+-- the drone froze there with its rider. Hops stay inside the simulation distance: CONFIG.drone.simChunks (the
+-- server's simulation-distance, server.properties; default 6 - vanilla 10) -> hop <= (simChunks - 2) x 16 blocks.
+function simChunks() return math.max(3, math.floor(tonumber(CONFIG.drone.simChunks) or 6)) end
+function safeHop() return math.max(32, (simChunks() - 2) * 16) end
+-- after a hop: is the drone still RUNNING there? A 4-block flight up (~27 ticks; "there" = within 2.5, so a frozen
+-- drone can never pass it where it stands) - a frozen one does nothing. Returns true / false.
+local function droneRuns(dr, x, y, z)
+  return (droneMoveTo(dr, "pneumaticcraft:goto", x, y + 4, z, 4))
+end
+
+-- far + not loaded: teleport in hops high above the terrain until close. The hop length that worked last is
+-- remembered (dr.hopOK); a refused hop -> 70 % (was: half); never longer than safeHop()
 local function hopTowards(dr, x, z, track)
-  local L, hy = CONFIG.drone.hopLength or 160, CONFIG.drone.hopY or 200
-  local minL = 48
+  local L, hy = math.min(dr.hopOK or CONFIG.drone.hopLength or 160, safeHop()), CONFIG.drone.hopY or 200
+  local minL = math.min(48, safeHop())
   local logged = false
   dr.flyNote = nil
   for _ = 1, 400 do
@@ -678,14 +953,52 @@ local function hopTowards(dr, x, z, track)
     if canTeleport(dr, 2) then
       ok, err = droneMoveTo(dr, "pneumaticcraft:teleport", hx, hy, hz, CONFIG.drone.travelTimeout)
       if not ok and err ~= "did not get there" then return false, err end   -- stopped / got off / gone
+      if ok then
+        dr.hopOK = L
+        -- still running there? (a chunk the server loads but does not run = frozen, the rider with it). Checked
+        -- until 3 hops of this length passed (27 ticks each) - then the length is trusted (dr.hopTrust)
+        local trusted = dr.hopTrust and dr.hopTrust.L == L and dr.hopTrust.n >= 3
+        local runs = trusted or droneRuns(dr, hx, hy, hz)
+        if runs and not trusted then
+          if not (dr.hopTrust and dr.hopTrust.L == L) then dr.hopTrust = { L = L, n = 0 } end
+          dr.hopTrust.n = dr.hopTrust.n + 1
+        end
+        if not runs then
+          dr.hopTrust = nil
+          droneLog(dr, "The drone may have FROZEN after a " .. L .. "-block hop (a chunk the server does not run) - " ..
+                       "waiting for it")
+          local woke = false
+          local t0 = os.clock()
+          while os.clock() - t0 < 20 and not woke do
+            waitFor(1, "drone_abort")
+            if dr.abort then return false, "stopped" end
+            -- (only a real move counts: a stopped action reports "done" too - a frozen drone looked awake)
+            woke = droneRuns(dr, hx, hy, hz)
+          end
+          L = math.max(32, math.floor(L * 0.6))
+          dr.hopOK = L
+          if not woke then
+            local msg = "The drone froze in a chunk the server does not run (beyond its simulation distance) - " ..
+                        "hops are " .. L .. " blocks from now on (set drone.simChunks to the server's " ..
+                        "simulation-distance). It goes on when the chunk runs again."
+            droneLog(dr, msg)
+            if dr.rider then pcall(chatTell, dr.rider, "The drone is stuck: " .. msg .. " Press SHIFT to get off if it does not.") end
+            if pushNote then pcall(pushNote, "WARNING", "Drone frozen: " .. msg, C and C.warn) end
+            return false, "the drone froze after a hop (simulation distance)"
+          end
+          droneLog(dr, "It runs again - shorter hops from now on: " .. L .. " blocks")
+        end
+      end
       -- that far ahead is not loaded: try shorter hops before flying
       if not ok and L > minL then
-        L = math.max(minL, math.floor(L / 2))
+        L = math.max(minL, math.floor(L * 0.7))
+        dr.hopOK = L
         droneLog(dr, "Hop not possible (not loaded that far ahead) - trying hops of " .. L .. " blocks")
         retry = true
       end
     end
     if not ok and not retry then
+      if CONFIG.drone.travel ~= "fly" and not flySafe(dr, hx, hz) then return false, strandedWhy(dr, x, hy, z) end
       if not dr.flyNote then
         dr.flyNote = true
         droneLog(dr, string.format("Flying the next stretches (air %.1f bar - teleports cost about %.1f each)",
@@ -728,6 +1041,12 @@ end
 -- loaded), so a refused teleport means a blocked spot, never "not loaded"
 -- track = function() -> x, y, z of a MOVING target now (a player / a turtle), or nil
 function travelTo(dr, x, y, z, spots, noFly, loaded, track)
+  dr.tpGoal = { x = x, y = y, z = z }
+  local r1, r2 = travelToRaw(dr, x, y, z, spots, noFly, loaded, track)
+  dr.useReserve, dr.tpGoal = nil, nil
+  return r1, r2
+end
+function travelToRaw(dr, x, y, z, spots, noFly, loaded, track)
   dr.lastSpot = nil
   -- the target moved while we tried: go on with where it is now
   local function fresh()
@@ -742,13 +1061,61 @@ function travelTo(dr, x, y, z, spots, noFly, loaded, track)
   local SPOTS = spots or SPOTS
   -- not enough air for a teleport (+ reserve): fly - flying costs no air
   if act ~= "pneumaticcraft:goto" and not canTeleport(dr) then
-    droneLog(dr, string.format("Low on air (%.1f bar): flying instead of teleporting", dronePressure(dr) or 0))
-    act = "pneumaticcraft:goto"
+    if not flySafe(dr, x, z) then
+      -- flying = lost: an empty drone uses its reserve for the teleport; too little even for that = it stays
+      dr.useReserve = not dr.rider or nil
+      if not canTeleport(dr) then return false, strandedWhy(dr, x, y, z) end
+      droneLog(dr, string.format("Low on air (%.1f bar) but too far to fly safely: teleporting on the reserve",
+                                 dronePressure(dr) or 0))
+    else
+      droneLog(dr, string.format("Low on air (%.1f bar): flying instead of teleporting", dronePressure(dr) or 0))
+      act = "pneumaticcraft:goto"
+    end
+  end
+  -- a place the base KNOWS is loaded (the base, a player there, an online turtle): a refused teleport there means a
+  -- BLOCKED spot (an underground base), never "not loaded" - no hops at Y 200 out of the loaded area
+  if not loaded and knownLoaded(x, z) then loaded = true end
+  -- far into the base area: the arrival spot first, then fly in
+  if act ~= "pneumaticcraft:goto" and not noFly and nearHome(x, z, 64) then
+    local ar, how = arriveSpot()
+    local px, py, pz = droneXYZ(dr)
+    -- (a LEARNED spot only once a teleport straight into the base area was refused - BASE_TP_REFUSED: a base the drones
+    --  can teleport to directly needs no detour)
+    if ar and px and (how == "set" or BASE_TP_REFUSED) and not nearHome(px, pz, 64)
+       and math.abs(ar.x - x) + math.abs(ar.y - y) + math.abs(ar.z - z) > 3 then
+      droneLog(dr, "To the base's arrival spot " .. fmtPos(ar.x, ar.y, ar.z) .. " (" .. how .. "), then flying in")
+      local okA, errA = droneMoveTo(dr, "pneumaticcraft:teleport", ar.x, ar.y, ar.z, CONFIG.drone.travelTimeout)
+      if not okA and errA ~= "did not get there" and errA ~= "low on air" then return false, errA end
+      if okA then
+        local d = math.sqrt((ar.x - x) ^ 2 + (ar.y - y) ^ 2 + (ar.z - z) ^ 2)
+        local okF, errF = droneMoveTo(dr, "pneumaticcraft:goto", x, y, z, flyLimit(dr, d) + 7)
+        if okF then dr.lastSpot = { x = x, y = y, z = z } return true end
+        if errF ~= "did not get there" then return false, errF end
+        droneLog(dr, "Could not fly in from the arrival spot - trying the spot itself")
+      elseif how == "learned" and errA == "did not get there" then
+        DRONE_ARRIVE = nil                        -- (blocked now: learned again from the next one that works)
+      end
+    end
   end
   -- far away: try straight there once; if that area is not loaded, hop
   if act ~= "pneumaticcraft:goto" and not loaded then
     local px, _, pz = droneXYZ(dr)
-    if px and math.abs(x - px) + math.abs(z - pz) > (CONFIG.drone.hopLength or 160) * 1.5 then
+    local who = px and knownLoaded(x, z)
+    if px and not who and math.abs(x - px) + math.abs(z - pz) > (CONFIG.drone.hopLength or 160) * 1.5 then
+      -- nothing the base knows keeps it loaded: the straight teleport and the one into the air above it would
+      -- both be refused (2 x 120 ticks + their air - the drone_sim ride 300 blocks out: 322 of 726 ticks)
+      droneLog(dr, "Nobody the base knows of is near " .. fmtPos(x, y, z) .. " (not loaded) - hopping there")
+      local sp, sd = springboard(dr, x, z)
+      if sp and canTeleport(dr, 2) then
+        local sy = math.min(300, math.max(math.floor(tonumber(sp.p.y) or 64) + 24, CONFIG.drone.hopY or 200))
+        droneLog(dr, "First into the sky above " .. tostring(sp.name) .. " (" .. math.floor(sd) .. " blocks from there) - hopping on from there")
+        local okS, errS = droneMoveTo(dr, "pneumaticcraft:teleport", math.floor(sp.p.x), sy, math.floor(sp.p.z), CONFIG.drone.travelTimeout)
+        if not okS and errS ~= "did not get there" and errS ~= "low on air" then return false, errS end
+      end
+      local okH, errH = hopTowards(dr, x, z, track)
+      if not okH then return false, errH end
+      fresh()
+    elseif px and math.abs(x - px) + math.abs(z - pz) > (CONFIG.drone.hopLength or 160) * 1.5 then
       local f = SPOTS[1]
       local ok, err = droneMoveTo(dr, act, x + f[1], y + f[2], z + f[3], CONFIG.drone.travelTimeout)
       if ok then
@@ -789,6 +1156,16 @@ function travelTo(dr, x, y, z, spots, noFly, loaded, track)
       end
     end
   end
+  -- close by: fly when that takes fewer ticks than a teleport's warm-up (no path -> PneumaticCraft teleports)
+  if act ~= "pneumaticcraft:goto" and not noFly and not dr.rider then
+    local px, py, pz = droneXYZ(dr)
+    local d = px and math.sqrt((x - px) ^ 2 + (y - py) ^ 2 + (z - pz) ^ 2)
+    if d and flyQuicker(dr, d) then
+      local okF, errF = droneMoveTo(dr, "pneumaticcraft:goto", x, y, z, flyLimit(dr, d) + 7)
+      if okF then dr.lastSpot = { x = x, y = y, z = z } return true end
+      if errF ~= "did not get there" then return false, errF end
+    end
+  end
   local limit = (act == "pneumaticcraft:goto") and CONFIG.drone.stepTimeout or CONFIG.drone.travelTimeout
   local lastErr
   for i, o in ipairs(SPOTS) do
@@ -797,7 +1174,11 @@ function travelTo(dr, x, y, z, spots, noFly, loaded, track)
       droneLog(dr, "Could not teleport to " .. (x + f[1]) .. ", " .. (y + f[2]) .. ", " .. (z + f[3]) ..
                    " (blocked or not loaded) - trying spots nearby")
     end
+    local fx, _, fz = droneXYZ(dr)
     local ok, err = droneMoveTo(dr, act, x + o[1], y + o[2], z + o[3], limit)
+    if i == 1 and act ~= "pneumaticcraft:goto" and fx and nearHome(x, z, 64) and not nearHome(fx, fz, 64) then
+      if ok then BASE_TP_REFUSED = nil elseif err == "did not get there" then BASE_TP_REFUSED = true end
+    end
     -- the first spot refused: open sky above it? one teleport up + fly down
     -- instead of trying the spots around it (each try costs air)
     if not ok and i == 1 and err == "did not get there" and act ~= "pneumaticcraft:goto" and not noFly then
@@ -806,6 +1187,7 @@ function travelTo(dr, x, y, z, spots, noFly, loaded, track)
       if errS and errS ~= "did not get there" then return false, errS end   -- stopped / got off / gone
     end
     if err == "low on air" then
+      if CONFIG.drone.travel ~= "fly" and not flySafe(dr, x + o[1], z + o[3]) then return false, strandedWhy(dr, x, y, z) end
       droneLog(dr, "Low on air after failed teleports - flying the rest")
       act = "pneumaticcraft:goto"
       ok, err = droneMoveTo(dr, act, x + o[1], y + o[2], z + o[3], CONFIG.drone.stepTimeout)
@@ -824,6 +1206,11 @@ function travelTo(dr, x, y, z, spots, noFly, loaded, track)
     if act == "pneumaticcraft:goto" then break end             -- flying: no point retrying spots
   end
   if act ~= "pneumaticcraft:goto" and not noFly then
+    if CONFIG.drone.travel ~= "fly" and not flySafe(dr, x, z) then
+      droneLog(dr, "No spot near " .. x .. ", " .. y .. ", " .. z .. " could be teleported to - and it is too far to " ..
+                   "fly safely (it would end up in unloaded land): not going")
+      return false, "could not teleport there, and flying that far would lose the drone"
+    end
     droneLog(dr, "No spot near " .. x .. ", " .. y .. ", " .. z .. " could be teleported to (the area is " ..
                  "probably not loaded) - FLYING there instead")
     local ok, err = droneMoveTo(dr, "pneumaticcraft:goto", x, y, z, CONFIG.drone.stepTimeout)
@@ -1206,12 +1593,8 @@ end
 
 -- save the charging stations
 function saveChargers()
-  local h = fs.open(CONFIG.drone.chargerFile, "w")
-  if h then
-    h.write(textutils.serialize({ default = CONFIG.drone.charger or { off = true },
+  writeSafe(CONFIG.drone.chargerFile, textutils.serialize({ default = CONFIG.drone.charger or { off = true },
                                   drones = ownChargers, cfgSeen = CONFIG_CHARGER or { off = true } }))
-    h.close()
-  end
 end
 
 -- the SHARED station of all drones (clears their own stations)
@@ -1329,6 +1712,9 @@ function parkCheck()
   end
   for _, k in ipairs(droneOrder) do
     local dr = drones[k]
+    -- (working: the 20 s "idle away from home" count starts after - a build drone waiting at the work chest between
+    --  two trips was sent home at once with an old count)
+    if dr and (dr.busy or #dr.queue > 0) then dr.awaySince = nil end
     if dr and not dr.busy and #dr.queue == 0 then
       local lastP = dr.pressure
       pcall(refreshDrone, dr)
@@ -1340,6 +1726,19 @@ function parkCheck()
       -- someone on board ON PURPOSE (PICKUP done, waiting for you to DROP them):
       -- the drone stays where it is. Only after a FAILED mission it comes home.
       local carrying = dr.rider and not dr.failedAt
+      -- (the owner: "gifts via drones get queued and never get sent") a rider who got off BY HIMSELF (sneaked off
+      -- after "could not let you off", logged off) kept dr.rider for good: the drone never came home and was never
+      -- FREE again (DW.freeDrone) - no gifts, no fuel runs, no builds. Asked again every 30 s: nobody on board =
+      -- free (the drone answers; else the rider's position / online state)
+      if carrying and os.clock() - (dr.riderAsk or -999) >= 30 then
+        dr.riderAsk = os.clock()
+        local gone
+        if dr.rider == "passenger" then gone = droneCarries(dr, nil) == false else gone = riderGoneNow(dr) end
+        if gone then
+          droneLog(dr, "Nobody on board any more (" .. tostring(dr.rider) .. " got off) - free again")
+          dr.rider, carrying = nil, false
+        end
+      end
       if carrying then
         dr.awaySince = nil
       elseif dr.conn and x and dr.pos and dr.pos.x then
@@ -1414,6 +1813,8 @@ function buildMission(dr, cmd)
     return "Pick up " .. who, pickupSteps(dr, who)
   elseif cmd.kind == "drop" then
     return "Drop " .. who, dropSteps(dr, who)
+  elseif cmd.kind == "work" then                   -- a drone job (base_dronework.lua): its own steps
+    return cmd.title or "Work", cmd.steps or {}
   elseif cmd.kind == "ferry" then
     local steps = pickupSteps(dr, who)
     for _, st in ipairs(dropSteps(dr, who)) do steps[#steps + 1] = st end
@@ -1455,7 +1856,7 @@ function runMission(dr, cmd)
     return
   end
   if cmd.kind ~= "pickup" and cmd.kind ~= "fly" and cmd.kind ~= "drop" and cmd.kind ~= "ferry"
-     and cmd.kind ~= "home" then return end
+     and cmd.kind ~= "home" and cmd.kind ~= "work" then return end
 
   -- not enough air: the drone would stop working halfway
   local okP, pr = pcall(d.getDronePressure)
@@ -1512,7 +1913,9 @@ function runMission(dr, cmd)
     local ms = dr.mission.steps[i]
     ms.status = "run"
     os.queueEvent("inv_update")
+    local t0 = os.epoch("utc")
     local ok, res, why = pcall(st.fn)      -- steps return true, or false + reason
+    ms.ms = os.epoch("utc") - t0           -- (real time: drone work shows where a trip's time goes)
     local good = ok and res and true or false
     local err = (not ok) and res or why
     if good then
@@ -1592,6 +1995,8 @@ function runMission(dr, cmd)
   if CONFIG.drone.returnHome and cmd.kind ~= "home" and cmd.kind ~= "pickup" and droneCarries(dr, nil) == true then
     droneLog(dr, "Somebody is still on board - NOT flying home with them")
     dr.rider = dr.rider or "passenger"
+  elseif cmd.stay and canTeleport(dr, 3) then
+    droneLog(dr, "Stays at the work chest for the next trip")      -- (a build: the park check sends it home when idle)
   elseif CONFIG.drone.returnHome and cmd.kind ~= "home" and cmd.kind ~= "pickup" then
     local hs = homeStep(dr)
     dr.mission.steps[#dr.mission.steps + 1] = { text = hs.text, status = "run" }

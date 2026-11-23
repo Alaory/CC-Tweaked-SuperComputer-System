@@ -66,6 +66,7 @@ local DROPS = {
   ["minecraft:copper_ore"] = { "minecraft:raw_copper", 6 }, ["minecraft:deepslate_copper_ore"] = { "minecraft:raw_copper", 6 },
 }
 local FAIL = {}
+MADEWAY_N, MADE_SEEN, MW_ASKED = 0, {}, 0
 local function fail(msg) FAIL[#FAIL + 1] = string.format("[%.0fs] %s", T, msg) end
 
 local turtles = {}                          -- id -> unit
@@ -74,7 +75,7 @@ local DUMP = { x = 1, y = 70, z = 0 }       -- the empty block in front of the s
 local delivered, busDrained = {}, 0
 local function chunk(x) return math.floor(x / 16) end
 -- chunkyTurtleRadius: 0 = the game default (only its own chunk); "r1" scenario = 3x3
-local RADIUS = (SCEN == "r1") and 1 or 0
+local RADIUS = (SCEN == "r1" or SCEN:find("warpoff")) and 1 or 0     -- ("warpoff": the game showed it RUNNING there)
 local function loaded(x, z, extra)
   local r = RADIUS + (extra or 0)
   if math.abs(chunk(x) - chunk(STATION.x)) <= r and math.abs(chunk(z) - chunk(STATION.z)) <= r then return true end
@@ -155,6 +156,14 @@ local function turtleApi(u)
     local x, y, z = front(u, d)
     if d == "b" then x, z = u.pos.x - DX[u.f], u.pos.z - DZ[u.f] end
     local b = block(x, y, z)
+    -- scenario "blocker": a DEAD turtle (high id, never moves) appears right in a miner's way
+    -- (one lost in a crash, or the loader standing still): the miner must go around it
+    if SCEN:find("blocker") and not BLOCKED_AT and T > 1800 and u.role == "miner" and u.id == MINERS[1]
+       and d == "f" and not b and not occupied(x, y, z) then
+      BLOCKED_AT = T
+      turtles[999] = { id = 999, role = "dead", pos = { x = x, y = y, z = z }, open = {}, inbox = {}, files = {} }
+      io.write("** a dead turtle appeared in front of miner " .. u.id .. " at " .. x .. " " .. y .. " " .. z .. " (task: " .. tostring(ENVS[u.id] and ENVS[u.id].task) .. ", facing " .. u.f .. ", at " .. u.pos.x .. " " .. u.pos.y .. " " .. u.pos.z .. ")\n")
+    end
     if (b and not b:find("water") and not b:find("lava")) or occupied(x, y, z) or u.fuel < 1 then return false, "Movement obstructed" end
     if not loaded(x, z, 1) then return false, "Cannot leave loaded world" end
     local oc = chunk(u.pos.x) .. "," .. chunk(u.pos.z)
@@ -260,6 +269,9 @@ local function turtleApi(u)
   local function equip(side)
     act(u)
     local it = u.inv[u.sel]
+    -- scenario "nopick": after the drop, NO miner can put its pickaxe on for 10 min (the
+    -- owner's "the pickaxe did not show up") - they cannot dig their way around anybody
+    if SCEN:find("nopick") and DROPPED and T < (NOPICK_UNTIL or 0) and it and it.name:find("pickaxe") then return true end
     local old = u[side]
     u[side] = it and it.name or nil
     u.inv[u.sel] = old and { name = old, count = 1 } or nil
@@ -268,6 +280,11 @@ local function turtleApi(u)
   end
   t.equipLeft = function() return equip("left") end
   t.equipRight = function() return equip("right") end
+  -- scenario "...eq": this CC:Tweaked can name the equipped items
+  if SCEN:find("eq") then
+    t.getEquippedLeft = function() return u.left and { name = u.left, count = 1 } or nil end
+    t.getEquippedRight = function() return u.right and { name = u.right, count = 1 } or nil end
+  end
   local function place(d)
     act(u)
     local it = u.inv[u.sel]
@@ -332,7 +349,14 @@ local function peripheralApi(u)
     local x, y, z = front(u, "f")
     return SHULKERS[key(x, y, z)]
   end
-  P.getType = function(side) if frontInv(side) then return "inventory" end return upType(side) end
+  P.getType = function(side)
+    if frontInv(side) then return "inventory" end
+    local ty = upType(side)
+    -- scenario "neighbour": a side WITHOUT a peripheral upgrade (a pickaxe) shows the block
+    -- next to the turtle - here always another turtle (miners stand side by side)
+    if not ty and SCEN:find("neighbour") and (side == "left" or side == "right") then return "turtle" end
+    return ty
+  end
   P.hasType = function(side, ty)
     if frontInv(side) then return ty == "inventory" end
     local t = upType(side)
@@ -345,6 +369,12 @@ local function peripheralApi(u)
     return out
   end
   P.wrap = function(side)
+    -- a TURTLE next to it answers getID (miner.lua: who gives way)
+    if side == "front" or side == "top" or side == "bottom" then
+      local x, y, z = front(u, side == "top" and "u" or (side == "bottom" and "d" or "f"))
+      local o = occupied(x, y, z)
+      if o then return { getID = function() return o.id end } end
+    end
     local inv = frontInv(side)
     if inv then
       return { list = function()
@@ -373,6 +403,17 @@ local function peripheralApi(u)
           act(u)
           u.fuel = u.fuel - math.floor(math.sqrt((p.x - u.pos.x) ^ 2 + (p.z - u.pos.z) ^ 2) / 4)
           u.pos.x, u.pos.y, u.pos.z = p.x, p.y, p.z
+          -- scenario "warpoff" (the owner's screenshot: "PAUSED: would leave chunk -304,705 ... gave up after 8 tries" - the
+          -- miner 12 blocks into the NEXT chunk after an unload trip): the first trip back lands one chunk off
+          if n == "work" and SCEN:find("warpoff") and not WARPOFF_AT and T > 900 then
+            WARPOFF_AT = T
+            local nx = p.x + 16
+            if occupied(nx, p.y, p.z) then nx = p.x - 16 end
+            setBlock(nx, p.y, p.z, nil)
+            u.pos.x = nx
+            io.write(string.format("** the unload trip back landed one chunk off: %d %d %d (chunk %d) instead of %d (chunk %d)\n",
+              nx, p.y, p.z, math.floor(nx / 16), p.x, math.floor(p.x / 16)))
+          end
           u.warps = (u.warps or 0) + 1
           return true
         end,
@@ -455,7 +496,7 @@ local function envFor(u)
   env.fs = {
     exists = function(p) return files[p] ~= nil end,
     open = function(p, mode)
-      if mode == "r" then
+      if mode == "r" or mode == "rb" then
         if not files[p] then return nil end
         local data = files[p]
         return { readAll = function() return data end, close = function() end }
@@ -463,6 +504,7 @@ local function envFor(u)
       local buf = {}
       return { write = function(s) buf[#buf + 1] = s end, close = function() files[p] = table.concat(buf) end }
     end,
+    getSize = function(p) return #(files[p] or "") end,
     delete = function(p) files[p] = nil end,
     move = function(a, b) files[b] = files[a] files[a] = nil end,
   }
@@ -473,7 +515,7 @@ local function envFor(u)
     getComputerLabel = function() return (u.role == "miner" and "Miner " or "Loader ") .. u.id end,
     setComputerLabel = function() end,
     getComputerID = function() return u.id end,
-    reboot = function() error("REBOOT") end,
+    reboot = function() coroutine.yield("REBOOT") error("REBOOT") end,
   }
   env.sleep = function(s) wait(s or 0) end
   -- a GPS system in the dimension (scenario nogps: none)
@@ -591,6 +633,7 @@ end
 l.files.miner_state = textutils.serialize({ role = "loader", key = KEY, dim = "overworld",
   pos = { x = LX, y = LY, z = LZ + ((SCEN == "gpsfix") and -2 or 0), f = (SCEN == "wrongface") and 3 or LF } })
 local SRC = io.open(ROOT .. "miner.lua"):read("a")
+for _, u in ipairs({ l, table.unpack(MS) }) do u.files["miner.lua"] = SRC end   -- (its own program file: m.code)
 local cos = {}
 ENVS = {}
 for _, u in ipairs({ l, table.unpack(MS) }) do
@@ -618,6 +661,7 @@ local a = nsrc:find("function TT.sign", 1, true)
 local b = nsrc:find("\n%-%- a wireless or ender modem", a)
 assert(load(nsrc:sub(a, b)))()
 fs = { exists = function() return false end }
+function readSafe() return nil end                -- (base_devices.lua: nothing saved in the sim)
 assert(loadfile(ROOT .. "base_mining.lua"))()
 local realClock = os.clock
 os.clock = function() return T end
@@ -685,9 +729,95 @@ while T < maxT do
       MINE.cmd(LOADER, "start", {})
     end
   end
+  -- A SERVER CRASH RIGHT AFTER A CROSSING (the owner: "a server crash sometimes returns the miner turtles to the old
+  -- chunk and leaves the loader in the new chunk" + "or vice versa"): the world goes back to its last save - the
+  -- miners ("crashback") or the loader ("crashbackloader") are one block back, in the OLD chunk, while their saved
+  -- state (written to disk at once) says the new one. Every program restarts; a turtle in a chunk that is not loaded
+  -- does not run at all (c.gate) until something loads it.
+  if SCEN:find("crashback") and lu and ENVS.loader.S and ENVS.loader.S.plan then
+    local P = ENVS.loader.S.plan
+    if not CB_AT and CB_CI and P.ci == CB_CI + 1 and P.ci >= 2 then
+      CB_AT = T
+      local back = SCEN:find("crashbackloader") and { l } or MS
+      for _, u in ipairs(back) do
+        local nx, nz = u.pos.x - DX[u.f], u.pos.z - DZ[u.f]
+        if not occupied(nx, u.pos.y, nz) then u.pos.x, u.pos.z = nx, nz setBlock(nx, u.pos.y, nz, nil) end
+      end
+      CB_ORES = 0
+      for _, id in ipairs(MINERS) do local mu2 = MINE.units[id] CB_ORES = CB_ORES + ((mu2 and mu2.stats and mu2.stats.ores) or 0) end
+      for _, c in ipairs(cos) do
+        c.u.open = {}
+        local env = envFor(c.u)
+        ENVS[c.u.id] = env
+        if c.u.role == "loader" then ENVS.loader = env end
+        c.co = coroutine.create(assert(load(SRC, "miner.lua", "t", env)))
+        c.wake, c.gate = T + 5, true
+      end
+      io.write(string.format("** SERVER CRASH right after the crossing into chunk %d: %s back in the old chunk\n", P.ci,
+        SCEN:find("crashbackloader") and "the LOADER is" or "the MINERS are"))
+    end
+    if not CB_AT then CB_CI = P.ci end
+  end
   -- a miner DELETED by a server crash (miner 1 - the one digging the main
   -- tunnel), then on the base:  mine drop <id>  - the others must go on
-  if SCEN:find("drop") and not DROPPED and lu and ENVS.loader.S and ENVS.loader.S.plan and ENVS.loader.S.plan.ci >= 2 and T > 1200 then
+  -- "dropready": the miner is lost while the OTHERS already wait at their lanes (stacked in one
+  -- column): their numbers change, a new miner 1 must climb past the ones waiting above it
+  local readyOk = true
+  if SCEN:find("dropready") then
+    local nReady = 0
+    for i, mm in ipairs(MS) do
+      local st = ENVS[mm.id] and ENVS[mm.id].S
+      if i ~= tonumber(os.getenv("DROPIDX") or 1) and st and st.job and st.job.phase == "ready" then nReady = nReady + 1 end
+    end
+    readyOk = nReady >= 2
+  end
+  -- (dropready) after the drop: every miner waits at its NEW lane (the height that goes with
+  -- its new number) - before, a waiting miner kept its old height and the one below it wanted
+  -- that very block for ever (the owner's "a turtle is in the way")
+  if SCEN:find("dropready") and DROPPED and not LANES_OK and not BAD_LANE then
+    local all, n = true, 0
+    for _, mm in ipairs(MS) do
+      local env = ENVS[mm.id]
+      local st = env and env.S
+      if mm.id ~= DROPPED and st and st.job and st.tp then
+        n = n + 1
+        local k = env.myIndex()
+        local lane = env.tunY(st.tp, st.job.ci) - (k - 1)
+        if not (st.job.phase == "ready" and mm.pos.y == lane) then all = false end
+      end
+    end
+    if all and n > 0 then LANES_OK = T io.write("** after the drop every miner waits at its NEW lane (" .. math.floor(T) .. " s)\n") end
+  end
+  -- (every scenario) a miner WAITING at its lane (phase ready, no "go" yet) never stands in
+  -- another chunk: making way / going around stays in its own chunk (the next one may not
+  -- be loaded - the owner: "when the turtle moves out of the way it could go to unloaded chunks")
+  for _, mm in ipairs(MS) do
+    local env = ENVS[mm.id]
+    if env and env.OUT_OF_LANE and env.OUT_OF_LANE ~= MADE_SEEN[mm.id] then
+      MADE_SEEN[mm.id] = env.OUT_OF_LANE
+      MADEWAY_N = MADEWAY_N + 1
+      io.write(string.format("** miner %d made way (stepped to %d %d %d) at %.0f s\n", mm.id, mm.pos.x, mm.pos.y, mm.pos.z, T))
+    end
+    local st = env and env.S
+    -- "makeway": a team mate asks a miner waiting at its lane to make way (as when it is stuck
+    -- behind it) - it must step aside INSIDE its chunk (m24 stepped forward into the next one)
+    if SCEN:find("makeway") and st and st.job and st.job.phase == "ready" and not env.crossingDue() and not env.OUT_OF_LANE
+      and not env.MAKEWAY and MW_ASKED < 4 and T > (MW_LAST or 0) + 600 and T > 900 then
+      MW_ASKED, MW_LAST = MW_ASKED + 1, T
+      env.MAKEWAY = { from = 999, t = env.os.clock() }
+      io.write(string.format("** miner %d asked to make way at %.0f s\n", mm.id, T))
+    end
+    if st and st.job and st.tp and st.job.phase == "ready" and not env.crossingDue() then
+      local _, _, ex, ez = env.chunkCols(st.tp, st.job.ci)
+      if ex and (math.floor(mm.pos.x / 16) ~= math.floor(ex / 16) or math.floor(mm.pos.z / 16) ~= math.floor(ez / 16)) then
+        if not OUTCHUNK then
+          OUTCHUNK = true
+          fail(string.format("miner %d waiting at its lane stands OUTSIDE its chunk (%d %d %d) at %.0f s", mm.id, mm.pos.x, mm.pos.y, mm.pos.z, T))
+        end
+      end
+    end
+  end
+  if SCEN:find("drop") and readyOk and not DROPPED and lu and ENVS.loader.S and ENVS.loader.S.plan and ENVS.loader.S.plan.ci >= 2 and T > 1200 then
     DROPPED = MS[tonumber(os.getenv("DROPIDX") or 1)].id
     CI_DROP = ENVS.loader.S.plan.ci
     if not SCEN:find("alive") then           -- "dropalive": dropped, but it still runs
@@ -697,6 +827,7 @@ while T < maxT do
     MINE.cmd(LOADER, "drop", { DROPPED })
     MINE.units[DROPPED] = nil
     io.write(string.format("** miner %d DELETED at %.0f s (chunk %d) - mine drop sent\n", DROPPED, T, CI_DROP))
+    NOPICK_UNTIL = T + 600
   end
   -- a NEW miner is put down while the team is at work (scenario "join"): it must be taken
   -- into the running team at the END of the list (nobody's number changes) and mine along.
@@ -739,6 +870,19 @@ while T < maxT do
       break
     end
   end
+  -- scenario update: MINE UPDATE in the middle of the work (base_mining.lua): the team is
+  -- paused, every turtle gets the new program, installs it, restarts - and goes on with
+  -- the SAME team and field
+  if MINE.upd then MINE.updTick() end
+  if SCEN:find("update") and not UPDATED and T > 2400 and lu and lu.running then
+    UPDATED = T
+    NEWSRC = SRC:gsub('MYVER = "(m%d+)"', 'MYVER = "%1u"', 1)
+    UPD_BEFORE = { plan = ENVS.loader.S.plan and ENVS.loader.S.plan.id, team = table.concat(ENVS.loader.S.team or {}, ","), ores = 0 }
+    for _, id in ipairs(MINERS) do local u = MINE.units[id] UPD_BEFORE.ores = UPD_BEFORE.ores + ((u and u.stats and u.stats.ores) or 0) end
+    local c = assert(MINE.setCode(NEWSRC, "test"))
+    for _, ln in ipairs(MINE.startUpdate(c)) do io.write("** " .. ln .. "\n") end
+  end
+  if UPDATED and not UPD_DONE and MINE.upd == nil and T > UPDATED then UPD_DONE = T io.write("** update done after " .. math.floor(T - UPDATED) .. " s\n") end
   -- scenario reboot: the miner's program restarts (server restart / chunk unload)
   if SCEN:find("reboot") and not REBOOTED and T > 2400 then
     REBOOTED = true
@@ -809,12 +953,33 @@ while T < maxT do
   table.sort(cos, function(p, q) return p.wake < q.wake end)
   local c = cos[1]
   if c.wake > T then T = c.wake end
+  -- (restarted after the crash: a turtle in an unloaded chunk does not run at all)
+  if c.gate and not loaded(c.u.pos.x, c.u.pos.z) then
+    c.wake = T + 1
+    c.gateT = c.gateT or T
+    if T - c.gateT > 1800 then fail(c.u.role .. " " .. c.u.id .. " never ran again after the crash: its chunk stayed unloaded") c.gate = nil end
+    goto continue
+  end
+  c.gate = nil
   if coroutine.status(c.co) == "dead" then fail(c.u.role .. " program ENDED") break end
   local ok, w = coroutine.resume(c.co)
+  if ok and w == "REBOOT" then
+    -- os.reboot: starts again from ITS OWN program file (an update installed it)
+    c.u.open = {}
+    REBOOTS = (REBOOTS or 0) + 1
+    local env = envFor(c.u)
+    ENVS[c.u.id] = env
+    if c.u.role == "loader" then ENVS.loader = env end
+    c.co = coroutine.create(assert(load(c.u.files["miner.lua"] or SRC, "miner.lua", "t", env)))
+    ok, w = true, T + 5
+  end
   if ok and w == "SHUTDOWN" then
     -- shut down while paused: starts again from startup
     c.u.open = {}
-    c.co = coroutine.create(assert(load(SRC, "miner.lua", "t", envFor(c.u))))
+    local envS = envFor(c.u)
+    ENVS[c.u.id] = envS                                -- (the checks read the RUNNING program)
+    if c.u.role == "loader" then ENVS.loader = envS end
+    c.co = coroutine.create(assert(load(c.u.files["miner.lua"] or SRC, "miner.lua", "t", envS)))
     ok, w = true, T + 1
   end
   if not ok then fail(c.u.role .. " CRASHED: " .. tostring(w)) break end
@@ -837,6 +1002,7 @@ while T < maxT do
       mu and tostring(mu.task) or "?", MINE.units[LOADER] and tostring(MINE.units[LOADER].task) or "?"))
   end
   if #FAIL > 5 then break end
+  ::continue::
 end
 
 local mu = MINE.units[MINER]
@@ -889,6 +1055,67 @@ if ORES_AT_NF then
   if now - ORES_AT_NF < 50 then fail("the team did not mine after NEW FIELD + START") end
 end
 if delivered["jamd:mining_dim_core"] or delivered["somemod:eternal_flame"] then fail("the OWNER'S item was unloaded") end
+if SCEN:find("update") then
+  local nv = MINE.codeHash(NEWSRC or "")
+  if not UPD_DONE then fail("the miner update never finished") end
+  for _, c in ipairs(cos) do
+    if c.u.files["miner.lua"] ~= NEWSRC then fail(c.u.role .. " " .. c.u.id .. " does not have the new program") end
+    local u = MINE.units[c.u.id]
+    if not (u and u.code == nv) then fail(c.u.role .. " " .. c.u.id .. " does not REPORT the new program: " .. tostring(u and u.code)) end
+    if c.u.role == "miner" and ENVS[c.u.id].S.leader ~= LOADER then fail("miner " .. c.u.id .. " lost its team after the update") end
+  end
+  local LS = ENVS.loader.S
+  if (LS.plan and LS.plan.id) ~= UPD_BEFORE.plan then fail("the loader started a NEW field after the update (state lost)") end
+  if table.concat(LS.team or {}, ",") ~= UPD_BEFORE.team then fail("the team changed after the update: " .. UPD_BEFORE.team .. " -> " .. table.concat(LS.team or {}, ",")) end
+  if not LS.running then fail("the team was not started again after the update") end
+  if (REBOOTS or 0) < 1 + NMIN then fail("not every turtle restarted with the new program (" .. tostring(REBOOTS) .. ")") end
+  local now = 0
+  for _, id in ipairs(MINERS) do local u = MINE.units[id] now = now + ((u and u.stats and u.stats.ores) or 0) end
+  print("ores after the update: " .. (now - UPD_BEFORE.ores) .. ", restarts " .. tostring(REBOOTS))
+  if now - UPD_BEFORE.ores < 50 then fail("the team did not mine after the update") end
+end
+if os.getenv("DBGE") then
+  for _, mm in ipairs(MS) do
+    local e = ENVS[mm.id]
+    if e and e.S then
+      io.write(string.format("END %d y%d phase=%s ci=%s GO=%s due=%s k=%s team=%s\n", mm.id, mm.pos.y, tostring(e.S.job and e.S.job.phase),
+        tostring(e.S.job and e.S.job.ci), tostring(e.GO), tostring(e.crossingDue and e.crossingDue()), tostring(e.myIndex()), table.concat(e.S.team or {}, ",")))
+    end
+  end
+end
+if SCEN:find("makeway") and MADEWAY_N < 2 then fail("asked " .. MW_ASKED .. " times, made way only " .. MADEWAY_N .. " times") end
+if SCEN:find("dropready") and not LANES_OK then fail("after the drop the miners never all waited at their NEW lanes") end
+if SCEN:find("blocker") then
+  if not BLOCKED_AT then fail("the blocker never appeared") end
+  local now, stopped = 0, false
+  for _, id in ipairs(MINERS) do
+    local u = MINE.units[id]
+    now = now + ((u and u.stats and u.stats.ores) or 0)
+    if ENVS[id] and ENVS[id].S and ENVS[id].S.err and not ENVS[id].S.running then stopped = ENVS[id].S.err end
+  end
+  if stopped then fail("a miner STOPPED behind the dead turtle: " .. tostring(stopped)) end
+  print("ores in all: " .. now .. " (the dead turtle appeared at " .. math.floor(BLOCKED_AT) .. " s)")
+end
+if SCEN:find("warpoff") then
+  if not WARPOFF_AT then fail("no unload trip landed off") end
+  for _, n in ipairs(NOTES) do
+    if n:find("would leave chunk", 1, true) and n:find("gave up", 1, true) then fail("a miner STOPPED outside its job chunk: " .. n) end
+  end
+  if (MINE.units[LOADER] and MINE.units[LOADER].ci or 0) < 3 then fail("the team did not get on after the bad landing (chunk " .. tostring(MINE.units[LOADER] and MINE.units[LOADER].ci) .. ")") end
+end
+if SCEN:find("crashback") then
+  if not CB_AT then fail("no crash right after a crossing happened") end
+  local now = 0
+  for _, id in ipairs(MINERS) do local mu2 = MINE.units[id] now = now + ((mu2 and mu2.stats and mu2.stats.ores) or 0) end
+  print("ores after the crash: " .. (now - (CB_ORES or 0)))
+  if now - (CB_ORES or 0) < 100 then fail("the team did not get going again after the crash (" .. (now - (CB_ORES or 0)) .. " ores)") end
+  local lcx, lcz = math.floor(l.pos.x / 16), math.floor(l.pos.z / 16)
+  for _, mm in ipairs(MS) do
+    if math.abs(math.floor(mm.pos.x / 16) - lcx) + math.abs(math.floor(mm.pos.z / 16) - lcz) > 1 then
+      fail("miner " .. mm.id .. " is not with the loader at the end (left behind?)")
+    end
+  end
+end
 if SCEN:find("crashunload") then
   local now = 0
   for _, v in pairs(delivered) do now = now + v end

@@ -33,7 +33,7 @@ if n:find("leaves", 1, true) or n:find("grass", 1, true) or n:find("log", 1, tru
 return C.good, C.ink, word
 end
 if keepName(n) then return C.purple or C.accent, C.ink, word end
-return C.empty, C.text, word
+return C.line, C.text, word
 end
 
 local KEEP = { "chest", "barrel", "shulker", "computer", "turtle", "drive", "storage", "ae2:", "spawner",
@@ -48,8 +48,8 @@ function drawDrivePage(G)
 local y0, bottom = G.y0, G.y1
 local list = TT.list()
 
-local lw = 28
-card(2, y0, lw, bottom - y0 + 1, "TAKE CONTROL OF")
+local lw = 30
+local lix, liy, liw = panel(2, y0, lw, bottom - y0 + 1, "TAKE CONTROL OF", { right = #list .. "" })
 local sorted = {}
 for _, t in ipairs(list) do sorted[#sorted + 1] = t end
 table.sort(sorted, function(a, b)
@@ -61,29 +61,30 @@ local sel = state.tSel and state.turtles[state.tSel]
 if not sel then
 for _, t in ipairs(sorted) do if TT.online(t) then sel = t break end end
 end
-local ry = y0 + 3
+local ry = liy
 for _, t in ipairs(sorted) do
-if ry > bottom - 1 then break end
+if ry + 1 > bottom - 1 then break end
 local _, lab, col = TT.status(t)
 local isSel = sel and sel.id == t.id
-local bg = isSel and C.accent or C.panel
-
-fill(3, ry, lw - 2, 2, isSel and bg or C.empty)
-local fg = isSel and C.ink or C.text
-text(4, ry, trunc(t.label, lw - 14), fg, isSel and bg or C.empty)
-text(4, ry + 1, trunc(lab, lw - 6), isSel and C.ink or (col or C.dim), isSel and bg or C.empty)
-addHit(3, ry, lw - 2, 2, "tdsel", t.id)
+local bg = isSel and C.line or C.panel
+if isSel then fill(lix - 1, ry, liw + 2, 2, C.line) cell(lix - 1, ry, 1 + 4 + 16, C.accent, C.line) cell(lix - 1, ry + 1, 1 + 4 + 16, C.accent, C.line) end
+led(lix, ry, col or C.dim, bg)
+text(lix + 2, ry, trunc(t.label .. " #" .. t.id, liw - 2), isSel and C.accent or C.text, bg)
+text(lix + 2, ry + 1, trunc(lab, liw - 2), col or C.dim, bg)
+addHit(lix - 1, ry, liw + 2, 2, "tdsel", t.id)
 ry = ry + 3
 end
+CLIP = nil
 local x = lw + 4
 local w = W - x - 1
 if not sel then
-card(x, y0, w, 8, "DRIVE")
-text(x + 2, y0 + 2, "No turtle online.", C.dim, C.panel)
+local nx, ny = panel(x, y0, w, 8, "DRIVE")
+text(nx, ny, "No turtle online.", C.dim, C.panel)
 return
 end
 local t = sel
-card(x, y0, w, bottom - y0 + 1, "DRIVE: " .. t.label .. "  #" .. t.id)
+panel(x, y0, w, bottom - y0 + 1, "DRIVE: " .. t.label .. "  #" .. t.id, { right = TT.online(t) and "online" or "OFFLINE",
+rcol = TT.online(t) and C.good or C.bad })
 local on = TT.online(t)
 local p = t.pos
 text(x + 2, y0 + 2, trunc((p and p.x and ("at " .. p.x .. " " .. p.y .. " " .. p.z .. "  facing " .. tostring(p.f or "?")) or
@@ -105,10 +106,12 @@ text(x + 2, y0 + 3, trunc(msg, w - 4), mcol, C.panel)
 
 local v = t.view or {}
 local R = 2
-local CW = math.max(5, math.min(10, math.floor((w - 16) / (3 * (2 * R + 1)))))
-local CH = 3
+
+local CH = math.max(3, math.min(7, math.floor((bottom - (y0 + 6) - 20) / (2 * R + 1))))
+
+local CW = math.max(4, math.min(CH * 2 + 2, math.floor((w - 4 - 5 - 2 * 6) / (3 * (2 * R + 1)))))
 local gw = (2 * R + 1) * CW
-local gap = math.max(4, math.floor((w - 4 - 3 * gw) / 3))
+local gap = math.max(6, math.floor((w - 4 - 5 - 3 * gw) / 2))
 local gy = y0 + 6
 local codes, legend = {}, {}
 local plainSeen = false
@@ -142,7 +145,7 @@ for dx = -R, R do
 local cx, cy = gx0 + (dx + R) * CW, gy + 2 + (dz + R) * CH
 local name
 if known then name = cells[math.floor(p.x + dx) .. "," .. math.floor(p.y + dy) .. "," .. math.floor(p.z + dz)] end
-local bg, fg, s = C.head, C.dim, "?"
+local bg, fg, s = C.line, C.dim, "?"
 if name == false then bg, fg, s = C.bg, C.dim, ""
 elseif name ~= nil then
 bg, fg = blockColour(name)
@@ -163,6 +166,7 @@ fill(cx, cy, CW - 1, CH - 1, bg)
 text(cx + math.max(0, math.floor((CW - 1 - #s) / 2)), cy, trunc(s, CW - 1), fg, bg)
 if act then
 local h = string.upper(hint)
+if #h > CW - 1 then h = ({ DOWN = "DN" })[h] or h end
 text(cx + math.max(0, math.floor((CW - 1 - #h) / 2)), cy + 1, trunc(h, CW - 1),
 (bg == C.bg or bg == C.head or bg == C.empty) and C.label or fg, bg)
 addHit(cx, cy, CW - 1, CH, "tdrive", { t.id, act })
@@ -177,7 +181,7 @@ grid(gx + 2 * (gw + gap), -1, "BELOW IT", "mined", "down")
 
 local ly = gy + 4 + (2 * R + 1) * CH
 table.sort(legend, function(a, b) return a.word < b.word end)
-text(x + 2, ly, "WHAT THE LETTERS MEAN:", C.label, C.panel)
+heading(x + 2, ly, w - 4, "WHAT THE LETTERS MEAN")
 local lx, lcol = x + 2, 0
 local colW = math.floor((w - 4) / 4)
 for i, e in ipairs(legend) do
@@ -192,7 +196,7 @@ local nl = math.min(12, #legend)
 if plainSeen then
 local ex = x + 2 + (nl % 4) * colW
 local ey = ly + 1 + math.floor(nl / 4)
-text(ex, ey, "   ", C.text, C.empty)
+text(ex, ey, "   ", C.text, C.line)
 text(ex + 4, ey, "plain stone / dirt", C.text, C.panel)
 end
 if #legend == 0 and not plainSeen then text(x + 2, ly + 1, "(nothing seen yet - SCAN AROUND)", C.dim, C.panel) end
@@ -202,27 +206,27 @@ for i, l in ipairs(wrap("Tap a block marked GO / UP / DOWN to move there (it tur
 text(x + 2, ly + 3 + i, l, C.dim, C.panel)
 end
 
-local by = ly + 6
-if by + 7 > bottom then by = bottom - 7 end
+local by = math.max(ly + 7, bottom - 12)
 local bw = math.floor((w - 4 - 4) / 5)
-local function bt(col, row, label, kind, value, bg, fg)
-drawButton(x + 2 + col * (bw + 1), by + row * 4, bw, 3, label, bg or C.empty, fg or C.text, kind, value)
+local lastW = (w - 4) - 4 * (bw + 1)
+local function bt(col, row, label, kind, value, colr, solid)
+button(x + 2 + col * (bw + 1), by + row * 4, (col == 4) and lastW or bw, 3, label, colr or C.line, kind, value, solid)
 end
 bt(0, 0, "TURN LEFT", "tdrive", { t.id, "l" })
-bt(1, 0, "FORWARD", "tdrive", { t.id, "minef" }, C.accent, C.ink)
+bt(1, 0, "FORWARD", "tdrive", { t.id, "minef" }, C.accent, true)
 bt(2, 0, "TURN RIGHT", "tdrive", { t.id, "r" })
-bt(3, 0, "UP", "tdrive", { t.id, "mineu" }, C.accent, C.ink)
-bt(4, 0, "DOWN", "tdrive", { t.id, "mined" }, C.accent, C.ink)
-bt(0, 1, "SCAN AROUND", "tdrive", { t.id, "look" }, C.label, C.ink)
-bt(1, 1, "STOP", "tcmd", { t.id, "stop", {} }, C.bad, C.ink)
-bt(2, 1, "GO HOME", "tcmd", { t.id, "home", {} }, C.good, C.ink)
+bt(3, 0, "UP", "tdrive", { t.id, "mineu" }, C.accent)
+bt(4, 0, "DOWN", "tdrive", { t.id, "mined" }, C.accent)
+bt(0, 1, "SCAN AROUND", "tdrive", { t.id, "look" }, C.label)
+bt(1, 1, "STOP", "tcmd", { t.id, "stop", {} }, C.bad, true)
+bt(2, 1, "GO HOME", "tcmd", { t.id, "home", {} }, C.good)
 bt(3, 1, "BACK", "tdrive", { t.id, "b" })
 if tostring(t.gear or ""):find("pick", 1, true) then
-actButton(x + 2 + 4 * (bw + 1), by + 4, bw, 3, "MINE UP TO SURFACE", { kind = "tdigup", name = tostring(t.id), count = 0 })
+actButton(x + 2 + 4 * (bw + 1), by + 4, lastW, 3, "MINE UP TO SURFACE", { kind = "tdigup", name = tostring(t.id), count = 0 }, false, C.orange)
 end
-if t.driveAnyway and by + 8 <= bottom then
-actButton(x + 2, by + 8, 2 * bw + 1, 1, "DIG ANYWAY (the block it refused)",
-{ kind = "tdriveforce", name = t.id .. ":" .. t.driveAnyway, count = 0 })
+if t.driveAnyway and by + 10 <= bottom then
+actButton(x + 2, by + 8, 2 * bw + 1, 3, "DIG ANYWAY (the block it refused)",
+{ kind = "tdriveforce", name = t.id .. ":" .. t.driveAnyway, count = 0 }, false, C.warn)
 end
 end
 

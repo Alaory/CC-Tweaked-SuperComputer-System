@@ -77,18 +77,24 @@ end
 end
 if not best then
 
-local busy, low, off = 0, 0, 0
+local busy, low, off, each = 0, 0, 0, {}
 for _, k in ipairs(droneOrder) do
 local dr = drones[k]
-if not dr.conn then off = off + 1
-elseif dr.busy then busy = busy + 1
-elseif dr.pressure and dr.pressure < rideMinPressure() then low = low + 1 end
+local mine = dr.busy and (tostring(dr.rider or ""):lower() == name:lower() or tostring(dr.requester or ""):lower() == name:lower())
+if mine then chatTell(name, dr.label .. " is already on its way to you (or flying you). $drone stop ends it.") return end
+if not dr.conn then off = off + 1 each[#each + 1] = dr.label .. ": not connected"
+elseif dr.busy then busy = busy + 1 each[#each + 1] = dr.label .. ": busy"
+elseif dr.pressure and dr.pressure < rideMinPressure() then
+low = low + 1
+each[#each + 1] = dr.label .. ": charging (" .. string.format("%.1f", dr.pressure) .. " of " .. rideMinPressure() .. " bar)"
+end
 end
 local why
 if #droneOrder == 0 or off == #droneOrder then why = "No drone is connected right now."
-elseif busy > 0 then why = "All drones are busy. Try again in a minute."
-elseif low > 0 then why = "The drones are low on air and charging. Try again in a few minutes."
+elseif busy > 0 and low == 0 then why = "All drones are busy. Try again in a minute."
+elseif low > 0 and busy == 0 then why = "The drones are low on air and charging. Try again in a few minutes."
 else why = "No drone is free right now. Try again in a moment." end
+if #each > 1 then why = why .. " (" .. table.concat(each, ", ") .. ")" end
 chatTell(name, why)
 return
 end
@@ -125,6 +131,8 @@ end
 
 
 function handleChat(m)
+
+if VOICE and VOICE.chat and not tostring(m.msg or ""):find("^%$") then pcall(VOICE.chat, m) end
 local text = tostring(m.msg or ""):gsub("^%$", "")
 local words = {}
 for w in text:gmatch("%S+") do words[#words + 1] = w end
@@ -148,6 +156,7 @@ if sub == "help" then
 reply("Use: " .. c .. " home | " .. c .. " to <place" ..
 ((owner or CONFIG.chat.othersToPlayers) and "|player" or "") .. "> | " .. c .. " back | " ..
 c .. " places | " .. c .. " status | " .. c .. " stop")
+if owner then reply("Places: " .. c .. " mark <name> (stand ON the block) | " .. c .. " unmark <name> | " .. c .. " workchest [x y z] (stand ON the drones' work chest, or its spot) | " .. c .. " test (test it, standing near it) | " .. c .. " arrive [off] (stand at an open spot of an underground base - far trips teleport there, then fly in) | " .. c .. " build <name> (a schematic in front of you - look the way it should go) | " .. c .. " chain a,b*5,c (pieces one after another - a road) | " .. c .. " clear here (twice: the corners of a box of water / lava to empty) | " .. c .. " dig here (twice: dig out an area) | " .. c .. " break x y z (one block) | " .. c .. " unbuild [<n>|<name>] (take a build down) | " .. c .. " spawn here / pair <code> (the spawn speaker)") end
 if owner then reply("Owner: " .. c .. " allow/deny <name> | " ..
 c .. " allowed | " .. c .. " yes/no <name> | " .. c .. " notify on/all/off") end
 
@@ -171,6 +180,256 @@ local cur = state.notifySubs[k]
 reply("Base messages in chat: " .. (cur and (cur.level == "all" and "ALL (everything)" or "ON (warnings + errors)")
 or "OFF") .. ".  " .. c .. " notify on | all | off")
 
+elseif sub == "mark" or sub == "unmark" then
+
+if not owner then reply("Only " .. tostring(state.owner) .. " can mark places.") return end
+local pname = words[3]
+if not pname then reply("Use: " .. c .. " mark <name> (the block under you) | " .. c .. " mark <name> feet | " .. c .. " unmark <name>") return end
+if pname:lower() == "base" then reply("'Base' comes from the settings (drone home).") return end
+if sub == "unmark" then
+reply(removeWaypoint(pname) and ("Forgot " .. pname) or ("No place called " .. pname))
+return
+end
+local x, y, z = playerBlock(name, (words[4] or ""):lower() == "feet")
+if not x then reply("Cannot mark: " .. cleanErr(y)) return end
+addWaypoint(pname, x, y, z)
+reply("Marked " .. pname .. " at " .. fmtPos(x, y, z) .. (((words[4] or ""):lower() == "feet") and " (where you stand)" or " (the block under you)"))
+
+elseif sub == "workchest" then
+
+if not owner then reply("Only " .. tostring(state.owner) .. " can set the work chest.") return end
+
+local x, y, z
+if words[3] then x, y, z = posArg(words, 3, name) else x, y, z = playerBlock(name) end
+if not x then reply("Cannot: " .. cleanErr(y)) return end
+if not DW.chestName() then
+pcall(DW.refreshView)
+local cands = DW.view.cands or {}
+if #cands == 1 then setSetting("drone.workChest", cands[1]) end
+end
+setSetting("drone.workChestAt", { x = x, y = y, z = z })
+DW.view.at = -999
+if DW.chestName() then
+reply("Work chest: " .. DW.chestName() .. " at " .. fmtPos(x, y, z) .. ". Keep it empty - only the base and the drones use it.")
+else
+reply("Work chest spot saved: " .. fmtPos(x, y, z) .. ". Several empty chests are on the cable - pick this one with CHEST > on the DRONE WORK page.")
+end
+
+elseif sub == "build" then
+
+
+if not owner then reply("Only " .. tostring(state.owner) .. " can start a build.") return end
+DW.chatPend = DW.chatPend or {}
+local key = name:lower()
+local a = tostring(words[3] or ""):lower()
+local P = DW.chatPend[key]
+if P and os.clock() - P.at > 300 then DW.chatPend[key], P = nil, nil end
+local function show(pp)
+local sch = SCHEM.load(pp.name)
+if not sch then reply("The schematic " .. pp.name .. " is gone.") DW.chatPend[key] = nil return end
+local _, place = SCHEM.materials(sch)
+reply(pp.name .. ": " .. pp.pl.text .. " - " .. place .. " blocks" .. (pp.pl.clear and ", air spots cleared first" or "") .. ".")
+reply("Say  " .. c .. " build yes  to start, or turn it:  " .. c .. " build turn left / right / around  or  facing north / east / south / west")
+end
+if a == "" then
+local names = {}
+for n in pairs(SCHEM.list()) do names[#names + 1] = n end
+table.sort(names)
+reply("Stand where it should go, look the way it should go, then:  " .. c .. " build <name> [turn right] [clear].  Schematics: " ..
+(#names > 0 and table.concat(names, ", ") or "none yet - drag a Create .nbt onto the base computer's screen"))
+elseif a == "stop" then
+local _, msg = DW.stopBuild("stopped by you")
+reply(msg)
+elseif a == "status" then
+for k, l in ipairs(DW.statusLines()) do if k <= 6 then reply(l) end end
+elseif a == "yes" or a == "go" or a == "start" then
+if not P then reply("Nothing to start - first:  " .. c .. " build <name>") return end
+DW.chatPend[key] = nil
+local ok, msg = DW.startBuild(P.name, P.pl.ox, P.pl.oy, P.pl.oz, P.pl.rot, P.pl.clear)
+reply(msg)
+elseif a == "no" or a == "cancel" then
+DW.chatPend[key] = nil
+reply("OK, not built.")
+elseif P and DW.turnWords(words, 3, P.pl.rot) then
+
+local sch = SCHEM.load(P.name)
+if not sch then reply("The schematic " .. P.name .. " is gone.") return end
+local o = P.pl
+P.pl = DW.placeAt(sch, (DW.turnWords(words, 3, o.rot)), o.how, o.bx, o.by, o.bz, o.look, o.clear)
+P.at = os.clock()
+show(P)
+else
+local sch, why = SCHEM.load(words[3])
+if not sch then reply(tostring(why) .. " - schematics: " .. c .. " build") return end
+local pl, whyW = DW.where(sch, words, 4, name, 0)
+if not pl then reply("Cannot: " .. tostring(whyW)) return end
+DW.chatPend[key] = { name = words[3], pl = pl, at = os.clock() }
+show(DW.chatPend[key])
+end
+
+elseif sub == "chain" then
+
+if not owner then reply("Only " .. tostring(state.owner) .. " can start a build.") return end
+DW.chatPend = DW.chatPend or {}
+local key = name:lower() .. "#chain"
+local a = tostring(words[3] or ""):lower()
+local P = DW.chatPend[key]
+if P and os.clock() - P.at > 300 then DW.chatPend[key], P = nil, nil end
+if a == "" then
+reply("Stand where the first piece goes, look the way it goes on:  " .. c .. " chain road_start,road*6,road_end [turn right] [toward east] [clear]")
+elseif a == "yes" or a == "go" or a == "start" then
+if not P then reply("Nothing to start - first:  " .. c .. " chain <names>") return end
+DW.chatPend[key] = nil
+DW.enqueue(P.list)
+reply(DW.job and ("Started " .. DW.job.name .. " - " .. #DW.queue .. " more piece(s) after it.") or "Queued - it starts once the schematics are read.")
+elseif a == "no" or a == "cancel" then
+DW.chatPend[key] = nil
+reply("OK, not built.")
+else
+local list, text = DW.chainPlan(words[3], words, 4, name)
+if not list then reply("Cannot: " .. tostring(text)) return end
+DW.chatPend[key] = { list = list, at = os.clock() }
+reply("Chain: " .. text .. ". Say  " .. c .. " chain yes  to start.")
+end
+
+elseif sub == "clear" or sub == "drain" or sub == "dig" then
+
+
+if not owner then reply("Only " .. tostring(state.owner) .. " can start that.") return end
+local dig = sub == "dig"
+DW.chatPend = DW.chatPend or {}
+local key = name:lower() .. (dig and "#dig" or "#clear")
+local a = tostring(words[3] or ""):lower()
+local P = DW.chatPend[key]
+if P and os.clock() - P.at > 600 then DW.chatPend[key], P = nil, nil end
+if a == "" and dig then
+reply("Dig out an area: stand at one corner -  " .. c .. " dig here  - then at the opposite corner -  " .. c .. " dig here  - " ..
+"then  " .. c .. " dig yes.  EVERY block in the box goes into AE2 (water / lava stay -  " .. c .. " clear  empties those). " ..
+"One block:  " .. c .. " break x y z")
+elseif a == "" then
+reply("Empty a box of water / lava: stand at one corner (the TOP one at the surface) -  " .. c .. " clear here  - then at the " ..
+"opposite corner (at the bottom) -  " .. c .. " clear here  - then  " .. c .. " clear yes.  Walls go round it, " ..
+"everything inside is filled and dug out.")
+elseif a == "yes" or a == "go" or a == "start" then
+if not (P and P.b) then reply("Mark both corners first:  " .. c .. " clear here") return end
+DW.chatPend[key] = nil
+local x1, y1, z1, x2, y2, z2 = P.a[1], P.a[2], P.a[3], P.b[1], P.b[2], P.b[3]
+if DW.job then
+DW.enqueue({ { kind = dig and "dig" or "drain", box = { x1, y1, z1, x2, y2, z2 }, fill = (not dig) and P.fill or nil,
+name = (dig and "dig " or "clear ") .. fmtPos(x1, y1, z1),
+x = math.min(x1, x2), y = math.min(y1, y2), z = math.min(z1, z2), rot = 0 } })
+reply("A job runs (" .. DW.job.name .. ") - this one waits in the queue (" .. #DW.queue .. ").")
+else
+local _, msg
+if dig then _, msg = DW.startDig(x1, y1, z1, x2, y2, z2)
+else _, msg = DW.startDrain(x1, y1, z1, x2, y2, z2, P.fill) end
+reply(msg)
+end
+elseif a == "no" or a == "cancel" then
+DW.chatPend[key] = nil
+reply("OK, forgotten.")
+else
+local x, y, z = posArg(words, 3, name)
+if not x then reply("Cannot: " .. cleanErr(y)) return end
+local fill = words[4] and words[4]:lower() ~= "with" and SUPPLY.fullName(words[4]) or (words[5] and SUPPLY.fullName(words[5])) or nil
+if not P or P.b then
+DW.chatPend[key] = { a = { x, y, z }, at = os.clock(), fill = fill }
+reply("Corner 1: " .. fmtPos(x, y, z) .. ". Now the opposite corner:  " .. c .. (dig and " dig here" or " clear here"))
+else
+P.b, P.at, P.fill = { x, y, z }, os.clock(), fill or P.fill
+local w = math.abs(P.a[1] - x) + 1
+local h = math.abs(P.a[2] - y) + 1
+local d = math.abs(P.a[3] - z) + 1
+reply("Box " .. w .. " x " .. d .. " x " .. h .. " (" .. w * d * h .. " blocks) from " .. fmtPos(P.a[1], P.a[2], P.a[3]) ..
+" to " .. fmtPos(x, y, z) .. (dig and ". EVERY block in it is dug. Say  " .. c .. " dig yes  to start." or
+". Everything inside the walls goes. Say  " .. c .. " clear yes  to start."))
+end
+end
+
+elseif sub == "break" then
+
+if not owner then reply("Only " .. tostring(state.owner) .. " can do that.") return end
+if not words[3] then
+reply("Look at the block, press F3 and read 'Targeted Block' x y z, then:  " .. c .. " break x y z  (or a saved place, or me = the block under you)")
+return
+end
+local x, y, z = posArg(words, 3, name)
+if not x then reply("Cannot: " .. cleanErr(y)) return end
+if DW.job then
+DW.enqueue({ { kind = "dig", box = { x, y, z, x, y, z }, name = "break " .. fmtPos(x, y, z), x = x, y = y, z = z, rot = 0 } })
+reply("A job runs (" .. DW.job.name .. ") - it waits in the queue (" .. #DW.queue .. ").")
+else
+local _, msg = DW.startDig(x, y, z, x, y, z)
+reply(msg)
+end
+
+elseif sub == "unbuild" then
+
+if not owner then reply("Only " .. tostring(state.owner) .. " can do that.") return end
+DW.chatPend = DW.chatPend or {}
+local key = name:lower() .. "#unbuild"
+local a = tostring(words[3] or "")
+local P = DW.chatPend[key]
+if P and os.clock() - P.at > 300 then DW.chatPend[key], P = nil, nil end
+if a:lower() == "yes" or a:lower() == "go" then
+if not P then reply("Nothing to start - first:  " .. c .. " unbuild [<n>|<name>]") return end
+DW.chatPend[key] = nil
+if DW.job then
+DW.enqueue({ { kind = "unbuild", name = P.name, x = P.x, y = P.y, z = P.z, rot = P.rot } })
+reply("A job runs (" .. DW.job.name .. ") - it waits in the queue (" .. #DW.queue .. ").")
+else
+local _, msg = DW.startUnbuild(P.name, P.x, P.y, P.z, P.rot)
+reply(msg)
+end
+elseif a:lower() == "no" then
+DW.chatPend[key] = nil
+reply("OK, forgotten.")
+elseif a:lower() == "list" then
+local l = DW.builtList()
+local t = {}
+for k, b in ipairs(l) do if k <= 8 then t[#t + 1] = k .. ". " .. b.name .. " " .. fmtPos(b.x, b.y, b.z) end end
+reply(#t > 0 and table.concat(t, " | ") or "No builds remembered yet.")
+else
+local b = DW.findBuilt(a)
+if not b then reply(#DW.builtList() == 0 and "No builds remembered yet." or ("No build '" .. a .. "' -  " .. c .. " unbuild list")) return end
+DW.chatPend[key] = { name = b.name, x = b.x, y = b.y, z = b.z, rot = b.rot, at = os.clock() }
+reply("Take down " .. b.name .. " at " .. fmtPos(b.x, b.y, b.z) .. ": every block it has there goes back into AE2. Say  " ..
+c .. " unbuild yes")
+end
+
+elseif sub == "arrive" then
+
+if not owner then reply("Only " .. tostring(state.owner) .. " can set the arrival spot.") return end
+if words[3] == "off" then
+setSetting("drone.arrive", false)
+DRONE_ARRIVE = nil
+reply("Arrival spot removed - far trips teleport straight to where they go.")
+return
+end
+local x, y, z
+if words[3] then x, y, z = posArg(words, 3, name) else x, y, z = posArg({ "", "", "feet" }, 3, name) end
+if not x then reply("Cannot: " .. cleanErr(y)) return end
+setSetting("drone.arrive", { x = x, y = y, z = z })
+reply("Arrival spot: " .. fmtPos(x, y, z) .. ". Drones coming from far away teleport here, then fly in. Keep it open " ..
+"(two blocks of air) and inside the base's loaded area.")
+
+elseif sub == "spawn" then
+
+if not owner then reply("Only " .. tostring(state.owner) .. " can set up the spawn speaker.") return end
+if not (VOICE and VOICE.commands and VOICE.commands.spawn) then reply("The talking add-on with its spawn part is not loaded (voice install / voice update).") return end
+local w = { "voice", "spawn" }
+for i = 3, #words do w[#w + 1] = words[i] end
+local okS, errS = pcall(VOICE.commands.spawn, w, reply, name)
+if not okS then reply("Spawn speaker: " .. cleanErr(errS)) end
+
+elseif sub == "test" then
+
+
+if not owner then reply("Only " .. tostring(state.owner) .. " can test the drones.") return end
+local item = words[3] and SUPPLY.fullName(words[3]) or nil
+local okT, err = pcall(DW.test, reply, item, function(m) chatTell(name, m) end, c .. " test")
+if not okT then reply("Test stopped: " .. cleanErr(err)) end
+
 elseif sub == "places" then
 local n = {}
 for _, w in ipairs(state.waypoints) do n[#n + 1] = w.name end
@@ -180,7 +439,7 @@ elseif sub == "status" then
 if #droneOrder == 0 then reply("No drones.") end
 for _, k in ipairs(droneOrder) do
 local dr = drones[k]
-reply(dr.label .. ": " .. (not dr.conn and "not connected" or
+reply(dr.label .. ": " .. (not dr.conn and ("not connected" .. (droneSeenText(dr) and (" - " .. droneSeenText(dr)) or "")) or
 (dr.busy and ((dr.mission and dr.mission.title) or "busy") or "free")))
 end
 

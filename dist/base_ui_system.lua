@@ -23,7 +23,7 @@ local A = BASE_ALIVE or {}
 local now = os.epoch("utc")
 
 
-local sh = 18
+local sh = 20
 card(lx, y0, leftW, sh, "STATUS")
 local r = y0 + 3
 kv(ix, r, iw, "Running for", fmtSpan((now - (A.since or now)) / 1000) .. "   (start #" .. tostring(A.starts or "?") .. ")")
@@ -38,6 +38,10 @@ kv(ix, r + 1, iw, "Last time off", "never noticed")
 end
 kv(ix, r + 2, iw, "Computer disk", (s.pcFree and s.pcCap) and (kb(s.pcFree) .. " free of " .. kb(s.pcCap)) or "...",
 (s.pcFree and s.pcFree < 65536) and C.bad or C.text)
+if s.pcFree and s.pcCap and s.pcCap > 0 then
+local used = 1 - s.pcFree / s.pcCap
+gauge(ix, y0 + sh - 2, iw, used, used > 0.9 and C.bad or (used > 0.75 and C.warn or C.accent))
+end
 kv(ix, r + 3, iw, "Map", s.mapBytes and (kb(s.mapBytes) .. " in " .. tostring(s.mapFiles) .. " files") or "...")
 kv(ix, r + 4, iw, "Map floppies", s.mapFloppies and (s.mapFloppies .. " (" .. kb(s.mapFree) .. " free)") or "...",
 (s.mapFree and s.mapFree < 40960) and C.warn or C.text)
@@ -59,6 +63,10 @@ local np, lastP = 0, nil
 for _, p in pairs(POCKET.pockets) do np = np + 1 if p.seen and (not lastP or p.seen > lastP) then lastP = p.seen end end
 kv(ix, r + 12, iw, "Pocket remote", np == 0 and "none paired (pocket.lua on a pocket computer)"
 or (np .. " paired" .. (lastP and ("   last used " .. TT.ago(lastP)) or "")), np > 0 and C.text or C.dim)
+kv(ix, r + 14, iw, "Program", s.version or ("v" .. tostring(BASE_VERSION)))
+local gone = partsGone and partsGone(true) or {}
+kv(ix, r + 15, iw, "Parts missing", #gone == 0 and "none" or (#gone .. ": " .. partText(gone[1]) ..
+(#gone > 1 and " ..." or "") .. "   (type  parts)"), #gone == 0 and C.text or C.bad)
 kv(ix, r + 13, iw, "Schematics", (s.schematics or 0) .. " stored" .. ((s.schematics or 0) == 0
 and "   (drag a Create .nbt onto the computer's screen)" or "   (type  schem)"), (s.schematics or 0) > 0 and C.text or C.dim)
 
@@ -67,7 +75,7 @@ local ly = y0 + sh + 1
 local lh = bottom - ly + 1
 card(lx, ly, leftW, lh, "SYSTEM LOG (" .. #SYSLOG .. ")")
 if #SYSLOG == 0 then
-text(ix, ly + 3, trunc("Nothing yet: base off / crashes, new turtle program, floppies ...", iw), C.dim, C.panel)
+para(ix, ly + 3, iw, "Nothing yet: base off / crashes, new turtle program, floppies ...", C.dim, 3)
 end
 local rows = math.max(1, math.floor((lh - 4) / 2))
 local offL = scrollBar(lx, ly + 1, leftW, "sysLogOff", #SYSLOG, rows)
@@ -92,7 +100,7 @@ end
 end
 
 
-local actH = 9
+local actH = 11
 local free = bottom - y0 + 1 - actH - 1
 local awH = math.max(8, math.floor(free * 0.5))
 do
@@ -105,10 +113,9 @@ lines, title = AWAY.last.lines or {}, "WHILE YOU WERE AWAY  (back " .. (okD and 
 end
 card(rx, y0, rw, awH, title or "WHILE YOU WERE AWAY")
 if not lines then
-text(rix, y0 + 3, trunc("Nothing yet. When you leave the server for " ..
-math.floor((tonumber(AWAY and AWAY.cfg("after", 300)) or 300) / 60) .. " min, the base", riw), C.dim, C.panel)
-text(rix, y0 + 4, trunc("updates turtles, tops up their fuel, follows them on the map -", riw), C.dim, C.panel)
-text(rix, y0 + 5, trunc("and tells you here (and in chat) what happened.", riw), C.dim, C.panel)
+para(rix, y0 + 2, riw, "Nothing yet. When you leave the server for " ..
+math.floor((tonumber(AWAY and AWAY.cfg("after", 300)) or 300) / 60) .. " min, the base updates turtles, tops up " ..
+"their fuel, follows them on the map - and tells you here (and in chat) what happened.", C.dim, 4)
 else
 local ry = y0 + 3
 for _, l in ipairs(lines) do
@@ -139,13 +146,12 @@ end
 
 
 local ay = oy + oh + 1
-card(rx, ay, rw, actH, "ACTIONS  (tap twice)")
-local aw = math.floor((riw - 2) / 3)
-actButton(rix, ay + 3, aw, 2, "SAVE MAP NOW", { kind = "syssave", name = "map", count = 0 }, true)
-actButton(rix + aw + 1, ay + 3, aw, 2, "UPDATE TURTLES", { kind = "sysupdate", name = "turtles", count = 0 }, true)
-actButton(rix + 2 * (aw + 1), ay + 3, riw - 2 * (aw + 1), 2, "RESTART BASE",
-{ kind = "sysrestart", name = "base", count = 0 }, true)
-local hw = math.floor((riw - 1) / 2)
-actButton(rix, ay + 6, hw, 2, "UPGRADE PROGRAM", { kind = "sysupgrade", name = "base", count = 0 })
-drawButton(rix + hw + 1, ay + 6, riw - hw - 1, 2, "SETTINGS  >", C.accent, C.ink, "page", "settings")
+local ax, aay, aw2 = panel(rx, ay, rw, actH, "ACTIONS", { right = "two taps" })
+local aw = math.floor((aw2 - 2) / 3)
+actButton(ax, aay, aw, 3, "SAVE MAP NOW", { kind = "syssave", name = "map", count = 0 }, false, C.good)
+actButton(ax + aw + 1, aay, aw, 3, "UPDATE TURTLES", { kind = "sysupdate", name = "turtles", count = 0 }, false, C.info)
+actButton(ax + 2 * (aw + 1), aay, aw2 - 2 * (aw + 1), 3, "RESTART BASE", { kind = "sysrestart", name = "base", count = 0 }, false, C.bad)
+local hw = math.floor((aw2 - 1) / 2)
+actButton(ax, aay + 4, hw, 3, "UPGRADE PROGRAM", { kind = "sysupgrade", name = "base", count = 0 }, false, C.purple)
+button(ax + hw + 1, aay + 4, aw2 - hw - 1, 3, "SETTINGS  >", C.line, "page", "settings")
 end

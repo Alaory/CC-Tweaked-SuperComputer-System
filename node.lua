@@ -34,6 +34,7 @@ local CONFIG = {
   -- long trips use the SKY HIGHWAY: up to skyY, across, down at the target
   skyY      = 150,
   skyMinDist = 48,           -- trips longer than this (blocks, sideways) use it
+  hopMax    = 256,           -- survey: spots up to this far are reached by an AIR HOP (hopTo), not the sky highway
   exitNear  = 24,            -- this close to the exit route's inside end = "inside the base"
   noProgress = 60,           -- moves without getting closer = going in circles: change strategy
   deadLife  = 3 * 3600000,   -- a remembered dead end is avoided this long (ms)
@@ -82,11 +83,15 @@ COPYSFX = COPY and ("_c" .. COPY) or ""
 -- baseName always come from the program: the base fills them in.)
 local SETTINGS_FILE = "node_settings"
 function loadSettings()
-  if not fs.exists(SETTINGS_FILE) then return {} end
-  local h = fs.open(SETTINGS_FILE, "r")
-  local t = textutils.unserialize(h.readAll() or "")
-  h.close()
-  return type(t) == "table" and t or {}
+  for _, p in ipairs({ SETTINGS_FILE, SETTINGS_FILE .. ".new" }) do     -- (.new: see writeFile)
+    if fs.exists(p) then
+      local h = fs.open(p, "r")
+      local t = h and textutils.unserialize(h.readAll() or "")
+      if h then h.close() end
+      if type(t) == "table" then return t end
+    end
+  end
+  return {}
 end
 for k, v in pairs(loadSettings()) do
   if k ~= "key" and k ~= "protocol" and k ~= "baseName" then CONFIG[k] = v end
@@ -119,7 +124,7 @@ local UPD_READY = nil      -- { ver, code }: a complete update, installed when t
 if MYPATH ~= "startup.lua" and MYPATH ~= "/startup.lua" and fs.exists(MYPATH)
    and not fs.exists("startup.lua") then
   fs.copy(MYPATH, "startup.lua")
-  print("Installed myself as startup.lua - I start by myself from now on.")
+  print("Installed myself as startup.lua.")
 end
 
 ---------------------------------------------------------------------
@@ -238,12 +243,6 @@ local moveCount = 0            -- every real move (for the progress watchdog)
 local recAdd                   -- route recording (defined further down)
 local gearString               -- rescue gear carried (defined further down)
 local learnBlocked             -- remember a block we could not pass (further down)
-if fs.exists(STATE_FILE) then
-  local h = fs.open(STATE_FILE, "r")
-  local t = textutils.unserialize(h.readAll() or "")
-  h.close()
-  if type(t) == "table" then S = t end
-end
 -- save a table to a file; a failure is reported, never stops the program
 local writeErr = nil
 -- DUPLICATES: a server crash while a turtle crosses into the next chunk can
@@ -263,15 +262,41 @@ function writeFile(path, value)
     printError(writeErr)
     return false
   end
-  local h = fs.open(path, "w")
+  -- through a NEW file: opening the real one for writing empties it at once, so a full
+  -- disk left an empty / cut-off state file (position, home, facing lost at the next
+  -- start). The old one is only replaced once the new one is complete.
+  local tmp = path .. ".new"
+  local h = fs.open(tmp, "w")
   if not h then return false end
   local okW, errW = pcall(function() h.write(text) h.close() end)
-  if not okW then
+  if not okW or not fs.exists(tmp) or fs.getSize(tmp) < #text then
     pcall(h.close)
-    writeErr = "cannot save " .. path .. ": " .. tostring(errW)     -- e.g. disk full
+    pcall(fs.delete, tmp)
+    writeErr = "cannot save " .. path .. ": " .. tostring(okW and "disk full" or errW)   -- the old file stays
     return false
   end
+  local okM = pcall(function()
+    if fs.exists(path) then fs.delete(path) end
+    fs.move(tmp, path)
+  end)
+  if not okM then writeErr = "cannot save " .. path .. " (move)" return false end
   return true
+end
+-- read a saved table: the file, else its ".new" (the program stopped between delete and move)
+function readTable(path)
+  for _, p in ipairs({ path, path .. ".new" }) do
+    if fs.exists(p) then
+      local h = fs.open(p, "r")
+      local t = h and textutils.unserialize(h.readAll() or "")
+      if h then h.close() end
+      if type(t) == "table" then return t end
+    end
+  end
+  return nil
+end
+do
+  local t = readTable(STATE_FILE)
+  if t then S = t end
 end
 
 function save()
@@ -303,10 +328,8 @@ function trailRebuild()
   trailIdx = {}
   for i, k in ipairs(trail) do trailIdx[k] = i end
 end
-if fs.exists(TRAIL_FILE) then
-  local h = fs.open(TRAIL_FILE, "r")
-  local t = textutils.unserialize(h.readAll() or "")
-  h.close()
+do
+  local t = readTable(TRAIL_FILE)
   if type(t) == "table" and t.v == 2 and type(t.trail) == "table" and type(t.T) == "table" then
     trail, T = t.trail, t.T
   end
@@ -400,12 +423,15 @@ function send(t, extra)
   m.sig = sign(CONFIG.key, t, n)
   m.ses = SESSION
   m.copy = COPY
+  m.refused = REFUSED
   if DUP then m.dup = true end
   m.label = os.getComputerLabel() or ("Turtle " .. os.getComputerID())
   local fuel = turtle.getFuelLevel()
   m.fuel = fuel
   m.fuelMax = (fuel ~= "unlimited") and turtle.getFuelLimit() or nil
   m.items = itemCount()
+  m.freeSlots = freeSlots and freeSlots() or nil
+  m.homeFuel = homeFuel and homeFuel() or nil      -- (fuel for the way home from here: the base deals spots with it)
   m.task = task
   if S.pos and S.pos.x then
     m.pos = { x = S.pos.x, y = S.pos.y, z = S.pos.z, f = S.pos.f and FNAME[S.pos.f] or nil }
@@ -417,6 +443,7 @@ function send(t, extra)
   m.ver = MYVER
   m.updReady = UPD_READY and UPD_READY.ver or nil
   m.gear = S.gear
+  m.endless = REUSE_SLOTS ~= nil or nil          -- (carries endless fuel: tops itself up, no fuel trips)
   m.rec = S.recording and (S.recCount or 1) or nil
   m.waiting = outboxCount and outboxCount() or 0
   pcall(rednet.send, baseId, m, CONFIG.protocol)
@@ -475,7 +502,17 @@ end
 -- movement (keeps track of position and facing)
 ---------------------------------------------------------------------
 local memFree     -- defined further down (terrain memory)
+-- (the owner: "turtles report that they cannot move when they can") STUCK = the last trip could not MOVE: only
+-- these failures - not "fuel only for the way home", "position unknown", "the offered home is not free" ...
+-- (base_turtles.lua TT.MOVE_FAIL is the same list). Any step it makes clears it.
+MOVE_FAIL = { "blocked", "could not reach", "no progress", "going in circles", "out of fuel", "gave up after", "no way" }
+function isMoveFail(msg)
+  msg = tostring(msg or ""):lower()
+  for _, w in ipairs(MOVE_FAIL) do if msg:find(w, 1, true) then return true end end
+  return false
+end
 function moved(dx, dy, dz)
+  S.stuck = nil
   if S.pos and S.pos.x then
     S.pos.x, S.pos.y, S.pos.z = S.pos.x + dx, S.pos.y + dy, S.pos.z + dz
     save()
@@ -530,6 +567,11 @@ function ensureFuel()
     end
   end
   turtle.select(sel)
+  -- still empty: an endless item it does not know yet (a copy, a new modded item) -
+  -- try what it carries (never wooden things / tools / containers), learns it
+  if turtle.getFuelLevel() < 20 and not SLOT_LOCK then
+    topUp(math.min(refuelTarget(), FIRST_FUEL or 1000), false, 400)
+  end
 end
 
 -- STEPPING = a move/turn/equip is under way: a forced STOP waits for it to
@@ -654,6 +696,17 @@ function sidestep(f)
   return false
 end
 
+-- FUEL FOR THE WAY HOME (the owner: turtles lost far out; the survey edge is ~2,400 blocks from the base): the
+-- base gave spots down to 500 fuel and sent a turtle home only below 2000 - the way home costs more (up to the
+-- sky highway, across, down), so every turtle at the edge ran dry on its way home. homeFuel = that way + 15 %
+-- + 300; a survey stops while the turtle can still get home.
+function homeFuel()
+  local h, p = S.home, S.pos
+  if not (h and h.x and p and p.x) then return 0 end
+  local d = math.abs(p.x - h.x) + math.abs(p.z - h.z)
+  if d <= CONFIG.skyMinDist then return d + math.abs(p.y - h.y) end
+  return math.floor((d + math.max(0, CONFIG.skyY - p.y) + math.max(0, CONFIG.skyY - h.y)) * 1.15) + 300
+end
 function noFuel()
   ensureFuel()
   local f = turtle.getFuelLevel()
@@ -672,7 +725,7 @@ local TOPUP = {}       -- the last top-up: gained, uses, refused, seconds (for t
 -- equipping (core swap) and refuelling both select slots: they take turns.
 -- SLOT_LOCK = someone is equipping; TOPUP_RUNNING = a top-up is selecting slots
 SLOT_LOCK, TOPUP_RUNNING = false, false
-local REUSE_SLOTS      -- the slots holding reusable fuel last time (saves looking at all 16)
+REUSE_SLOTS = nil      -- the slots holding reusable fuel last time (saves looking at all 16; global: the report reads it)
 -- ENERGY CELLS: an automata core (Advanced Peripherals) turns the FE in a
 -- charged item the turtle carries into fuel (chargeTurtle). Tried first; no
 -- core / no cell / empty cell = nothing happens. Returns the fuel gained.
@@ -686,7 +739,7 @@ function chargeFromCell(target)
       got = ok and tonumber(got) or 0
       if got > 0 then
         if not S.cellUsed then S.cellUsed = true send("result", { cmd = "fuel", ok = true,
-          msg = "charged " .. got .. " fuel from an energy cell (FE) - cells are used first from now on" }) end
+          msg = "charged " .. got .. " fuel from an energy cell (FE)" }) end
         return got
       end
     end
@@ -707,11 +760,18 @@ function topUp(target, onlyReusable, budget)
   -- (known reusable ones first: saves coal)
   local slots = {}
   if onlyReusable and REUSE_SLOTS then
-    for _, sl in ipairs(REUSE_SLOTS) do slots[#slots + 1] = { i = sl.i, name = sl.name, count = sl.count } end
-  else
+    -- (the remembered slots - checked: after unloading / a chest another item may sit there,
+    -- and "only reusable" must never burn anything else)
+    for _, sl in ipairs(REUSE_SLOTS) do
+      local d = turtle.getItemDetail(sl.i)
+      if d and d.name == sl.name then slots[#slots + 1] = { i = sl.i, name = sl.name, count = d.count } end
+    end
+  end
+  if #slots == 0 then                            -- (moved / never looked: all 16 slots)
     for i = 1, 16 do
       local d = turtle.getItemDetail(i)
-      if d and (not onlyReusable or S.reuse[d.name]) then
+      -- (never the owner's wooden things / tools / containers, even if they would burn)
+      if d and (not onlyReusable or S.reuse[d.name]) and (S.reuse[d.name] or not neverBurn(d.name)) then
         slots[#slots + 1] = { i = i, name = d.name, count = d.count }
       end
     end
@@ -721,7 +781,7 @@ function topUp(target, onlyReusable, budget)
       return a.i < b.i
     end)
   end
-  local stop = false
+  local stop, dry = false, 0
   while #slots > 0 and turtle.getFuelLevel() < target and not stop do
     local keep, any, cooling = {}, false, false
     for _, sl in ipairs(slots) do
@@ -746,12 +806,13 @@ function topUp(target, onlyReusable, budget)
         end
         any = true
         if not S.reuse[sl.name] then
-          -- still there after use? then it is reusable (checked until known)
-          local c = turtle.getItemCount(sl.i)
-          if c >= sl.count then S.reuse[sl.name], learnt = true, true
+          -- still there after use - the SAME item, as many? then it is reusable (a lava bucket
+          -- leaves an empty bucket: same count, other name - that is NOT endless fuel)
+          local d2 = turtle.getItemDetail(sl.i)
+          if d2 and d2.name == sl.name and d2.count >= sl.count then S.reuse[sl.name], learnt = true, true
           else
-            sl.count = c
-            if c == 0 then dead = true break end            -- normal fuel used up
+            sl.count = (d2 and d2.name == sl.name) and d2.count or 0
+            if sl.count == 0 then dead = true break end     -- used up (or only a bucket left)
           end
         end
       end
@@ -760,9 +821,14 @@ function topUp(target, onlyReusable, budget)
     end
     slots = keep
     if not any then
-      if not cooling or stop then break end
-      sleep(0.05)                                           -- all cooling down: one tick
+      -- all cooling down: one tick - but not for ever (an endless item that keeps refusing
+      -- made a turtle wait here for good: ensureFuel calls this without a budget)
+      dry = dry + 1
+      if not cooling or stop or dry > 100 then break end
+      sleep(0.05)
       calls = calls + 1
+    else
+      dry = 0
     end
   end
   turtle.select(sel)
@@ -845,7 +911,7 @@ function gpsRaw(timeout)
                         or math.abs(z - round(z)) > 0.15) then
     gpsWarned = true
     send("result", { cmd = "gps", ok = false, msg = string.format(
-      "GPS gives uneven numbers (%.2f %.2f %.2f) - check the coordinates in the gps host computers' startup", x, y, z) })
+      "GPS gives uneven numbers (%.2f %.2f %.2f) - check the gps hosts", x, y, z) })
   end
   return round(x), round(y), round(z)
 end
@@ -1062,7 +1128,67 @@ tryDig = function(dir)
   local okI, data = inspect()
   if not okI or type(data) ~= "table" or not natural(data.name) then return false end
   local dig = (dir == "up" and turtle.digUp) or (dir == "down" and turtle.digDown) or turtle.dig
-  return withEquipped("_pickaxe", dig) == true
+  local before = {}
+  for i = 1, 16 do before[i] = turtle.getItemCount(i) end
+  local okD = withEquipped("_pickaxe", dig) == true
+  -- what the dig brought in (cobblestone, raw iron, saplings, modded drops ...) is thrown away at once - the owner:
+  -- "stop making survey turtles hold ores", "they dig trees and leaves and other modded items too"
+  local toss, sel = false, nil
+  for i = 1, 16 do
+    if turtle.getItemCount(i) > before[i] then
+      sel = sel or turtle.getSelectedSlot()
+      local d = turtle.getItemDetail(i)
+      if d and not keepItem(d.name, i) then toss = true end
+    end
+  end
+  if sel then turtle.select(sel) end
+  if okD and (toss or freeSlots() <= 2) then pcall(dropJunk) end
+  return okD
+end
+
+-- WHAT A TURTLE KEEPS away from the base - everything else is thrown away (a KEEP list: a list of junk always missed
+-- a modded drop): its gear (the pickaxe / scanner / modem it swaps, Chunky, a rescuer's drive + floppy, a core, a
+-- cell, buckets, a turtle it builds), fuel (coal & co., any item the game burns that is not wood / tools - logs,
+-- planks, saplings, sticks go), its endless fuel. slot = check that slot with refuel(0) (it selects it).
+function isTool(n)
+  for _, p in ipairs({ "pickaxe", "scanner", "modem", "chunk", "drive", "floppy", "disk", "turtle", "computer", "crafting",
+                       "automata", "_core", "bucket", "cell" }) do
+    if n:find(p, 1, true) then return true end
+  end
+  return false
+end
+function keepItem(name, slot)
+  name = tostring(name)
+  if isTool(name) or isFuel(name) or (S.reuse and S.reuse[name]) then return true end
+  if neverBurn(name) or not slot then return false end
+  turtle.select(slot)
+  local okF, f = pcall(turtle.refuel, 0)
+  return okF and f == true
+end
+function freeSlots()
+  local n = 0
+  for i = 1, 16 do if turtle.getItemCount(i) == 0 then n = n + 1 end end
+  return n
+end
+-- throw what it does not keep (keepItem) out on a side with NO inventory (never into a chest), never at the base
+function dropJunk()
+  if inBaseZone() then return 0 end
+  local fn
+  for _, d in ipairs({ { "top", turtle.dropUp }, { "front", turtle.drop }, { "bottom", turtle.dropDown } }) do
+    local okI, inv = pcall(peripheral.hasType, d[1], "inventory")
+    if not (okI and inv) then fn = d[2] break end
+  end
+  if not fn then return 0 end
+  local sel, n = turtle.getSelectedSlot(), 0
+  for i = 1, 16 do
+    local d = turtle.getItemDetail(i)
+    if d and not keepItem(d.name, i) then
+      turtle.select(i)
+      if fn() then n = n + d.count end
+    end
+  end
+  turtle.select(sel)
+  return n
 end
 
 function isOre(b)
@@ -1278,10 +1404,8 @@ end
 -- offline when the owner left the server). Re-sent from the heartbeat.
 local OUTBOX_FILE = "node_outbox" .. COPYSFX
 local outbox = {}
-if fs.exists(OUTBOX_FILE) then
-  local h = fs.open(OUTBOX_FILE, "r")
-  local t = textutils.unserialize(h.readAll() or "")
-  h.close()
+do
+  local t = readTable(OUTBOX_FILE)
   if type(t) == "table" then
     outbox = t
     for _, p in ipairs(outbox) do       -- fields an old version wrongly added to stored scans
@@ -1692,6 +1816,25 @@ function moveToXZ(tx, tz)
   return false, "could not reach " .. tx .. " " .. tz .. " (at " .. fmt() .. ")"
 end
 
+-- AIR HOP for survey spots skyMinDist .. hopMax apart (tools/navsim/surveysim.lua, chaos terrain: spots 60
+-- apart took ~106 s each - every trip over skyMinDist went up to the sky highway at Y 150 and back down; with the
+-- hop ~40 s): straight on from here, UP and OVER whatever is in the way - no digging, no old path; blocked above
+-- too (a roof) or at the sky highway: the old way from there (moveToXZ). Spots closer than skyMinDist keep
+-- moveToXZ: measured faster there (it steps AROUND a tree trunk instead of over a 30-block modded tree).
+function hopTo(tx, tz)
+  task = "survey hop to " .. tx .. " " .. tz
+  for _, ax in ipairs({ "x", "z" }) do
+    local t = ax == "x" and tx or tz
+    while S.pos[ax] ~= t do
+      if stopFlag then return false, "stopped at " .. fmt() end
+      if noFuel() then return false, "out of fuel at " .. fmt() end
+      face(ax == "x" and (t > S.pos.x and 3 or 1) or (t > S.pos.z and 0 or 2))
+      if not fwd() and (S.pos.y >= CONFIG.skyY or not up()) then return moveToXZ(tx, tz) end
+    end
+  end
+  return true
+end
+
 -- the last part of a trip: sideways at about this height, then up/down
 function gotoLocal(tx, ty, tz)
   for attempt = 1, CONFIG.pathfind + 1 do
@@ -1854,8 +1997,7 @@ function coreCheck()
   send("result", { cmd = "core", ok = true, msg = "End Automata Core (" .. (carried and "carried" or "equipped") ..
                    ") functions: " .. table.concat(S.coreMethods or { "?" }, ", ") })
   if carried and keeps == false then
-    send("result", { cmd = "core", ok = false, msg = "the carried End Automata Core forgets its warp points when it " ..
-                     "is taken off - it cannot warp while carried (the Chunky upgrade always stays on)" })
+    send("result", { cmd = "core", ok = false, msg = "a carried Automata Core loses its points - cannot warp" })
   elseif carried and keeps then
     send("result", { cmd = "core", ok = true, msg = "the carried End Automata Core keeps its warp points - it is " ..
                      "swapped in for every warp" })
@@ -1875,7 +2017,7 @@ function withCore(fn)
   slot = coreSlot() or slot
   local sel = turtle.getSelectedSlot()
   turtle.select(slot)
-  if not equipOn(modem) then turtle.select(sel) SLOT_LOCK = false return false, "could not equip the End Automata Core" end
+  if not equipOn(modem) then turtle.select(sel) SLOT_LOCK = false return false, "could not equip the Automata Core" end
   modemAttached = false
   for _ = 1, 10 do if warpCore() then break end sleep(0.1) end
   local res = { pcall(fn) }
@@ -1903,7 +2045,7 @@ end
 function warpSave(name)
   if not (S.pos and S.pos.x) then return false, "position unknown" end
   if not hasCore() then return false, "no End Automata Core" end
-  if not canWarp() then return false, "the carried End Automata Core forgets its points - it cannot warp (the Chunky stays on)" end
+  if not canWarp() then return false, "a carried Automata Core forgets its points - cannot warp" end
   return withCore(function() return warpSaveNow(name) end)
 end
 function warpSaveNow(name)
@@ -2199,9 +2341,19 @@ surveyPoints = function(points, r)
     if f ~= "unlimited" and f < CONFIG.minFuel then
       return false, "low fuel (" .. f .. ") after " .. (i - 1) .. " of " .. #points .. " scans"
     end
+    -- this spot and the way home from it must fit in the tank: else stop NOW, while it can still get home
+    local need = homeFuel() + math.abs(p[1] - S.pos.x) + math.abs(p[2] - S.pos.z) + 60
+    if f ~= "unlimited" and f < need and S.reuse and next(S.reuse) then
+      topUp(math.min(refuelTarget(), need + 2000), true)
+      f = turtle.getFuelLevel()
+    end
+    if f ~= "unlimited" and f < need then
+      return false, "fuel " .. f .. " only for the way home (" .. need .. ") after " .. (i - 1) .. "/" .. #points .. " scans"
+    end
     task = "survey " .. i .. "/" .. #points
     send("status")
-    local far = math.abs(p[1] - S.pos.x) + math.abs(p[2] - S.pos.z) > CONFIG.skyMinDist
+    local d = math.abs(p[1] - S.pos.x) + math.abs(p[2] - S.pos.z)
+    local far = d > CONFIG.hopMax
     local ok, err = withLadder("survey", function()
       if far then
         -- far away: exit route / sky highway, then come down to the ground
@@ -2210,15 +2362,16 @@ surveyPoints = function(points, r)
         if okT then pcall(warpRemember) end
         return okT, errT
       end
+      if d > CONFIG.skyMinDist then return hopTo(p[1], p[2]) end
       return moveToXZ(p[1], p[2])
     end)
     if not ok then return false, err .. " (scan " .. i .. "/" .. #points .. ")" end
-    -- after the sky highway: down until standing on something
-    for _ = 1, 400 do
+    -- down until standing on something (after a hop at most 24: never deep into a ravine / cave; a short walk:
+    -- settle() below, as before)
+    for _ = 1, far and 400 or (d > CONFIG.skyMinDist and 24 or 0) do
       if stopFlag or turtle.detectDown() then break end
       if not down() then break end
       if S.pos.y <= -60 then break end
-      if S.pos.y < CONFIG.skyY - 1 and not far then break end
     end
     settle()
     local okS, msg = scanHere(r)
@@ -2242,8 +2395,21 @@ function isDrive(n) return n == "computercraft:disk_drive" end
 function isFloppy(n) return n == "computercraft:disk" end
 function isPick(n) return n:find("_pickaxe", 1, true) ~= nil end
 function isFuel(n)
-  return n:find("coal", 1, true) or n:find("charcoal", 1, true) or n:find("lava_bucket", 1, true)
-         or n:find("blaze_rod", 1, true)
+  return (n:find("coal", 1, true) and not n:find("_ore", 1, true)) or n:find("charcoal", 1, true)
+         or n:find("lava_bucket", 1, true) or n:find("blaze_rod", 1, true)
+end
+-- things that WOULD burn as turtle fuel but are somebody's building blocks, tools or
+-- containers: never burned (REFUEL, a chest at home, out of fuel) - only coal & co. and
+-- endless items are. (Before: planks, logs, chests, wooden tools in a chest at home went.)
+NEVER_BURN = { "planks", "_log", "_wood", "_stem", "hyphae", "sapling", "stick", "chest", "barrel", "shulker",
+               "crafting_table", "bookshelf", "lectern", "ladder", "scaffolding", "_door", "fence", "_sign",
+               "_boat", "_raft", "bow", "fishing_rod", "_sword", "_axe", "_pickaxe", "_shovel", "_hoe", "wool",
+               "carpet", "_bed", "banner", "loom", "composter", "note_block", "jukebox", "trapdoor",
+               "pressure_plate", "_button", "_slab", "_stairs", "turtle", "computer", "disk", "modem", "backpack" }
+function neverBurn(n)
+  if isFuel(n) then return false end
+  for _, p in ipairs(NEVER_BURN) do if n:find(p, 1, true) then return true end end
+  return false
 end
 -- what rescue gear this turtle carries (reported to the base)
 -- what is equipped on a side: item name (short) if this version can tell,
@@ -2432,7 +2598,7 @@ function sweep(cx, cy, cz, radius, skip)
   if S.anchor then return false, "I am the ANCHOR - send another turtle" end
   if not findItem(CONFIG.geoItem) then return false, "I need a Geo Scanner to search" end
   if not (slotOf(isDrive) and slotOf(isFloppy)) then
-    return false, "I need a Disk Drive and the install floppy to reinstall lost turtles"
+    return false, "I need a Disk Drive + the install floppy"
   end
   radius = math.max(16, math.min(160, math.floor(tonumber(radius) or 96)))
   local skipSet, handled, rescued = {}, {}, {}
@@ -2442,10 +2608,8 @@ function sweep(cx, cy, cz, radius, skip)
   local SWEEP_FILE = "node_sweep" .. COPYSFX
   local key = cx .. "," .. cy .. "," .. cz .. "," .. radius
   local first = 1
-  if fs.exists(SWEEP_FILE) then
-    local h = fs.open(SWEEP_FILE, "r")
-    local pr = textutils.unserialize(h.readAll() or "")
-    h.close()
+  do
+    local pr = readTable(SWEEP_FILE)
     if type(pr) == "table" and pr.key == key then
       first = (pr.done or 0) + 1
       handled = pr.handled or {}
@@ -2656,7 +2820,7 @@ function learnRecipe()
   turtle.select(16)
   local ok, err = turtle.craft(1)
   turtle.select(1)
-  if not ok then return false, "these items in this layout make nothing" .. (err and (" (" .. tostring(err) .. ")") or "") end
+  if not ok then return false, "this layout makes nothing" .. (err and (" (" .. tostring(err) .. ")") or "") end
   local out = turtle.getItemDetail(16)
   if not out then
     for i = 1, 16 do
@@ -2820,8 +2984,8 @@ function build()
   turtle.select(1)
   local okId, newId = pcall(peripheral.call, "front", "getID")
   -- my Disk Drive above it, with the install floppy
-  if not up() then return false, "could not go up to place the Disk Drive (new turtle " .. tostring(newId) .. " is placed)" end
-  if turtle.detect() then down() return false, "the block above the new turtle is not free (it is placed, not started)" end
+  if not up() then return false, "cannot go up to place the drive (turtle " .. tostring(newId) .. " placed)" end
+  if turtle.detect() then down() return false, "the block above the new turtle is taken (placed, not started)" end
   turtle.select(slotOf(isDrive))
   if not turtle.place() then turtle.select(1) down() return false, "could not place the Disk Drive" end
   turtle.select(slotOf(isFloppy))
@@ -3065,7 +3229,7 @@ function immediate(cmd, a)
     -- change one setting on this turtle (kept across updates): setting dig true
     local name, raw = tostring(a[1] or ""), a[2]
     if name == "" or name == "key" or name == "protocol" or name == "baseName" then
-      return false, "usage: setting <name> <value>  (key/protocol/baseName cannot be changed)"
+      return false, "usage: setting <name> <value>"
     end
     if CONFIG[name] == nil then return false, "no setting called '" .. name .. "'" end
     local v = raw
@@ -3101,7 +3265,7 @@ function immediate(cmd, a)
     if not (S.pos and S.pos.x) then return false, "position unknown - use GPS LOCATE first" end
     recStart()
     S.recording = true
-    return true, "recording the exit route: drive me out of the base into the open, then SAVE"
+    return true, "recording the exit route: drive me out, then SAVE"
   elseif cmd == "exitsave" then
     if not S.recording then return false, "not recording - press START first" end
     S.recording = false
@@ -3201,7 +3365,7 @@ function immediate(cmd, a)
     S.homeAuto = true
     save()
     return true, "home set to " .. S.home.x .. " " .. S.home.y .. " " .. S.home.z ..
-                 " (next to another turtle's home - checked the first time I go there)"
+                 " (checked the first time I go there)"
   elseif cmd == "sethome" then
     S.homeAuto = nil
     local x, y, z = tonumber(a[1]), tonumber(a[2]), tonumber(a[3])
@@ -3224,7 +3388,7 @@ function immediate(cmd, a)
     if job then
       if not HAND then return false, "busy: " .. tostring(task) .. " - press STOP first" end
       if not canPause() then
-        return false, "busy: " .. tostring(task) .. " - it finishes this first (it cannot stop halfway), then try again"
+        return false, "busy: " .. tostring(task) .. " - it finishes this first, then try again"
       end
       local was = task
       pauseForHand()
@@ -3403,7 +3567,7 @@ function fuelStation(only)
       local it = turtle.getItemDetail(e)
       S.reuse = S.reuse or {}
       -- a fuel item? (refuel(0) only checks, uses nothing)
-      local burnable = it and (isFuel(it.name) or S.reuse[it.name] or turtle.refuel(0))
+      local burnable = it and (isFuel(it.name) or S.reuse[it.name] or (not neverBurn(it.name) and turtle.refuel(0)))
       if burnable and it and not S.reuse[it.name] and not isFuel(it.name) then
         -- unknown fuel (e.g. a modded one): is it used up? one try tells
         local c0 = turtle.getItemCount(e)
@@ -3498,6 +3662,35 @@ function doRefuel(first)
   end
 end
 
+-- OUT OF FUEL WHILE IDLE (fuel < 20): try everything it carries, once a minute - a COPY
+-- (made by a server crash) or a turtle that knows some endless items (S.reuse) but not the one
+-- it carries now sat at 0 fuel for good: idle top-up only used items it already knew, and the
+-- first refuel counted as done. Learns endless items, burns real fuel (it has none left anyway).
+EMPTY_TRY = nil
+function idleEmptyFuel()
+  local f = turtle.getFuelLevel()
+  if f == "unlimited" or job or SLOT_LOCK then return false end
+  -- too little to get home from here (far out): burn what it carries too (fuel a drone brought) - up to the
+  -- way home + 500, once a minute
+  local hf = homeFuel and homeFuel() or 0
+  if f >= 20 and f >= hf then return false end
+  if EMPTY_TRY and os.clock() - EMPTY_TRY < 60 then return false end
+  EMPTY_TRY = os.clock()
+  if f >= 20 then
+    pcall(topUp, math.min(refuelTarget(), hf + 500), false, 2000)
+    save()
+    return turtle.getFuelLevel() > f
+  end
+  pcall(doRefuel, true)
+  save()
+  local now = turtle.getFuelLevel()
+  if now ~= "unlimited" and now >= 20 then
+    send("result", { cmd = "refuel", ok = true, msg = "had no fuel - refuelled from what I carry (" .. tostring(now) .. ")" })
+    return true
+  end
+  return false
+end
+
 function listener()
   while true do
     local id, m = rednet.receive(CONFIG.protocol)
@@ -3509,6 +3702,7 @@ function listener()
       S.lastN = m.n
       save()
       baseId = id
+      REFUSED = nil
       local a = type(m.args) == "table" and m.args or {}
       HAND = m.hand == true and m.cmd ~= "stop"
       if HAND then LAST_HAND = os.clock() end
@@ -3532,13 +3726,20 @@ function listener()
         NEXT_JOB = { cmd = m.cmd, args = a }
         reply(m.cmd, true, "paused '" .. tostring(was) .. "' - doing your " .. m.cmd .. " now")
       elseif job then
-        reply(m.cmd, false, "busy: " .. task .. (m.hand == true and " - it finishes this first (it cannot stop halfway), then try again"
+        reply(m.cmd, false, "busy: " .. task .. (m.hand == true and " - it finishes this first, then try again"
                                                   or " (press STOP first)"))
       else
         if m.hand ~= true then S.paused = nil end      -- (a new order from the base replaces it)
         stopFlag = false
         job = { cmd = m.cmd, args = a }
+        -- (the worker may still be busy with idle work - fuel chest, top-up: a report saying "idle" made the base send
+        --  another order, refused "busy: idle (press STOP first)")
+        task = "starting " .. m.cmd
       end
+    elseif type(m) == "table" and m.t == "cmd" and type(m.n) == "number" and (tonumber(m.copy) or 0) == (COPY or 0)
+       and m.sig == sign(CONFIG.key, m.t, m.n, m.cmd, m.args) then
+      -- (m27) signed and for me, but not taken: the base hears why (when a PING gets no answer)
+      REFUSED = m.cmd .. ((m.ses and m.ses ~= SESSION) and ":ses" or DUP and ":dup" or (":n" .. tostring(S.lastN)))
     end
   end
 end
@@ -3624,8 +3825,8 @@ function worker()
       trailSave()
       if ok or tostring(msg):find("^stopped") then
         S.stuck = nil                         -- done, or stopped on purpose
-      elseif j.cmd == "goto" or j.cmd == "home" or j.cmd == "move" or j.cmd == "survey"
-             or j.cmd == "surveypts" or j.cmd == "rescue" then
+      elseif (j.cmd == "goto" or j.cmd == "home" or j.cmd == "move" or j.cmd == "survey"
+             or j.cmd == "surveypts" or j.cmd == "rescue") and isMoveFail(msg) then
         S.stuck = msg
         local fix = gpsCheck()
         if fix then msg = msg .. " (" .. fix .. ")" end
@@ -3697,7 +3898,7 @@ function worker()
       -- (only a turtle that never refuelled and is low: never burns the coal a
       -- rescuer carries for others)
       local fl = turtle.getFuelLevel()
-      if not S.refuelDone and (S.reuse ~= nil or fl == "unlimited" or fl >= 1000) then
+      if not S.refuelDone and ((S.reuse and next(S.reuse)) or fl == "unlimited" or fl >= 1000) then
         S.refuelDone = true
       end
       if not S.refuelDone and not job and not SLOT_LOCK then
@@ -3706,6 +3907,13 @@ function worker()
         save()
         send("result", { cmd = "refuel", ok = okR and okR2 or false,
                          msg = "first start - refuelled by myself: " .. tostring(okR and msgR or okR2) })
+      end
+      pcall(idleEmptyFuel)                         -- 0 fuel: try everything it carries (once a minute)
+      -- full of dug blocks / ores (from before): thrown away, once a minute, not at the base
+      if not job and (not JUNK_TRY or os.clock() - JUNK_TRY > 60) and freeSlots() <= 2 then
+        JUNK_TRY = os.clock()
+        local nJ = dropJunk()
+        if nJ > 0 then send("result", { cmd = "junk", ok = true, msg = "inventory nearly full - threw away " .. nJ .. " dug blocks / ores" }) end
       end
       -- idle: fill up with reusable fuel, a little at a time (stays responsive)
       local f = turtle.getFuelLevel()

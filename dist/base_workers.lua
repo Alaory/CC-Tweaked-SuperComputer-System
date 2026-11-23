@@ -71,6 +71,8 @@ local n = 0
 for _ in pairs(SCHEM.list()) do n = n + 1 end
 s.schematics = n
 end
+local okV, vt = pcall(versionText)
+s.version = okV and vt or ("v" .. tostring(BASE_VERSION))
 state.sys = s
 end
 
@@ -101,6 +103,7 @@ BASE_ALIVE.t = os.epoch("utc")
 if crashErr then BASE_ALIVE.crash = tostring(crashErr) else BASE_ALIVE.stopped = true end
 pcall(aliveSave)
 if MINE and MINE.dirty then pcall(MINE.save) end
+if saveSeenPlayers then pcall(saveSeenPlayers, true) end
 end
 local function when(ms)
 local ok, r = pcall(os.date, "%d.%m %H:%M", math.floor(ms / 1000))
@@ -174,6 +177,47 @@ notify()
 end
 waitFor(0.25, "inv_wake")
 end
+end
+
+
+
+
+
+function BASE_RESTART() os.reboot() end
+function netTick()
+pcall(rescanPeripherals)
+local drives = {}
+for _, n in ipairs(peripheral.getNames()) do
+local okD, isDrive = pcall(peripheral.hasType, n, "drive")
+if okD and isDrive then
+local okP, there = pcall(disk.isPresent, n)
+drives[#drives + 1] = n .. (okP and there and "+" or "-")
+end
+end
+local key = table.concat(drives, ",")
+if state.netDrives and state.netDrives ~= key then
+if dataPathReset then dataPathReset() end
+local okD, n = pcall(dedupeDataFiles)
+if okD and (n or 0) > 0 and dataPathReset then dataPathReset() end
+end
+state.netDrives = key
+if not state.netRestarting then
+for f, id in pairs(DATA_AWAY or {}) do
+local drive = floppyHere(id)
+if drive then
+state.netRestarting = true
+local msg = "Data floppy #" .. id .. " (" .. f .. " ...) is loaded now (" .. drive .. ") - it was not when the " ..
+"base started: restarting the base once so it reads it"
+pcall(sysLog, msg, "WARNING")
+pcall(setToast, msg, C.warn, 10)
+if MAP and MAP.loaded then pcall(MAP.save) end
+pcall(BASE_RESTART)
+return
+end
+end
+end
+pcall(noteNetwork)
+pcall(partsTick)
 end
 
 
@@ -268,6 +312,18 @@ end
 end
 
 
+if bridge and MEX then
+local okM, didM = pcall(MEX.tick, page == "mesys")
+if okM and didM then did = true end
+end
+
+
+if envDet and ENV then
+local okE, didE = pcall(ENV.tick, page == "env")
+if okE and didE then did = true end
+end
+
+
 
 local avoid = next(state.turtles) and (tonumber(CONFIG.turtles.avoidRange or 100) or 0) > 0
 if det and not fresh("players", avoid and 10 or 30) then
@@ -310,6 +366,11 @@ state.lastOwed = os.clock()
 pcall(settleOwed)
 end
 
+if os.clock() - (state.netAt or -100) > 20 then
+state.netAt = os.clock()
+pcall(netTick)
+end
+
 if #droneOrder > 0 and os.clock() - (state.lastPark or -100) > 10 then
 state.lastPark = os.clock()
 pcall(parkCheck)
@@ -317,6 +378,55 @@ end
 
 if did then notify() end
 waitFor(0.2, "inv_wake")
+end
+end
+
+
+
+
+
+
+
+
+function playerWorker()
+while state.running do
+if det then safe({ "players", "owner" }, refreshPlayers, true) end
+local e = tonumber(CONFIG.ttl and CONFIG.ttl.playersLive) or 0.05
+waitFor(det and math.max(0.05, e) or 5, "players_wake")
+end
+end
+
+
+
+function curiosWorker()
+while state.running do
+if CURIOS and #CURIOS.auto > 0 and inv and bridge then
+pcall(CURIOS.autoTick, true)
+waitFor(CURIOS.every(), "curios_wake")
+else
+waitFor(5, "curios_wake")
+end
+end
+end
+
+
+
+
+function dropWorker()
+while state.running do
+local _, files = os.pullEvent("file_transfer")
+local okT, errT = pcall(SCHEM.onTransfer, files)
+if not okT then setToast("Could not take the file: " .. tostring(errT), C.bad, 8) end
+os.queueEvent("inv_update")
+end
+end
+
+function supplyWorker()
+while state.running do
+local ok, busy = pcall(SUPPLY.tick)
+local e = 1
+if SUPPLY.every then local okE, v = pcall(SUPPLY.every) if okE then e = v end end
+waitFor((ok and busy) and 0.05 or e, "supply_wake")
 end
 end
 
@@ -423,12 +533,19 @@ local okK, nK = pcall(STORE.kickSilent)
 if okK and (nK or 0) > 0 then sleep(5) end
 end
 pcall(MAP.loadNow)
-pcall(TT.codeLoad)
+pcall(TT.codeLoad, false, true)
+
+
+pcall(TT.codeOffload)
+local cw = TT.codeWhere()
+if http and (not cw or cw.from == "old") then pcall(TT.fetchCode) end
+pcall(TT.codeLoad, false, true)
 local lastFind = os.clock() - 280
 local lastCode = os.clock()
 while state.running do
 waitFor(5, "map_save", "schem_in")
-if #SCHEM.pending > 0 then pcall(SCHEM.processPending) end
+if #SCHEM.pending > 0 or next(SCHEM.wanted or {}) then pcall(SCHEM.processPending) end
+pcall(MAP.readLate)
 if MAP.saveNow and MAP.loaded then
 MAP.saveNow = false
 local okS = pcall(MAP.save)
@@ -438,14 +555,38 @@ okS and not next(MAP.dirty) and C.good or C.warn, 4)
 else
 pcall(MAP.autoSave)
 end
-if os.clock() - lastCode > 30 then lastCode = os.clock() pcall(TT.codeLoad) end
+if os.clock() - lastCode > 30 then
+lastCode = os.clock()
+pcall(TT.codeLoad, false, true)
+if TT.localCode() then pcall(TT.codeOffload) end
+end
 
 
 local okF, pcFree = pcall(fs.getFreeSpace, "/")
 local low = okF and type(pcFree) == "number" and pcFree < 160 * 1024
-if os.clock() - (state.offloadAt or -1000) > (low and 60 or 600) then
+
+
+local every = 600
+if low then every = 60 end
+if MAP.helpersFirst and MAP.helpersFirst() and state.offloadLeft ~= 0 then
+every = 60
+
+for _, d in ipairs(mountedDisks()) do
+if d.data and (d.free or 0) < MAP.floppyKeep() then every = 10 end
+end
+end
+
+if os.clock() - (state.vcTrimAt or -1000) > 600 then
+state.vcTrimAt = os.clock()
+local okT, nT = pcall(trimVoiceCache)
+if okT and (nT or 0) > 0 and sysLog then
+sysLog("Speech cache: removed " .. nT .. " old phrase(s) - the floppies keep room for the data files", "INFO")
+end
+end
+if os.clock() - (state.offloadAt or -1000) > every then
 state.offloadAt = os.clock()
-pcall(MAP.offload)
+local okO, _, left = pcall(MAP.offload)
+state.offloadLeft = okO and left or nil
 end
 if os.clock() - lastFind > 300 then
 lastFind = os.clock()
@@ -481,6 +622,10 @@ end
 elseif not peripheral.isPresent(opened) then
 opened, state.tModem = nil, nil
 end
+
+if not opened and #state.tOut > 300 then
+while #state.tOut > 300 do table.remove(state.tOut, 1) end
+end
 while opened and #state.tOut > 0 do
 local o = table.remove(state.tOut, 1)
 
@@ -497,6 +642,8 @@ if ev == "rednet_message" and c == CONFIG.turtles.protocol then
 pcall(TT.receive, a, b)
 elseif ev == "rednet_message" and c == POCKET.PROTO then
 pcall(POCKET.receive, a, b)
+elseif ev == "rednet_message" and c == "basespawn" then
+if VOICE and VOICE.spawnReceive then pcall(VOICE.spawnReceive, a, b) end
 elseif ev == "disk" and a == TT.installDrive() then
 pcall(TT.codeLoad)
 pcall(TT.prepareInstallFloppy)
@@ -507,21 +654,27 @@ tick = os.startTimer(2)
 state.commsTickAt = os.clock()
 if KNOW.dirty and os.clock() - KNOW.saved > 30 then pcall(KNOW.save) end
 local okF, errF = pcall(MAP.feedSurvey)
+MAP.feedErr = (not okF) and tostring(errF) or nil
 if not okF and (not state.feedErrAt or os.clock() - state.feedErrAt > 60) then
 state.feedErrAt = os.clock()
 setToast("Big survey error: " .. tostring(errF), C.bad)
 end
 pcall(TT.updateTick)
 pcall(TT.stopTick)
+pcall(TT.pingTick)
 pcall(TT.patrolTick)
 pcall(TT.partyTick)
 pcall(TT.homeTick)
 pcall(TT.avoidTick)
 pcall(TT.stallTick)
+pcall(TT.chunkTick)
 pcall(MAP.autoTick)
 pcall(AWAY.tick)
 pcall(FACTORY.tick)
-pcall(CURIOS.autoTick)
+pcall(MINE.silentTick)
+pcall(MINE.updTick)
+pcall(DW.tick)
+if MEX then pcall(MEX.jobTick) end
 if TT.listDirty and codeTick % 15 == 0 then pcall(TT.saveList) end
 codeTick = codeTick + 1
 if codeTick % 15 == 7 then pcall(baseAliveTick) end
@@ -627,11 +780,83 @@ end
 
 
 
+
+
+
+
+
+WORKER_RESTART = {}
+WORKER_FAILS = {}
+function keepWorker(name, fn)
+return function()
+local fails = {}
+while true do
+local ok, err = pcall(fn)
+if ok or not state.running then return end
+if tostring(err):find("Terminated", 1, true) then error(err, 0) end
+local now = os.clock()
+fails[#fails + 1] = now
+while fails[1] and now - fails[1] > 60 do table.remove(fails, 1) end
+WORKER_FAILS[name] = (WORKER_FAILS[name] or 0) + 1
+pcall(sysLog, "The " .. name .. " stopped with an error and was started again: " .. tostring(err), "WARNING")
+if #fails >= 5 then error(name .. " keeps failing: " .. tostring(err), 0) end
+if WORKER_RESTART[name] then pcall(WORKER_RESTART[name]) end
+sleep(1)
+end
+end
+end
+
+
+WORKER_RESTART["drone worker"] = function()
+for _, dr in pairs(drones or {}) do
+if dr.busy then
+dr.busy = false
+dr.mission = { title = "error", steps = {}, state = "failed", err = "the drone worker restarted" }
+pcall(resetDrone, dr)
+dr.failedAt = os.clock()
+end
+end
+end
+
+
+
+function safeDraw()
+if state.monChanged then
+state.monChanged = false
+pcall(buildWindow)
+end
+if mon.blank then return true end
+local ok, err = pcall(draw)
+if ok then state.drawErr = nil return true end
+if not state.drawErrAt or os.clock() - state.drawErrAt > 60 then
+state.drawErrAt = os.clock()
+pcall(sysLog, "The " .. tostring(state.page) .. " page could not be drawn: " .. tostring(err), "WARNING")
+end
+state.drawErr = tostring(err)
+if state.page ~= "home" then
+state.page = "home"
+if pcall(draw) then return false end
+end
+pcall(function()
+win.setVisible(true)
+mon.setBackgroundColor(colors.black)
+mon.setTextColor(colors.red)
+mon.clear()
+mon.setCursorPos(2, 2)
+mon.write("SCREEN ERROR - the base keeps running")
+mon.setTextColor(colors.white)
+mon.setCursorPos(2, 4)
+mon.write(tostring(err):sub(1, (W or 60) - 4))
+shownRows = {}
+end)
+return false
+end
+
 function uiLoop()
 local lastDraw, drawTimer = -1, nil
 
 local function drawNow()
-draw()
+safeDraw()
 lastDraw = os.clock()
 end
 
@@ -657,7 +882,11 @@ if ev == "monitor_touch" and a == monName then
 USER_ACTION = true
 local okT, wake = pcall(handleTouch, b, c)
 USER_ACTION = false
-if not okT then error(wake, 0) end
+if not okT then
+pcall(setToast, "That button failed: " .. tostring(wake), C.bad, 8)
+pcall(sysLog, "A tap on the " .. tostring(state.page) .. " page failed: " .. tostring(wake), "WARNING")
+wake = false
+end
 if wake then os.queueEvent("inv_wake") end
 drawNow()
 
@@ -673,17 +902,14 @@ clockTimer, clockDue = os.startTimer(1), os.clock() + 1
 requestDraw()
 end
 
-elseif ev == "file_transfer" then
-
-local okT, errT = pcall(SCHEM.onTransfer, a)
-if not okT then setToast("Could not take the file: " .. tostring(errT), C.bad, 8) end
-requestDraw()
-
 elseif ev == "monitor_resize" and a == monName then
-buildWindow()
+pcall(buildWindow)
 drawNow()
 
 elseif ev == "me_crafting" or ev == "rs_crafting" then
+
+
+if MEX and MEX.event then pcall(MEX.event, a, b, c) end
 setToast(string.format("Craft job #%s: %s", tostring(b), tostring(c)),
 a and C.bad or C.good, 8)
 state.meForce = true
@@ -691,7 +917,7 @@ os.queueEvent("inv_wake")
 requestDraw()
 
 elseif ev == "peripheral" then
-rescanPeripherals()
+pcall(rescanPeripherals)
 state.force.inv = true
 state.force.players = true
 state.meForce = true
@@ -699,7 +925,7 @@ os.queueEvent("inv_wake")
 requestDraw()
 
 elseif ev == "peripheral_detach" then
-if type(a) == "string" then forgetDetached(a) end
+if type(a) == "string" then pcall(forgetDetached, a) end
 state.force.inv = true
 os.queueEvent("inv_wake")
 requestDraw()
@@ -709,14 +935,17 @@ elseif ev == "chat" then
 state.chatInbox[#state.chatInbox + 1] = { uuid = a, name = b, msg = c, hidden = d }
 os.queueEvent("chat_cmd")
 
+
 elseif ev == "playerChangedDimension" then
-rememberDim(a, c)
+pcall(rememberDim, a, c)
 
 elseif ev == "playerJoin" then
-rememberDim(a, b)
+pcall(rememberDim, a, b)
+pcall(playerJoined, a, b)
 
 elseif ev == "playerLeave" then
-forgetDim(a)
+pcall(forgetDim, a)
+pcall(playerLeft, a)
 
 elseif ev == "terminate" then
 state.running = false
@@ -724,3 +953,49 @@ end
 end
 end
 
+
+
+
+function addonWorker()
+
+if voiceRepair and VOICE_FILES and addonInstalled and addonInstalled(VOICE_FILES[1]) then
+waitFor(15, "voice_repair_never")
+local okR, did = pcall(voiceRepair)
+
+local needs = not VOICE
+for f in pairs(VOICE_WHERE or {}) do if f ~= VOICE_FILES[1] and not (VOICE and VOICE.packs and VOICE.packs[f]) then needs = true end end
+if needs and next(VOICE_WHERE or {}) and not (okR and did) then
+local okL, errL = pcall(loadVoiceChain, nil, true)
+if sysLog and not okL then pcall(sysLog, "Voice files on the storage helper did not load: " .. tostring(errL), "WARNING") end
+end
+end
+while state.running do
+if VOICE and VOICE.loop then
+
+
+
+local loopFn, tbl = VOICE.loop, VOICE
+local reloaded = false
+parallel.waitForAny(function()
+local ok, err = pcall(loopFn)
+if not ok and VOICE then VOICE.err = tostring(err) end
+end, function()
+while true do
+os.pullEvent("addon_loaded")
+if VOICE ~= tbl or not VOICE or VOICE.loop ~= loopFn then
+repeat
+local t = os.startTimer(2)
+local ev, a
+repeat ev, a = os.pullEvent() until ev == "addon_loaded" or (ev == "timer" and a == t)
+until ev ~= "addon_loaded"
+reloaded = true
+return
+end
+end
+end)
+if not reloaded then sleep(5) end
+else
+waitFor(30, "addon_loaded")
+end
+end
+end

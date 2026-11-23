@@ -6,97 +6,288 @@
 
 
 
-local function homeStatus()
-local on, all, work, bad = 0, 0, 0, 0
+local function kb(b) return b and (math.floor(b / 1024) .. " KB") or "..." end
+local function pct(a, b) return (b and b > 0) and math.floor(a / b * 100 + 0.5) or 0 end
+
+
+local function kpis()
+local out = {}
+
+local all, on, work, bad, fuel = 0, 0, 0, 0, 0
 for _, t in pairs(state.turtles or {}) do
 all = all + 1
 if TT.online(t) then
 on = on + 1
+fuel = fuel + (tonumber(t.fuel) or 0)
 local key = TT.status(t)
 if key == "busy" or key == "trouble" then work = work + 1 end
 if key == "stuck" or key == "nofuel" or key == "still" then bad = bad + 1 end
 end
 end
-local out = {}
-out[#out + 1] = { (state.status == "ok") and "\7 base running" or "\7 base: " .. tostring(state.status),
-state.status == "ok" and C.good or C.bad }
-if all > 0 then
-out[#out + 1] = { all .. " turtles: " .. on .. " online, " .. work .. " working" .. (bad > 0 and (", " .. bad .. " need you") or ""),
-bad > 0 and C.warn or C.text }
+if all > 0 or state.tModem then
+out[#out + 1] = { "TURTLES", on .. "/" .. all, "online", work .. " working" .. (bad > 0 and (", " .. bad .. " need you") or ""),
+"fuel " .. compact(fuel) .. " all together", all > 0 and on / all or 0,
+bad > 0 and C.warn or C.good, "turtles" }
 end
-local unread = state.noteUnread or 0
-if unread > 0 then out[#out + 1] = { unread .. " new messages", C.warn } end
-if AWAY and AWAY.on then out[#out + 1] = { "away mode is on", C.label } end
-if state.diskLow then out[#out + 1] = { "disk almost full", C.bad } end
+
+if #(droneOrder or {}) > 0 then
+local ready, minP, busy = 0, nil, 0
+for _, k in ipairs(droneOrder) do
+local dr = drones[k]
+if dr.conn then ready = ready + 1 end
+if dr.busy then busy = busy + 1 end
+if dr.pressure then minP = math.min(minP or 99, dr.pressure) end
+end
+out[#out + 1] = { "DRONES", ready .. "/" .. #droneOrder, "ready", busy > 0 and (busy .. " on a job") or "all docked",
+minP and string.format("lowest air %.1f bar", minP) or "air not known", minP and minP / 10 or 0,
+(minP and minP < 3) and C.warn or C.orange, "drone" }
+end
+
+if bridge and type(state.me) == "table" and not state.me.err then
+local me = state.me
+local n = 0
+for _, it in ipairs(me.items or {}) do n = n + (tonumber(it.count or it.amount) or 0) end
+local used, total = tonumber(me.usedItem or me.used), tonumber(me.totalItem or me.total)
+out[#out + 1] = { "AE2 STORAGE", compact(n), "items", #(me.items or {}) .. " kinds, " .. #(me.fluids or {}) .. " fluids",
+(used and total and total > 0) and (pct(used, total) .. "% of the space used") or (me.online == false and "OFFLINE" or "online"),
+(used and total and total > 0) and used / total or 0, me.online == false and C.bad or C.purple, "me" }
+end
+
+if MINE and next(MINE.units or {}) then
+local rate, ores, teams, running = 0, 0, 0, 0
+for _, team in pairs(MINE.teams()) do
+local T = MINE.totals(team)
+teams = teams + 1
+rate, ores = rate + (T.rate or 0), ores + (T.ores or 0)
+if team.loader and team.loader.running then running = running + 1 end
+end
+out[#out + 1] = { "MINING", compact(math.floor(rate)), "ores/h", running .. " of " .. teams .. " team(s) running",
+compact(ores) .. " ores so far", teams > 0 and running / teams or 0, C.pink, "mining" }
+end
+
+if MAP.hasData and MAP.hasData() then
+local frac = MAP.surveyProgress and MAP.surveyProgress()
+out[#out + 1] = { "MAP", compact(MAP.ovN or 0), "chunks", "auto-map " .. ((MAP.auto and MAP.auto.on) and "ON" or "OFF"),
+frac and ("survey " .. math.floor(frac * 100) .. "% done") or "no survey running", frac or 0, C.lime, "map" }
+end
+
+if det then
+local n, allowed = #(state.players or {}), 0
+for _ in pairs(state.access and state.access.allowed or {}) do allowed = allowed + 1 end
+local online = 0
+for _ in pairs(state.online or {}) do online = online + 1 end
+out[#out + 1] = { "PLAYERS", tostring(n), "seen", (AWAY and AWAY.on) and "you are AWAY" or "you are here",
+allowed .. " may use the drones", n > 0 and math.min(1, online / n) or 0, C.info, "players" }
+end
 return out
 end
 
-function drawHomePage(G)
-local y0, bottom = G.y0, G.y1
 
-card(2, y0, W - 2, 4, nil)
-text(4, y0 + 1, "WELCOME" .. (state.owner and (", " .. state.owner) or ""), C.label, C.panel)
-local sx = 4
-for _, s in ipairs(homeStatus()) do
-text(sx, y0 + 2, s[1], s[2], C.panel)
-sx = sx + #s[1] + 4
+local function needs()
+local out = {}
+for _, t in ipairs(TT.list and TT.list() or {}) do
+local key, lab, _, why = TT.status(t)
+if key == "stuck" or key == "nofuel" or key == "still" or key == "missing" then
+out[#out + 1] = { key == "missing" and C.bad or C.warn, t.label .. ": " .. lab, why or "", "turtles", "OPEN" }
+end
+if TT.dupText and TT.dupText(t) then out[#out + 1] = { C.warn, t.label .. ": HAS COPIES", TT.dupText(t), "turtles", "OPEN" } end
+end
+local lost = TT.lostList and #TT.lostList() or 0
+if lost > 0 and not TT.party then out[#out + 1] = { C.warn, lost .. " turtle(s) lost", "the search party can look for them", "turtles", "OPEN" } end
+if MINE then
+for _, u in pairs(MINE.units or {}) do
+local lab, col, line = MINE.status(u)
+if lab == "STOPPED" or lab == "BLOCKED" or lab == "NO FUEL" or (lab == "OFFLINE" and u.seenEpoch) then
+out[#out + 1] = { col, (u.label or ("#" .. u.id)) .. ": " .. lab, line or "", "mining", "OPEN" }
+end
+end
+end
+for _, k in ipairs(droneOrder or {}) do
+local dr = drones[k]
+if dr.mission and dr.mission.state == "failed" then
+out[#out + 1] = { C.warn, dr.label .. ": " .. tostring(dr.mission.title) .. " failed", tostring(dr.mission.err or ""), "drone", "OPEN" }
+end
+end
+if DW and DW.job and DW.job.paused then out[#out + 1] = { C.warn, "Drone build paused", DW.job.paused, "work", "OPEN" } end
+local gone = partsGone and partsGone(true) or {}
+if #gone > 0 then
+out[#out + 1] = { C.bad, #gone .. " part(s) missing", partText(gone[1]) .. (#gone > 1 and " (+" .. (#gone - 1) .. " more - type parts)" or ""),
+"system", "OPEN" }
+end
+if state.diskLow then out[#out + 1] = { C.bad, "Disk almost full", state.diskLow, "system", "OPEN" } end
+local s = state.sys or {}
+if s.mapFree and s.mapFloppies and s.mapFloppies > 0 and s.mapFree < 40960 then
+out[#out + 1] = { C.warn, "Data floppies almost full", kb(s.mapFree) .. " left - put in an empty floppy", "system", "OPEN" }
+end
+if bridge and type(state.me) == "table" and state.me.online == false then
+out[#out + 1] = { C.bad, "AE2 network offline", "the ME Bridge sees no network", "me", "OPEN" }
+end
+return out
 end
 
-local groups = {}
-for _, g in ipairs(headerTabs()) do if g[1] ~= "home" then groups[#groups + 1] = g end end
-local cols = 3
-local cw = math.floor((W - 2 - (cols - 1)) / cols)
-local bh = 4
-local y = y0 + 5
-for r0 = 1, #groups, cols do
-local rowH = 0
-for i = r0, math.min(#groups, r0 + cols - 1) do rowH = math.max(rowH, 4 + #groups[i].members * (bh + 1)) end
-for i = r0, math.min(#groups, r0 + cols - 1) do
-local g = groups[i]
-local x = 2 + (i - r0) * (cw + 1)
-local name = g[2]
-if #g.members == 1 then name = pageName(g.members[1][1]) end
-card(x, y, cw, rowH, name)
-local by = y + 3
-for _, m in ipairs(g.members) do
-local info = PAGE_INFO[m[1]] or { m[2], "" }
-fill(x + 2, by, cw - 4, bh, C.empty)
-round(x + 2, by, cw - 4, bh, C.empty, C.panel)
-text(x + 4, by + 1, trunc(m[2], cw - 14), C.label, C.empty)
-if m[3] then
-local b = " " .. m[3] .. " "
-text(x + cw - 5 - #b, by + 1, b, m[4] and C.ink or C.text, m[4] or C.head)
-end
-text(x + 4, by + 2, trunc(info[2], cw - 9), C.text, C.empty)
-addHit(x + 2, by, cw - 4, bh, "page", m[1])
-by = by + bh + 1
-end
-end
-y = y + rowH + 1
+local function kpiPanel(x, y, w, h, k)
+local ix, iy, iw = panel(x, y, w, h, k[1], { col = C.line })
+addHit(x, y, w, h, "page", k[8])
+local bw = big(ix, iy, k[2], k[7] == C.good and C.text or k[7], C.panel)
+if iw - bw - 1 >= #k[3] then text(ix + bw + 1, iy + 1, k[3], C.dim, C.panel) end
+text(ix, iy + 3, trunc(k[4], iw), C.text, C.panel)
+if h >= 9 then text(ix, iy + 4, trunc(k[5], iw), C.dim, C.panel) end
+gauge(ix, y + h - 2, iw, k[6], k[7])
 end
 
-if y + 6 <= bottom then
-card(2, y, W - 2, 7, "QUICK ACTIONS  (tap twice)")
+local function quickActs()
 local acts = {}
-if next(state.turtles) then
-acts[#acts + 1] = { "STOP ALL TURTLES", { kind = "quick", name = "allstop", count = 0 } }
-acts[#acts + 1] = { "ALL TURTLES HOME", { kind = "quick", name = "allhome", count = 0 } }
-acts[#acts + 1] = { "UPDATE TURTLES", { kind = "sysupdate", name = "all", count = 0 } }
-
+if next(state.turtles or {}) then
+acts[#acts + 1] = { "STOP ALL TURTLES", { kind = "quick", name = "allstop", count = 0 }, C.bad }
+acts[#acts + 1] = { "ALL TURTLES HOME", { kind = "quick", name = "allhome", count = 0 }, C.warn }
+acts[#acts + 1] = { "UPDATE TURTLES", { kind = "sysupdate", name = "all", count = 0 }, C.info }
 if TT.party then
-acts[#acts + 1] = { "CALL BACK SEARCH", { kind = "quick", name = "party", count = 0 } }
+acts[#acts + 1] = { "CALL BACK SEARCH", { kind = "quick", name = "party", count = 0 }, C.orange }
 elseif #TT.lostList() > 0 then
-acts[#acts + 1] = { "FIND LOST (" .. #TT.lostList() .. ")", { kind = "quick", name = "party", count = 0 } }
+acts[#acts + 1] = { "FIND LOST (" .. #TT.lostList() .. ")", { kind = "quick", name = "party", count = 0 }, C.orange }
 end
 end
 if #(droneOrder or {}) > 0 then
-acts[#acts + 1] = { "DRONE: TAKE ME TO BASE", { kind = "quick", name = "ride", args = { "base" }, count = 0 } }
+acts[#acts + 1] = { "DRONE: TAKE ME HOME", { kind = "quick", name = "ride", args = { "base" }, count = 0 }, C.orange }
 end
-acts[#acts + 1] = { "SAVE THE MAP", { kind = "syssave", name = "map", count = 0 } }
-local n = #acts
-local aw = math.floor((W - 6 - (n - 1)) / n)
+acts[#acts + 1] = { "SAVE THE MAP", { kind = "syssave", name = "map", count = 0 }, C.good }
+return acts
+end
+
+function drawHomePage(G)
+local y0, y1 = G.y0, G.y1
+local gap = 1
+
+local K = kpis()
+local maxN = W >= 150 and 6 or (W >= 120 and 5 or 4)
+while #K > maxN do table.remove(K) end
+local kh = 10
+local y = y0
+if #K > 0 then
+local kw = math.floor((W - 2 - (#K - 1) * gap) / #K)
+for i, k in ipairs(K) do
+local x = 2 + (i - 1) * (kw + gap)
+kpiPanel(x, y, (i == #K) and (W - x) or kw, kh, k)
+end
+y = y + kh + gap
+end
+
+local leftW = math.floor((W - 3) * 0.6)
+local rx, rw = 2 + leftW + gap, W - (2 + leftW + gap) + 1 - 1
+local rest = y1 - y + 1
+local N = needs()
+
+local yTop = y
+local midH = math.max(4, math.min(#N * 3 + 3, math.floor((rest - gap) * 0.5)))
+local ix, iy, iw, ih = panel(2, y, leftW, midH, "NEEDS YOU", { right = #N > 0 and (#N .. " open") or "all clear",
+rcol = #N > 0 and C.warn or C.good, col = #N > 0 and C.warn or C.line })
+if #N == 0 then
+led(ix, iy, C.good)
+text(ix + 2, iy, "Nothing needs you - every turtle, drone and team is fine.", C.good, C.panel)
+else
+
+
+
+local per = 3
+local rows = #N
+if #N * per - 1 > ih then rows = math.max(0, math.floor((ih - 1) / per)) end
+if rows < #N then
+text(ix, iy + ih - 1, "+" .. (#N - rows) .. " more - open their pages", C.dim, C.panel)
+end
+for i = 1, rows do
+local n = N[i]
+local ry = iy + (i - 1) * per
+cell(ix, ry, 1 + 4 + 16, n[1], C.panel)
+cell(ix, ry + 1, 1 + 4 + 16, n[1], C.panel)
+text(ix + 2, ry, trunc(n[2], iw - 14), C.text, C.panel)
+text(ix + 2, ry + 1, trunc(n[3], iw - 14), C.dim, C.panel)
+button(ix + iw - 10, ry, 10, 2, n[5], n[1], "page", n[4])
+end
+end
+
+local s = state.sys or {}
+local A = BASE_ALIVE or {}
+local now = os.epoch("utc")
+local lines = {
+{ "Base running", fmtSpan and fmtSpan((now - (A.since or now)) / 1000) or "?", C.text },
+{ "Computer disk", (s.pcFree and s.pcCap) and (kb(s.pcFree) .. " free of " .. kb(s.pcCap)) or "...",
+(s.pcFree and s.pcFree < 65536) and C.bad or C.text, s.pcCap and (1 - (s.pcFree or 0) / s.pcCap) },
+{ "Data floppies", s.mapFloppies and (s.mapFloppies .. " (" .. kb(s.mapFree) .. " free)") or "none",
+(s.mapFree and s.mapFree < 40960) and C.warn or C.text },
+{ "Turtle program", (CODE and TT.verName(CODE.ver) or "none") ..
+((s.turtlesAll and s.turtlesAll > 0) and ("  " .. s.turtlesUp .. "/" .. s.turtlesAll .. " up to date") or ""), C.text },
+{ "AE2 bridge", bridge and ((type(state.me) == "table" and state.me.online ~= false) and "online" or "offline") or "not connected",
+bridge and C.good or C.dim },
+{ "Player detector", det and "connected" or "not connected", det and C.good or C.dim },
+{ "Away mode", (AWAY and AWAY.on) and "ON - you are away" or "off", (AWAY and AWAY.on) and C.label or C.dim },
+{ "Factory", FACTORY and (FACTORY.statusLine()) or "-", C.text },
+{ "Messages", #state.noteLog .. " kept" .. ((state.noteUnread or 0) > 0 and (", " .. state.noteUnread .. " new") or ""),
+(state.noteUnread or 0) > 0 and C.warn or C.text },
+}
+local sysH = #lines + 3
+for _, l in ipairs(lines) do if l[4] then sysH = sysH + 1 end end
+sysH = math.max(6, math.min(sysH, rest - gap - 9))
+local sx, sy, sw = panel(rx, yTop, rw, sysH, "SYSTEM", { right = (THEME_NAME or "") .. " theme" })
+local r = sy
+for _, l in ipairs(lines) do
+if r > yTop + sysH - 2 then break end
+kv(sx, r, sw, l[1], l[2], l[3])
+r = r + 1
+if l[4] and r <= yTop + sysH - 2 then gauge(sx, r, sw, l[4], (l[4] > 0.9) and C.bad or C.accent) r = r + 1 end
+end
+
+y = yTop + midH + gap
+local bh = y1 - y + 1
+if bh < 6 then return end
+local lx, ly, lw, lh = panel(2, y, leftW, bh, "LATELY", { right = "MESSAGES page: all of them" })
+addHit(2, y, 20, 2, "page", "events")
+local rr = ly
+for _, e in ipairs(state.noteLog or {}) do
+if rr > y + bh - 2 then break end
+local when = tostring(e.when or ""):match("(%d+:%d+)") or tostring(e.when or "")
+text(lx, rr, when, C.dim, C.panel)
+led(lx + 6, rr, e.col or C.dim)
+local s2 = (e.title and (e.title .. ": ") or "") .. tostring(e.msg or "")
+text(lx + 8, rr, trunc((s2:gsub("%s+", " ")), lw - 8), C.text, C.panel)
+rr = rr + 1
+end
+if rr == ly then text(lx, rr, "No messages yet.", C.dim, C.panel) end
+y = yTop + sysH + gap
+bh = y1 - y + 1
+if bh < 6 then return end
+local qx, qy, qw, qh = panel(rx, y, rw, bh, "QUICK ACTIONS", { right = "two taps" })
+local acts = quickActs()
+local cols = 2
+local bw = math.floor((qw - (cols - 1)) / cols)
+local by = qy
 for i, a in ipairs(acts) do
-actButton(4 + (i - 1) * (aw + 1), y + 3, aw, 3, a[1], a[2])
+local c = (i - 1) % cols
+local rrow = math.floor((i - 1) / cols)
+local yy = by + rrow * 4
+if yy + 2 > y + bh - 2 then break end
+actButton(qx + c * (bw + 1), yy, (c == cols - 1) and (qw - c * (bw + 1)) or bw, 3, a[1], a[2], false, a[3])
+end
+
+local gy = by + math.ceil(#acts / cols) * 4 + 1
+if gy + 3 <= y + bh - 2 then
+gy = gy + 1
+local pages = {}
+for _, g in ipairs(headerTabs()) do
+for _, m in ipairs(g.members) do if m[1] ~= "home" then pages[#pages + 1] = m end end
+end
+local pcols = qw >= 60 and 4 or 3
+local pw = math.floor((qw - (pcols - 1)) / pcols)
+local nrows = math.ceil(#pages / pcols)
+local tall = nrows * 4 <= (y + bh - 2) - gy + 1
+local step, hh = tall and 4 or 3, tall and 3 or 2
+if nrows * step - 1 > (y + bh - 2) - gy + 1 then pages = {} end
+if #pages > 0 then heading(qx, gy - 1, qw, "GO TO") end
+for i, m in ipairs(pages) do
+local c = (i - 1) % pcols
+local yy = gy + math.floor((i - 1) / pcols) * step
+if yy + hh - 1 > y + bh - 2 then break end
+local label = (PAGE_INFO[m[1]] and PAGE_INFO[m[1]][1] or m[2]) .. ((m[3] and m[3] ~= "") and (" " .. m[3]) or "")
+button(qx + c * (pw + 1), yy, (c == pcols - 1) and (qw - c * (pw + 1)) or pw, hh, label, m[4] or C.line, "page", m[1], m[4] ~= nil)
 end
 end
 end

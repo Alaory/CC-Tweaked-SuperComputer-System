@@ -104,8 +104,143 @@ function playersInRangeSet()
   return set, false
 end
 
+-- WHAT THE BASE KNOWS ABOUT EACH PLAYER beyond one detector answer (PLAYERS page):
+-- when they joined / were first seen, how long in their dimension, how fast they
+-- move (two readings apart), when they left.
+PLAYER_INFO = PLAYER_INFO or {}          -- [lower name] = { name, first, joined, dim, dimSince, x, y, z, t, sdim, speed, vy, online, left,
+                                         --   firstEver, visits, played, sess, pt }
+-- EVERY PLAYER EVER SEEN IS REMEMBERED (the owner: "keep the list of players remembered, even players who went offline, even
+-- after a year"): players_seen.dat (dataPath: a data floppy first) = { {name, firstEver, left, dim, visits, played s, x, y, z}, ... }
+-- - read once (loadSeenPlayers), saved at most every 2 min while something changed (10 s after a join / leave), the newest
+-- SEEN_MAX by last seen kept (a few KB for a normal server). Before: memory only - a restart forgot everyone offline.
+SEEN_FILE, SEEN_MAX = "players_seen.dat", 1000
+local SEEN = { loaded = false, dirty = false, at = 0, soon = nil }
+local function seenNum(v) return type(v) == "number" and v == v and v > -1e15 and v < 1e15 and v or nil end
+function loadSeenPlayers()
+  if SEEN.loaded then return end
+  SEEN.loaded = true
+  local okP, p = pcall(dataPath, SEEN_FILE)
+  local okR, t = pcall(readSafe, (okP and p) or SEEN_FILE)
+  if not (okR and type(t) == "table") then return end
+  for _, e in ipairs(t) do
+    if type(e) == "table" and type(e[1]) == "string" and #e[1] >= 1 and #e[1] <= 40 then
+      local k = e[1]:lower()
+      local i = PLAYER_INFO[k]
+      if not i then i = { name = e[1], online = false } PLAYER_INFO[k] = i end
+      i.firstEver = i.firstEver or seenNum(e[2])
+      if not i.online then i.left = i.left or seenNum(e[3]) end
+      if type(e[4]) == "string" and #e[4] <= 80 then i.dim = i.dim or e[4] end
+      i.visits = math.max(i.visits or 0, seenNum(e[5]) or 0)
+      i.played = math.max(i.played or 0, seenNum(e[6]) or 0)
+      if not i.x and seenNum(e[7]) and seenNum(e[8]) and seenNum(e[9]) then i.x, i.y, i.z = e[7], e[8], e[9] end
+      -- (online at the last save: a base restart while they play is not a new visit)
+      if e[10] == 1 and seenNum(e[3]) then i.onAt = e[3] end
+    end
+  end
+end
+function resetSeenPlayers() SEEN.loaded, SEEN.dirty, SEEN.at, SEEN.soon = false, false, 0, nil end   -- (tests: a "restart")
+function saveSeenPlayers(force)
+  if not SEEN.loaded or not SEEN.dirty then return end
+  local now = os.epoch("utc")
+  if not force and now - SEEN.at < 120000 and not (SEEN.soon and now >= SEEN.soon) then return end
+  local list = {}
+  for _, i in pairs(PLAYER_INFO) do if type(i.name) == "string" then list[#list + 1] = i end end
+  local function last(i) return i.online and now or (i.left or i.firstEver or 0) end
+  table.sort(list, function(a, b) return last(a) > last(b) end)
+  local out = {}
+  for n = 1, math.min(#list, SEEN_MAX) do
+    local i = list[n]
+    local r = function(v) return v and math.floor(v + 0.5) or nil end
+    out[n] = { i.name, i.firstEver, i.online and now or i.left, i.dim, i.visits or 0, math.floor(i.played or 0), r(i.x), r(i.y), r(i.z),
+               i.online and 1 or nil }
+  end
+  SEEN.at, SEEN.soon = now, nil
+  local okS, ok = pcall(saveFileSafe, dataPath(SEEN_FILE), serialSmall(out))
+  if okS and ok then SEEN.dirty = false end
+end
+local function infoOf(name)
+  loadSeenPlayers()
+  local k = tostring(name):lower()
+  local i = PLAYER_INFO[k]
+  if not i then i = { name = name } PLAYER_INFO[k] = i end
+  return i
+end
+-- a visit starts / ends (counted once however it is seen: the join event or the online list)
+local function sessionOn(i, now)
+  i.firstEver = i.firstEver or now
+  -- (still online from before a base restart - saved as online within the last 10 min: the same visit)
+  if not i.sess and i.onAt and now - i.onAt < 600000 and now >= i.onAt then i.sess = true end
+  i.onAt = nil
+  if not i.sess then i.sess, i.visits, i.pt = true, (i.visits or 0) + 1, now SEEN.soon = now + 10000 end
+  SEEN.dirty = true
+end
+local function sessionOff(i, now)
+  if i.sess then i.sess = nil SEEN.soon = now + 10000 end
+  i.pt = nil
+  SEEN.dirty = true
+end
+-- a playerJoin / playerLeave event
+function playerJoined(name, dim)
+  if type(name) ~= "string" then return end
+  local i = infoOf(name)
+  local now = os.epoch("utc")
+  i.first, i.joined, i.online, i.left = now, true, true, nil
+  if type(dim) == "string" then i.dim, i.dimSince = dim, now end
+  sessionOn(i, now)
+end
+function playerLeft(name)
+  if type(name) ~= "string" then return end
+  local i = infoOf(name)
+  i.online, i.left = false, os.epoch("utc")
+  sessionOff(i, i.left)
+end
+-- one reading of an online player (refreshPlayers)
+local function notePlayer(e)
+  local i = infoOf(e.name)
+  local now = os.epoch("utc")
+  i.name, i.online, i.left = e.name, true, nil
+  i.first = i.first or now
+  sessionOn(i, now)
+  -- (time played: the time between two readings while online - a gap over a minute = the base was off)
+  if i.pt and now > i.pt and now - i.pt < 60000 then i.played = (i.played or 0) + (now - i.pt) / 1000 end
+  i.pt = now
+  if e.dim and e.dim ~= i.dim then i.dim, i.dimSince = e.dim, i.dim and now or i.first end
+  local p = e.p
+  if not (p and tonumber(p.x)) then return end
+  if i.t and now - i.t >= 1000 then
+    local dt = (now - i.t) / 1000
+    if i.sdim == e.dim then
+      i.speed = math.sqrt((p.x - i.x) ^ 2 + (p.z - i.z) ^ 2) / dt
+      i.vy = (p.y - i.y) / dt
+    else
+      i.speed, i.vy = nil, nil                   -- (a portal: no speed across dimensions)
+    end
+  end
+  if not i.t or now - i.t >= 1000 then i.x, i.y, i.z, i.t, i.sdim = p.x, p.y, p.z, now, e.dim end
+end
+
+-- one detector answer made safe for the screen: numbers that are not numbers dropped (another AP version /
+-- a flaky answer: the PLAYERS page, the MAP and the drones do arithmetic on them - draw() is not pcall'd)
+local PL_NUM = { "x", "y", "z", "health", "maxHealth", "airSupply", "maxAirSupply", "eyeHeight", "yaw", "pitch",
+                 "respawnAngle", "experience", "level", "food", "saturation" }
+function cleanPlayerData(pl)
+  for _, k in ipairs(PL_NUM) do
+    if pl[k] ~= nil and type(pl[k]) ~= "number" then pl[k] = tonumber(pl[k]) end
+  end
+  if not (pl.x and pl.y and pl.z) then pl.x, pl.y, pl.z = nil, nil, nil end
+  for _, k in ipairs({ "dimension", "dim", "respawnDimension", "name" }) do
+    if pl[k] ~= nil and type(pl[k]) ~= "string" then pl[k] = nil end
+  end
+  local rp = pl.respawnPosition
+  if rp ~= nil and not (type(rp) == "table" and type(rp.x) == "number" and type(rp.y) == "number" and type(rp.z) == "number") then
+    pl.respawnPosition = nil
+  end
+  return pl
+end
+
 -- full = every online player (PLAYERS page); otherwise only the owner
 function refreshPlayers(full)
+  pcall(loadSeenPlayers)                 -- (the players seen before: read once - also without a detector, for the page)
   if not det then return end
   local owner = state.owner
   local fn = det.getPlayer or det.getPlayerPos
@@ -115,7 +250,7 @@ function refreshPlayers(full)
     return
   end
 
-  local names = {}
+  local names, readOnline = {}, false
   if full and det.getOnlinePlayers then
     local ok, r = pcall(det.getOnlinePlayers)
     if ok and type(r) == "table" then
@@ -125,7 +260,7 @@ function refreshPlayers(full)
       for _, n in pairs(r) do
         if type(n) == "string" then names[#names + 1] = n on[n:lower()] = true end
       end
-      state.online, state.onlineT = on, os.clock()
+      state.online, state.onlineT, readOnline = on, os.clock(), true
     end
   end
   if not full then names = owner and { owner } or {} end
@@ -147,7 +282,7 @@ function refreshPlayers(full)
   local needRange = false
   for i, name in ipairs(names) do
     local r = res[i]
-    if r and r.ok and type(r.pl) == "table" and next(r.pl)
+    if r and r.ok and type(r.pl) == "table" and next(r.pl) and cleanPlayerData(r.pl).x
        and not dimFromData(r.pl) and not dimCache[name] then
       needRange = true
     end
@@ -167,7 +302,7 @@ function refreshPlayers(full)
   for i, name in ipairs(names) do
     local e = { name = name, isOwner = (name == owner) }
     local r = res[i]
-    if r and r.ok and type(r.pl) == "table" and next(r.pl) then
+    if r and r.ok and type(r.pl) == "table" and next(r.pl) and cleanPlayerData(r.pl).x then
       e.p = r.pl
       local fromData = dimFromData(r.pl)
       if fromData then rememberDim(name, fromData) end
@@ -185,6 +320,17 @@ function refreshPlayers(full)
   if full then
     state.players = entries
     state.t.players = os.clock()
+    local on = state.online or {}
+    for _, e in ipairs(entries) do
+      if on[tostring(e.name):lower()] or e.p then pcall(notePlayer, e) end
+    end
+    -- players no longer in the online list: gone (when, for the list)
+    if readOnline then
+      for k, i in pairs(PLAYER_INFO) do
+        if i.online and not on[k] then i.online, i.left = false, os.epoch("utc") sessionOff(i, i.left) end
+      end
+    end
+    pcall(saveSeenPlayers)
   end
   if ownerE then
     state.player, state.playerDim, state.playerMsg = ownerE.p, ownerE.dim, ownerE.err
@@ -196,9 +342,33 @@ function refreshPlayers(full)
   state.t.owner = os.clock()
 end
 
+-- THE OWNER'S NAME, remembered: the Inventory Manager's getOwner() only answers while
+-- the card's player is ON the server (Advanced Peripherals looks the player up). The
+-- moment you logged off, state.owner became nil - away mode then "could not tell" if
+-- you were online and never started (it worked once or twice in months). The name is
+-- saved (owner.dat) and kept while you are offline; CONFIG.owner works without a card.
+OWNER_FILE = "owner.dat"
+INV_FOREIGN, INV_FOREIGN_AT = nil, nil     -- the Inventory Manager holds ANOTHER player's card (refreshInventory)
+do
+  local t = readSafe(OWNER_FILE)
+  OWNER_SAVED = type(t) == "table" and type(t.name) == "string" and t.name ~= "" and t.name or nil
+  OWNER_UUID = type(t) == "table" and t.uuid or nil
+end
+function rememberOwner(name, uuid)
+  if type(name) ~= "string" or name == "" then return end
+  if OWNER_SAVED == name and (uuid == nil or OWNER_UUID == uuid) then return end
+  OWNER_SAVED, OWNER_UUID = name, uuid or OWNER_UUID
+  saveFileSafe(OWNER_FILE, serialSmall({ name = name, uuid = OWNER_UUID }))
+end
+-- the owner's name even while they are offline (nil = never known)
+function knownOwner()
+  return state.owner or OWNER_SAVED or (type(CONFIG.owner) == "string" and CONFIG.owner ~= "" and CONFIG.owner) or nil
+end
+
 -- owner + inventory + equipment + held slot
 function refreshInventory()
   if not inv then
+    state.owner = state.owner or knownOwner()
     state.status = "offline"
     state.err = "Inventory Manager disconnected - waiting for it to come back..."
     state.t.inv = os.clock()
@@ -211,6 +381,43 @@ function refreshInventory()
   if type(owner) == "string" then
     local stripped = owner:gsub("^%x+%-%x+%-%x+%-%x+%-%x+%s*", "")
     if stripped ~= "" then owner = stripped end
+  end
+  -- ANOTHER PLAYER'S CARD (the owner: "what if a player broke parts of the system"): someone who breaks the Inventory
+  -- Manager can put one back with THEIR memory card - the base would show their inventory and hand AE2 items to them.
+  -- A card that is not the owner's (CONFIG.owner, else the saved name) is never used: the block is left out for 60 s
+  -- (PERIPH_SKIP, then checked again), one WARNING an hour. `owner new` on the console accepts a new name.
+  local want = (type(CONFIG.owner) == "string" and CONFIG.owner ~= "" and CONFIG.owner) or OWNER_SAVED
+  if type(owner) == "string" and owner ~= "" and want and owner:lower() ~= want:lower() then
+    INV_FOREIGN = "it holds " .. owner .. "'s memory card, not " .. want .. "'s (type  owner new  if you changed accounts)"
+    if picked.inv then PERIPH_SKIP[picked.inv] = os.clock() + 60 end
+    if not INV_FOREIGN_AT or os.clock() - INV_FOREIGN_AT > 3600 then
+      INV_FOREIGN_AT = os.clock()
+      local msg = "The Inventory Manager " .. tostring(picked.inv) .. " is NOT USED: " .. INV_FOREIGN
+      pcall(sysLog, msg, "WARNING")
+      pcall(pushNote, "WARNING", msg, C.warn)
+    end
+    inv, picked.inv = nil, nil
+    updateCaps()
+    state.owner = want
+    state.status = "offline"
+    state.err = "Inventory Manager not used: " .. INV_FOREIGN
+    state.t.inv = os.clock()
+    return
+  end
+  if type(owner) == "string" and owner ~= "" then
+    INV_FOREIGN = nil
+    rememberOwner(owner, state.ownerUuid)
+    state.ownerOff = nil
+  else
+    owner = nil
+    local was = knownOwner()
+    if was then
+      -- the card is there but its player is not on the server (offline): keep the name
+      state.owner, state.ownerOff = was, true
+      state.status = "owneroff"
+      state.t.inv = os.clock()
+      return
+    end
   end
   state.owner = owner
   if not owner then
@@ -363,6 +570,7 @@ function refreshInventory()
   sortList()
 
   if selName and not totals[selName] then selName = nil end
+  if state.equipSel and not equip[state.equipSel] then state.equipSel = nil end   -- (taken off)
 end
 
 
@@ -377,14 +585,14 @@ local OVERWORLD = "minecraft:overworld"
 
 -- write the '$drone back' spots to their file
 local function backSave()
-  local h = fs.open(CONFIG.back.file, "w")
-  if h then h.write(textutils.serialize(backSpots)) h.close() end
+  writeSafe(CONFIG.back.file, serialSmall(backSpots))      -- (compact: a third of the size)
 end
-if fs.exists(CONFIG.back.file) then
-  local h = fs.open(CONFIG.back.file, "r")
-  local t = h and textutils.unserialize(h.readAll() or "")
-  if h then h.close() end
-  if type(t) == "table" then backSpots = t end
+do
+  local t = readSafe(CONFIG.back.file)
+  if type(t) == "table" then
+    backSpots = {}
+    for k, v in pairs(t) do if type(k) == "string" and type(v) == "table" then backSpots[k] = v end end
+  end
 end
 
 -- the dimension a player is in (nil = not known)
@@ -415,7 +623,7 @@ function trackPlayers()
       return okP and pl or false
     end)
     for i, n in ipairs(names) do
-      if type(res[i]) == "table" then samples[#samples + 1] = { name = n, pl = res[i] } end
+      if type(res[i]) == "table" then samples[#samples + 1] = { name = n, pl = cleanPlayerData(res[i]) } end
     end
   end
   for _, sm in ipairs(samples) do

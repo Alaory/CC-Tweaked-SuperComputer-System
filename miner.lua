@@ -80,7 +80,7 @@ CONFIG = {
 }
 
 STATE_FILE = "miner_state"
-MYVER = "m19"            -- shown on the screen and the base (MINING tab)
+MYVER = "m27"            -- shown on the screen and the base (MINING tab)
 DX = { [0] = 0, 1, 0, -1 }
 DZ = { [0] = -1, 0, 1, 0 }
 FNAME = { [0] = "north", "east", "south", "west" }
@@ -113,21 +113,33 @@ if COPY then STATE_FILE = STATE_FILE .. "_c" .. COPY end
 function now() return math.floor(os.epoch("utc") / 1000) end
 function save()
   if DUP then return end                         -- (the state file belongs to the real one)
-  local h = fs.open(STATE_FILE .. ".tmp", "w")
+  local tmp = STATE_FILE .. ".tmp"
+  local okS, text = pcall(textutils.serialize, S)
+  if not okS then return end
+  local h = fs.open(tmp, "w")
   if not h then return end
-  local ok = pcall(function() h.write(textutils.serialize(S)) end)
-  h.close()
-  if ok then
-    if fs.exists(STATE_FILE) then fs.delete(STATE_FILE) end
-    fs.move(STATE_FILE .. ".tmp", STATE_FILE)
+  local ok = pcall(function() h.write(text) h.close() end)
+  -- only a COMPLETE new file replaces the old one (a full disk cut it off: team, field,
+  -- station lost at the next start)
+  if ok and fs.exists(tmp) and fs.getSize(tmp) >= #text then
+    pcall(function()
+      if fs.exists(STATE_FILE) then fs.delete(STATE_FILE) end
+      fs.move(tmp, STATE_FILE)
+    end)
+  else
+    pcall(h.close)
+    pcall(fs.delete, tmp)
   end
 end
 function loadState()
-  if fs.exists(STATE_FILE) then
-    local h = fs.open(STATE_FILE, "r")
-    local t = textutils.unserialize(h.readAll() or "")
-    h.close()
-    if type(t) == "table" then S = t end
+  -- the file, else its .tmp (stopped between delete and move)
+  for _, p in ipairs({ STATE_FILE, STATE_FILE .. ".tmp" }) do
+    if fs.exists(p) then
+      local h = fs.open(p, "r")
+      local t = h and textutils.unserialize(h.readAll() or "")
+      if h then h.close() end
+      if type(t) == "table" then S = t break end
+    end
   end
   S.stats = S.stats or { dug = 0, ores = 0, dumps = 0 }
   S.carry = S.carry or {}
@@ -139,6 +151,83 @@ function note(msg)
   print(msg)
   NOTES[#NOTES + 1] = msg
   while #NOTES > 8 do table.remove(NOTES, 1) end
+end
+
+-- ===== UPDATES FROM THE BASE (m21: MINE UPDATE on the base) =====
+-- The base sends a new miner.lua in pieces ("upd": version, piece, pieces, text). A
+-- complete one is checked (checksum = version, it compiles) and INSTALLED ONLY WHILE
+-- PAUSED (the base pauses the team first and starts it again after) - never in the
+-- middle of a crossing. Written safely (a temp file first; the running program is only
+-- replaced once the new one is complete). The state file (role, team, field, job,
+-- station ...) is a separate file: after the restart it carries on as before.
+-- checksum: the same as the base's (and tools/make_manifest.py)
+function codeHash(text)
+  local h = 0
+  for i = 1, #text, 64 do
+    local b = { string.byte(text, i, math.min(#text, i + 63)) }
+    for k = 1, #b do h = (h * 31 + b[k]) % 4294967296 end
+  end
+  return string.format("%08x", h)
+end
+function myProgram()
+  local p = shell and shell.getRunningProgram and shell.getRunningProgram()
+  if not p or p == "" or p == "startup.lua" or p == "startup" then p = "miner.lua" end
+  return p
+end
+-- the checksum of the program this turtle runs (reported to the base)
+CODEVER = nil
+do
+  local okR = pcall(function()
+    local h = fs.open(myProgram(), "rb")
+    if h then
+      CODEVER = codeHash(h.readAll() or "")
+      h.close()
+    end
+  end)
+  if not okR then CODEVER = nil end
+end
+UPD, UPD_READY = nil, nil
+function updPiece(a)
+  local ver, i, n, text = tostring(a[1] or ""), tonumber(a[2]), tonumber(a[3]), a[4]
+  if not (i and n and type(text) == "string") or ver == "" then return end
+  if ver == CODEVER or (UPD_READY and UPD_READY.ver == ver) then return end
+  if not UPD or UPD.ver ~= ver then UPD = { ver = ver, n = n, parts = {}, got = 0 } end
+  if not UPD.parts[i] then UPD.parts[i], UPD.got = text, UPD.got + 1 end
+  if UPD.got < UPD.n then return end
+  local all = table.concat(UPD.parts)
+  UPD = nil
+  if codeHash(all) ~= ver then note("Update arrived damaged - the base sends it again") return end
+  local fn, err = load(all, "=miner.lua", "t", {})
+  if not fn then note("Update does not compile - not installed: " .. tostring(err)) return end
+  UPD_READY = { ver = ver, text = all }
+  note("Update " .. ver .. " ready - installs as soon as the team is paused")
+end
+-- write it (safely) and restart; false + why if it cannot
+function installMinerUpdate()
+  local u = UPD_READY
+  if not u then return false end
+  local prog, tmp = myProgram(), "miner.new"
+  if fs.exists(tmp) then fs.delete(tmp) end
+  local h = fs.open(tmp, "wb")
+  local okW = h and pcall(h.write, u.text)
+  if h then pcall(h.close) end
+  if not (okW and fs.exists(tmp) and fs.getSize(tmp) >= #u.text) then
+    if fs.exists(tmp) then fs.delete(tmp) end
+    UPD_READY = nil
+    note("Update NOT installed: the disk is too full - the old program keeps running")
+    return false
+  end
+  if fs.exists(prog .. ".old") then fs.delete(prog .. ".old") end
+  if fs.exists(prog) then fs.move(prog, prog .. ".old") end
+  fs.move(tmp, prog)
+  UPD_READY = nil
+  S.updatedAt = os.epoch and os.epoch("utc") or nil
+  save()
+  note("Update installed - restarting (team and job are kept)")
+  pcall(sendBase, "status")
+  sleep(1)
+  os.reboot()
+  return true
 end
 function setTask(t)
   task = t
@@ -249,6 +338,8 @@ function sendBase(t, extra)
   m.copy = COPY
   if DUP then m.dup = true end
   m.role, m.dim, m.ver = S.role, S.dim, MYVER
+  m.code = CODEVER                                -- (the program's checksum: MINE UPDATE)
+  m.updReady = UPD_READY and UPD_READY.ver or nil
   m.label = os.getComputerLabel() or ("Turtle " .. os.getComputerID())
   m.task = task
   local fuel = turtle.getFuelLevel()
@@ -304,6 +395,10 @@ function sendTeam(to, t, extra)
   m.sig = sign(S.key or "change-me", m.t, m.n)
   m.dim = S.dim
   m.from, m.to = MYTID, to                       -- (copies: the team id, not the radio id)
+  -- the LOADER's every message carries the team list: a miner hears only while its modem is
+  -- on, and missed the 30-s "team" messages for half an hour after a miner was dropped -
+  -- two miners then had the same number (same lane, same shaft)
+  if S.role == "loader" and S.team and m.team == nil then m.team = S.team end
   -- a miner's unload station: the loader keeps the team's first chunks away from it
   if S.role == "miner" and S.station then m.st = { x = S.station.x, y = S.station.y, z = S.station.z } end
   if to then pcall(rednet.send, to % 100000, m, CONFIG.team) else pcall(rednet.broadcast, m, CONFIG.team) end
@@ -435,6 +530,9 @@ function handle(id, m, proto)
       elseif m.t == "ready" and S.plan and m.ci == S.plan.ci then
         S.plan.ready[id] = m.ci
         save()
+      elseif m.t == "notready" and S.plan and m.ci == S.plan.ci and S.plan.goSent ~= S.plan.ci then
+        S.plan.ready[id] = nil                       -- it went back to work (its number changed)
+        save()
       elseif m.t == "needlayer" and S.plan and m.ci == S.plan.ci then
         local P = S.plan
         P.assigned = P.assigned or {}
@@ -448,6 +546,10 @@ function handle(id, m, proto)
       elseif m.t == "stepped" then
         STEPPED = STEPPED or {}
         STEPPED[id] = true
+      elseif m.t == "behind" then
+        BEHIND = BEHIND or {}
+        if not BEHIND[id] then note("Miner " .. id .. ": a server crash put it back into chunk " .. tostring((tonumber(m.ci) or 1) - 1) .. " - it walks over") end
+        BEHIND[id] = now()
       elseif m.t == "unloadreq" then
         -- one miner at the station at a time (6 min max)
         -- (real time: after a server crash the old os.clock time made it "busy" for hours)
@@ -463,6 +565,15 @@ function handle(id, m, proto)
       end
     elseif S.role == "miner" then
       if id == S.leader then LEADER_SEEN = os.clock() end
+      -- the team list from any of my loader's messages (see sendTeam)
+      if id == S.leader and m.t ~= "team" and type(m.team) == "table" then
+        local mine, same = false, #m.team == #(S.team or {})
+        for i, t in ipairs(m.team) do
+          if t == MYTID then mine = true end
+          if (S.team or {})[i] ~= t then same = false end
+        end
+        if mine and not same then S.team = m.team save() end
+      end
       -- my loader is gone (deleted / lost) and another one is here: after 10 min of
       -- silence I leave the old team and offer myself to the new loader
       if m.t == "loaderhere" and S.leader and id ~= S.leader and os.clock() - (LEADER_SEEN or 0) > 600
@@ -503,6 +614,8 @@ function handle(id, m, proto)
           note("Taken out of the team by the loader - waiting to join again")
           save()
         end
+      elseif m.t == "makeway" and isMember(id) then
+        MAKEWAY = { from = id, t = os.clock() }          -- a team mate is stuck behind me
       elseif m.t == "go" and id == S.leader then
         GO = m.ci
       elseif m.t == "layer" and id == S.leader then
@@ -585,6 +698,8 @@ function doCmd(cmd, args)
       sendTeam(id, "team", { team = S.team, plan = S.plan })    -- (alive after all? it sees it is out and stops)
       note(found and ("Miner " .. id .. " taken out of the team (" .. #S.team .. " left)") or ("Miner " .. id .. " is not in the team"))
     end
+  elseif cmd == "upd" then
+    updPiece(args)
   elseif cmd == "unpair" then
     S.partner, S.leader, S.team, S.tp = nil, nil, nil, nil
     note("Left the team")
@@ -826,14 +941,37 @@ function toolSide()
   if c == "left" then return "right" end
   return "left"
 end
--- what is on the free side now: "modem", "geo" or "pickaxe" (no peripheral)
+-- what is on the free side now: "modem", "geo", "pickaxe" or "none".
+-- The ITEM itself where this CC:Tweaked can tell (turtle.getEquippedLeft/Right).
+-- Else by the peripheral on that side - but a pickaxe is no peripheral, and then a
+-- turtle on a side WITHOUT a peripheral upgrade sees the BLOCK next to it there: the
+-- loader, another miner, a chest ... That read as "not the pickaxe" - a miner put down
+-- next to the team said "the pickaxe did not show up" with the pickaxe on (m20).
 function toolNow()
-  local t = peripheral.getType(toolSide())
+  local side = toolSide()
+  local f = (side == "left") and turtle.getEquippedLeft or turtle.getEquippedRight
+  if f then
+    local ok, d = pcall(f)
+    if ok then
+      if type(d) ~= "table" or not d.name then return "none" end
+      local n = tostring(d.name):lower()
+      if n:find("modem", 1, true) then return "modem" end
+      if n:find("geo", 1, true) then return "geo" end
+      if n:find("pickaxe", 1, true) then return "pickaxe" end
+      return n
+    end
+  end
+  local t = peripheral.getType(side)
   if not t then return "pickaxe" end
   t = tostring(t):lower()
-  if t:find("modem", 1, true) then return "modem" end
   if t:find("geo", 1, true) then return "geo" end
-  return t
+  if t:find("modem", 1, true) then
+    -- a WIRED modem block / cable next to me is not my (wireless / ender) modem
+    local okW, w = pcall(peripheral.call, side, "isWireless")
+    if okW and w == false then return "pickaxe" end
+    return "modem"
+  end
+  return "pickaxe"            -- a block next to me (a turtle, a chest ...): my side has no peripheral
 end
 TOOL_ITEM = { pickaxe = "*pickaxe*", modem = "*modem*", geo = "*geo_scanner*" }
 function equipTool(kind)
@@ -852,11 +990,20 @@ function equipTool(kind)
   turtle.select(1)
   if not ok then return false, "could not equip the " .. kind end
   -- the new upgrade takes a moment to show up (until then the OLD one answers)
-  for _ = 1, 40 do
+  for _ = 1, 100 do                                  -- (up to 5 s: a laggy server is slow)
     if toolNow() == kind then break end
     sleep(0.05)
   end
-  if toolNow() ~= kind then return false, "the " .. kind .. " did not show up after equipping it" end
+  local now = toolNow()
+  if now ~= kind then
+    -- say WHAT it saw on that side (to find out why): the item / the peripheral type
+    local f = (side == "left") and turtle.getEquippedLeft or turtle.getEquippedRight
+    local okE, d = false, nil
+    if f then okE, d = pcall(f) end
+    local seen = (okE and type(d) == "table" and d.name) or (f and "nothing") or ("type " .. tostring(peripheral.getType(side)))
+    return false, "the " .. kind .. " did not show up after equipping it (" .. side .. " side shows: " .. tostring(seen) ..
+                  ", read as " .. tostring(now) .. ")"
+  end
   if kind == "modem" then pcall(rednet.open, side) end
   return true
 end
@@ -961,9 +1108,36 @@ function step(d)
     if turtle.getFuelLevel() == 0 then return false, "out of fuel" end
     local okI, bI = insp()
     if okI and tostring(bI.name):find("computercraft:turtle", 1, true) then
-      -- a team mate in the way: wait (never dig a turtle)
-      if try >= 50 then return false, "a turtle is in the way at " .. fmtPos() end
-      if try % 10 == 1 then setTask("a team mate is in the way - waiting") end
+      -- a TEAM MATE in the way (never dig a turtle). Before: both waited 50 s, both
+      -- failed and came back the same way - two miners facing each other in one
+      -- tunnel blocked each other for good (team STOPPED after 8 tries). Now the
+      -- HIGHER id gives way after a few seconds (one block to the side, then the
+      -- way is planned again from there); the lower one waits longer - and also
+      -- goes aside when the other never moves (the loader, a dead / lost turtle).
+      local side = (d == "u" and "top") or (d == "d" and "bottom") or "front"
+      local okO, other = pcall(peripheral.call, side, "getID")
+      other = okO and tonumber(other) or nil
+      local myId = os.getComputerID()
+      local patience = 20
+      if other and (other < myId or other == S.leader) then patience = 4 end   -- (I give way)
+      if try % 10 == 1 then setTask("team mate #" .. tostring(other or "?") .. " is in the way - waiting") end
+      -- ask it to MAKE WAY (a miner waiting at its lane steps into the block it already
+      -- dug for the crossing - no digging needed on either side)
+      if S.role == "miner" and other and try >= 3 and STEP_ASK then
+        local tid
+        for _, t in ipairs(S.team or {}) do if t % 100000 == other then tid = t end end
+        if tid and os.clock() - ((ASKED or {})[tid] or -999) > 15 then
+          ASKED = ASKED or {}
+          ASKED[tid] = os.clock()
+          equipTool("modem")
+          pcall(sendTeam, tid, "makeway", {})
+        end
+      end
+      if S.role == "miner" and ((not AVOIDING and try > patience) or (AVOIDING and try > 10)) then
+        return false, TURTLE_WAY                       -- goTo goes AROUND it (passTurtle)
+      elseif try >= 50 then
+        return false, "a turtle is in the way at " .. fmtPos()
+      end
       sleep(1)
     elseif det() then
       if S.role == "miner" then
@@ -981,9 +1155,56 @@ function step(d)
   end
   return false, "blocked at " .. fmtPos()
 end
+-- a TURTLE stays in the way (a team mate that will not move, the loader, a dead / lost
+-- turtle): go AROUND it - one block to the side (dug if needed: natural blocks, not near
+-- the station, inside the chunk the miner works in, never into another turtle), two along
+-- the line, back onto it. beside = the blocked cell IS the goal: stop next to it.
+TURTLE_WAY = "a turtle is in the way - next try"
+STEP_ASK = true                  -- step() may ask the turtle in the way to MAKE WAY
+AVOIDING = false
+function passTurtle(d, beside)
+  local f0 = S.pos.f
+  local sides = (d == "f") and { (f0 + 1) % 4, (f0 + 3) % 4 } or { f0, (f0 + 1) % 4, (f0 + 3) % 4, (f0 + 2) % 4 }
+  for _, sf in ipairs(sides) do
+    local x, z = S.pos.x + DX[sf], S.pos.z + DZ[sf]
+    -- never into another chunk (the lock, else the chunk I stand in): the one next door may
+    -- not be loaded - or loaded but not running (the edge of the loaded area) = a frozen turtle
+    local lx = CHUNK_LOCK and CHUNK_LOCK[1] or math.floor(S.pos.x / 16)
+    local lz = CHUNK_LOCK and CHUNK_LOCK[2] or math.floor(S.pos.z / 16)
+    local inChunk = math.floor(x / 16) == lx and math.floor(z / 16) == lz
+    if inChunk and not nearStation(x, z, CONFIG.noDig) then
+      turnTo(sf)
+      local okI, b = turtle.inspect()
+      if not (okI and tostring(b.name):find("computercraft:turtle", 1, true)) then
+        AVOIDING = true
+        local okS = step("f")
+        if okS then
+          if beside then AVOIDING = false turnTo(f0) return true end
+          local okA = true
+          for _ = 1, 2 do
+            if d == "f" then turnTo(f0) end
+            if not step(d) then okA = false break end
+          end
+          if okA then
+            turnTo((sf + 2) % 4)
+            okA = step("f")
+          end
+          AVOIDING = false
+          turnTo(f0)
+          if okA then return true end
+          return false, "could not get past a turtle in the way - next try"
+        end
+        AVOIDING = false
+      end
+    end
+  end
+  turnTo(f0)
+  return false, TURTLE_WAY
+end
+
 -- straight moves: up/down first when going up, last when going down; x, then z.
 -- trail (optional) gets the corners (for the loader)
-function goTo(x, y, z, trail)
+function goTo(x, y, z, trail, exact)
   local function addPt()
     if trail then
       local l = trail[#trail]
@@ -992,24 +1213,66 @@ function goTo(x, y, z, trail)
       end
     end
   end
+  -- one straight line (axis "x", "z" or "y"). A turtle that stays in the way is passed
+  -- (passTurtle); the goal itself taken by one -> "near" (next to it is close enough);
+  -- the LAST cell of a line that is not the goal -> "corner" (the other line first)
+  local function line(axis)
+    while true do
+      local cur = (axis == "x" and S.pos.x) or (axis == "z" and S.pos.z) or S.pos.y
+      local goal = (axis == "x" and x) or (axis == "z" and z) or y
+      if cur == goal then return true end
+      local d = "f"
+      if axis == "x" then turnTo(goal > cur and 1 or 3)
+      elseif axis == "z" then turnTo(goal > cur and 2 or 0)
+      else d = (goal > cur) and "u" or "d" end
+      local nx, ny, nz = cellFor(d)
+      -- (the GOAL itself taken: the one there is about to leave - do not ask it to make way)
+      STEP_ASK = not (nx == x and ny == y and nz == z)
+      local ok, e = step(d)
+      STEP_ASK = true
+      if not ok then
+        if e ~= TURTLE_WAY then return false, e end
+        if math.abs(goal - cur) == 1 then
+          if nx == x and ny == y and nz == z then
+            -- exact (my lane): wait for it to be free; else next to it is close enough
+            if not exact and passTurtle(d, true) then return true, "near" end
+            return false, e
+          end
+          return false, "corner"
+        end
+        local okP, eP = passTurtle(d, false)
+        if not okP then return false, eP end
+      end
+    end
+  end
   local function vert()
-    while S.pos.y < y do local ok, e = step("u") if not ok then return false, e end end
-    while S.pos.y > y do local ok, e = step("d") if not ok then return false, e end end
-    addPt()
-    return true
+    local ok, e = line("y")
+    if ok then addPt() end
+    if e == "corner" then e = TURTLE_WAY end
+    return ok, e
   end
-  if y > S.pos.y then local ok, e = vert() if not ok then return false, e end end
-  if x ~= S.pos.x then
-    turnTo(x > S.pos.x and 1 or 3)
-    while S.pos.x ~= x do local ok, e = step("f") if not ok then return false, e end end
-    addPt()
+  if y > S.pos.y then
+    local ok, e = vert()
+    if not ok then return false, e end
+    if e == "near" then return true end
   end
-  if z ~= S.pos.z then
-    turnTo(z > S.pos.z and 2 or 0)
-    while S.pos.z ~= z do local ok, e = step("f") if not ok then return false, e end end
-    addPt()
+  local order = { "x", "z" }
+  for attempt = 1, 2 do
+    local okAll, err = true, nil
+    for _, ax in ipairs(order) do
+      local ok, e = line(ax)
+      if not ok then okAll, err = false, e break end
+      addPt()
+      if e == "near" then return true end
+    end
+    if okAll then break end
+    if err ~= "corner" or attempt == 2 then return false, (err == "corner") and TURTLE_WAY or err end
+    order = { "z", "x" }                               -- (the corner was taken: the other way round)
   end
-  if y ~= S.pos.y then local ok, e = vert() if not ok then return false, e end end
+  if y ~= S.pos.y then
+    local ok, e = vert()
+    if not ok then return false, e end
+  end
   return true
 end
 function fmtPos()
@@ -1355,6 +1618,7 @@ function gpsCheck()
   local x, y, z = gpsHere(1)
   if not x then return end
   S.gpsOk = true
+  GPS_RUN = true                                   -- (this run knows where it really is)
   if x ~= S.pos.x or y ~= S.pos.y or z ~= S.pos.z then
     note("GPS: position corrected " .. fmtPos() .. " -> " .. x .. " " .. y .. " " .. z)
     S.pos.x, S.pos.y, S.pos.z = x, y, z
@@ -1907,6 +2171,12 @@ function crossingDue()
   local J, tp = S.job, S.tp
   return J and tp and J.phase == "ready" and J.plan == tp.id and (tp.goSent == J.ci or GO == J.ci) or false
 end
+-- I said "ready" but go back to work (my number changed: miner 1 digs the tunnel, the lanes
+-- move): the loader must not cross without me (it did - the miner was left in an unloaded chunk)
+function unready(ci)
+  equipTool("modem")
+  pcall(sendTeam, S.leader, "notready", { ci = ci })
+end
 function teamStep()
   local okC, errC = true, nil
   if not crossingDue() then okC, errC = checkpoint() end
@@ -1924,6 +2194,7 @@ function teamStep()
   -- I became miner 1 (a team mate was taken out): the main tunnel of this chunk
   -- is my job now - dig it first (walking an already dug one is quick)
   if k == 1 and not J.tunnelDone and J.phase ~= "tunnel" and not crossingDue() then
+    if J.phase == "ready" then unready(ci) end
     J.phase = "tunnel"
     save()
   end
@@ -1932,6 +2203,26 @@ function teamStep()
   -- the start chunk: the miners may stand next to it at the start
   -- joined a running team: on my way INTO its chunk the lock is off; once inside it holds
   local outside = math.floor(S.pos.x / 16) ~= cx or math.floor(S.pos.z / 16) ~= cz
+  -- BACK IN THE OLD CHUNK AFTER A SERVER CRASH (the owner: "a server crash sometimes returns the miners to the old chunk
+  -- and leaves the loader in the new one"): the job for chunk ci was saved BEFORE the step over, the world went back to
+  -- before it. GPS says I am in chunk ci - 1: walk into my job chunk (the lock is off until I am inside, as for a late
+  -- joiner); the loader comes back for us when nobody answers (leaderFetch)
+  -- (m27) ANY chunk right next to my job chunk (the owner's screenshot: "PAUSED: would leave chunk -304,705 ... gave up
+  -- after 8 tries" - 12 blocks into the next chunk after an unload trip): GPS says where I am, so walk back in instead
+  -- of failing every step until it stops
+  local mcx, mcz = math.floor(S.pos.x / 16), math.floor(S.pos.z / 16)
+  if outside and GPS_RUN and not J.late and J.phase ~= "ready" and math.abs(mcx - cx) <= 1 and math.abs(mcz - cz) <= 1 then
+    J.late = true
+    save()
+    local pcx, pcz = chunkAt(tp, math.max(0, ci - 1))
+    if ci > 0 and mcx == pcx and mcz == pcz then
+      note("A server crash put me back into chunk " .. (ci - 1) .. " - walking into chunk " .. ci .. " again")
+      equipTool("modem")
+      pcall(sendTeam, S.leader, "behind", { ci = ci })
+    else
+      note("I am in the chunk next to my job chunk (" .. mcx .. "," .. mcz .. " - after an unload trip?) - walking back in")
+    end
+  end
   if (ci == 0 or J.late) and outside then CHUNK_LOCK = nil end
   if J.late and not outside then J.late = nil save() end
   if J.phase == "tunnel" then
@@ -2019,14 +2310,18 @@ function teamStep()
             or ("to my lane at the edge of chunk " .. ci))
     local ok, err
     if S.pos.y ~= lane then
-      if J.mine or (math.floor(S.pos.x / 16) == cx and math.floor(S.pos.z / 16) == cz and k > 1 and ci > 0) then
+      if S.pos.x == ex and S.pos.z == ez then
+        -- already in the lane column (my number changed while I waited): straight up/down
+        -- there - the ones above move first, each into the lane the one above left
+        ok, err = goTo(ex, lane, ez, nil, true)
+      elseif J.mine or (math.floor(S.pos.x / 16) == cx and math.floor(S.pos.z / 16) == cz and k > 1 and ci > 0) then
         ok, err = goHV(sx, lane, sz)                   -- in my shaft column
       else
         ok, err = goVH(S.pos.x, lane, S.pos.z)         -- start chunk: straight down where I stand
       end
       if not ok then return false, err end
     end
-    ok, err = goTo(ex, lane, ez)
+    ok, err = goTo(ex, lane, ez, nil, true)            -- (exactly MY lane: wait until it is free)
     if not ok then return false, err end
     turnTo(dir)
     for _ = 1, 12 do                                   -- the first block of the next chunk
@@ -2049,22 +2344,88 @@ function teamStep()
     save()
     return true
   elseif J.phase == "ready" then
+    -- not AT my lane (my number changed while I was stopped / restarted - the lanes move
+    -- with the numbers): go there first. Before, it waited at the old height for good and
+    -- the team mate whose lane that is now could never get there.
+    if not crossingDue() and not OUT_OF_LANE and (S.pos.y ~= lane or S.pos.x ~= ex or S.pos.z ~= ez) then
+      unready(ci)
+      J.phase = "lane"
+      save()
+      return true
+    end
     -- wait for the loader's "go" (everybody is ready), then step over
     local t0, sent = os.clock(), -1000
+    -- MADE WAY: stepped one block back / aside (inside THIS chunk) for a team mate stuck
+    -- behind me; back to the lane after 25 s (and always before anything else happens)
+    local function backToLane()
+      if not OUT_OF_LANE then return true end
+      turnTo((OUT_OF_LANE.f + 2) % 4)
+      local okB = step("f")
+      turnTo(dir)
+      if okB then OUT_OF_LANE = nil end
+      return okB
+    end
+    -- make way: one block back or to the side, INSIDE this chunk (the next chunk may not be
+    -- loaded - a turtle stepping into it can freeze); an open block first, else one dug
+    local function stepAside()
+      local opts = { (dir + 2) % 4, (dir + 1) % 4, (dir + 3) % 4 }
+      for pass = 1, 2 do
+        for _, f in ipairs(opts) do
+          local x, z = S.pos.x + DX[f], S.pos.z + DZ[f]
+          if math.floor(x / 16) == cx and math.floor(z / 16) == cz and not nearStation(x, z, CONFIG.noDig) then
+            turnTo(f)
+            local okI, b = turtle.inspect()
+            local isT = okI and tostring(b.name):find("computercraft:turtle", 1, true)
+            if not isT and (pass == 2 or not turtle.detect()) then
+              AVOIDING = true
+              local okS = step("f")
+              AVOIDING = false
+              if okS then return f end
+            end
+          end
+        end
+      end
+      turnTo(dir)
+      return nil
+    end
     while GO ~= ci do
-      if not S.running and not crossingDue() then return false, "paused" end
+      if not S.running and not crossingDue() then
+        if not backToLane() then return false, "could not get back to my lane - next try" end
+        return false, "paused"
+      end
       -- a team mate was taken out: my number changed (miner 1 digs the tunnel,
       -- the lanes move) - start my part again with the new number
-      if myIndex() ~= k and not crossingDue() then return true end
+      if myIndex() ~= k and not crossingDue() then
+        if not backToLane() then return false, "could not get back to my lane - next try" end
+        -- my lane moved with my number: go there (before: it waited at the OLD height - the
+        -- miner below it then wanted that very block for ever)
+        unready(ci)
+        J.phase = "lane"
+        save()
+        return true
+      end
+      if MAKEWAY and os.clock() - MAKEWAY.t < 60 and not OUT_OF_LANE then
+        local f = stepAside()
+        if f then
+          OUT_OF_LANE = { t = os.clock(), f = f }
+          note("Made way for team mate #" .. tostring(MAKEWAY.from))
+        end
+        MAKEWAY = nil
+      end
+      if OUT_OF_LANE and os.clock() - OUT_OF_LANE.t > 25 then
+        if not backToLane() then OUT_OF_LANE.t = os.clock() - 15 end   -- (still taken: again in 10 s)
+      end
       if os.clock() - sent > 10 then
         equipTool("modem")
         sendTeam(S.leader, "ready", { ci = ci })
         sent = os.clock()
       end
-      setTask("ready at my lane - waiting for the others (" .. math.floor(os.clock() - t0) .. " s)")
+      setTask((OUT_OF_LANE and "made way for a team mate - " or "") .. "ready at my lane - waiting for the others (" ..
+              math.floor(os.clock() - t0) .. " s)")
       if os.clock() - LAST_STATUS > 15 then sendBase("status") end
       listen(1)
     end
+    if not backToLane() then return false, "could not get back to my lane - next try" end
     turnTo(dir)
     for _ = 1, 8 do
       if not turtle.detect() then break end
@@ -2131,6 +2492,7 @@ function leaderStep()
   -- (paused: but a crossing whose "go" is out is always finished - the miners
   -- are over there already, they must not be left in an unloaded chunk)
   if not P or (not S.running and P.goSent ~= P.ci) then return end
+  if P.phase == "work" and S.running and leaderCrashFix(P) then return end
   if P.phase == "work" and S.running then
     local missing = 0
     for _, id in ipairs(S.team) do
@@ -2205,6 +2567,7 @@ function leaderStep()
       if P.ready[id] == P.ci and not STEPPED[id] then note("Miner " .. id .. " did not answer the crossing - maybe left behind") end
     end
     P.ci, P.phase, P.ready, P.goSent = P.ci + 1, "work", {}, nil
+    P.crossedAt = now()                              -- (a server crash soon after: leaderFetch)
     fillLayers(P)
     save()
     -- a NEW FIELD asked during the crossing: now
@@ -2217,6 +2580,61 @@ function leaderStep()
     end
     sendPlan()
   end
+end
+-- A SERVER CRASH RIGHT AFTER A CROSSING (the owner: "a server crash sometimes returns the miners to the old chunk and
+-- leaves the loader in the new one" + "or vice versa"): the world goes back to its last save, the turtles' saved state
+-- (on disk at once) does not. (1) I, the loader, am back in the old chunk (GPS): walk over to where the step took me.
+-- (2) Miners that have not said a word since I started (a miner says hello at every start) while the crossing was less
+-- than 30 min before: they may be frozen in the OLD chunk (only my chunk is loaded) - go back one block into it, wait
+-- for them to wake up and walk over (they see by GPS that they are behind), come back. Once per chunk.
+LOADER_BOOT = nil
+function leaderCrashFix(P)
+  if (P.ci or 0) < 1 or not S.pos or not S.pos.x then return false end
+  local cx, cz = chunkAt(P, P.ci)
+  local pcx, pcz = chunkAt(P, P.ci - 1)
+  local _, _, exp, ezp, dirp = chunkCols(P, P.ci - 1)
+  local hyp = tunY(P, P.ci - 1) + 1
+  local lcx, lcz = math.floor(S.pos.x / 16), math.floor(S.pos.z / 16)
+  if GPS_RUN and (lcx ~= cx or lcz ~= cz) and lcx == pcx and lcz == pcz then
+    note("A server crash put me back into chunk " .. (P.ci - 1) .. " - going over to chunk " .. P.ci .. " again")
+    setTask("back to chunk " .. P.ci .. " after a server crash")
+    local ok, err = goTo(exp + DX[dirp], hyp, ezp + DZ[dirp])
+    if not ok then note("Loader: could not get back into chunk " .. P.ci .. ": " .. tostring(err)) sleep(5) end
+    return true
+  end
+  if P.fetched == P.ci or not P.crossedAt or not LOADER_BOOT then return false end
+  if LOADER_BOOT - P.crossedAt > 1800 or now() - LOADER_BOOT < 90 then return false end
+  local silent = {}
+  for _, id in ipairs(S.team or {}) do
+    local seen = S.seen and S.seen[id] or 0
+    if seen < LOADER_BOOT and not (S.stationUse and S.stationUse.id == id) then silent[#silent + 1] = id end
+  end
+  P.fetched = P.ci
+  save()
+  if #silent == 0 then return false end
+  note("Miner(s) " .. table.concat(silent, ", ") .. " silent since the restart - a server crash may have put them back " ..
+       "into chunk " .. (P.ci - 1) .. ": going back for them")
+  local here = { x = S.pos.x, y = S.pos.y, z = S.pos.z }
+  setTask("fetching miners left in chunk " .. (P.ci - 1) .. " by the server crash")
+  local ok, err = goTo(exp, hyp, ezp)
+  if ok then
+    local t0, heardAll = now(), nil
+    while now() - t0 < (CONFIG.fetchWait or 300) do
+      local all = true
+      for _, id in ipairs(silent) do if (S.seen and S.seen[id] or 0) < t0 then all = false end end
+      if all and not heardAll then heardAll = now() end
+      if heardAll and now() - heardAll > 45 then break end           -- (time to walk over)
+      setTask("fetching miners: waiting in chunk " .. (P.ci - 1) .. " (" .. math.floor(now() - t0) .. " s)")
+      listen(1)
+    end
+    note(heardAll and "The miners are awake again - back to chunk " .. P.ci or "No answer from them - back to chunk " .. P.ci)
+  else
+    note("Could not go back for the miners: " .. tostring(err))
+  end
+  local okB, errB = goTo(here.x, here.y, here.z)
+  if not okB then note("Loader: could not get back into chunk " .. P.ci .. ": " .. tostring(errB)) end
+  sendPlan()
+  return true
 end
 function equipCore()
   if coreSide() then return true end
@@ -2273,6 +2691,13 @@ function minerRun()
     note("Restarted - continuing in 6 s")
     sleep(6)
   end
+  -- (m26) at every start: where am I really, and tell the loader I am awake - after a server crash it knows at once
+  -- which miners answer (the ones that do not may be frozen in a chunk the crash put them back into)
+  if S.leader then
+    equipTool("modem")
+    gpsCheck()
+    pcall(sendTeam, S.leader, "hello", { boot = true, ci = S.job and S.job.ci })
+  end
   local lastHello = -1000
   while true do
     -- not in a team yet: say so (the loader answers with "team")
@@ -2283,6 +2708,7 @@ function minerRun()
     end
     if (not S.running and not crossingDue()) or not S.leader or not S.tp then
       equipTool("modem")
+      if UPD_READY and not S.dumping then installMinerUpdate() end    -- (paused: a safe moment)
       if not S.leader then setTask("waiting for a loader turtle (same dimension)")
       elseif S.err then setTask("PAUSED: " .. S.err)
       else setTask(S.tp and "paused" or "in the team - press START on the base") end
@@ -2321,7 +2747,9 @@ function minerRun()
         if tostring(ok):find("Terminated", 1, true) then error("Terminated", 0) end
         ok, err = false, "error: " .. tostring(ok)
       end
-      if not ok and tostring(err):find("next try", 1, true) and (RETRIES or 0) < 5 then
+      -- (giving way to a team mate can take a few goes: more retries for that)
+      local maxR = tostring(err):find("turtle is in the way", 1, true) and 20 or 5
+      if not ok and tostring(err):find("next try", 1, true) and (RETRIES or 0) < maxR then
         RETRIES = (RETRIES or 0) + 1                   -- position re-checked: just go on
         note(tostring(err))
       elseif not ok and err ~= "paused" and (FAILS or 0) < 8 and S.running then
@@ -2359,6 +2787,7 @@ function minerRun()
   end
 end
 function loaderRun()
+  LOADER_BOOT = now()
   -- after a restart (server crash): the station is free again - a miner that is
   -- really there asks again; an old entry made everybody wait
   if S.stationUse then S.stationUse = nil save() end
@@ -2377,6 +2806,9 @@ function loaderRun()
     end
     -- the plan to every miner now and then (a restarted miner gets it again)
     if os.clock() - lastPlan > 30 then lastPlan = os.clock() sendPlan() end
+    if UPD_READY and not (S.plan and (S.running or S.plan.goSent == S.plan.ci or S.plan.phase == "cross")) then
+      installMinerUpdate()                        -- (paused, no crossing under way: a safe moment)
+    end
     if S.plan and (S.running or S.plan.goSent == S.plan.ci) then
       local okR, err = pcall(leaderStep)
       if not okR then

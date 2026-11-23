@@ -29,6 +29,7 @@ function save() end function trailSave() end function gpsCheck() end function fm
 function hasCore() return false end function atHome() return true end
 function afterForcedStop() end
 turtle = { getFuelLevel = function() return "unlimited" end }
+function freeSlots() return 8 end            -- (node.lua: free inventory slots - room enough)
 modemAttached, SLOT_LOCK, TOPUP_RUNNING, FORCE_STOP, STEPPING = true, false, false, false, false
 local SENT = {}
 function send(t, m) SENT[#SENT + 1] = { t = t, m = m } end
@@ -152,5 +153,17 @@ run(3)
 CHECK(job and job.cmd == "build" and not stopFlag, "a DRIVE step does not cut the build either")
 cmd("stop", {})
 run(4)
+-- a job TAKEN while the worker is still busy with idle work (fuel chest, top-up): the turtle no longer says "idle"
+-- (the base sent it a 2nd order, refused "busy: idle (press STOP first)" - the survey spots counted as REFUSED)
+run(4)
+job, task = nil, "idle"
+cmd("surveypts", { 8, 1, 2 })
+assert(coroutine.resume(L))                                -- (the listener only - the worker is "busy")
+CHECK(job and job.cmd == "surveypts" and task == "starting surveypts",
+      "a job taken before the worker starts it says so, not 'idle' (" .. tostring(task) .. ")")
+cmd("home", {})
+assert(coroutine.resume(L))
+CHECK(lastResult("home") and not tostring(lastResult("home").msg):find("busy: idle", 1, true),
+      "a 2nd order then is not refused as 'busy: idle' (" .. tostring(lastResult("home") and lastResult("home").msg) .. ")")
 print(FAILS == 0 and "PASS" or ("FAILED " .. FAILS))
 os.exit(FAILS == 0 and 0 or 1)

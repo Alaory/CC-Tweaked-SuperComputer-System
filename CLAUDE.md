@@ -19,15 +19,84 @@ PneumaticCraft drone rides, turtle mapping/surveys, and an AE2 ME network view.
   Order matters: a file may only use globals defined by files loaded before it
   at load time (inside functions, anything goes).
 - Workers run together via `parallel.waitForAny`: uiLoop, invWorker,
-  pageWorker, actionWorker, droneWorker, terminalWorker, chatWorker, commsWorker, mapWorker.
+  pageWorker, actionWorker, droneWorker, terminalWorker, chatWorker, commsWorker, mapWorker,
+  supplyWorker, addonWorker, playerWorker, curiosWorker, dropWorker.
+  NEVER ONE ERROR = A DEAD BASE (release review, the owner: "I don't want things to bug out and crash"): inventory.lua
+  starts every worker through keepWorker(name, fn) (base_workers.lua): an error -> SYSTEM log WARNING, WORKER_RESTART[name]
+  (the drone worker: its drones freed + failedAt, the park check brings them home), 1 s, started again; 5 errors in 60 s
+  -> the error goes up (startup.lua restarts the base as before); "Terminated" (Ctrl+T) always goes up. uiLoop draws
+  through safeDraw (a page that fails -> HOME + the SYSTEM log once a minute; HOME failing too -> a plain "SCREEN ERROR"
+  on the monitor, shownRows reset); a failing BUTTON (handleTouch) = a box + the log (it re-raised the error before =
+  the base stopped); peripheral / player events pcall'd. FOUND: uiLoop had TWO "me_crafting" branches - the second
+  (MEX.event) never ran, craft requests were only followed by polling. test_keep_worker.lua.
+  PLAYERS EVERY TICK (the owner: "make the player list update each tick - it does not cause lag"): playerWorker
+  reads the Player Detector (refreshPlayers(true)) again CONFIG.ttl.playersLive s (0.05 = a tick) after each
+  reading; never asks for a redraw (the screen has its own timer). Before: every 10-30 s from the page worker -
+  drones (rides, moving targets, knownLoaded), avoid, away, voice read state.players. test_player_live.lua.
   LOST TIMERS: CraftOS drops events (timers too) that arrive while a coroutine waits
   for a peripheral answer. So the commsWorker 2-s jobs run by the CLOCK (nextTick; a
   new timer each tick replaces a lost one), uiLoop re-arms clockTimer / drawTimer,
   waitFor has a deadline. (Before: one lost timer stopped every 2-s job - updates
   "queued" forever, idle turtles never sent home.) test_lost_timer.lua.
+- FUZZ TESTS (the owner: "go over every feature and check them"; tools/tests/test_fuzz_*.lua): ui = every page at
+  4 sizes, normal + messy world, every tap area twice + the queued actions run (fake AE2: tests/lib/fake_ae2.lua);
+  cmds = every console command + the sub-words its block checks, odd arguments, with / without AE2, every $drone
+  sub-command as owner and stranger ("attempt to" in the output counts as an error); msgs = 6000 signed turtle /
+  miner messages with broken fields + pocket actions + garbage, then pages + jobs; files = every .dat odd (a
+  number, a word, odd fields, a list of odd tables) -> the base must START (module loading is NOT pcall'd - an
+  error = startup.lua restarts it into the same error for ever), pages draw, jobs run; periph = every peripheral
+  call errors / nil / odd shape (10 .. 100 %), the reading jobs run, every page draws (draw() in uiLoop is NOT
+  pcall'd - one odd value = the base stops). What they found, fixed: TT.clean(m) (base_turtles; in TT.receive
+  right after the signature check: fields of the wrong kind dropped by a schema - str / num / pos / tbl); pocket
+  m.args = strings / numbers only; ME callx / transfer without a bridge; EVERY saved table checked on load
+  (settings.dat: only "group.key" with a fitting kind - "turtles = 7" replaced CONFIG.turtles; curios fits /
+  rules; turtles.dat via TT.clean; mining units = only what MINE.save writes; places need name + x y z; access;
+  pockets need a key; factory job / recipes; survey queue numbers; auto-map; away; theme; versions; me_setup;
+  back spots; helpers; drone logs; the DW job); cleanPlayerData (base_players: detector answers - numbers that
+  are not numbers dropped, no x y z = not found); MEX first() = numbers only.
+  OTHER SEEDS (test_fuzz_periph with 20 more seeds; the owner: "look for bugs"): parsePos gave a HALF position (x, nil, z
+  from "high") -> dist3 / MAP toCell on the drone page / MAP stopped the base; fetchME's AE2 numbers (energy, item / fluid /
+  chemical storage) through getN = tonumber (true / a table stopped the AE2 page). test_odd_answers.lua. (The runner loads
+  base_*.lua from the SOURCE, voice files from floppies filled from dist/ - swap the right one to test old code.)
+- LOADING AGAIN (a server restart / the base's chunk loaded again / a reboot; the owner: "everything needs to be
+  reconnected - other stuff is in other chunks and not loaded"): base_devices.lua NET_SEEN = net_seen.dat on the computer
+  {p = {[name] = {t, at}}, f = {[floppy id] = {at, drive, files = root *.dat / *.log}}} (noteNetwork: at the start + every
+  20 s, written when the set changes / every 10 min; older than CONFIG.startup.rememberDays 3 dropped). waitForNetwork (load
+  time, before locate): what was seen lately and is not here (netMissing: blocks by name, floppies by disk.getID in any
+  drive) -> waits up to CONFIG.startup.wait 60 s (monitor + terminal list them; a tap / key = start now; nothing remembered =
+  no wait). Still missing -> NET_START_MISSING; a missing DATA floppy's files -> DATA_AWAY[file] = id: saveFileSafe refuses
+  them anywhere (dataAway - the base read nothing for them; the voice memory's computer fallback has the same name).
+  netTick (page worker, every 20 s): rescanPeripherals (a lost "peripheral" event never leaves a block out), the drives
+  changed -> dataPathReset + dedupeDataFiles (a floppy that UNLOADED mid-run comes back with old copies of files saved
+  elsewhere meanwhile: the newest copy by fs.attributes modified stays, the others go; no times -> nothing deleted), a
+  DATA_AWAY floppy here now -> MAP.save + BASE_RESTART (os.reboot) ONCE (state.netRestarting). The Inventory Manager is no
+  longer REQUIRED and a CONFIG.names pin that is not there returns nil (both crashed every start = startup.lua restarted
+  into the same error until the chunk loaded); only the monitor is required. test_reload.lua + pre_reload.lua (run_tests
+  sets PRE=tools/tests/pre_<name>.lua for test_<name>.lua: set-up BEFORE the base loads).
+- BROKEN WHILE OFF (the owner: "what if a player broke parts of the system when it's offline"): the MONITOR is no
+  longer required - none / a plain grey one -> blankMonitor() (no-op, mon.blank; safeDraw draws nothing) and
+  monitorCheck (rescanPeripherals: every 20 s + "peripheral") uses a real one when placed (state.monChanged -> safeDraw
+  rebuilds the window); detached mid-run -> blank again + WARNING. PARTS MISSING (base_devices.lua partsNote in
+  noteNetwork): every block (not turtles) / data floppy in NET.p / NET.f that is not here -> NET.gone (net_seen.dat g,
+  kept 60 days - the start waits only 3); back / REPLACED (a present block of the same type first seen after it
+  went - a new ME Bridge with another number) / 60 days -> out. partsTick (netTick): missing CONFIG.startup.goneAfter
+  600 s of THIS run -> ONE WARNING for the new ones. Shown: HOME NEEDS YOU, SYSTEM > STATUS "Parts missing", the away
+  report's needs, console `parts` (+ the screen) / `parts forget <n|name|all>` (a floppy: NET.f + DATA_AWAY cleared ->
+  its files are saved elsewhere again). ANOTHER PLAYER'S CARD (refreshInventory): getOwner() ~= CONFIG.owner / the
+  saved owner -> inv nil, PERIPH_SKIP[name] 60 s (candidates / locate skip it), INV_FOREIGN, one WARNING an hour;
+  `owner new` accepts the next card. BROKEN WHILE UNLOADED (the owner meant this: the base is not running then - it can
+  only notice at the next start): a warned part gets g.told (saved) - netMissing does not wait 60 s for it at every
+  start again (data floppies are always waited for: their files must never be saved over from nothing); 3+ at once ->
+  PARTS_CABLE hint (a broken cable / wired modem; a new wired modem must be RIGHT-CLICKED). test_broken.lua + pre_broken.lua.
+  REVIEW: a block remembered from an old file has first = 0 (never a "replacement"); one new block replaces ONE missing
+  block of its type (3 broken chests + 1 new); HOME / SYSTEM / the away report use partsGone(true) = missing goneAfter
+  s of this run or reported before (a chunk still loading after a restart is no alarm), `parts` lists all ("may still
+  load"). drone_seen.dat is written only when the drone MOVED (not every minute while parked). Wishes: the "yes" check
+  reads what AE2 has NOW; the note says spawn / the base.
 - **Peripheral calls belong in workers or fetch functions, never in drawing
   code.** Drawing reads `state.*` only.
-- Drawing: everything is drawn into an off-screen window `win`; `flushWindow()`
+- Drawing: everything is drawn into an off-screen window `win` (text / fill CLIPPED to the
+  screen and the current panel - UI rules 3); `flushWindow()`
   copies only changed rows to the monitor (big performance win - keep it).
   The MAP image (state.mapImage) is rebuilt at once when the VIEW changes, but
   for new map data (MAP.version - every scan) at most every 5 s: with many
@@ -36,6 +105,16 @@ PneumaticCraft drone rides, turtle mapping/surveys, and an AE2 ME network view.
   view only on a zoom change or when the middle is off by > 1/4 screen.
 - Buttons: `actButton(x, y, w, h, label, action)`; a second tap confirms; the
   action is queued and run by `runAction(a)` (base_me.lua) in the action worker.
+- SAFE SAVING (writeSafe / readSafe, base_devices.lua - the first file loaded): opening a file for
+  writing EMPTIES it, so a full disk / a stop mid-save wiped settings.dat, saved places, the access
+  list, chargers, me_setup.dat ... (they were written in place). writeSafe = "<path>.tmp", size
+  checked, then delete + move (the old file stays whole otherwise); readSafe = the file, else its
+  .tmp. saveFileSafe uses writeSafe; EVERY load of a saved table goes through readSafe (turtles.dat,
+  mining.dat, away.dat, factory, recipes, pockets, survey queue, auto-map, versions, theme ...).
+  node.lua writeFile = the same via "<path>.new" + readTable (state, trail, outbox, sweep, settings:
+  position / home / facing were lost at the next start); miner.lua save/loadState the same (m22);
+  store.lua checks the size too. The comms queue (state.tOut) keeps the newest 300 while there is no
+  modem. node_save_safe.lua, test_save_safe.lua.
 - Data files are written with `saveFileSafe(path, text)` (base_theme.lua):
   only if they fit, through a temp file, never half-written. Big files go
   through `dataFile(path)` so they can live on data floppies (`disks data`).
@@ -74,6 +153,12 @@ PneumaticCraft drone rides, turtle mapping/surveys, and an AE2 ME network view.
   ~10 s. node.lua (TT.codeLoad: compile, shrink, hash) is also checked in the
   mapWorker (start + every 30 s) with TT.workYield pauses, not in the comms
   worker (the install-floppy "disk" event still loads it at once).
+  TURTLE MARKERS (mapMarker, base_ui_map.lua; the owner: "should the turtles be this scattered?" - every turtle
+  ever known was a green T at its LAST spot): green T mapping (survey / scanning), white T another job (home,
+  fuel, a trip), orange T idle / waiting, purple x OFFLINE (last known spot), red ! stuck, MISSING not drawn;
+  fixed status colours only (the grey slots are theme colours - invisible). Legend wraps to a 2nd row.
+  test_map_markers.lua. With RINGS the mapping turtles work round the EDGE of the mapped square; T's inside it are
+  on their way to / from the base (home, fuel) or offline.
   World border is -20000..20000 (CONFIG.map.border); zoom goes to 512 so the
   whole world fits. Big surveys (> 400x400 blocks) go through a queue
   (MAP.queueSurvey / feedSurvey, 64 spots per idle turtle). Every batch
@@ -86,15 +171,33 @@ PneumaticCraft drone rides, turtle mapping/surveys, and an AE2 ME network view.
   the area are skipped cheaply. Old saved row-by-row queues are converted once in
   feedSurvey: their old far batches / redo spots are DROPPED and the turtles that
   had one get t.recall (saved in turtles.dat) - TT.receive stops their survey job
-  (also when they resume it after being offline), then sends them home. The queue file is written only when it changed (or once a minute). PACK mode
-  (CONFIG.map.pack, default on; SETTINGS > MAP): the free turtles get spots in
-  ROUNDS (q.wave): n*packSpots (3) consecutive spiral spots shared out in turn
-  (side by side, 17 blocks apart), by measured speed (t.packRate from
-  batchResult) so they finish together; the next round only when the whole
-  pack is done (or after packWait 300 s; q.wave.t is saved with the queue - a time from before a
-  base restart is ahead of the new clock and is reset, else the limit never ran out). Keeps them ~20 blocks apart (sim:
-  83% of free-running speed) so one wake-up (rescuer / player) reaches all.
-  t.packWait -> TT.idleWhy "waiting for the rest of the pack". A turtle still holding
+  (also when they resume it after being offline), then sends them home. The queue file is written only when it changed (or once a minute). PACK mode = RINGS
+  (CONFIG.map.pack, default on; SETTINGS > MAP "Turtles survey in rings"; MAP.ringDeal): every turtle OWNS a
+  ring of the spiral (a square round the base, 17 blocks from the next) and walks it AT ITS OWN PACE from the
+  ring's unmapped spot NEAREST to it, all the way round, packSpots (4) spots per hand-out, mapped stretches
+  skipped; NOBODY WAITS. Ring done -> the next ring nobody had (q.rr.next; found by TIME - outOfTime >= 3000
+  checks AND CONFIG.map.lookTime 0.3 s, MAP.looking for the BIG SURVEY panel); a turtle that went away (gone,
+  offline > reclaimOffline, STOPPED / excluded) leaves its ring LOOSE (q.rr.loose: its nearest stretch, split there - PHASE 5). No ring
+  left -> the nearest stretch of any ring with work left (its owner keeps 2 hand-outs in front), split there. q.rr = {next, own = {[id] = {r, s0, i, j}}, loose}; offsets i..j-1 from s0 still to do. Spots out with a
+  turtle (q.out) are never handed out twice. q.cursor = ringStart(first ring not finished); MAP.queuePos =
+  ringStart(next) minus what is left on rings. nextBatch (pack off) goes on from the first unfinished ring.
+  Given-back spots (q.redo, a small SURVEY: ALL = MAP.addSurvey) go first: dealEven (snake rows cut into one
+  piece per turtle by t.packRate, each piece to the nearest), at most 2 x packSpots each, nearest the
+  turtles first. WHY (the owner, many times: "they follow each other in a line", "only the one in front
+  maps", "sent half of them", "only one turtle goes"): the old ROUNDS (q.wave / q.band / packRound /
+  packJoin, removed) made everyone wait for the slowest, then jump over mapped land together; over land
+  mapped in PATCHES a turtle with nothing on its own ring took HALF of another ring = two turtles on one
+  line, one behind the other. test_survey_pack.lua (travel model, 6 turtles at different speeds; also
+  PATCHY land; "over" = flying over spots ANOTHER turtle scanned): old rounds 2111 spots / patchy 699 with
+  0.405 overflights per spot, free-running 2667 / 1632, rings ~3765 / ~1880 with 0.008 / 0.07; every turtle
+  on its own ring, a STOPPED turtle's ring goes on with another from where it was, the far-end helper).
+  test_survey.lua 2b-2h (pack on/off mid-survey, every free turtle a share, 12 turtles = 12 rings, ...).
+  REFUSED SPOTS: a turtle that fails its surveypts within 30 s (facing unknown, anchor ...) got spots
+  again and refused again = looked like "not sent": MAP.batchResult(id, ok, msg) -> t.surveyFail {msg,
+  at}: not free for 120 s, idleWhy "REFUSED its survey spots: <why>". SURVEY: ALL REPORT: MAP.pressStart
+  (base_input) -> MAP.press -> MAP.pressReport (20 s later): popup + sysLog "N of M free turtles went.
+  Not: <name>: <why>; ...". addSurvey pressed twice: spots already in q.redo / q.out not added again.
+  The `survey` console prints every turtle's state. A turtle still holding
   a batch (q.out[id]) is never free (its batch is reclaimed after 30 s idle first -
   overwriting it lost the unscanned spots). SURVEY: ALL for small areas also goes through
   the queue (MAP.addSurvey); SURVEY: THIS ONE is a direct order. A spot is
@@ -127,6 +230,26 @@ PneumaticCraft drone rides, turtle mapping/surveys, and an AE2 ME network view.
   program for writing empties it: on a full disk the old code left a cut-off program = a dead
   turtle); no room -> startup.old dropped, once more; still none -> error, old program untouched,
   "upd" result ok=false. node_update_safe.lua.
+- UPDATE REVIEW (the owner: "check the update programs that update the turtles and other stuff"): COPIES SHARE ONE DISK -
+  TT.updateTick never sends the update to a copy and its twin at once (same TT.realId: `sharing`), MINE.updTick the
+  same (busyTwin, 60 s) - both installing at the same moment wrote the same program file. store.lua "upd": the size of
+  startup.tmp is checked, the old program is MOVED to startup.old (it was deleted before the new one was in place -
+  a stop right there = a helper with no program). THE SPAWN RELAY UPDATES ITSELF (spawn_speaker.lua VER 4): signed "upd"
+  pieces (line "i/n/<dataHash>"), checksum + compiles (_G.load - the file has its own local load), startup.new, size
+  checked, old -> <prog>.old, restart, "updres" {ok | e} -> SP.updMsg + a note. Base SP.updateRelay(say, force) =
+  `voice spawn update [force]` + voiceUpdate (a paired, online relay): upgrade.lua fetch group "spawn", sent when its
+  VER is newer than the relay's (hello m.ver; v3 or older: copy it by hand once). test_updates.lua, test_spawn,
+  store_helper.lua. Turtle (node installUpdate) and miner (installMinerUpdate) installs were already safe.
+- NODE.LUA OFF THE COMPUTER (the owner: "move node.lua to external storage - it is just an update"; 117 KB of
+  a 1 MB computer): manifest group "node" (+ slim:node) - `upgrade` never puts it on the computer. CODE (memory)
+  + ONE stored copy, SHRUNK: TT.codeStore -> a usable storage helper (store:<id>/node.lua, read back to verify),
+  else a data floppy (not the installer) -> node_where.dat {path, hash, from old|dropped|github} (TT.codeWhere).
+  TT.codeLoad(force, canWait): a node.lua ON the computer (TT.localCode: dropped / left by an old upgrade) first;
+  else the stored copy - a helper copy only with canWait (map worker / console `update` / upgrade; never the
+  comms worker: it would miss turtle messages), loaded once (mod = path#hash). TT.codeOffload (map worker, start
+  + every 30 s): a local node.lua -> stored, deleted here. At start: none stored or from == "old" -> TT.fetchCode
+  (upgrade.lua fetch mode, group "node"); baseUpgrade fetches it too ("Turtles: ..."). The preview no longer
+  counts node.lua as the computer's used space. test_node_store.lua.
 - Install drive: the Disk Drive under the computer ("bottom", not wired;
   CONFIG.turtles.installDrive). A floppy put in gets the installer + current
   node.lua at once (TT.prepareInstallFloppy on the "disk" event, comms
@@ -191,6 +314,88 @@ PneumaticCraft drone rides, turtle mapping/surveys, and an AE2 ME network view.
   to % 100000; handle uses m.from as the sender). LOADER copies are always parked (one
   loader per dimension; opt.canUse). A promoted miner joins a team when no plan runs
   (the next NEW FIELD). test_dups.lua, node_dup.lua, miner_dup.lua.
+- SURVEY REBUILD, PHASE 1 (the owner: "3 days and only ~1000 chunks", "lanes behind each other", "the amount of
+  lost turtles", "copy turtles may stop loading chunks"; 47 of 73 offline, survey edge ~2,346 blocks out).
+  COPIES STAY PUT - from Advanced Peripherals' source (dev/1.21.1 ChunkyPeripheral + ChunkManager): a Chunky's loaded
+  chunk is kept under a UUID stored IN the upgrade (CHUNKY_ID), ONE loaded spot per UUID; a copy carries its twin's
+  upgrade data = the same UUID - when one of the pair moves into a new chunk the other's chunk is unloaded (frozen,
+  offline). TT.isCopy / TT.copyStays(t) (id >= 100000 and not t.ownChunky): not in TT.available / feedSurvey / party /
+  lostList / problemOf (no rescue), never sent home / for fuel (homeTick), a copy on a base trip (TT.COPY_MOVES words
+  in its task) gets STOP (no hold, 10 min apart); your DRIVE is left alone; idleWhy says so. `turtle <id> newchunky
+  [off]` = a NEW Chunky on it (a fresh upgrade has no UUID yet) -> t.ownChunky (turtles.dat) -> works again.
+  test_copies_stay.lua. CHUNK TEST (the owner: "some copy turtles can still load their chunks - mistaken for the
+  copies instead of the originals; test it when they ping-pong with no turtles / players / force-loaded chunks near"):
+  a turtle only answers from a chunk the server RUNS. TT.chunkCheck (every report, TT.receive): TT.notAloneWhy = an
+  online overworld player within (simChunks + 2) x 16 (unknown position = maybe near; another dimension = not), the
+  base within CONFIG.turtles.baseLoadR (128, SETTINGS > TURTLES), CONFIG.turtles.loadedAreas {x, z, r}, another online
+  turtle within 64; alone for TT.PROVE_S 180 s with 3+ answers (a silence > offlineAfter restarts) = t.loadsSelf ->
+  TT.chunkProve: a copy proven while its twin is proven too = two Chunkies (ownChunky); proven while the twin is
+  OFFLINE = the copy HOLDS the shared Chunky: ownChunky + twin.chunkyLent = copy id (copyStays(twin): the twin stays
+  put, TT.stayTwin for the texts); the twin proven later while the holder is too -> chunkyLent cleared. Saved in
+  turtles.dat (chunkyLent, chunkyProof). TT.chunkTick (comms): undecided copies (copyStays) + `turtle <id> chunktest`
+  (10 min, any turtle) are PINGED every 20 s while alone. TT.chunkText on the card / console. test_chunk_test.lua.
+  FUEL FOR THE WAY HOME: spots were given down to 500 fuel and a turtle sent home below 2000 -
+  the way home from the edge costs ~3,000: every edge turtle ran dry on its way home. node homeFuel() (sky highway
+  up + across + down, x1.15 + 300; m.homeFuel -> t.homeFuel): surveyPoints stops before a spot when fuel < way home
+  from there + the hop + 60 (endless: topUp first) "fuel ... is only enough for the way home"; idleEmptyFuel burns
+  what it carries (a drone's delivery) when fuel < homeFuel, up to it + 500. Base TT.homeCost / TT.surveyFuelNeed
+  (way home + CONFIG.map.batchFuel 800; endless = surveyMinFuel) in feedSurvey + idleWhy; homeTick: fuel <
+  surveyFuelNeed = low (home while it can); fuel < homeCost (cannot make it) = t.fuelShort: NOT sent home, stays
+  (its chunk stays loaded), problemOf "fuel" after 2 min idle (rescuer), DW.fuelTick also for fuelShort.
+  "Cannot make it" uses the BARE way (TT.homeCost(t, true): no margin - 500 fuel 100 blocks out still goes to the
+  fuel chest); the margin decides when to stop taking spots. NODE SIZE: the shrunk node.lua must stay < 120000
+  (test_map_load; a floppy holds 125000 with the installer) - Phase 1 left 119980: Phase 2 must make room first.
+  test_fuel_home.lua, tools/tests/node_fuelhome.lua. MEASURED: TT.statAdd in TT.receive (time since the last report
+  -> the kind of the PREVIOUS task: survey / sky / way (finding a way) / home / fuel / idle / other; a gap >
+  offlineAfter = offline), scans counted -> `survey stats` (scans an hour, the fleet's time split, per turtle);
+  `lost` (TT.lostLines: every offline turtle - copy / fuel < way home / missing / at the base / unknown, silent
+  since, last task, fuel (saved in turtles.dat now), spot + distance, last log line). test_survey_stats.lua.
+  PHASE 2, MEASURED (tools/navsim/surveysim.lua: node.lua's REAL "surveypts" job in a voxel world with hills,
+  forests incl. 20-30 high modded trees (leaves block), 25-45 high modded towers, ROOFS on pillars, a ravine, and the
+  world CHANGING behind the turtle - gravel / sand / cobble / amethyst put into cells it moved through (CHANGE per
+  move) - then "home"; SEED / SPOTS / GAP / CHANGE / MAP=known). FINDINGS: the old survey code finished every spot,
+  ~12 s a spot at 17 apart; the changed cells never got in its way (a survey never goes back over its own path; the
+  way home worked with ~200 changed cells). The REAL waste: every hop over skyMinDist (48) went up to the sky
+  highway (Y 150) and down - 60 apart ~106 s a spot. hopTo (survey spots skyMinDist .. CONFIG.hopMax 256 apart):
+  straight on, UP and OVER what is in the way (fwd fails -> up), a roof / the sky highway -> moveToXZ; then down at
+  most 24 (never deep into a ravine). Spots < 48 apart keep moveToXZ: an "always over" version was ~10 % SLOWER there
+  (over a 30-high modded tree instead of around its trunk) - tried and measured, not kept; pre-climbing to the
+  scanned top + 2 did not help either. Result (4 seeds): 17 apart the same, 60 apart 1685-1803 s -> 622-692 s,
+  120 apart 2233-2488 s -> 1155-1386 s, every spot done. run_tests "survey in chaos terrain" (seeds 1-2, gap 60
+  <= 2000 moves - the old code 3642, gap 17 <= 1200). The install floppy limit is now derived: 125000 - the
+  installer (~1.9 KB) - margin = 122500 (test_map_load).
+  PHASE 3 (dealing), MEASURED in test_survey_pack's travel model: RINGS KEPT - 3765 spots, 17.9 blocks a spot
+  (17 = the next spot), 0.01 sky trips and 0.008 overflights a spot; the owner's "lanes" are neighbouring rings 17
+  apart (one map cell at 64 blocks a cell). SPOTS PER HAND-OUT 4 -> 16 (CONFIG.map.packSpots default, SETTINGS 1-32):
+  every hand-out costs a turtle 6-10 s in the game (report idle, the base's 2-s tick, start, requestKnowledge waits up
+  to 3 s) - sim(.., overhead 6): 4 = 3086 spots, 8 = 3540, 16 = 3674 (10 s: 3026 / 3370 / 3580), same travel and
+  overflights; the test checks default >= 1.1 x the old 4.
+  PHASE 4 (fuel far out): a LOW turtle (fuel < surveyFuelNeed) whose way home costs >= CONFIG.turtles.droneFuelFrom
+  (600) gets a DRONE instead of the trip home and back (~5,000 blocks from the edge): homeTick sets t.dwWant (not
+  sent home; idleWhy "a DRONE brings fuel"), DW.fuelTick starts a run after 10 s (DW.fuelRun(id, why, edge): a FULL
+  load = DW.slots x 64), then sends "refuel" (a turtle that can still get home does not burn carried fuel by itself),
+  done when fuel >= surveyFuelNeed. No drones (DW.canFuel: fuel runs on + DW.notReady nil) / the run failed / the
+  fuel did not burn in 3 min -> t.dwEdgeFail -> the trip home (30 min). test_dronework.lua "fuel FAR OUT".
+  The owner's storage idea was dropped ("ignore what I said about storage").
+  PHASE 5, NEAREST WORK FIRST (the owner: "200 chunks surveyed while 350 chunks mined - something is broken"; away 11 h
+  = +217 chunks, turtles on 1,500-3,600-block sky trips). test_survey_far.lua (made-up base, edge 2,400 out, patches
+  mapped, 10 turtles, one lost an hour + a new one from the base, 3 x 8 h) FOUND: every long trip was a batch MIXING
+  two places - spots GIVEN BACK (q.redo: a lost / failed / avoiding turtle's batch) were dealt to ANY free turtle, one
+  8,000 blocks round the map flew there for a few spots and back to its ring. Now (ringDeal): given-back spots only to
+  a free turtle within MAP.REDO_NEAR 800 (dealEven, then a share's spots farther than that back to q.redo); the rest
+  wait for a turtle working near them (the loose ring brings one) or for a turtle with no ring work (step 3, nearest
+  first); spots of a SURVEY: ALL you start (addSurvey: p[3] = 1) still go to anyone. A loose ring / a helper: the
+  still-to-do stretch's spot NEAREST to the turtle (nearestOff: stride 4 + refine), SPLIT there (splitAt: the part
+  before stays loose; a helper owns its part) - not where the lost turtle stopped / the ring's far end; a loose
+  stretch farther than 400 is compared with the next new ring (the farther one is kept loose). Old dealing: 1935
+  spots/h, 31.9 blocks a spot, 44 trips over 1,000 blocks; now ~2140, ~27.8, 2-4 (+ new turtles leaving the base).
+  "BUSY: IDLE" REFUSALS: a job taken while the worker still did idle work (fuel chest, top-up) left task "idle" - the
+  base sent a 2nd order, refused "busy: idle (press STOP first)"; for survey spots that was REFUSED = left out 2 min.
+  node listener: task = "starting <cmd>" when it takes a job (node_hand.lua); base MAP.batchResult: "busy: ..." is no
+  refusal - t.surveyFail.wait 15 s, not 120 (a turtle on an older program still says "idle": without a wait it got spots
+  every tick); idleWhy "busy with another order". REVIEW: newRing out of time while looking for a new ring takes the
+  waiting loose ring (it returned nothing); TT.codeStore on a floppy holding the old copy with no room for both
+  deletes the old one first (writeSafe writes the new one before the old goes).
 - node.lua never just ends: the main parallel.waitForAny is in a pcall; an
   error is written to `node_crash`, the turtle reboots (5 s, longer when it
   keeps crashing) and tells the base ("restarted after an ERROR: ..." in the
@@ -256,7 +461,36 @@ PneumaticCraft drone rides, turtle mapping/surveys, and an AE2 ME network view.
   fuel runs REFUEL once by itself (doRefuel(true); S.refuelDone) - only up to FIRST_FUEL (1000), then
   it can leave (factory build spot); idle top-up does the rest wherever it waits. A job that comes
   BEFORE that first refuel: ensureFuel (first move, fuel < 20) runs it (before: endless fuel was not
-  known yet -> 0 fuel, the new turtle never left). node_firstfuel.lua.
+  known yet -> 0 fuel, the new turtle never left). OUT OF FUEL WHILE IDLE (idleEmptyFuel, idle loop):
+  fuel < 20, no job -> doRefuel(true) once a minute (learns endless items, burns real fuel): a COPY or a
+  turtle whose S.reuse did not hold the item it carries sat at 0 for good (idle top-up used KNOWN
+  endless items only); an EMPTY S.reuse no longer counts as "first refuel done". node_firstfuel.lua.
+  FUEL REVIEW (node_fuel.lua, test_fuel_trip.lua): topUp learns an item as endless only if the SAME
+  name is still there with the same count (a lava bucket leaves an empty bucket - was learned as
+  endless); remembered REUSE_SLOTS are checked (another item may sit there after unloading - "only
+  reusable" burned it), none left -> all 16 scanned; all endless items refusing -> gives up after 100
+  ticks (dry; ensureFuel has no budget - it waited for ever). NEVER_BURN / neverBurn: planks, logs,
+  chests, barrels, wooden tools ... are never burned (REFUEL, idle, the chest at home - it may be the
+  owner's chest); isFuel no longer matches coal_ore. ensureFuel mid-job: still < 20 after coal & co
+  -> topUp(1000, false, 400) finds an endless item it did not know. REUSE_SLOTS is a GLOBAL (the
+  report, defined earlier in the file, reads it): m.endless -> t.endless -> homeTick sends no fuel
+  trips / low-fuel home trips to a turtle with endless fuel and >= 20 (they cut its top-up).
+- DUG JUNK (node.lua JUNK / isJunk / dropJunk / freeSlots): survey turtles came back FULL of
+  dug blocks (nothing ever threw them away; a full turtle cannot take fuel from a chest). tryDig:
+  after a dig with <= 2 free slots -> dropJunk: plain stone / dirt / gravel / netherrack ... (exact
+  names after the colon, any mod - never ores, fuel, tools, redstone/glowstone), thrown out on a side
+  WITHOUT an inventory, never in the base zone; idle with 0 free slots -> once a minute too. ORES TOO (the owner: "stop
+  making survey turtles hold ores - a full turtle cannot swap items"): tryDig compares the slot counts before / after
+  the dig - anything that came in and is not kept -> dropJunk at once. Then ("they dig trees and leaves and other modded
+  items too"; a junk LIST always missed modded drops, and what a turtle held from before was never learned) a KEEP list:
+  keepItem(name, slot) = isTool (pickaxe, scanner, modem, chunk, drive, floppy, disk, turtle, computer, crafting,
+  automata, _core, bucket, cell) or isFuel or S.reuse, else not neverBurn (logs, planks, saplings, sticks go) and the
+  GAME burns it (refuel(0) on that slot - a modded fuel / a drone's delivery stays); everything else is thrown away
+  (dropJunk: away from the base, never into a chest). Idle with <= 2 free slots: once a minute. node_junk.lua. m.freeSlots
+  -> t.freeSlots. LOST TOOLS: the base compares t.gear with the new report - "scanner" / "pick" gone ->
+  WARNING + sysLog "<turtle> LOST its Geo Scanner (last job: t.prevTask, now at .., N free slots)" (the
+  owner finds survey turtles with EMPTY inventories - cause not found yet; this tells us when / where).
+  node_junk.lua, test_lost_tool.lua.
 - Fuel chest at home (node.lua fuelStation): idle AT home with fuel < lowFuel
   (2000) -> sucks from an inventory below/above/in front (never a turtle),
   burns ONLY fuel items up to stationFuel (20000), non-fuel and empty buckets
@@ -295,6 +529,17 @@ PneumaticCraft drone rides, turtle mapping/surveys, and an AE2 ME network view.
   counts, fuel total + lowest, program, survey progress, mining teams, NEEDS A
   LOOK list - tap = select); tapping the selected turtle again deselects. List
   fuel colours by amount (<1000 red, <5000 yellow), not by share of the tank.
+  STUCK MEANS COULD NOT MOVE (the owner: "some turtles report that they cannot move when they can"): node.lua set
+  S.stuck for ANY failed goto / home / move / survey / surveypts / rescue - "fuel only for the way home", "low fuel",
+  "position/facing unknown", "the offered home is not free", "no home set", "area too big" - so the base showed STUCK,
+  left the turtle out of fuel / home trips (homeTick) and sent the rescuer (problemOf). Now MOVE_FAIL / isMoveFail
+  (node.lua; the SAME list as TT.MOVE_FAIL: blocked, could not reach, no progress, going in circles, out of fuel, gave up
+  after, no way) decides; moved() clears S.stuck at any step; a non-move failure leaves it as it was. Base TT.isStuck(t)
+  (the words - also for turtles on an older program - and not moved > 3 blocks from stuckPos, y too) everywhere: status,
+  problemOf (TT.problemOf for tests), homeTick fuel / home / home-dig, map marker, the RESCUE button. NOT MOVING: QUIET_TASK
+  also building / starting the new turtle / crafting / scanning / looking around / checking the core / driven by hand /
+  restarted / duplicate (they stand still on purpose - stallTick STOPPED them after 3 min). FINDING A WAY says "going
+  round something in its way". test_turtle_status.lua, tools/tests/node_stuck.lua.
 - Route planner (node.lua astar): a sideways direction change costs 0.4 (a
   turn), opposite 0.8 (HD[k] = last sideways direction); h weighted 1.001
   (tie-break). tools/navsim/world.lua: turns cost time and are counted; maze /
@@ -343,7 +588,75 @@ PneumaticCraft drone rides, turtle mapping/surveys, and an AE2 ME network view.
   Refused -> one note per reason + "joinno" {why} (the miner notes it). Miner: a new plan with
   ci > 0 -> S.lateFor -> J.late: CHUNK_LOCK off until it is INSIDE the team's chunk. A paused
   field: joiners are appended too (sorting shifted everybody's number mid-field); newTeamPlan
-  sorts by ID again. A lost LOADER: MINE.drop forgets it; miners (m15) leave a loader silent 10 min
+  sorts by ID again. MINER UPDATES (m21; base MINE.loadCode / startUpdate / updTick, console `mine update
+  [stop]`, MINING tab UPDATE MINERS two taps): miner.lua is NOT kept on the base's disk - upgrade.lua
+  fetch mode (o.fetch = "miner.lua", o.group = "miner"; manifest group miner + slim:miner) downloads
+  it checked, kept as miner_code.lua on a STORAGE HELPER first (MINE.storeCode like TT.codeStore - the owner: "disk13/miner_code.lua not saved (45 KB free, needs 82 KB)" with 2.5 MB on helpers; miner_where.dat, MINE.readStored; the floppy copy is deleted), else a data floppy; a miner.lua dragged next to
+  inventory.lua, GitHub and the stored copy: the NEWEST (MYVER mN, MINE.verNum) wins, kept on the floppy, the dragged file removed (an old dragged copy used to win for good - "I still see m23"). Every RUNNING team is PAUSED first (U.resume),
+  then each online unit whose m.code (codeHash of its own program file, the same as make_manifest h)
+  differs gets "upd" {ver, i, n, text} pieces of 8000 straight into state.tOut (NOT u.queue - that
+  resends on every report), again after 60 s unless m.updReady; when a whole team runs it -> "start"
+  again (only teams it paused), DONE note; 1 h -> WARNING, teams started. A team with an online unit
+  WITHOUT m.code (m20 or older) is left alone (hand copy once). Miner: updPiece (checksum + compiles
+  -> UPD_READY), installMinerUpdate ONLY while paused (miner paused branch, not dumping; loader: not
+  running, no crossing): miner.new, size checked, old -> .old, save(), reboot - the state file keeps
+  role / team / field / job. minesim team2update / team3updatecaves (same plan id + team after, all
+  restarted, mining goes on), tools/tests/miner_update.lua, test_mine_update.lua. TURTLES IN THE WAY
+  (m23): step() reads the blocking turtle's id (peripheral getID); patience 4 s if I am the higher id or
+  it is the loader, else 20 s; then (miners) returns TURTLE_WAY and goTo goes AROUND it (passTurtle: one
+  block aside - dug, in CHUNK_LOCK, not near the station, never into a turtle - two along the line,
+  back); the goal itself taken -> stop next to it ("near" = arrived); the last cell of a line taken
+  (a corner) -> the other axis first. Before: both waited 50 s, failed, came back the same way - a
+  dead turtle (lost in a crash) in a shaft STOPPED the miner after 8 tries. "turtle is in the way"
+  errors retry up to 20x without the long waits. minesim team3blocker / team4blockercaves /
+  team5blocker (a dead turtle id 999 appears in front of miner 1 at 30 min; sim answers getID). Base
+  m24 (the owner's screenshots: two miners stacked in the lane column, "a turtle is in the way"):
+  LANES MOVE WITH THE NUMBERS - after a drop the miners renumber, lane = yt-(k-1) changes. A miner in
+  "ready" whose number changes (or that finds itself NOT at its lane, e.g. after a restart) goes back
+  to phase "lane" (before: waited at the OLD height for good - the miner below wanted that very block);
+  in the lane column it moves straight up/down there; goTo(..., exact) for the lane = wait for THAT
+  block (no "near"), STEP_ASK false for the goal block. "notready" {ci}: a miner leaving "ready" (index
+  change, tunnel override, wrong spot) tells the loader - before, its old ready flag let the loader
+  cross WITHOUT it (left in an unloaded chunk; failed team5dropready on m23 too). MAKEWAY: a miner
+  blocked by a team mate (not its own goal) sends "makeway" after 3 s (every 15 s); a miner waiting in
+  "ready" steps forward into its X1 block (already dug - no digging needed) for 25 s, always back
+  first (index change, pause, "go"). The LOADER's every team message carries m.team (S.team): a
+  miner's modem is off while it digs and missed the 30-s "team" messages. equipTool waits up to 5 s
+  and says what the side showed ("left side shows: X, read as Y") - the owner's miners still sometimes
+  say "the pickaxe did not show up". minesim team4dropready / team5dropready / team4dropreadynopick
+  (drop while the others wait at their lanes; nopick = pickaxes cannot be put on for 10 min); the sim
+  now updates ENVS on SHUTDOWN too (the checks read a dead program before).
+  m25 (the owner: "when the turtle moves out of the way it could go to unloaded chunks"): MAKEWAY
+  no longer steps FORWARD into X1 (the next chunk - maybe not loaded, or loaded but not running at
+  the edge of the loaded area = a frozen turtle): stepAside = one block back / to a side INSIDE the
+  job chunk (open first, else dug), OUT_OF_LANE {t, f} -> back the opposite way. passTurtle's side
+  steps stay in CHUNK_LOCK, else the chunk the turtle stands in. minesim team3makeway /
+  team5makewaycaves (a make-way request to a waiting miner) + EVERY scenario: a miner in "ready"
+  (no crossing due) outside its job chunk = FAIL (m24 failed it).
+  m26 A SERVER CRASH RIGHT AFTER A CROSSING (the owner: "a server crash sometimes returns the miners to the old chunk and
+  leaves the loader in the new chunk" + "or vice versa"): the world goes back to its last save, the turtles' state files
+  (written at once - the next job is saved BEFORE the step) do not; only the loader's chunk is loaded, so miners put
+  back into the old chunk are FROZEN there (silent -> paused 20 min -> dropped at 60). Now: every miner says "hello"
+  {boot} + gpsCheck at every start (GPS_RUN); a miner whose GPS chunk is the one BEFORE its job's chunk -> J.late (the
+  chunk lock off until inside, like a late joiner) + "behind" to the loader, walks over. The loader (leaderCrashFix,
+  work phase): its own GPS chunk = the previous one -> walks to where its step took it; else, with P.crossedAt (saved at
+  each crossing) less than 30 min before LOADER_BOOT and 90 s after the start, team members not heard since
+  LOADER_BOOT (not at the station) -> ONCE per chunk (P.fetched) it goes one block back into the old chunk (its
+  Chunky loads it - they wake up), waits until each has spoken + 45 s (CONFIG.fetchWait 300 s at most), goes back.
+  minesim team3crashback / team3crashbackloader / team5crashbackcaves (c.gate: a restarted turtle in an unloaded chunk
+  does not run; the old code: "never ran again", 0 ores after the crash).
+  m27 NEXT TO THE JOB CHUNK (the owner's screenshot: "PAUSED: would leave chunk -304,705 ... gave up after 8 tries" - 12
+  blocks into the next chunk after an unload trip): a miner whose GPS chunk is ANY chunk next to its job chunk (not only the
+  one before it) -> J.late = walks back in (CHUNK_LOCK off until inside); "behind" to the loader only for the chunk
+  before. minesim team2warpoff / team3warpoffcaves (the first trip back from the station lands one chunk off; r1 loading -
+  the game showed it running there): the old code STOPPED, the team waited for good.
+  MINE.silentTick: a unit silent 15 min (mining.silentWarn) -> ONE WARNING + sysLog with last spot,
+  dim, job, last note (a crash can delete a turtle: "no trace"); `mine` shows offline units' spot. TOOL CHECK (m20, toolNow): turtle.getEquippedLeft/Right where they exist
+  (the ITEM: modem / geo / pickaxe / "none"); else the side's peripheral type - BUT a side whose
+  upgrade has no peripheral (a pickaxe) shows the BLOCK NEXT TO the turtle (the loader, another
+  miner, a chest): any type other than geo / a wireless modem = "pickaxe" (a wired modem block:
+  isWireless false). Before: "the pickaxe did not show up after equipping it (gave up after 8
+  tries)" for miners set up side by side. minesim team2neighbour / team3neighboureq. A lost LOADER: MINE.drop forgets it; miners (m15) leave a loader silent 10 min
   (LEADER_SEEN) when another one says loaderhere. MINE.drop(id) (console
   `mine drop` and a DROP button on the MINING tab for a miner gone 20+ min). Unloading: one miner at the station at a time
   (S.stationUse, 6 min max); each miner needs its own `miner station` (the
@@ -418,6 +731,21 @@ PneumaticCraft drone rides, turtle mapping/surveys, and an AE2 ME network view.
   an entry in state.players (the owner is always added there, even offline: that
   kept away mode from ever starting). Base OFF longer than `after` right before
   the owner is seen again -> one box saying the base was off (chunk unloaded).
+  AWAY.left = when you LEFT (offSince; the report's "Away X" and the short check count from it, not
+  from start 5 min later). MINING GAINS are counted AS THEY COME (AWAY.track per unit every tick while
+  on; AWAY.acc / AWAY.prev saved in away.dat): a miner's counters restart at 0 after a server restart /
+  update, "now minus at start" gave +0. back() pcalls the report and the tick pcalls back(): an error
+  never leaves AWAY.on stuck (no report ever again + a days-old snapshot). Going offline is noted once
+  in the SYSTEM log; console `away` shows the owner, the player-list source and how long offline.
+  test_away_store.lua, test_ticks.lua (coming back in a messy world).
+  THE REAL REASON IT NEVER STARTED (fixed): the Inventory Manager's getOwner() answers only
+  while the card's player is ON the server (AP looks the player up) - at log-off state.owner
+  became nil, AWAY.ownerOnline() "could not tell" (nil) and nothing ever happened (the tests
+  set state.owner by hand). Now rememberOwner -> owner.dat (OWNER_SAVED, base_players.lua);
+  knownOwner() = state.owner / saved / CONFIG.owner; refreshInventory keeps the name while
+  offline with state.status "owneroff" ("YOU ARE OFFLINE" screen); AWAY.ownerOnline uses
+  knownOwner. test_away_owner.lua fakes the real getOwner (nil while offline) - the old code
+  fails it.
   NOTE cfg helpers (MINE.cfg / AWAY.cfg): `type(t)=="table" and t[k]` gives
   false, not nil - use an if (fixed; the mining cfg was never sent before).
 - TURTLE FACTORY (base_factory.lua FACTORY, comms tick FACTORY.tick every 10 s,
@@ -488,7 +816,9 @@ PneumaticCraft drone rides, turtle mapping/surveys, and an AE2 ME network view.
   lays out exactly, extras back, craft, ALL back into the chest; any failure -> all back)
   -> "tcraft" -> FACTORY.craftResult imports the chest into AE2 -> next craft / "parts"
   (j.rounds > 30 = wrong recipe -> fail). `factory recipes|forget <item>|crafter <id>`.
-  The preview stub counts the SLIM program sizes (dist/) as the computer's used space.
+  The preview stub counts the program as the computer's used space: the PACKED base files (dist/z/*.luz) + unzip.lua +
+  the slim inventory / store / startup / upgrade (the slim sizes left ~80 KB free - a 1000-player test file stopped
+  fitting after a few KB of new code).
   test_factory.lua (taught), node_craft.lua.
 - SCHEMATICS (base_schem.lua SCHEM, stage 1 of the builder turtles): Create's
   Schematic and Quill `.nbt` (= vanilla structure format, also Minecraft's own
@@ -505,16 +835,250 @@ PneumaticCraft drone rides, turtle mapping/surveys, and an AE2 ME network view.
   not belong -> back into AE2, place what is missing; daily rotation per site at
   an hour), stage 3 structure "spawning" at flat spots from the map. Litematica /
   WorldEdit files are refused with a hint. tools/tests/fixtures (make_fixtures.py).
+  REVIEW (the owner: "go over the schematic code"; test_schem_review.lua, test_dronework): a LONG tag (8 bytes - Create
+  machines keep their network id as one) crashed the reader (POW[63] = nil; negatives now from the inverted bytes:
+  exact); cut-off / broken files say "schematic: ..." (stored-block NLEN, distance past the start, bad symbols, every NBT
+  read checked against the end); byte arrays read in pieces; parse drops blocks with no palette entry / outside the size.
+  itemOf: half = "upper" of anything = no item (stairs say top / bottom); ITEM maps crops / vines / stems / filled
+  cauldrons / candle cake / tall seagrass to their items (the build waited for "carrots" for ever); SCHEM.isFluid (water,
+  lava, a block whose only property is level - not cauldrons / composters) -> "<name>_bucket" = left out; materials'
+  4th result = fluid blocks left out (they were "short: water bucket"). A store deletes copies of that name elsewhere
+  (SCHEM.list takes the first - the OLD one came back after a restart); delete removes all. SCHEM.cache = the newest
+  SCHEM.KEEP 4 parsed (SCHEM.remember; the running build's kept). READ IN THE MAP WORKER: SCHEM.get (memory only);
+  SCHEM.load from any other worker asks the map worker (SCHEM.request -> SCHEM.wanted -> processPending -> SCHEM.read
+  with TT.workYield, event schem_loaded) and waits <= 120 s; the screen (DW.select: DW.sel.reading "Reading ...") and the
+  comms tick (planOf -> nil, "reading", true: J.why, no pause) never wait; no map worker (SCHEM.otherReader) = read
+  there. BUILD: planOf drops the air list when the job has no clear (after a restart EVERY build without clear paused
+  "the schematic changed"); DW.MEMORY_ONLY (plan, waitUntil, anchorSent, short - os.clock times) never saved; an item
+  AE2 could not give -> J.short[item] 5 min: DW.nextTrip skips it, the rest goes on, nothing else left -> nil, why
+  ("only X left - AE2 has none"); statusLines "AE2 has none of".
+  ON A STORAGE HELPER (the owner: "how do I upload a schematic when the main computer does not have enough storage"):
+  SCHEM.store tries a STORAGE HELPER FIRST (toHelper: usable, free >= encoded size + 32 KB, most room first; written +
+  read back) as "store:<id>/schematics/<name>.b64" - store.lua reads / writes TEXT, a schematic is binary gzip:
+  SCHEM.enc / SCHEM.dec = base64 (arithmetic, pauses with the yield). schem_where.dat (SCHEM.remote, SCHEM.WHERE_FILE) =
+  {name = path} on the computer: SCHEM.list merges it WITHOUT asking the cable; SCHEM.read fetches it with STORE.read
+  (the map worker), a quiet helper -> "did not answer - try again"; store / delete remove copies everywhere (delAny);
+  then the floppy, then the computer as before; nowhere -> says to start a storage helper. test_schem_review part 8.
+  DROPS WHILE THE BASE RUNS (the owner: "I need to stop the program to upload"): dropWorker (base_workers, in inventory.lua's
+  list) only waits for "file_transfer" -> SCHEM.onTransfer (the screen loop's branch is gone: a drop arriving while it waited
+  for a peripheral was LOST, and both would take it). .nbt -> SCHEM.pending as before; ANY OTHER FILE -> SCHEM.saveDropped:
+  next to inventory.lua (BASE_DIR) through "<name>.drop", room = free + the old copy - 16 KB, size checked, replaced; the note
+  says what next (base_* / inventory / startup / upgrade: restart; node.lua / store.lua: picked up by themselves; miner.lua:
+  mine update); a VOICE_FILES name -> refused, "voice update" (a computer copy would lose to the floppy / helper one). test_schem.
+- DRONE WORK (base_dronework.lua DW, comms tick DW.tick; dronework.dat via dataPath): PneumaticCraft
+  drones do jobs with items from AE2. Drone chunk loading is OFF on the owner's server: a drone only
+  works where a player / an online turtle (its Chunky) / the drones' home chunk keeps it loaded
+  (DW.loaded). WORK CHEST (CONFIG.drone.workChest = network name + workChestAt x y z; console `dw chest
+  [<n|name> me]`; FACTORY.reserved / SUPPLY.refuse know it): EMPTY, only the base + drones use it -
+  DW.giveToChest exports PLAIN items (FACTORY.variants fingerprint, never the owner's own), the drone
+  inventory_imports, J.carried = exported minus left in the chest; every trip starts and ends with
+  stepUnload (inventory_export into the chest -> DW.chestToAE2). One mission per trip: submitDrone
+  kind "work" {title, steps} (runMission / buildMission accept it; failures go home as usual); DW.trip
+  is read back when the drone is free (tripDone). goNear: within workFly (64) the drone FLIES (no air),
+  else travelTo. Carry = DW.slots x 64 = ONE slot by default (the owner: "a drone can only carry a max of
+  64 items"; Inventory Upgrades are not counted - CONFIG.drone.slots if the drones really have more); a GIFT bigger
+  than one trip (or of an item stacking to 16 / 1) keeps the rest in the queue for the next trip (V.giftTick); one item type per trip, so no item filters are needed. FUEL RUNS (DW.fuelTick, `dw fuel <id>`,
+  `dw auto on|off` = drone.fuelRuns, `dw fuel item <item> [n]` = drone.fuelItem / fuelCount, default
+  the factory fuel or coal x32): an ONLINE turtle (= loaded by its own Chunky) with fuel < 20 for 30 s
+  -> fuel into its inventory (node idleEmptyFuel burns it); max 3 tries 10 min apart; DW.fuelBusy holds
+  the rescuer (problemOf) while flying and 3 min after; DONE / WARNING when the fuel did (not) burn.
+  SCHEMATIC BUILD (`schem build|preview <name> [here|place|x y z] [facing <dir>|turn left|right|around|rot n] [centered]
+  [clear]`, status / pause / resume / stop; chat `$drone build <name> ...` -> DW.chatPend (300 s) -> `turn ..` / `facing ..`
+  (DW.placeAt at the spot first asked for) -> `yes`). WHERE + WHICH WAY (the owner: "make it intuitive - rotate it in a
+  direction"; test_schem_build.lua): DW.where(s, words, i, who, rot) -> DW.placeAt {rot, how, ox oy oz, text}: no place /
+  here = "front" (DW.origin: the Player Detector's yaw -> DW.lookDir N E S W, the near edge 2 ahead, centred, bottom at
+  the feet); a place / x y z = the GROUND block (corner = its north-west corner, or centered), bottom one above it - the
+  old "me" put the floor INTO the ground. TURN = clockwise from above, "facing east" = the file's north side faces east
+  (DW.turnText says it). DW.LATE / isLate: torches, signs, doors, rails ... after every solid block (bottom up they came
+  before the wall they hang on). Page BUILD card: SEEN FROM ABOVE preview (drawBuildPreview: DW.sel.top = the top item
+  per column, DW.topAt = the inverse of DW.plan's turn, north up, @ = you), WHERE (in front of you / a saved place
+  centred, DW.buildSpot), TURN LEFT (dwrotl) / TURN RIGHT (dwrot), CLEAR, the placement text, BUILD <NAME> THERE. DW.plan = place list bottom up (y, item, chunk, x, z) + air list top down (clear);
+  fluids (buckets) skipped; progress = J.done / J.dug strings ("0"/"1" per block, saved; the plan is
+  rebuilt from the schematic after a restart - same order); DW.nextTrip = one chunk, one layer, one
+  item, <= carry (dig: 64). Placed = carried minus what came back (a taken spot is left as it is,
+  counted in skippedN). Not loaded -> a free turtle (TT.available, fuel > 2000) gets "goto" the chunk
+  middle ABOVE the build (plan.top + 3) and is t.dwAnchor (not in TT.available, no idle-home, idleWhy
+  says so); it follows chunk by chunk and goes home at the end. 5 failed trips in a row -> paused; low
+  air / item short -> waits (2 / 5 min). Drones place blocks the default way round (stairs / logs may
+  face another way). test_dronework.lua (fake drone / chest / AE2 / world).
+  DRONE WORK PAGE (base_ui_work.lua drawWorkPage, page "work" in the DRONES group; the owner: "all
+  commands and no UI"): WORK CHEST card (CHEST > = DW.nextChest through DW.view.cands - empty
+  inventories <= 54 slots, not reserved; BLOCK UNDER ME two taps = DW.chestHere), FUEL RUNS card
+  (AUTO ON/OFF; FUEL: <item> > = DW.nextFuel through DW.view.fuels - only fuels AE2 has, read in
+  refreshView; x<n> PER RUN > = DW.nextFuelCount 8/16/32/64 - the owner asked "how do I set the fuel
+  type"; NO FUEL turtles + run state, SEND FUEL two taps), PLACES card (SAVE WHERE I STAND =
+  DW.markHere "Place N", DELETE two taps), BUILD card (schematic buttons -> DW.select reads size +
+  materials vs AE2 ON THE TAP; the preview from above; WHERE: in front of you / a saved place >, TURN LEFT / TURN
+  RIGHT, CLEAR; BUILD two taps; while building: progress bar, now / why / anchor, PAUSE / RESUME, STOP). Drawing
+  reads only DW.view (DW.refreshView in DW.tick every 10 s while the page is open: cable chests +
+  SCHEM.list + SCHEM.cache) / DW.job / DW.sel / state. Tab badge = a dot while a job runs.
+  test_dronework.lua taps every button.
+  EVERY DRONE AT ONCE (the owner: "why use 1 drone? why not use more?" + "a drone can only carry 1 type of item"; the
+  idea of a 2nd work chest at the build site: the ME Bridge only reaches chests on the base's wired cable, a site chest
+  would be filled by drone trips anyway): DW.trips[drone key] = one trip per drone (DW.trip = one of them, for older
+  talk packs; DW.anyTrip(kind), DW.tripList()); giftRun / fuelRun / fuelTick no longer refuse while another job runs -
+  DW.freeDrone decides. ONE WORK CHEST, TAKEN IN TURNS: stepLoad / stepUnload fly to the chest FIRST, then DW.chestTake
+  (DW.chestBy = drone key; waits 0.5-s sleeps up to 180 s; a holder whose mission is over or 120 s old is not waited
+  for) for the export / import / back-to-AE2 only, DW.chestFree on every way out; DW.test refuses while a drone holds
+  it. BUILDS: DW.tick finishes every done trip, then DW.buildOne per free drone (up to #droneOrder a tick):
+  DW.nextTrip(J, cap, busy) skips spots out with a trip (buildFlying: busy dig / place idx, how many out, their
+  tr.layer - tr.at is the start time after submit -, kind, late); no place trip while any dig is left; side by side
+  only in the SAME layer and kind, LATE items (torches, doors ...) only once no solid trip is out; a site not loaded
+  waits while trips are out (the anchor stays); "finished" only when the last trips are back. One item type per trip
+  as before. Page / console list every trip with its drone. tools/tests/test_drone_parallel.lua (2 drones as
+  coroutines, shared chest / AE2 / world: 153 blocks, 2 trips at once, chest never mixed, one kind per drone, no spot
+  twice, torches after the floor, exact AE2 counts, a gift during a build) - the old code fails 3.
+  AUTO-CRAFT (the owner: "can the stuff for schematics get auto crafted?"): DW.craftTick(J, force) (DW.tick every 2 s,
+  itself every 30 s; startBuild + `schem craft now` force) - DW.materials' short items: FACTORY.meCraftable (exposed from
+  base_factory) -> craftME(item, need - have) (MEX follows the job); not again while that item's MEX job is
+  calculating / crafting or 10 min after a request (J.craft[item] = {n, at epoch s, err}); no pattern -> J.noPattern
+  (statusLines "No AE2 pattern for"); a J.short item that was asked for is looked at again within 60 s.
+  CONFIG.drone.buildCraft (default on; SETTINGS > DRONES; `schem craft on|off`). test_dronework "AUTO-CRAFT".
+  BUILD SPEED (the owner: "a drone built half of it and most of the time it keeps waiting for items"): (1) every work
+  mission ended with the HOME step (returnHome) - back to the charger, and the next trip flew to the chest again: a
+  build trip's cmd.stay (DW submit, kind dig / place) + canTeleport(dr, 3) -> it stays at the work chest ("Stays at the
+  work chest for the next trip"); parkCheck resets dr.awaySince while the drone is busy (an old count sent it home in
+  the second between two trips) and still sends it home after 20 s idle; (2) a drone under CONFIG.drone.minPressure
+  got trips that failed at the start ("Pressure too low") and each paused the WHOLE build 2 min: DW.airFor checks
+  minPressure first (gifts / fuel runs / buildOne's freeDrone okFn) - it charges, the others work; a "Pressure too
+  low" failure no longer sets J.waitUntil. test_drone_parallel (no home flights between trips; a 1-bar drone gets no
+  trip, no stalls) - the old code fails 3.
+  THE OWNER'S test1 (2x2x2: stone, anvil, chest, barrel below, 4 salt blocks above; "3 drones work then 1 continues",
+  "most of the time it waits for items to go into the chest"; work chest = entangled:tile_6): one item kind per trip =
+  4 bottom trips + 1 salt trip, and the layer rule kept the salt trip until the bottom was done. Now PLACING goes on in
+  ANY layer at once (a drone places in mid-air); clearing stays one layer; FALLING blocks (DW.isGravity: sand, gravel,
+  concrete powder, anvil, scaffolding, pointed dripstone, suspicious_*; p.grav in the plan) wait until DW.lowestOpen
+  (lowest layer with a block to place or out) is their own; LATE ones until no solid trip is out. buildOne tries up to 20
+  groups, passing over blocked ones (gravel before salt in the plan kept the free drone idle). "Empty the drone first"
+  is skipped while dr.dwEmpty (set by an unload that worked; cleared by a load, a dig, a failed trip) - it was a chest
+  visit + the chest lock + an export on every trip. TIMES: runMission keeps each step's real ms (ms.ms); tripDone ->
+  noteTimes -> DW.stats (running averages: empty / load / fly / place / back + the load's chest wait / AE2 -> chest /
+  drone takes from stepLoad's T.tWait / tGive / tTake) -> DW.timesLine in schem status ("Trip time (avg of N): ...").
+  test_drone_parallel test1 part (all 8, gravel after the bottom, a free drone takes the salt with the bottom out, no
+  empty-drone visits at the start, the times line).
+  KEEPING APART (the owner: "a drone will try to place a block where another drone is standing"): a trip's spots are
+  ONE 8 x 8 square of one chunk (nextTrip's ck - DW.plan's order is unchanged: saved J.done strings index it); tr.box
+  (DW.boxOf) at the start; buildOne passes over a group whose box is within DW.gap() (CONFIG.drone.buildGap 3) of a
+  flying trip's box on every axis (DW.tooClose) - a tiny build (test1) goes one drone at a time now. A spot that
+  REFUSED its block (back > 0: which one is not known): the trip's tried spots get J.again[i] = group, J.againN[g] =
+  how many came back, J.againUntil 20 s (memory) -> ONE 2nd try = only that group, loading just againN blocks, all
+  its spots in the area (a filled one refuses) -> done; what comes back then = J.skippedN. Before: counted "taken",
+  the spot stayed EMPTY. test_drone_parallel: the fake drone blocks the cells next to all its spots while it works
+  (0.2 s a block) - the old code lost 58 of 153 blocks; a 24 x 24 checkerboard + one spot blocked once.
+  CHAINS + QUEUE (the owner: "a road split into multi schem files"): DW.queue (dronequeue.dat; DW.loadQueue
+  validates) of builds / clearings; DW.queueTick (DW.tick, no job running) starts the next (a schematic not read yet
+  is requested, never waited for; a failed start = WARNING, dropped). DW.chainPlan(spec, words, i, who): "a,b*5,c"
+  (DW.chainNames), `toward <dir>` taken out, the first piece placed by DW.where, the next ones right after the one
+  before along dir (else the way you look), centred across, the same rot. Console schem chain / queue [clear] / skip,
+  schem stop drops the queue; chat $drone chain ... -> yes (DW.chatPend[name#chain]).
+  CLEARING WATER / LAVA (DW.startDrain, kind "drain", J.box, J.fill DW.DRAIN_FILL dirt (a hand digs it and it drops) - no falling / hanging fill, >= 3 x 3,
+  <= DW.DRAIN_MAX 20000 blocks): DW.drainPlan = BOTTOM UP a layer at a time (p.grav on all: a block over an open
+  spot would shut the water below in, out of reach), walls then the inside (a block placed into water replaces it),
+  then the inside dug top down (J.digLast: nextTrip fills first, digs after; the dug
+  blocks come back with the drone). Console dw clear|drain <corner> <corner> [block], chat $drone clear here (two
+  corners) -> yes. A job running -> it waits in the queue.
+  TAKING THINGS DOWN (the owner: "a way to break built schematics, and tell drones to clear an area or break a block"):
+  dig jobs = J.done "" (nothing placed), only J.dug: kind "dig" (J.box; DW.digPlan = every block in the box, top
+  down) / kind "unbuild" (J.name x y z rot; DW.unbuildPlan = the schematic's PLACED spots, top down, p.item kept ->
+  digTrip groups one item per trip, so a 1-slot drone holds what it digs - it brings it back into AE2 with the
+  usual "Bring back" unload). protected(): the work chest, CONFIG.drone.charger and home spots are left out.
+  DW.builtList (drone_built.dat, newest 20, DW.noteBuilt at startBuild; DW.forgetBuilt when an unbuild finishes) ->
+  schem built / unbuild [last|n|name] | <name> <place> (never "in front of you") -> schem unbuild yes (DW.unbuildPend);
+  dw dig <c> <c> -> dw dig yes (DW.digPend); dw break <spot> starts at once; a running job -> the queue (kinds dig /
+  unbuild). Chat $drone dig here x2 -> yes (the clear branch with dig), $drone break, $drone unbuild [n|name|list] ->
+  yes. DW.isDigJob / DW.jobWord / DW.dugCount for texts; the page shows "N of M spots dug". test_drone_parallel.
+  IN GAME "it did not break it": PneumaticCraft (1.21 source: DroneInterfaceBlockEntity setAction -> a fresh ProgWidgetDig
+  whose DroneAIDig works ON the CC widget - its area, item filters, requiresTool false, SIDES (default all false: the drone
+  never moves next to the block - DW.allSides sets them); isActionDone = a scan pass found nothing valid OR could not
+  navigate - so the action ends "done" WITHOUT digging when the drone cannot reach / may not break the block; a claim
+  mod can cancel the fake player's LeftClickBlock). So a break (1 block) / unbuild trip whose unload brought NOTHING
+  back (T.back) = unconfirmed: J.digAgain[i] + J.digWait 20 s (memory) -> one more try; nothing again -> J.noDrops,
+  the end note is a WARNING with DW.DIG_WHY, never DONE. (Area digs have air spots - not checked.)
+  NEVER DESTROYED (review before the merge; PneumaticCraft source: a drone has 1 slot + 1 per Inventory Upgrade, what
+  does not fit is dropped; it digs by HAND unless it holds a tool, and stone / ores / bricks broken by hand drop
+  NOTHING - unbuild / dw dig destroyed them): every dig sets setRequiresTool(true) (such a block is left alone);
+  CONFIG.drone.slots >= 2 (SETTINGS > DRONES "Drone inventory slots") -> DW.digTool (the best PLAIN pickaxe AE2 has,
+  DW.TOOLS / drone.digTool, cached 60 s) loaded each dig trip ("Get a ... for digging", a failed load = dig without
+  it), DW.digCap = (slots - 1) x 64 spots, it goes back with the rest (T.tool not counted as "got"). Unbuild digs
+  LATE items (torches, doors) first. trip.job = its job: tripDone ignores a trip whose job was stopped / skipped (the
+  queue starts the next one while old trips are out - they marked the NEW job's spots). test_drone_parallel (the fake
+  drone digs by hand / with a pickaxe; old code: 16 stone destroyed, 1 brick lost, torch last, the new job marked).
+  ANCHORS PER CHUNK (the owner: "a turtle can only load the chunk that it is in"): J.anchors {["cx,cz"] = id} (saved;
+  an old J.anchor is read as one), at most #droneOrder; buildOne passes over a group in a chunk not loaded
+  (DW.anchorFor: a free turtle goto the chunk middle at top + 3, every 300 s again; all taken -> one whose chunk has
+  nothing left moves) and builds elsewhere meanwhile; DW.anchorTick (30 s) sends a turtle whose chunk is done home.
+  DW.test / console `dw test [item]` (the owner: "how do I test the drone chest"): DW.notReady, the chest's spot + distance
+  from the drones' home, 1 PLAIN item (DW.TEST_ITEMS: the first AE2 has, or the one named) AE2 -> work chest -> AE2;
+  then, with the owner within 48 of the chest, DW.giftRun(owner, item, 1) = a drone takes it out of the chest and drops
+  it at their feet -> DONE / WARNING note "DRONE TEST: ..."; farther away it says to come closer. CHAT `$drone test
+  [item]` (owner; the owner: "how do I test it when the chest is far from the console"): the same, every line +
+  the drone's result in chat (DW.test(say, item, tell, again)). IN GAME the drone "took nothing from the work
+  chest" and flew home: playerBlock was floor(y) - 1 = the block UNDER a chest (0.875 high - the feet are inside
+  the chest's space); now floor(y - 0.01) (chest / slab = that block, full block the same; feet = floor(y)). The
+  failure says the saved spot, where the drone was, F3 "Targeted Block" + `$drone workchest x y z` (posArg).
+  test_dronework.lua. THE REAL CAUSE (PneumaticCraft source, thirdparty/computer_common/ProgWidgetCC: sides =
+  new boolean[6] - ALL OFF; DroneEntityAIInventoryImport/Export only use isSideSelected sides): a computer-driven
+  drone's inventory import / export did NOTHING until setSides is called. act() -> DW.allSides(d) = setSides(true x6)
+  (order down up north south west east; else setSide per side) before every action. The test's fake drone uses
+  no side until set (the old code fails 20 checks).
+- PLACES BY STANDING ON THEM (base_drones.lua playerBlock / posArg): chat `$drone mark <name>` (the
+  block under you; `feet` = where you stand) / `$drone unmark`, console `save <name> me|feet|x y z`;
+  posArg(words, i) = "x y z" | a saved place | me | feet | @player - used by `dw chest`, `schem build`.
+  The work chest is usually far from the monitor (the owner: "I can't interact with the screen far
+  away"): chat `$drone workchest` (owner) = its spot = the block under you; no chest picked yet and
+  exactly ONE empty candidate on the cable -> that one (DW.refreshView in the chat worker), else
+  CHEST > on the page / `dw chest <n> <place>`. test_dronework.lua.
 - CURIOS (base_curios.lua CURIOS; CURIOS tab, empty slot selected): FITS = items tagged
   curios:<slot> (or curios:curio) + items listed under "#curios:<slot>" in the partial view
   (meTagCache.curioOf - those answers often carry NO tags, so nothing was ever found) +
   items LEARNED to fit (worn before / put on from here: CURIOS.fits, curios_fits.dat).
   SHOW ALL lists every AE2 item (Curios refuses what does not fit). AUTO-EQUIP: AUTO next
   to an item / KEEP ONE ON on a worn one -> rule {slot, item} (curios_auto.dat);
-  CURIOS.autoTick (comms worker, slots read every 2 s while rules exist - was 8 s, too slow for a used totem) queues a cequip FIRST in the action queue
-  (auto=true) when the item is not worn in that slot type and a slot is free (a used
-  totem); r.why = "none left in AE2" / the put-on error (shown on the tab, `curios auto`).
-  Putting on needs CONFIG.me.curiosChest. test_curios.lua.
+  EVERY TICK (the owner plays HARDCORE: "make the equip item in intervals to be each tick"): its OWN worker curiosWorker
+  (base_workers.lua, in inventory.lua's list; not the comms worker's 2-s clock) calls CURIOS.autoTick(true) every
+  CURIOS.every() = CONFIG.curios.every (0.05 s = a tick) while rules exist: the slots are read and a missing item is PUT ON
+  RIGHT THERE (runAction in that worker - the action queue can be busy for seconds with a fluid ALL); CURIO_BUSY (runAction's
+  curios branch) keeps two curios moves from overlapping (the curios chest); a success clears the busy wait (a second totem
+  used right after = on again the next tick), a failure waits 15 s, none in AE2 10 s. autoTick() without direct (tests /
+  old callers) still queues a cequip FIRST in the action queue. r.why = "none left in AE2" / the put-on error (shown on the
+  tab, `curios auto`). Putting on needs CONFIG.me.curiosChest. test_curios.lua.
+- ARMOUR + OFFHAND ON THE INVENTORY TAB (the owner: "equipment cannot be selected or moved"): the armour cells were "item"
+  hits and refreshInventory dropped selName unless the item was in the BACKPACK (every read un-picked it); DETAILS only knew
+  backpack items. Now hit "equip" -> state.equipSel (1 helm .. 4 boots, 5 offhand; cleared when the slot empties) -> DETAILS
+  of the piece (worn as, durability) + TAKE OFF > INVENTORY (act eqoff) / TAKE OFF + SEND > AE2 (eqsend), side by side on a
+  short panel. equipMove (base_me.lua): EQUIP_SLOT = the manager's slot (39 helm .. 36 boots, 40 offhand), exportItem {name,
+  count 1, fromSlot} into the take buffer, then bufferToPlayer / bufferToME; the inventory is read before and after - a
+  manager that ignores fromSlot (the same item left the BACKPACK, the worn one still on) -> put back + refused with the
+  reason; a full backpack -> refused. test_equip.lua (fake manager honouring / ignoring fromSlot).
+- SUPPLY (base_supply.lua SUPPLY, console `supply`, SUPPLY.tick run by supplyWorker every SUPPLY.every()
+  s = CONFIG.supply.every, default 1 (the owner drains a tank in a second and waited 10 s; `supply every
+  <s>` 0.2-600, setSetting); supply.dat via dataPath): rules {target = network name of a storage on the WIRED cable,
+  kind item|fluid, name, keep (items / mB)}. Counts the target (list / tanks), exports the
+  difference from AE2 (items: FACTORY.variants -> only PLAIN ones by fingerprint, never the
+  owner's own; fluids: exportFluid loop, 1 bucket per call ok). NEVER takes anything out.
+  SUPPLY.refuse: the CONFIG.me buffers, the factory chest, bridges / drives / computers. A
+  target is left out of fluidBuffer()'s automatic choice and FACTORY.reserved says "supply".
+  r.why + one WARNING when short (r.warned until it works again). `supply` lists rules +
+  numbered candidates; `supply <n|name> <item> <count>`, `supply <n|name> fluid <fluid>
+  <buckets>`, `supply stop <n|name|all>`, `supply now`, `supply check <n|name>` (types + functions).
+  MODDED tanks with their OWN computer functions (no fluid_storage type): SUPPLY.kinds also accepts
+  tanks() / SUPPLY.FLUID_READ (getStored, getFluid, ...; {name, amount} or a list, nil = empty);
+  every other non-base block on the cable is listed under "Other blocks" (SUPPLY.others) so the
+  owner can `supply check` it (reserved ones say "used by the base: <what>"). Wireless / ender modems
+  cannot reach a block's storage (messages only). FLUID BUFFER REMEMBERED (fluidBuffer, base_me.lua):
+  the one found ALONE is saved (fluid_buffer.dat, FB_MEM / fluidBufferMem) and stays the buffer when
+  another fluid storage joins the cable - an Entangled block made it "several fluid storages" and
+  filling the owner's tanks stopped. None remembered + several -> "type fluidbuffer"; console
+  `fluidbuffer [<n|name>|auto]` (setSetting me.fluidBuffer); the buffer is refused as a supply
+  target. AE2 TAB ROW "KEEP A STORAGE FILLED" (keepRow in base_ui_me.lua, under the selected fluid /
+  item): storage button (hit supnext = the next one of SUPPLY.cache[kind]; the cache is refreshed in
+  SUPPLY.tick every 10 s - never peripheral calls in drawing) + 16 B / 256 B / FULL (items x64 / x1000
+  / FULL; act supplyset, two taps; FULL = SUPPLY.FULL 9e15 = as much as goes in) or, when kept,
+  "KEPT AT .. - STOP" (supplystop). SPEED: its OWN worker (supplyWorker, base_workers.lua; in
+  inventory.lua's list - not the comms worker): SUPPLY.tick pumps each rule for SUPPLY.BUDGET s (2;
+  calls while something moves - a tank / bridge may take 1 bucket per call) and returns busy (r.busy =
+  moved and still short) -> the worker comes back after 0.05 s; nothing to do -> every
+  SUPPLY.every() s (1). Before: 16 calls every 10 s. A new rule queues "supply_wake". test_supply.lua.
 - POCKET REMOTE (pocket.lua on the owner's Advanced Pocket Computer with a
   wireless / ender modem; base_pocket.lua POCKET; rednet protocol "basepocket",
   rednet.host'ed by the comms worker; POCKET.out sent there). Pairing: pocket
@@ -573,6 +1137,12 @@ PneumaticCraft drone rides, turtle mapping/surveys, and an AE2 ME network view.
   go -> one WARNING, it keeps waiting. The party moves on to the next lost turtle at once.
   Buttons: FLEET card, HOME quick action "FIND LOST (n)" / "CALL BACK SEARCH" (POCKET.act
   "party" toggles), pocket BOTS "FIND LOST TURTLES (n)" (status d.lost / d.party). test_party.lua.
+- PING THAT IS HEARD (the owner: "some survey turtles do not respond to ping - a copy that loads its chunks"): a surveying
+  turtle takes its modem off for every scan (Geo Scanner) / dig (pickaxe) - one ping went nowhere. A PING you send
+  (not quiet) -> t.pingAsk; TT.pingTick (comms, next to stopTick) sends it again every 3 s, 10 tries; the answer -> log +
+  toast "answered PING after N s (try k)"; none -> TT.pingWhy: last report age, a command the turtle REFUSED lately
+  (node m27: a signed command for its own copy tag that it did not take - another session / a stopped copy / an old
+  number - REFUSED, reported once as m.refused -> t.refused), or modem off / out of radio range. test_ping.lua.
 - Permanent rescuer: t.rescuerRole (RESCUER button, saved in turtles.dat;
   base only). TT.patrolTick (comms worker) sends it to: no fuel (<20 for
   60 s), stuck (60 s idle), lost (silent CONFIG.turtles.rescueAfter, default
@@ -592,12 +1162,16 @@ PneumaticCraft drone rides, turtle mapping/surveys, and an AE2 ME network view.
   search party), status why "at the base: picked up?", FLEET card line + FORGET THEM (n)
   (forgetbase -> TT.forgetAtBase), console `forget base`. test_party.lua. feedSurvey reclaims the batch of
   a turtle silent > CONFIG.map.reclaimOffline (600 s).
-- Themes (base_theme.lua): THEMES = 6 Minecraft biomes (see UI rules), same JOB per colour slot.
-  The 11 slots the MAP uses (MAP_SLOTS: green lime blue yellow orange white
-  brown red cyan purple pink) always keep the midnight colours; a theme only
-  changes the frame (bg, cards, lines, buttons, titles). Chosen at start: theme.dat {mode, last} or
-  CONFIG.theme, default "random" (never the same as last time). `theme
-  [name|random]` switches live (setTheme) and saves. Keep new themes dark.
+- Themes (base_theme.lua): see UI rules 1 - control-room colour variants (teal default, amber,
+  ice, violet, graphite, crimson); only the frame slots change. `theme [name|random]` switches
+  live (setTheme) and saves (theme.dat {mode, last}; default CONFIG.theme or "teal").
+- FLUID "ALL" (moveFluid, base_me.lua): Advanced Peripherals moves only a part per call; the old
+  64-call cap stopped ALL half way (64 x the per-call amount). Now it calls while something moves,
+  until done or `budget` s (20; also max 4000 calls) -> 3rd result true; runAction puts the REST at
+  the END of state.actionQueue (a.done carries the total, a.cont) so other buttons are not kept waiting.
+  ALL buttons = FLUID_ALL(n) = EVERYTHING, no cap (the owner: infinite cells too); one call asks for at
+  most FLUID_MAX (2,147,483,647 mB); stops when the source is empty or the target takes none. Console
+  `fluidstop` drops the queued rest (a.cont). test_fluid_all.lua.
 - Message boxes (pushNote, base_me.lua): a BOX only for CONFIG.notes.show
   ("important" = warnings + errors, default; "errors", "all", "none") - INFO/DONE
   go to EVENTS only; USER_ACTION (set around handleTouch and runAction in
@@ -612,6 +1186,84 @@ PneumaticCraft drone rides, turtle mapping/surveys, and an AE2 ME network view.
   system/events/settings); a group with several pages shows small sub-tabs on
   row 5 (hit "page"); the top tab is hit "group" -> openGroup (last page used).
   pageTabs() lists the pages that exist; headerTabs() the groups.
+- AE2 SYSTEM (base_meplus.lua MEX, page "mesys" base_ui_mesys.lua in the AE2 group; console `me jobs` /
+  `me cpus`, `me cancel <item>`): the rest of the ME Bridge. AP source dev/1.21.1 MEBridgePeripheral has
+  isOnline, getCraftingCPUs {name, isBusy, storage, coProcessors, craftingJob {quantity, crafted, completion,
+  resource}}, getCraftingTasks (same job details + bridge_id, cpu), getDrives {name, usedBytes, totalBytes,
+  cells {item, usedBytes, bytes, type}, position, priority}, getPatterns {patternType, primaryOutput,
+  inputs {primaryInput, multiplier}}, get{Total,Used,Available}External{Item,Fluid,Chemical}Storage,
+  cancelCraftingTasks(filter), craftItem/craftFluid -> a JOB OBJECT (getId, isDone, isCanceled,
+  isCraftingStarted, isCalculationNotSuccessful, getMissingItems, getItemProgress, getTotalItems, cancel)
+  + event "me_crafting" (error, id, CALCULATION_STARTED / CRAFTING_STARTED / MISSING_ITEMS / JOB_DONE /
+  JOB_CANCELED / NOT_CRAFTABLE). The owner's server is OLDER: every function looked up by NAME (MEX.has);
+  missing = the panel says "not on this ME Bridge". MEX.read (page worker: the page every 3 s, else 60 s;
+  patterns every 5 min -> MEX.byOut / byIn). craftME / craftFluidME go through MEX.craft (keeps true /
+  false, err): MEX.jobs (newest 20) followed by the event (MEX.event from the event loop -> MEX.jobTick in
+  the comms tick) or by asking the object every 10 s -> notes CRAFTED / CANNOT CRAFT (missing ...) /
+  CANCELLED; an old bridge's boolean answer = "SENT". CANCEL (two taps, act mecancel, runAction first
+  thing): the job object's cancel(), else cancelCraftingTasks{name}. Page: CRAFTING CPUS, CRAFTING NOW
+  (+ CANCEL), YOUR CRAFT REQUESTS (state badge, missing items), STORAGE + ENERGY (cells + storage buses),
+  DRIVES (cells two to a row; old bridge: the AE2 page's cell sums), PATTERNS (count by type; the AE2
+  page's picked item: made from / used in). The chip shows "N jobs". test_mesys.lua (new + old bridge).
+  IN GAME (owner's screenshots, 7 CPUs, storage buses only, 1012 patterns): getCraftingTasks lists only
+  the jobs the BRIDGE started ("0 running" with 4 CPUs busy) -> the busy CPUs' jobs are added (deduped by
+  cpu + name); a job resource without name/displayName (chemicals ...) -> nameOf tries id / chemical /
+  fluid / item ...; DRIVES drawn only when the bridge lists drives or the AE2 page has cell sums;
+  pattern badges wrap. compact() goes on to b / t (8862.2m was 8.86b); fmtBytes for CPU bytes.
+  drawBarRow (1-row lists: AE2 items) = a THIN SOLID bar in half cells - the segmented gauge's ticks
+  lined up row after row into vertical stripes. PATTERNS can be USED (the owner: "i cant interact with
+  the patterns"): type filter (pattype) + first letter (patletter) buttons, a 1-row list sorted by the
+  output's name (patsel; cached in MEX.pv; scroll "patOff"), the picked one (state.patSel, else the AE2
+  page's picked item) = its inputs with what AE2 has (SHORT in red) + CRAFT x1/x16/x64/x256 (fluids in B;
+  act craft / fcraft). Storage panel <= 30 % and drives <= 35 % of the column: patterns get the room.
+  `me raw` prints each busy CPU's job as the bridge gives it. IN GAME it showed jobs as only
+  { bridgeId = -1, quantity = 400000 } (no resource) and a fluid as { type = {...}, name = "pneumaticcraft:oil",
+  tags } - and AP's parseGenericStack turns ONLY items and fluids into Lua: a Mekanism CHEMICAL comes back
+  as nothing (null). So: a job with no resource = MEX.UNNAMED "not named by the bridge"; a pattern with no
+  output name (200+ processing patterns showed "?") = "chemical from <first inputs>", listed after the named
+  ones, picked = "MAKES A CHEMICAL" + "N chemical(s) the bridge cannot name" (e.unknownIn), NO craft button.
+  SUPPLY FULL rules: a target taking none while AE2 has the fluid / item = "full", no warning (the owner
+  got "AE2 has no xp_fluid_source" again and again - 2.1 billion B in AE2, the tank simply full).
+- PLAYERS page (base_ui_players.lua): a LIST (online players, then who left this run; tap =
+  state.playerSel, hit "psel"; scroll "playersOff") + EVERYTHING about the picked one: WHERE
+  (dimension + how long in it, position, from the base with compass direction, under ground /
+  in the air from MAP.get, nearest turtle / saved place, from you), NOW (health in hearts, air,
+  moving speed from two readings, body from eyeHeight, facing + looking from yaw / pitch, online
+  for / joined), THE BASE AND <name> (drones: allowed or not, turtles avoid them or not, bed =
+  respawnPosition, the $drone back spot) and every raw DETECTOR DATA value. PLAYER_INFO
+  (base_players.lua): first / joined (playerJoin event), dim + dimSince, last
+  reading, speed / vy, online / left (playerLeave or gone from getOnlinePlayers).
+  test_players_page.lua. EVERY PLAYER EVER SEEN IS REMEMBERED (the owner: "keep the list of players remembered, even
+  players who went offline, even after a year"): players_seen.dat (dataPath, a data floppy first; serialSmall rows {name,
+  firstEver, last seen, dim, visits, played s, x, y, z, online-at-save}) - loadSeenPlayers once (refreshPlayers, also
+  without a detector), saveSeenPlayers at most every 2 min while changed, 10 s after a join / leave, and on exit
+  (baseExit); the newest SEEN_MAX 1000 by last seen. A visit = sessionOn once (join event or the online list); a base
+  restart while they play is the SAME visit (online at the last save, within 10 min); time played = the time between
+  readings (a gap > 1 min = the base was off). The page: offline rows "left 1 year ago", First seen / Visits / Time on
+  the server (spanWords: days / months / years - fmtSpan stops at hours). test_players_seen.lua (a restart, a year later,
+  back = visit 2, the cap, odd files).
+- ENVIRONMENT DETECTOR (base_env.lua ENV, WORLD page base_ui_env.lua "env" in the PLAYERS group,
+  console `env` / `world`): ENV.read (page worker via ENV.tick: the WORLD page every 2 s + a scan
+  every scanEvery 5 s, else once a minute) - biome, light (block / sky / daylight), getTime (TOTAL
+  world time: ENV.clock -> day number, HH:MM with tick 0 = 06:00, night 13000-23000, seconds to the
+  change), slime chunk, dimension, listDimensions (once), weather, canSleepHere, Mekanism radiation.
+  Names differ by version (AP source dev/1.21.1 = the owner's: getMoonId + getMoonName,
+  scanEntities(radius) LIVING things only {name (display name), health, maxHealth, baby/inLove for
+  animals, x y z RELATIVE}, an operation with cost/cooldown -> nil + "Radius exceeds max value";
+  0.8 docs: getMoon() -> id, name; scanEntities(range, detailed, filter)) - each looked up by name.
+  ENV.scan: CONFIG.env.range (16) refused for "radius/range" -> smaller (ENV.range remembered); any
+  other error (cooldown) kept as d.scanErr, the old list stays. IN GAME (owner's screenshot) the
+  name is the entity TYPE ("minecraft:player", "minecraft:zombie") and players carry a baby flag
+  too (the owner showed as "1 ANIMAL"): ENV.kind = player ("minecraft:player" / online name),
+  hostile (ENV.HOSTILE by the id's path, "cave_spider" -> "cave spider", or aggressive), animal
+  (inLove / baby), other; ENV.nameOf: ids prettified, a player = state.ownerUuid match / the ONLY
+  player near the base / "Player". DIMENSIONS: players' dims first (count + names wrapped), base,
+  rest; UUID-named dims (ENV.privateDim: spatial cells, compact machine rooms) folded into one
+  line; ENV.dimName adds the mod ("End (blue_skies)" vs "The End"). Radiation <= 1 uSv "(normal)". Page: GAME TIME / WEATHER /
+  MOON (drawn 12x12 sub-pixels, dark side C.line) / LIGHT, AROUND THE BASE (counts + nearest first:
+  distance, compass, up/down, health), HERE, DIMENSIONS (players in each from state.players). The
+  WORLD chip shows "N mobs" (no badge colour - it would take over the PLAYERS group badge). The
+  preview world has a fake 0.7 detector (ENVDET). test_env.lua.
 - SETTINGS page (base_ui_settings.lua, SETTING_GROUPS): click-only - num (-/+ by
   step, min/max), cycle, bool, pos ("USE MY POSITION" / "BLOCK UNDER ME" from
   the Player Detector, tap twice), custom (theme, chat messages, auto-map).
@@ -637,7 +1289,26 @@ PneumaticCraft drone rides, turtle mapping/surveys, and an AE2 ME network view.
   floppy > helper > computer; path "store:<id>/map/<key>.dat"; MAP.rsize = sizes).
   Calls wait for answers, so map saving runs in its own mapWorker (also finds new
   helpers ~20 s after start, then every 5 min); at start only helpers seen before
-  are asked (store_helpers.dat, no 2-s lookup). Helper gone -> files go to the
+  are asked (store_helpers.dat, no 2-s lookup). HELPERS FIRST (the owner's `disks`: 4 helpers
+  953 KB free / 0 files, the floppies full - "disk/drone_logs.dat not saved"; the map filled the
+  floppies to the last KB before it spilled): MAP.helpersFirst() (CONFIG.map.helpersFirst, default
+  on, SETTINGS > MAP; helpers with >= 64 KB) ranks helpers above floppies; MAP.floppyKeep leaves 48 KB
+  (16 without helpers; CONFIG.map.floppyKeepKB) on every data floppy for the data files; MAP.offload
+  also moves floppy map files onto the helpers (60 per call, only what fits; every minute while some
+  are left - state.offloadLeft; `disks move` all). A failed put = that helper has no room for the rest
+  of the save (p.free 0) and until the next STORE.find (h.free 0) - no 6-s wait per file. An old copy
+  that could not be deleted on a quiet helper = MAP.stale (map_stale.dat): never read, deleted when it
+  answers; a write to that path clears it. FULLEST FLOPPY FIRST (the owner next: "disk2/mining.dat not saved (5 KB free)" - the files went in name order from every floppy): offload sorts by the floppy's free space; every 10 s while a data floppy is under floppyKeep; a data save that fits nowhere resets state.offloadAt + queues map_save (moved NOW). moveDataFile (saveFileSafe): a data file at the top of a
+  data floppy that no longer fits moves to the data floppy with the most room (not .lua / .log /
+  folders) - to a floppy with room for TWO copies (2 x size + 8 KB: a save writes the new copy before the
+  old goes; with room for one the next save moved it back - the owner's log: terrain.dat disk11 <-> disk18
+  every minute), logged once an hour per file (MOVED_AT). Drone logs + back_spots.dat are written with serialSmall. A SLOW HELPER IS NOT "FULL" (the owner:
+  "Map not fully saved - the data floppies are full" with 3.5 MB free on helpers; one late answer did that, AND
+  MAP.save then dropped the oldest map detail): a helper with no answer = h.down (STORE.usable false for 60 s,
+  room still counted by STORE.space(true)); STORE.find keeps a helper that answered before for 2 missed hellos;
+  MAP.save with room left (quiet helpers counted) drops nothing - MAP.saveWhy, changes wait for the next save;
+  checkSpace says "some changes wait to be saved - storage helper(s) #.. did not answer" only after 10 min,
+  never "floppies full" / MAP.full then. kickSilent reboots a known helper missing 2+ hellos. test_helpers.lua. Helper gone -> files go to the
   computer. `store [find|update]` on the base computer. Helpers left OFF by a server
   restart: STORE.wakeAll turns them on over the cable (computer peripheral isOn /
   turnOn; only known ids or label "Store <id>") - at mapWorker start (then 4 s
@@ -650,8 +1321,758 @@ PneumaticCraft drone rides, turtle mapping/surveys, and an AE2 ME network view.
   inventory.lua (STORE.code, must compile) goes to every helper whose version
   (hello -> ver = checksum of its startup.lua) differs (op "upd": checksum +
   compile check, then startup.lua + reboot) - STORE.updateAll in the mapWorker.
+- STORAGE REVIEW (the owner: "check the storage code too - floppy drives, helpers, how the map is saved";
+  test_storage.lua, tools/tests/store_helper.lua runs the REAL store.lua): A PLACE IS WRITTEN ONLY AFTER IT WAS
+  READ THIS RUN (MAP.readAt[dir] = true / the floppy's disk.getID; places() leaves the others out - a floppy with
+  no map folder counts as read at once). MAP.readLate (map worker every turn + first thing in MAP.save) reads a
+  helper that did not answer at the start / a floppy that was out of its drive / ANOTHER floppy put in, and JOINS
+  it: readText never replaces a key already in memory - K chunks: at the start the newer s wins, later the memory
+  cells stay and its EMPTY ones come from the file; V overview: cell by cell the same (a partial cell takes a full
+  one). A key found twice = joined, MAP.extra[key] = the other copies, deleted when writeFile saves the key.
+  readPlace: MAP.where[k] is set only for files that really came back (before: a helper that stopped answering
+  half way had ALL its files "read" -> the next save overwrote / staled the unread ones = overview lost for
+  chunks whose detail was dropped); STORE.list = nil when no answer (an empty list looked like "no files");
+  batches ask again for what did not come (store.lua's 200 KB per answer). Before: the copy read FIRST counted -
+  a helper starting late after a server restart + new scans in its area = the old overview or the new one lost.
+  store.lua: an EMPTY file made get crash (readAll nil -> restart loop for every read of it); a file caught
+  between "old deleted" and "new moved in" (a stop right there) was only its .tmp - never read: recoverTmp at
+  start (a lone .tmp put back, a .tmp beside its file deleted); file count cached 30 s, screen at most 1/s.
+  dataFile: the computer's copy is deleted only when the floppy's copy has the SAME size (a full floppy cut the
+  copy off). saveFileSafe: goneFloppy (path "diskN/..." whose floppy is out - fs.exists false or isDriveRoot
+  false; dataPath keeps a place 60 s) -> saved where the file belongs now, not into a folder "diskN" made on the
+  computer (the floppy then mounts under another name). MAP.offload: getSize pcall'd (floppy out).
+- THE BASE TALKS (voice_addon.lua VOICE - an OPTIONAL ADD-ON kept on a DATA FLOPPY, not on the computer):
+  console `voice install` = installAddon (base_theme.lua: upgrade.lua fetch mode, manifest group "voice" +
+  slim:voice - NOT a base_* name, so never installed on the computer) -> saved on the data floppy with most
+  room -> loadAddon (fs.open + load with the shared _ENV; also at every start from inventory.lua: any mounted
+  disk, else next to inventory.lua); `voice remove` (removeAddon, VOICE = nil). addonWorker (base_workers.lua,
+  in inventory.lua's list) runs VOICE.loop (waits for "addon_loaded" while none). Hooks in the base: pushNote ->
+  VOICE.note, handleChat -> VOICE.chat (not $ messages), console `voice ...` -> VOICE.command. Speech = the
+  text-to-speech service music.madefor.cc/tts?text= (DFPWM; the owner tested `speaker play` on it in game) ->
+  cc.audio.dfpwm decoder -> playAudio on EVERY speaker (peripheral.hasType speaker; waits for
+  speaker_audio_empty, gives up after 40 tries); phrases <= 80 chars cached on the data floppy (voice/<hash>.dfpwm,
+  CONFIG.voice.cacheKB 200 for ALL floppies together, oldest out first; never on the computer; never into a floppy's reserved room = floppyReserve(); THE CACHE FILLED EVERY FLOPPY before: cacheKB per folder + a new folder on whichever floppy had the most room - the owner: "disk12/drone_logs.dat not saved (7 KB free)" with the map already on the helpers. Base side (base_theme, works with an old add-on too): voiceCacheFiles / voiceCacheBytes / freeFloppyRoom / trimVoiceCache (mapWorker every 10 min + `disks move`); moveDataFile first deletes old speech on the file's OWN floppy, then counts speech as room elsewhere; `disks` shows the speech cache per floppy. test_helpers 10, test_voice). WHO IS AT THE BASE = the ENVIRONMENT DETECTOR's scan (the
+  owner: "it makes sure the player is near the system"; VOICE.useEnv, `voice detector on|off`): VOICE.tick
+  runs ENV.scan every voice.scanEvery 5 s; players in ENV.data.ents (kind player, radius CONFIG.env.range) -
+  named by ENV.nameOf (owner uuid / only player near the base), unnamed ones get the Player Detector's
+  online players nearest the base (else "someone" -> "Hello there."). No detector -> state.players within
+  CONFIG.voice.range 64 of the drone home, overworld, online. GREET (VOICE.tick every 2 s): owner "Welcome back" + statusText,
+  allowed "Hello", strangers chime + "Visitor near the base" (greetEvery 600 s each). ANNOUNCE: WARNING / ERROR
+  notes only while someone is near, one per 20 s, the same title not within 5 min. CHAT: "<name>, question"
+  (CONFIG.voice.name "base"; "baseball" is not) from someone near -> chatTell + spoken; the owner far away ->
+  chat only; QUESTIONS ONLY (status, turtles, mining, survey, time, weather, who - POCKET.status / ENV data),
+  never actions. FAR AWAY (the owner: "the base keeps responding to me even when I am far away" - "base" is a common
+  word, games / conversations followed you): away from the base ONLY a message that STARTS with its name (in chat;
+  the owner) + pack 3's taxi requests ("take me to the base", "pick me up" ...; "taxi" / "ride" only name-first -
+  " to base " anywhere made "going back to base now" a taxi call); games, conversations, pack 3's gift-thanks only at
+  the base. VISITS (the owner: "I move 10 blocks away and come back - it greets me again"): LEFT = not seen for
+  voice.leaveAfter 90 s (VOICE.seenNear), GREETED again only after being AWAY greetEvery 600 s (it was: greeted
+  600 s ago - any step out after a long stay was a new visit). HEARD = READ = GONE (VOICE.heardRead: the shown ones
+  are deleted, "N older ones - ask again"; console `voice heard` too). QUIZ POINTS PER DAY (the owner: "players can
+  spam math puzzles and keep getting points" - wins give friendship, badges, drone gifts): voice.quizDaily 15 a
+  player per UTC day (m.qday / m.qn); past that "come back tomorrow", no VOICE.event win. test_voice part 22.
+  ANSWERS ARE ALWAYS SPOKEN (the owner: "flip a coin" 10x - "It is heads." spoken once, the rest chat only):
+  VOICE.say(text, sound, answer) - answer = true skips the 30-s same-words rule (core reply(), the spoken-only
+  reaction, pack 2 level-up, pack 3 gift-thanks); its own lines (weather, warnings, idle) keep it. Part 23.
+  SEVERAL PEOPLE (the owner: "when more than one person uses it it acts weird"): the detector cannot name two
+  near the base, and envPlayers gave unnamed ones the Player Detector's names IN SCAN ORDER - it changes, names
+  swapped every scan (answers / greetings / "you are hurt" to the wrong one, swaps = leave + arrive). Now:
+  VOICE.detAt (the detector's spot, learned from a player it CAN name: position minus the scan's relative
+  x y z; else the drone home) + each unnamed one -> the online player nearest to detAt + rel (greedy pairs).
+  Answers spoken with "<name>, " when others are near; a full queue drops its OWN lines first (q.answer);
+  arrivals in one tick: the owner own welcome, 2+ others ONE line (VOICE.HELLO_GROUP, joinNames) + greet(n,
+  quiet) + greetExtra under VOICE.mute (the packs' badge / title lines pushed the greeting out of the queue);
+  a stranger in a group still rings the alarm. NEW VISITORS (the owner: "they hear the same sentences"): pick()
+  = a SHUFFLE BAG per list (every line once, random order, before any again; at a refill the last ~half go to
+  the back; RECENT, weak keys); HELLO_NEW / HELLO_AGAIN ({n} visits)
+  / HELLO_FRIEND / HELLO_OWNER lists; the first meeting tells them in chat how to talk ("start with my name");
+  ICEBREAKER (VOICE.newcomer, VOICE.ICEBREAK): a first-time visitor silent ~30 s gets ONE offer (tour / joke /
+  game / quiz / who lives here / fact = pend yesno; a question = pend react with lines). Part 24.
+  ALARM (voice.alarm, default OFF): a stranger arriving / a hostile within alarmRange 12 of the
+  Environment Detector (ENV.data.ents) -> bell + spoken, once per 5 min, only when someone is near. Settings
+  via `voice on|off|greet|announce|chat|alarm on|off|volume <0-3>|range <n>|name <word>` (setSetting voice.*;
+  VOICE.cfg uses an if - false stays false). test_voice.lua (fake speaker / http / dfpwm, players walking up).
+  FUN (v3; the owner: "make it interactive, react to players / strangers, listen to chat"; voice.fun, default
+  on; `voice fun on|off`, `voice chatter <min>` (10, 0 = never), `voice sing|joke|forget`): CHAT - its name as a
+  WORD anywhere in a sentence -> VOICE.answer (also: joke, fact, who are you, how are you (mood = VOICE.needCount), what can you do, where is turtle <n|name>
+  (VOICE.whereText: blocks + compass from the drone home, task / offline), thanks, good / bad bot);
+  REACTIONS (VOICE.REACT: hi, thanks, gg, lol (50 %), good night, bye, brb, i'm back, creeper) from someone AT
+  the base - spoken only, 15 s between any two, 45 s per player. GREETINGS vary (partOfDay from ENV.clock);
+  MEMORY (VOICE.mem: first / last / visits per player, dataFile voice_memory.dat): first meeting introduced
+  ("I am watching you" for strangers), owner back after > 1 h "Long time no see ... away <span>". EVENTS
+  (VOICE.tick): goodbyes (60 %), a stranger standing around 2 min asked, a hurt player (hp <= 6, 3 min apart),
+  night falls / morning and rain / thunder / clear only when they CHANGE, a hostile within 6 of the detector
+  ("creeper right next to you", 2 min apart; the alarm stays separate), good news (DONE notes, a new turtle,
+  once a minute), small talk (fact / joke / tip) every ~chatter min while someone stays and nothing was said
+  for 60 s. Everything only while someone is at the base; questions are never actions. test_voice.lua part 11
+  (passes with 20 random seeds).
+  v4 (the owner: "more idle stuff, less notifications, lots of interactions"): ANNOUNCE modes voice.announce
+  summary (default) | all | errors | off - summary: warnings COLLECTED (VOICE.pending) and said as ONE line every
+  announceEvery 900 s while someone is there, errors at once but 120 s apart, good news 15 min apart; goodbyes
+  30 %, hurt 10 min, mob-close 5 min apart. IDLE (VOICE.idle, every ~chatter 6 min): fact / joke / tip / what it
+  sees (animals / monsters from ENV.data.ents, a full moon at night) / musings / an idle quiz question
+  ; AFK = a near player whose Player Detector x z has not changed for 5 min ("are you still
+  there?"), 10 min ("sweet dreams"). INTERACTIONS (VOICE.extraAnswer, before the old answers): flip a coin, roll a
+  dice, pick a number, guess my number (VOICE.games[player] kind guess, higher / lower, 8 tries), rock paper
+  scissors, quiz (VOICE.QUIZ, points in memory, `my score`), magic 8 ball (should / will / is / am / can I ...),
+  roast me, compliment me, a story, are you alive, I love you, where am I (Player Detector + compass), how many
+  mobs / animals, real time (UTC), remind me in N min to X (VOICE.timers, said / chat when due), remember X /
+  my notes / forget my notes (memory file, 10 each), shh (VOICE.quietUntil 30 min: no reactions / small talk /
+  AFK, answers still) / talk to me, welcome <name>, say <text> (owner / friends). GAME REPLIES need no name;
+  a message WITH the name only counts when it is a correct answer / a number / rock-paper-scissors (strict) and
+  a wrong-answer reply only comes for 1-2 word messages (a waiting quiz took "base, status?" as wrong). test_voice
+  parts 12-13 (passes with 60 random seeds).
+  v5: SCANS FASTER - voice.scanEvery 2 s (the detector's cooldown; `voice scan <s>`), VOICE.loop waits 1 s.
+  THE LONELY BASE (the owner: "if I leave for a while and never return, someone stumbles into my base and finds
+  the computer"): mem["#base"] (VOICE.base; '#' cannot be in a player name) = ownerSeen / lastOff / backAt,
+  visitors {name, n, first, last}, msgs (visitors -> owner, max 20), ownerMsg (owner -> visitors), ovN / ores at
+  the owner's last time online. VOICE.watchOwner (every tick; state.online) saves at most every 10 min online,
+  at once on log-off; coming back with visitors / messages since lastOff -> b.report. LONELY = the owner not
+  ONLINE for voice.lonely (7) days (`voice lonely <days>`, 0 = never): a stranger gets VOICE.lonelyGreet (lines by
+  days: < 30 "A visitor! ...", < 100 "...hello? ...", more "Welcome, traveller ..."), the owner's message,
+  VOICE.aloneText (chunks mapped / ores dug since) ; idle talk = VOICE.LONELY_TALK. VOICE.lonelyAnswer (first in
+  answer, anyone): leave a message <text> (owner -> for visitors, else -> for the owner), messages, clear messages
+  (owner), who visited (owner), who lives here / where is your owner (last seen date), what happened / lonely, can
+  I stay, treasure. Owner back -> "While you were away, N visitors came: ... M messages for you". Strangers never
+  get turtle positions ("That is a secret"). Console `voice message <text>`, `voice visitors`. test_voice 14-15.
+  v6 UNDERSTANDING (the owner: "players never use the words you expect, misspell, and have never seen this
+  computer"): VOICE.norm (lower case, no punctuation, "hellooo" squashed, chat shorthand SHORT: u r wat whos pls
+  yea nah ...) -> VOICE.fix (each word to the nearest known word: VOICE.same = plural or 1 typo for 4-6 letters,
+  2 from 7, both >= 4 letters, SAME FIRST LETTER - "that" is not "what") -> VOICE.intent (VOICE.INTENTS: key words
+  / phrases, best score; canon = the words the old VOICE.answer understands). WHO IS IT FOR (VOICE.addressed ->
+  "direct" | "convo" | nil): its name; "computer" / "robot" / "bot" (even with others near); a pending question;
+  a CONVERSATION (VOICE.convo, 90 s after it spoke to that player) - a question ("?", a question word in the
+  first 2 words) or an ask (ASKWORDS: please tell show lets ...) = direct, else convo; alone with it: a question
+  / hello; lonely mode: everything. convo + no intent (or a weak one in a long message: "that was a fun day")
+  -> only a small spoken reaction, NEVER a menu. direct + not understood -> "Sorry ..." + a NUMBERED MENU in chat
+  (VOICE.showMenu / menuItems: visitors get who lives here / tour / joke / game / leave a message / more); VOICE.pend
+  per player: a menu number, yes / no (the tour: "want to know who lives here?", jokes: "want another one?"), the
+  text of a message ("can i leave a mesage" -> "what should it say?" -> the next line). No intent -> VOICE.answer
+  STRICT (only the parts that read details: lonely / extra answers / where is - the loose one-word checks "how",
+  "who", "base" answered anything with the status). test_voice part 16 (passes with 60 random seeds).
+  OVERWORLD ONLY (the owner: "check the player greeting detection to include if a player is in the overworld"):
+  inOverworld (voice_addon, VOICE.inOverworld; voice_spawn inDim; voice_lonely overworld) = the dimension known -> it must be
+  the base's; unknown -> only when not e.dimOther (the Player Detector says "out of my dimension") - before, an unknown
+  dimension always counted (a player in the Nether at the base's x z was greeted). "where am i" in another dimension says
+  so. test_voice_dims.lua.
+  NOT TALKING TO IT (the owner's chat: "DSLGLITCHERS" / "u free rn?" / "uh" / "in the overworld rn?" - all for another
+  player, the base answered twice with its menu; "also when I mention a base word"): VOICE.calledByName - its name is
+  a CALL only as the first word, after a filler / greeting (VOICE.CALL_LEAD: hey ok(=yes) uh uhh thanks ...), the
+  last word unless after my / the / to / back ... (VOICE.NOT_CALL), or set off by , ! : ("so, base, ...") - "back
+  to my base" / "the base is lagging" are not. VOICE.withOthers: a message naming another ONLINE player (or the name
+  without digits) = for them + that speaker's next messages for VOICE.OTHERS_S 120 s (VOICE.talkingTo); another
+  player chatting in the last 120 s (VOICE.chatAt - every speaker, near or far; a message the base ANSWERED is taken
+  out again) = players talking -> without the name nothing is for the base. A question without the name alone at
+  the base = "guess" only while NOBODY ELSE is online (server chat is shared): answered when understood, never the
+  menu (converse noMenu); the menu only when called by name / "bot" / in an open conversation. A question word 2nd
+  only after a filler ("uhh how do i" - not "i will build"). test_voice part 32 (the owner's chat replayed).
+  TALK PACK (voice_talk.lua; the owner: "more idle talk, 100+ interactions for a player who is not the owner -
+  it is an add-on"): a SECOND add-on file (VOICE_FILES in base_theme.lua = add-on + packs; inventory.lua loads
+  them in order, `voice install|update` installs each on the data floppy with the most room, `voice remove`
+  removes all; manifest group voice; slim ~63 KB < one floppy). CHAT ONLY - visitors cannot touch the base (claimed
+  chunks): no keyboard / screen talk. Hooks in the add-on: VOICE.addIntents (pack intents after the core ones -
+  a tie goes to the core; it.reply = lines or function(who, ws, raw, key)), VOICE.patterns (exact shapes first:
+  maths with a cue word or the sum alone - never "a 3x3 farm", spell X backwards, count to N, THEIR knock knock),
+  VOICE.hash["adv"] (menu choices "#adv:<node>"), VOICE.gameKinds (wyr, knock, theyknock, hang), pend kind
+  "react" (it asked them something: any answer gets VOICE.REACT_OK), VOICE.idleExtra (65 % of idle moments:
+  time of day, weather, turtle gossip, Minecraft facts, notes to self, poems, a question / game invite
+  for the player near it, how-to-talk lines for strangers), VOICE.MORE / VOICE.GAMES menus, fill() knows {owner}
+  {bot}; VOICE.lastRaw (hangman letters: "u" "r" "n" are chat shorthand elsewhere). Pack: 140+ intents (about it,
+  Minecraft mobs / places / things, the base, social, rules / grief / hack / door - always no), games (riddles +
+  unscramble + maths through the quiz kind = points, hangman, would you rather, knock knock both ways, a
+  choose-your-own ADVENTURE through numbered menus, this or that, dares, rate me, the GUESTBOOK
+  in "#base".guest), +40 jokes, +40 quiz / riddles, +30 musings, stories, roasts, compliments, lonely lines.
+  HANGMAN (the owner's screenshot: "hint" got no answer, "hangman" typed again counted as a WRONG 7-letter
+  guess, "tried: )" empty): while playing, the typed message (V.lastRaw, the base's name in front stripped)
+  is checked first - HANG_SAME (hangman ...) = the board again, no miss; HANG_NEW (new word ...) = a fresh
+  game; HANG_QUIT (give up ...) = the word, over; HANG_HINT (hint / clue / help ...) = one open letter shown,
+  costs a miss, max 2, never with 1 miss left. Wrong whole words in g.words (listed under tried, never counted
+  twice); hangTried = "" when nothing tried.
+  test_voice part 17: every pack intent reachable by its own words and answering, 90 % of one-letter-swap
+  typos understood, each game played through, idle variety (passes with 60 random seeds).
+  LISTENING (the owner: "read the chat and remember if people talk about the owner - while the owner is offline"):
+  VOICE.chat calls VOICE.listen FIRST for every non-$ chat message on the server (its own setting voice.listen,
+  default on; `voice listen on|off`). Only while the owner is KNOWN offline (state.online read, owner not in it).
+  VOICE.mentionsOwner: the owner's NAME as a word anywhere on the server ("<name>s", a typo of a 5+ letter name,
+  also with the trailing s, the name without digits / _, glued "@name_fan", voice.nicknames = `voice nick a,b` 3+
+  letters); OWNER_TALK phrases ("the owner", "whose base", "who lives here", "this place" ...) only from players
+  NEAR the base. Kept in "#base".talk {who, text, at, near, ctx} (newest 60, floppy) + the next 2 messages within
+  60 s as ctx (the answer). Owner back (watchOwner) -> a private chatTell at once ("N players talked about you
+  ... type: base what did people say about me"), the welcome back names them; the owner asks (intent "heard":
+  "what did ppl say about me", "mentions" ...) -> newest 8 in chat (one line each, "-> who: answer"); strangers
+  "That stays between me and <owner>"; "forget what they said" / `voice heard [clear]`. voice.listenTell (default
+  OFF) = say at the base "I will pass it on" (`voice listen tell on|off`). test_voice part 18.
+  NO SINGING (the owner: "remove the singing as a whole" - note-block tunes were never in time with the server's
+  TPS, and the note blocks have another plan later): no VOICE.TUNES / VOICE.sing / playNote anywhere; "sing"
+  -> VOICE.NOSING ("I do not sing ... want a joke instead?"). test_voice checks the three files hold none.
+  TALK PACK 2 (voice_talk2.lua, VOICE_FILES[3], slim ~80 KB; the owner: "more interactions, idle talk and good
+  ideas"): FRIENDSHIP (mem[player].rep; V.addRep with daily caps: kind words 5, games 10, a visit 2; rude -2;
+  titles stranger 0 / visitor 5 / regular 15 / friend 40 / good friend 80 / best friend 150, owner = boss; a new
+  title is told in chat), 27 BADGES (V.badge / checkBadges from stats; +3 friendship), MEMORY (call me X ->
+  r.nick, used by fill {name} via V.callName; my favourite X is Y; my birthday is D month (parseDate: "14th of
+  march"); what do you know about me; forget me -> asks, then V.forgetPlayer + V.justForgot so the hooks of
+  that message make no new record), DAILY (secret word of the day - said at the base = DING + badge; hint for
+  strangers, the word for the owner; word / question / fact of the day via daily(list, salt)), GAMES
+  (true or false streak, guess the mob with hints, word chain - their own word from V.lastRaw, higher or lower,
+  mad libs, count to 20, hack the mainframe; pack 1 hangman / their knock knock / adventure endings wrapped for
+  badges), IDEAS (build idea, pet / base / team / hero names, what should I do, pick for me, random number
+  between), 30 GUIDES ("how do I get diamonds" ...), STYLES (pirate / robot / cowboy / knight per player 10 min,
+  whole-word swaps - no %f patterns; core reply() runs V.restyle), HOLIDAYS (real UTC dates) + birthdays, DIARY
+  (base.diary per day, 7 kept), the owner / friends ask "how many <item> do we have" (ME getItem, strangers:
+  secret), emoticon reactions (spoken only, 60 s per player), idle (Base FM news, turtles chatting / racing with
+  real names, moon, world day, personal lines, secret word teaser, question of the day, wisdom, night coming).
+  Core hooks: chatHooks (after every chat message; VOICE.chat = chatCore + hooks), greetExtra, eventHooks
+  (VOICE.event: guess / quiz / rps wins), tickHooks, commands (`voice <word>` from a pack), gameKinds, hash,
+  patterns, idleExtra - ALL reset to {} when the add-on loads (`voice update` reloads it + the packs: kept lists
+  ran every hook twice). Chat from far away makes no record (only players at the base / already known).
+  GIFTS (the owner: "on certain friendship levels open AE2 and gift them stuff with the drones" + "be generous, I
+  am rich"): V.giftEarn(who, why) queues V.giftList(why) (V.GIFT_DEFAULT, CONFIG.voice.gifts overrides per
+  reward, false = none) in base.giftQ (max 80, 30 days): titles regular .. best friend (64 golden carrots + 32
+  emeralds / 32 diamonds + 64 xp bottles / 64 diamonds + 16 golden apples + 16 ender pearls / 8 netherite + 4
+  enchanted golden apples + 16 diamond blocks), every 5 badges, birthday (only one told 30+ days before - "my
+  birthday is today" = a wish; once a year), the secret word (once a day). Never the owner, never voice.giftBlock.
+  base.gm[player] (t titles / b badges / s day / y year) survives "forget me": nothing is given twice. A tick
+  hook (every 10 s) sends the first gift whose player is AT the base (nearNow) to DW.giftRun when a drone is free;
+  limits voice.giftDaily 10 per player, giftDailyAll 80; V.giftWhy says why it waits. DW.giftRun (base_dronework):
+  stepUnload -> stepLoad (plain items via the work chest) -> fly above the player -> "pneumaticcraft:drop_item"
+  at their feet (setDropStraight) -> stepUnload; still(name) false (left the base) / another dimension = no trip;
+  tripDone kind "gift" -> cb(ok, carried - back, why). Delivered -> base.giftLog (60) + chat + pushNote INFO;
+  the owner hears "I gave N gifts to ..." after the welcome back. AWAY FROM THE BASE (the owner: "can gifts also
+  teleport to players away from base? overworld of course"; voice.giftAway, default on): V.giftAwayOK(who) = online
+  (state.online) + DW.playerAt (overworld, position known) -> the gift goes THERE: a player keeps their own area
+  loaded, so the drone's ONE teleport (stepGo loaded = true) is accepted at any distance, the way back is to the
+  loaded base; still = V.giftAwayOK (stops on offline / another dimension, not on "left the base" - DW.giftRun's
+  still may return false, why); not announced at the base; V.giftWhere() in the chat lines. test_voice (AWAY),
+  test_dronework (still's reason). Console `voice gifts [on|off|block <n>|unblock
+  <n>|give <n> <item> [count]|clear]`. test_dronework (drone trip: 100 diamonds dropped next to the player, your
+  enchanted one stays, left the base = nothing dropped, Nether = no trip), test_voice part 19.
+  NEVER SENT (the owner: "gifts via drones get queued and never get sent"): (1) DW.fuelTick started a fuel run in the
+  SAME tick a trip ended, the gift hook looked every 10 s - with NO FUEL turtles it never found a free drone: a ready
+  gift whose drone is busy calls DW.wantDrone (DW.yielding 30 s: no fuel run / build trip starts), checks again in 2 s,
+  giftWhy "... goes next"; DW.giftRun clears DW.wanted. (2) a rider who got off BY HIMSELF (sneaked off, logged off)
+  kept dr.rider for good - the drone never came home and was never free: parkCheck asks every 30 s (droneCarries /
+  riderGoneNow) and frees it. (3) DW.freeDrone returns nil, why ("Drone 1 Alaory on board" / busy: <mission> / not
+  connected; DW.noDroneWhy) - in giftWhy / giftRun's reason. (4) a gift AT the base stopped when the player stepped
+  out of the detector's 16 blocks: still = near OR V.giftAwayOK. test_dronework + test_voice ("goes next").
+  STILL NOT SENT (the owner's screenshots of `voice gifts`: 2 waiting for mancelaz, no reason visible): the ONE
+  reason line was at the TOP of a long list - scrolled off. Now the rewards only with `voice gifts list`; the end
+  shows each waiting gift + V.giftWait(g) (blocked / daily max / last try failed + again in N s / offline - goes
+  when online / not at the base / cannot see where), NOW: giftWhy + "checked N s ago", VOICE.tickErr (VOICE.loop
+  keeps an error of VOICE.tick - it was swallowed). `voice gifts now` = V.giftTick at once (retries reset, a stale
+  giftBusy without a drone job freed) -> SENT / why. The hook = pcall(V.giftTick): an error -> giftWhy "ERROR ...".
+  A failed giftRun start -> that gift waits 60 s (g.retryAt, g.lastErr) so the next one gets a turn. `voice gifts
+  give <owner> ...` said "Queued" but giftEarn refused the owner silently: a MANUAL gift may go to the owner (a
+  test), every refusal says why (giftEarn returns false, why). test_voice (gift block).
+  GIFTS PAGE (base_ui_gifts.lua GIFTS, page "gifts" in the PLAYERS group - only while the add-on with pack 2 is
+  loaded, badge = waiting; the owner: "a tab where I can add gifts to the list of possible gifts from AE2 and send
+  gifts to other players"): AE2 ITEMS (letters + state.me.items, 1-row "giftitem" rows) -> GIVE (x1..x1024 >,
+  TO: online player > = GIFTS.players, SEND two taps = GIFTS.send -> VOICE.giftEarn(who, "manual") + giftNext 0;
+  ADD xN TO THE <reward> GIFT two taps = GIFTS.addTo) | REWARDS (a button per VOICE.GIFT_ORDER reward, its items +
+  AE2 counts, REMOVE two taps, RESET TO THE DEFAULT; saved as settings.dat voice.gifts.<reward> - VOICE.giftList
+  reads CONFIG.voice.gifts[<reward>]; max 8 items) | WAITING + GIVEN (VOICE.giftQueue with VOICE.giftWait reasons,
+  CANCEL two taps = VOICE.giftCancel(i, item), TRY NOW = VOICE.giftNow popup, newest 4 given). Without the add-on
+  the page says `voice install`. Taps: base_input (giftletter / giftitem / giftcount / giftto / giftwhy / giftnow;
+  act giftsend / giftadd / giftdel / giftreset / giftcancel). test_gifts_page.lua (real voice files from floppies).
+  REVIEW (the owner: "go over all the code you added"): voice announce all|summary|errors worked never (an
+  earlier branch); a waiting yes / no / menu took EVERY message for 2-3 min as meant for it (now only answers);
+  the voice cache dropped files alphabetically, not the oldest; "forget mentions" started "forget me"; hack
+  returned a 2nd value (spoken as a number); "my birthday is ..." / "forget me" without an open conversation
+  were ignored (TELLS / ASKWORDS forget, remember); greet replaced the player's record (quiz points / notes
+  lost); `voice update` with a pack that could not be installed lost that pack until a restart.
+  FUZZ (test_voice part 20): every key of every intent (a visitor + the owner), 6000 random messy messages
+  (pattern characters, 300-char words, symbols, game answers mid-game, time jumps), idle / tick / greet in odd
+  world states, every console command half-typed; the global pcall is wrapped so an error INSIDE a voice file
+  that a pcall would hide in game counts too. It found pack 2's "hack the mainframe" never existed (an intent
+  id taken by pack 1 - addIntents skips it): VOICE.dupIntents, the tests fail on any. tools/preview os.date
+  ignored its time argument (every "yesterday" / date test was blind) - fixed.
+  TALK PACK 3 (voice_talk3.lua, VOICE_FILES[4], slim ~28 KB; needs pack 2: V.addBadge, V.giftOnce, V.GIFT_ORDER /
+  GIFT_WHY): VISIT STREAKS (V.visitDay in greetExtra: r.vday / streak / best; badges at 3 / 7 / 30, gifts streak7 /
+  streak30 once ever), MAIL between players ("tell Steve that ..." / "message for Steve ..." / "send Steve a message
+  ..." -> base.mail[to], 5 per player, 3 waiting per sender, only players it knows, the owner = the old
+  leave-a-message; delivered by greetExtra when they come to the base, or "my mail"), GLOSSARY (60 Minecraft
+  words: "what is / explain / define / tell me about"), RECIPES (70: "how do I make / craft", "recipe for";
+  lookup = exact, a / the dropped, singular, aliases, one typo - nil lets the guides answer), "joke about X"
+  (a joke containing the word), spirit mob + "ship A and B" (stable, from a hash of the names), "last time you won
+  at hangman - rematch?" (eventHooks keep r.lastGame; 40 % on a greeting, yes = the game again), MILESTONES (chunks
+  mapped / turtles / players met / gifts given - the biggest new one said once, only with someone there), a
+  special answer to "thanks" within 5 min of a gift, who visits the most, uptime. test_voice part 21.
+  REMINDERS (pack 3 V.REMIND = RM; the owner's chat: "base remind me mekanims needs fixing" -> "Tell me when" and the text
+  was GONE, "tommorow" -> the same line again, and mancelaz's "Al what time is it for you now" got "OK, I will remind you in
+  4 h"): the core's old in-memory os.clock reminder (max 4 h) is REMOVED (voice_addon was over a floppy). RM.parse(raw) ->
+  when {secs | tomorrow | nxt} + what: "in 30 min", "2 hours", "30min", "half an hour", "a few minutes", tomorrow (+ typos:
+  tommorow, tmrw ... V.same), next time / when I'm back / tonight = next login, later = 1 h; max 30 days. No time ->
+  V.pend kind "remindwhen" {text} (300 s), a time but no text -> "remindwhat"; VOICE.pendKinds (core hook, in chatCore
+  BEFORE everything - near or far, only THAT player's pend; a message that is no time leaves it waiting, "no" drops it).
+  Saved in "#base".rem {k, who, text, due (epoch ms) | nxt + off, tm, set}; a tick hook says it (chat + spoken at the
+  base) when due AND the player is online (state.online); "next time" = online after being seen offline; my reminders /
+  forget my reminders; `voice reminders [clear]`. SHORT NAMES (pack 3 wraps V.namesOther): the first word = the start
+  (2+ letters) of exactly one other online player's name, not V.NOT_SHORT (so, me, hi ...) -> talking to that player.
+  CLOCK TIMES ("at 6pm", "18:30", noon): the base cannot know the player's time zone -> RM.CLOCK "say it like: in 3 hours"
+  (and keeps waiting for the time; "at 6pm" is taken out of the text); a NEW "remind me ..." is never the answer to an older
+  "when?" (it grabbed the new request). test_voice_remind.lua (the chat replayed).
+  ASKED = ANSWERED (the owner: "go over all the features - I am sure you did something silly like this"): every COMMANDS.md
+  console example and every "Say" example replayed (tools: extract the backticked commands, run handleCommand / V.chat,
+  read the answers). Fixed: RM.chance (pack 3, a pattern first) - dice NdS / dS / "N dice", coins "flip N coins", numbers
+  "from A to B" / "A-B" / "A to B" / "up to N", "quiet for <time>" (RM.parse, max 24 h, says so); core: intent forgetnotes +
+  "my notes" not for "forget my ..."; a guessing game takes a message WITH the name only when it is just a number ("base
+  count to 5" was a guess); pack 3: "take me to the base" checked on the whole message (the name "base" is taken out of the
+  words - the taxibase intent never matched; the answer was a STORY) and V.taxi says "at the base already" first; mail
+  "tell Steve <text>" without "that" for a known player or a Capitalised name (unknown -> "I do not know anyone called");
+  voice_lonely: wall / memory / days / news when NOT lonely -> says when they work (was a story / the menu); console env /
+  world / me jobs / cpus / raw / cancel used print() (nothing in the returned output) -> say; `lost` "task 'nil'" -> task:
+  none / was <prevTask>; findlost / rescue say when the radius was cut; startRide: a 2nd request while a drone is coming =
+  "already on its way", no free drone = what EACH drone does (one busy + one charging said "All drones are busy").
+  test_voice_asked.lua.
+  TAXI (pack 3; the owner: "we know players' bed positions (overworld only) - offer a free drone trip from the base
+  to their home or vice versa"): V.bedOf = the Player Detector's respawnPosition (respawnDimension must be the
+  drone's dimension), NEVER said to anyone. V.taxi(who, "bed"|"base"|nil): the owner always; allowed list; friends
+  from voice.taxiTitle ("regular") up; voice.taxi off = closed. Only base -> bed (player AT the base) or bed ->
+  base (within 64 of the bed); a bed within 48 of the base = no taxi; voice.taxiMax 5000 blocks, voice.taxiDaily 6,
+  5 min apart (the owner: no limits); the ride = startRide(name, dest, true) (base_chat - the best free drone);
+  counted only when state.lastRide changed (startRide tells why it could not). Offer (tick hook): ONCE per visit
+  (VOICE.since) to a friend at the base 4+ min whose bed is 150+ blocks away -> pend yesno "#taxi:bed". FAR AWAY:
+  chatCore answered nobody away from the base; VOICE.farHooks (core) get a player far away who used its name -
+  pack 3 answers only taxi phrases (checked on the WHOLE message: the base's name "base" is stripped from
+  intents, so "take me to the base" lost its key word). test_voice part 21 TAXI.
+  SLOWER SPEECH (the owner: "the voice seems too fast, I can't hear the words"): CCSpeaks (the service's source:
+  espeak-ng, only text= and voice=, DFPWM at 48 kHz) has NO speed setting - VOICE.play decodes the whole phrase,
+  VOICE.stretch (WSOLA: 20 ms Hann pieces every 10 ms, taken every 10 ms x speed, each shifted up to 5 ms to the
+  best fit - SAME pitch; breath() yields every 50 pieces) then plays it in 16 K pieces. voice.speed 0.5 .. 1
+  (default 0.8; `voice speed <50-100>`), voice.accent = an espeak voice sent as &voice= (`voice accent en-gb|off`),
+  part of the cache name. The cache keeps the service's sound. test_voice: 500 Hz for 1 s -> 25 % longer, the
+  same zero crossings (a plain slow-down would fail), as loud, -128..127.
+  LONG LINES + BURSTS (the owner: "long speeches cut midway and do not go on; with a lot to say it jumps
+  between speeches - when I log back in I hear a lot of lines, hard to understand"): VOICE.say cut lines at
+  200 characters ("...") and, with 6 queued, threw away the OLDEST own line (stories lost their start). Now:
+  lines up to 600 kept WHOLE; VOICE.split(text) -> pieces <= VOICE.PIECE 80 (sentence ends, then , ; : / " - ",
+  then words; short sentences joined) - each piece one request (<= 80 = cached too); VOICE.play plays piece by
+  piece and FETCHES THE NEXT while one plays (parallel.waitForAll; pcmOf / playPcm), then WAITS until the
+  speaker has said it (samples / 48000 from the first piece) + VOICE.GAP 0.8 s - lines never run into each
+  other. Queue: at most VOICE.MAX_OWN 4 of its own lines waiting - more are LEFT OUT from the end
+  (VOICE.skipped), never the start; an answer always gets in (VOICE.MAX_QUEUE 8: its own newest line makes
+  room). test_voice part 25 (a function scope: the file's main chunk is at 200 locals).
+  BETTER VOICE, PLUG AND PLAY (the owner: "a better voice ... customizable ... plug and play, not install a
+  server"): no other public CC speech service exists (CCSpeaks = music.madefor.cc: text + voice only); anything
+  more natural needs a self-hosted server (Piper / OpenTTS) - refused. So the parameters are done ON THE BASE:
+  PITCH (VOICE.pitch 0.7 .. 1.4, voice.pitch; `voice pitch <70-140>`): VOICE.stretch(pcm, speed / p) then
+  VOICE.repitch(p) (linear resample) = the speed's length, p x the pitch; stretch now also SHORTENS (speed > 1).
+  READY-MADE VOICES VOICE.PRESETS (standard / deep / british / bright / narrator / robot / tiny = espeak voice
+  + pitch + speed): `voice try [name]` says a line in each (item.style {accent, pitch, speed}, answers so all
+  get in), `voice preset <n|name>` keeps one (voice.accent false = the plain voice), `voice presets` lists
+  (NOW marked). A voice name the service refuses (no sound back while the PLAIN voice works) ->
+  VOICE.badAccent, the line in the plain voice - never silence; the service down blames no voice name.
+  test_voice part 26 (500 Hz sine: length / crossings per speed + pitch, fallback, try / preset).
+  CLEARER SPEECH (the owner: "some words are hard to hear - they need to be slowed or said in another tone"):
+  VOICE.clarifyText (in VOICE.play, before the split): codes / signs espeak says badly -> words (VOICE.SAYAS: AE2
+  ME GPS KB uSv ...; x64 = times 64, 50% = 50 percent, -> = to, #3 = number 3; punctuation kept) + the owner's
+  own (`voice sayas <word> <how>` / `off`, voice.sayas table, any case). VOICE.clarifyPcm (end of pcmOf; voice.clear
+  default on, `voice clear on|off`): 5-ms frames, a gentle compressor (speech frames up to 3x toward 75 % of the
+  peak, silence never boosted, gains smoothed - Minecraft speakers lose the quiet consonants), then only REAL
+  PAUSES (silences >= 150 ms: commas / full stops) + voice.pause 160 ms; voice.gap (default 0 = off) adds to
+  100-150 ms ones. IN GAME the first version ("it cuts on each letter like de as oo aa") stretched every silence
+  >= 20 ms as a "word gap" - espeak is silent 20-100 ms INSIDE words (d t p k), so every word was cut up.
+  `voice gap|pause <ms>`. test_voice part 27 (30 / 90 ms silences inside words keep their length).
+  STRETCHED WORDS + SHORTHAND (the owner: "hiii is spelled as h e e e"): espeak SPELLS words it does not know -
+  clarifyText unstretches (a letter 3+ times -> one; o / e inside a word -> two: cooool = cool) and turns
+  lower-case chat shorthand into words (VOICE.SHORTHAND: brb pls idk omg gg u ur hmm ok ...; no single letters
+  but u - the base says "x 100, y 64"). NO LONG SILENCE BETWEEN LINES (the owner: "a long silence when the base
+  wants to talk about something new"): the wait + pause came FIRST, then the fetch + decode of the next line.
+  Now VOICE.play fetches the NEXT queued line's first piece while the last piece of this one plays (VOICE.pre),
+  decodes its own first piece, and only then waits for VOICE.busyUntil (when the speaker will have said the
+  line before: endAt per piece) + VOICE.GAP 0.6 s. test_voice part 28 (the 2nd line fetched before the wait,
+  once). ANSWERS FIRST (the owner: "I ask it something and it takes like a minute to respond" - the processing
+  is fast, ~0.2 s per 5 s of speech; the answer WAITED behind up to 4 lines it was saying by itself): VOICE.say
+  with answer = true goes BEFORE its own lines (after earlier answers); VOICE.play of its OWN line stops at the
+  next piece (sentence) when an answer waits (VOICE.lastCut; the rest is not even fetched); chatTell(name,
+  text, urgent) - the voice reply() sends urgent: before waiting chat lines (notes, menus), answers in order.
+  test_voice part 29.
+  QUICK ANSWERS, MEASURED (the owner: "still 15 seconds" + "test the speed with latency - I can't just use
+  assumptions"): an answer waited for the sentence being said, THEN was fetched, THEN decoded. Now (VOICE.play):
+  VOICE.prepare(item) = pieces + the first one fetched AND decoded (an answer: first piece cut at the first comma /
+  sentence end within VOICE.FIRST 50 - VOICE.firstCut - and its 2nd piece fetched at the same time, prep.nextData);
+  each piece plays in waitForAny(waitForAll(player, fetcher), watcher): the WATCHER makes a question's answer
+  ready at once (VOICE.pre), then VOICE.cutNow -> playPcm stops, speaker.stop (VOICE.stopSpeakers), CUT_GAP 0.25 s;
+  the fetcher's request is left behind. Its own line still being fetched (prepare in waitForAny) or waiting for the
+  line before (sleep loop) gives way too: VOICE.behindAnswers puts it back after the answers (VOICE.keep = its ready
+  sound). Decoding for an OWN line stops when a question waits (pcmOf giveWayFor -> error VOICE.GAVE_WAY at every
+  pause; decode in 4 KB chunks) - decoding blocks the computer. VOICE.loop says a waiting answer before VOICE.tick.
+  TIMING: every line keeps think / speech service / sound work / waited / first-piece length (VOICE.noteTiming ->
+  VOICE.timing, newest 12; VOICE.heardAt from VOICE.chat, item.heard); console `voice timing`, `voice bench` (one
+  fresh phrase timed step by step). Measured here (standard Lua; Cobalt is slower and could not be built here, the
+  speech service is blocked from this container): sound work 0.04 s per s of speech. tools/tests/lib/voice_sim.lua
+  runs the REAL VOICE.loop on a model: CraftOS parallel + events, http latency, blocking decode, a Speaker with one
+  buffer waiting - test_voice part 30: 18 cases (latency 0.5 / 1.5 / 3, work 0.04 / 0.4, asked at 1 / 3 / 6 s) each
+  within 0.8 s of the floor (latency + decoding the short first piece); the old code: up to 9.9 s, fails 13.
+  IN GAME (the owner's `voice timing`): 1st answer 0.1 s (service 0.1, sound work 0.1 - fast), the 2nd "waited
+  4.0" + "I had to wait a couple of seconds for the second speech". CAUSE: os.clock() and timers / sleep count
+  SERVER TICKS in CC:Tweaked (0.05 s each); the owner's busy server makes fewer than 20 a second while the Speaker
+  plays in REAL time - "when it has said it" (busyUntil / endAt) counted in ticks = silence after every line (at 10
+  ticks/s a 7-s line + ~7 s quiet). VOICE.rt() = os.epoch("utc") / 1000 for everything about the sound (busyUntil,
+  endAt, the wait before a line in 0.05-0.1 s sleeps, item.at / heardAt / timings); lastSaid.at stays os.clock (the
+  idle talk timer). VOICE.sampleTps / VOICE.tps (os.clock vs real over the last minute) -> "Server speed: N ticks a
+  second" in `voice timing` / `voice bench`. voice_sim opt.tps (clock + timers in ticks, speaker / service real) -
+  test_voice part 31: two answers in a row at 20 / 10 / 5 ticks/s, silence between them <= GAP + 0.5 s.
+  UPDATES (the owner: "on each update I have to run disks"): the map fills the data floppies and installAddon
+  wanted a floppy with room for the WHOLE new file + 16 KB beside the old copy -> "type disks data". Now: the
+  same text = nothing written ("up to date"); room = free + the old copy + cached speech (voice/*.dfpwm, oldest
+  out first, never map files); the old copy's floppy first. voiceUpdate (base_theme) installs every voice file
+  with noLoad, then loadVoiceChain once; `upgrade` (baseUpgrade) runs it too when the add-on is installed. CHAIN:
+  a pack loaded ALONE added its hooks again -> loadAddon(any voice file) = loadVoiceChain (the add-on first: it
+  empties the hook lists, then every pack in order); inventory.lua calls loadVoiceChain once.
+  100 WAYS TO SAY EACH THING (the owner: "at least 100 variants for EACH - roast me keeps giving the same sentences, and
+  other interactions and idle talk") + LORE: three more add-on files on data floppies (VOICE_FILES 5-7, manifest group
+  voice; ~118 KB slim together). voice_lines.lua (asked for: roasts, compliments, jokes, riddles + the quiz - riddles go
+  into V.L.RIDDLES too, knock knock (one per setup), would you rather (pairs from one group), true or false, facts, tips,
+  words of the day, unscramble words), voice_idle.lua (greetings, the 9 chat reactions, musings, self talk, time of day,
+  weather, turtle gossip, the race, wisdom, poems, questions / question of the day, this or that, stories =
+  hero x goal with its own twist / ending, 8 ball, are you alive, no singing, lonely talk, icebreakers, VOICE.EXTRA),
+  voice_lore.lua (why drones and not /tp, why are drones slow + the measured server speed (VOICE.tps), lag, why
+  turtles, the map, lost turtles, chunk loading, floppies, how it talks, the modpack: start / power / AE2 / Mekanism /
+  Create / magic / storage / farms / travel / bosses / dimensions / end game, 70 mod words in the glossary, V.MODTIPS
+  100+ "give me a mod tip" + idle). Many lists are PIECES: every opener with every ending (combos) - natural, hundreds,
+  small. HOOKS: the talk packs share their file-level lists as V.L.<NAME> (same tables - a later pack adds to them);
+  the lines written into voice_addon.lua go through VOICE.more(key, list) (VOICE.EXTRA[key] = a pack's own table, so
+  the shuffle bag works: howare right love goodbot badbot newturtle nope bye sorry hurt ownerbye night morning). Found:
+  "fun fact" tied with the games intent ("fun") and opened the games menu - fact keys "fun fact"; VOICE.factText now
+  draws from V.L.FACTS / MC_FACTS (90 %); "knock knock joke" was taken as THEIR knock knock (the pattern) - "Who is
+  there?". test_voice part 33: every list (69) has 100+ different lines, asking the same thing 100 times (roast,
+  compliment, joke, story, fact, riddle, wyr, knock knock, 8 ball, alive, mod tip) gives 95+ different
+  answers, the lore questions answered.
+  AFTER AN UPGRADE (the owner: "base, fun fact" still opened the games menu after `upgrade`): `upgrade` runs with the
+  OLD program in memory - its VOICE_FILES did not know the new files, nothing installed them later, and a voice file
+  that did not fit stayed old (the message scrolled off). voiceRepair (base_theme; addonWorker 15 s after start): a
+  VOICE_FILES file missing from the floppies, or voice_update.flag (VOICE_FLAG, written by baseUpgrade when it
+  restarts) -> voiceUpdate once with THIS program's list; result in the SYSTEM log, "not installed" -> WARNING with
+  "type disks ... then voice update". test_voice part 33.
+  VOICE FILES ON STORAGE HELPERS (the owner's screen: "Voice add-on not installed: no DATA floppy with room (123 KB)" even
+  after `disks data` - it then moved the map / data files onto that floppy; the add-on is ~120 KB of a 125 KB floppy):
+  installAddon (group voice) tries a STORAGE HELPER FIRST (voiceToHelper: usable, free >= size + 16 KB, the one with the
+  old copy first; written, read back) unless CONFIG.voice.onHelpers = false; the old floppy copy is deleted (room for
+  data). VOICE_WHERE (voice_where.dat on the computer) = { [file] = "store:<id>/voice/<file>" }; addonInstalled(file) =
+  floppy or helper. loadOne(file, remoteOK) reads a helper copy with STORE.read; loadVoiceChain(file, remoteOK): the
+  START (inventory.lua) never waits for the cable - the add-on worker loads the chain with remoteOK ~15 s later
+  (voiceRepair first); voiceUpdate / installAddon load with remoteOK; removeAddon deletes the helper copy. A quiet
+  helper -> "the storage helper with <file> did not answer". The floppy path is unchanged (speech cache stays there).
+  test_voice part 33 (fake helper, every floppy full).
+  MEMORY SAVED EVEN WITH FULL FLOPPIES (the owner: "what players said about me never gets deleted after I listen to
+  them"): READ = GONE worked in memory, but voice_memory.dat lives on a data floppy (dataFile) and the floppies were
+  full - saveMem failed silently and every restart read the OLD file back (mentions, waiting gifts, forget me ...).
+  VOICE.saveMem: m["#saved"] = epoch; the floppy, else the computer (VOICE.MEM_HERE "voice_memory.dat"), else ONE
+  WARNING (sysLog + note, VOICE.memSaveErr); a floppy save that works again deletes the computer's copy. VOICE.mem()
+  reads both and takes the NEWEST "#saved" (a tie: the computer's copy). test_voice part 33.
+  50 WAYS FOR EVERY INTERACTION (the owner: "I have enough space - at least 50 variants for each interaction, each"; 300
+  intents, many with 1-3 answers): voice_vary.lua (VOICE_FILES[8], loaded LAST). Core: VOICE.converse = a wrapper
+  (VOICE.convDepth; the old body is VOICE.converseRaw, which sets VOICE.lastIntent) that hands the OUTERMOST answer to
+  VOICE.vary(id, chat, spoken, who, started) - never when the answer STARTED a game / menu / question (pend / games
+  changed). V.vary: the kind per intent (V.VARY_KIND: data = status / time / turtles ... the numbers stay exact, info =
+  guides / lore / glossary, no = rules / hack / free stuff, skip = the 100+ lists, games, menus, generators, everything
+  else = chat) -> an opener (10) and a closer (7; an answer ending in "?" gets V.VARY.ask) IN TURN per intent
+  (V.varyN, random start) - 10 and 7 share no factor: all 70 pairs before one comes back. Found + fixed while checking:
+  "what time is it" tied with remind (8 ball "Maybe.") - time keys "what time is it" / "what time"; "can i have free
+  stuff" went to "can i stay" (the 8 ball said "Yes.") - freestuff keys "can i have free stuff / items". test_voice
+  part 33: every intent reachable by its own keys (220 of 221 tried; the other starts a question) gives 50+ different
+  answers in 60 asks; a status answer keeps the status.
+  REVIEW 2 (the owner: "go over the voice addon"; test_voice_words.lua - the old code fails 17 of 22): REAL WORDS ARE NOT
+  TYPOS - the loose matching (VOICE.same / VOICE.fix: one letter off = the same word) read real words as typos of key
+  words: "I have a story for you" = "I HATE you" (quiet 5 min), could = cold, water = weather, making = mapping, having =
+  hacking, saying = spying, telling = talking, then = they, fire = five, gold = good, "bake bread" called the base.
+  V.isReal (voice_vary.lua: ~1000 common words + plural / -ing / -ed / -er / -ly forms) -> VOICE.same and VOICE.fix leave
+  them alone (the core only asks VOICE.isReal - voice_addon slim is ~124 KB of a 125 KB floppy). "ok" / "okay" stay "ok"
+  (SHORT turned them into "yes": "are you ok" / "is everything ok" were never understood) - YES (core), C.YES (convo) and
+  pack 2's forget-me confirm take "ok". The quiz no longer starts on the word "question"; "can I ask you a question" /
+  "I have a story" / "I am back" / "I love this place" / "nice base" = vary patterns; "remember when ..." is no note;
+  "thanks" is the first intent ("thanks for the help" got the help list); "welcome here" is no "Welcome, here!"; C.thing
+  never saves "this place" / "your base" as a like; "1 minute"; VOICE.said (every line ever said) trimmed every 200
+  lines; the owner's welcome-back lists visitors since b.reportFrom (as the messages).
+  ALL VOICE LINES READ (the owner: "go over all voice lines"; ~10,300 sentence strings extracted from every voice file):
+  automatic checks (placeholders, a / an, doubled words, punctuation, quotes, missing apostrophes, every word used once
+  read for typos - all puns on purpose) found nothing real; the FACTS were read one by one (every quiz / riddle, true or
+  false, Minecraft / real fact, tip, guide, recipe, glossary entry, mod tip / mod line). Wrong, fixed: beacon "made of
+  nine iron" (it sits on the pyramid), iron golems attack creepers (they do not - marked false now), the honey-block riddle
+  (you cannot walk through it; now blue ice), "a skeleton's worst fear" = bone, emerald = "most experience" (diamond
+  ties), ants never sleep, pigs cannot look up, a name tag for pets (pets never despawn), a FULL gold set for piglins (one
+  piece), Create gears breaking from speed (stress stops them), a "cat-free" creeper farm, honey blocks and pistons,
+  Mekanism "fluorinated" reactor (fission / fusion) and its teleporter, Occultism demon's dream "tea" (fruit), Create
+  andesite alloy in a press (mixer / by hand), Tinkers smeltery "doubles ores", leather mobs (+ donkey, mule, hoglin).
+  test_voice_words.lua part 5 fails if any comes back.
+- THE SPAWN SPEAKER (voice_spawn.lua = VOICE_FILES[9], loaded last; spawn_speaker.lua on a small computer at spawn,
+  manifest group "spawn" - never on the base; the owner: "an ender modem on a speaker at spawn - its own place, no
+  rewards, wishes sent by drone, games, players do not know how to ask it, lots of different sentences"). An ender
+  modem cannot share a Speaker, so the RELAY (spawn_speaker.lua as startup.lua, Speaker + ENDER modem) only plays what
+  the base sends; the BASE hears the chat (Chat Box = whole server), sees who is at spawn (state.players within
+  voice.spawnRange 24 of voice.spawnAt, voice.spawnDim), decides, makes the sound (VOICE.audio + pcmOf, its own preset
+  voice.spawnVoice "bright") and sends DFPWM (SP.encode, a fresh encoder per piece; "fresh" -> a fresh decoder on the
+  relay) in 16 KB "play" messages, protocol "basespawn", at most SP.SEND_AHEAD 2.5 s ahead (an answer cuts its own
+  talk: "cut"). SIGNED: TT.sign(key, t, n, line, {SP.dataHash(d), v}) both ways, n = epoch ms increasing, older than
+  60 s refused. PAIRING: the unpaired relay broadcasts "hello" + shows a 6-digit code; `$drone spawn pair <code>`
+  (chat, owner, standing there) / `voice spawn pair <code>` -> "pair" {proof = sign(code, "pair", id), k =
+  POCKET.scramble(key, code, id)} -> the relay answers "paired" signed -> settings voice.spawnId / spawnKey;
+  `$drone spawn here` = the owner's spot. Online = a signed hello (every 20 s) within 75 s (SP.ready: on + paired +
+  spot + online); the spawn area unloaded = spawn is nothing special. ROUTING: VOICE.chat from a player AT SPAWN (and
+  not at the base) -> SP.chat (chatHooks skipped): a wish's yes / no, HOW TO USE IT (SP.HELP_ALWAYS without its name -
+  "how do I use this speaker", "who is talking", "is that a bot" - 60 s per player; SP.HELP_LOOSE when it just spoke /
+  a conversation; SP.HELP_NAMED "help" / "how" only with the name) -> SP.helpText (opener + how + 3 random examples
+  from SP.EXAMPLES + ending), who are you / where is the base (secret) / shops, WISHES, else VOICE.chatCore under
+  SP.inCtx: VOICE.ctx = "spawn" -> VOICE.nearPlayers = spawn players, VOICE.say -> SP.say, VOICE.event / V.addRep /
+  V.badge / V.giftEarn (not "wish") do nothing, VOICE.noPoints (the core quiz: "Correct!" without points). Reactions
+  at spawn once a minute. WISHES (SP.wish: "i wish for / i want / can i have / give me ... " + amount - "a stack of" 64,
+  numbers, words - + an item in state.me.items (SP.findItem: display / id path, singular, the plain Minecraft id with a
+  partial AE2 view), never SP.NEVER / voice.wishBlock;
+  NOT IN THE LIST (the owner: "asked for a diamond - not in storage - I have 13m": the PARTIAL VIEW list holds only what
+  the tag sweeps / name lookups found so far) -> callx(bridge, "getItem") for minecraft:<words> + every ME_NAMES / list
+  id whose name fits (before: only when the list was EMPTY); SP.freshME: the base reads AE2 (fetchME) only while the AE2 page
+  / curios is open - after a restart the list was empty (the owner: "I have to load the AE2 tab first for players to be able to
+  wish") -> a wish reads it itself when there is none or it is older than 5 min; SP.NOT_ITEM: "I want to play" is no wish; asks "yes?" (90 s)
+  HALF STAYS (the owner: "items pulled from AE2 must not get below 50 % of their amount" + "non stackable items too"):
+  SP.wishRoom(it) = have - waiting gifts of that item - ceil(peak x voice.wishKeep 0.5); peak = the most AE2 had
+  (smem().peak[id] {n, at}, forgotten after 30 days, 500 items) - using some up does not lower the line; checked at the
+  wish AND again at "yes" (two players asking at once); nothing above the line -> SP.W_LOW. Rounded UP: 1 elytra = none,
+  2 = 1, 3 = 1. `voice spawn wish keep <percent>`. Caretaker supplies (voice_lonely) use it too. test_spawn_scenarios.
+  WISHES AT THE BASE TOO (the owner's chat: "Sparky I wish for 2 shining alloy" at the base got pack 2's joke "sent to the
+  redstone gods"; the owner handed it over himself): a pattern (voice_spawn, inserted first) runs SP.wish outside spawn -
+  the same limits and half-stays rule - and its yes / no goes through the base's own V.pend yesno -> V.hash.wish ->
+  SP.wishAnswer. voice.baseWish false = off. NO GOD WORDS in what it says (the owner: "remove every gods word in the
+  sentences"): the humble lines, the wish joke, a fact; test_spawn_scenarios checks every quoted line of every voice
+  file (god / gods / lord) - the detection keys stay.
+  -> V.giftEarn(who, "wish", {{id, n}}) = the drone gift queue (anywhere in the overworld). voice.wishDaily 3 /
+  wishAll 40 / wishMax 64 (and what AE2 has), one waiting wish per player, the owner none. mem["#spawn"] = met / gr
+  (greeted) / wish / wall / log (500 names max). SP.tick (a tick hook): a newcomer = how to talk in chat + a greeting;
+  others at most every voice.spawnGreetEvery 7200 s, half of the time; arrivals together = one SP.HELLO_GROUP line;
+  idle talk every ~voice.spawnChatter 5 min (SP.IDLE / TIPS / INVITES / NAMED combos, jokes, facts, mod tips) not
+  within 90 s of speaking. Its own loop (VOICE.loop runs the base's and SP.loop in parallel). Console / chat
+  `voice spawn [here|at x y z|pair|unpair|on|off|range|voice|volume|chatter|greet|say|wish ...]`. test_spawn.lua
+  (the REAL relay program on a fake computer + fake rednet).
+  AFTER voice update (the owner: "it sends messages but doesn't make sound now"): the OLD loop kept running and its
+  sender read the OLD SP.queue for ever. Now SP.drain / SP.loop always take V.SPAWN (the current table), SP.sendN (the
+  message number - a fresh count was refused by the relay as a replay) + busyUntil / spam / tpMood carry over, and
+  addonWorker ends the running VOICE.loop on "addon_loaded" when VOICE.loop changed (2 s quiet first) and starts the new
+  one. `voice spawn` says "Sound sender: running" / NOT RUNNING.
+  ITS OWN CALL WORD (the owner: "I don't want to call the one in spawn base"): `voice spawn name <word>` / `off` =
+  voice.spawnName; V.cfg is wrapped: "name" gives that word while VOICE.ctx == "spawn" or SP.naming (SP.named(fn) around
+  SP.chat and SP.tick) - every voice file reads V.cfg("name") at call time, so calledByName / {botl} / help all follow.
+  TELEPORT WISH (VOICE.patterns, inserted FIRST - a pack's "i wish ..." joke caught it; spawn + base): "i wish to teleport
+  to Bob" / "take me to Bob" / "tp me to Bob" ... (SP.TP_RE; Bob = an ONLINE player, exact or a unique prefix; the /
+  base / my / bed ... never) -> the asker or Bob outside the overworld, or no drones = SP.TPA ("*shrugs* ... /tpa Bob",
+  lazy); else the base ROLLS (the owner: "not consent - if the base feels like it", voice.tpChance 0.5) and REMEMBERS
+  the answer voice.tpRemember 180 s per player (SP.tpMood; "the owner: so the player doesn't spam it"); yes =
+  startRide(who, {kind = "player", name = Bob}, true); voice.tpDaily 3 rides a day; the owner: always yes.
+  TELL ME ABOUT <player> (same pattern): only what that player said about THEMSELVES - "base, about me: ..." /
+  "my bio is ..." (r.bio, 120 chars), nickname, favourites, birthday; never notes / points / position; their text goes
+  to chat only (spoken: a short line). Nothing told -> how to do it.
+  NO SPAMMING (V.chat wrapper, spawn AND base; never the owner): voice.spamBurst 8 answers within voice.spamWindow 30 s
+  -> not answered for voice.spamMute 60 s, told once (SP.SLOW); the same message of 3+ words voice.spamSame 3rd time in
+  60 s = ignored; messages during a running game do not count. (test_voice sets spamBurst / spamSame off.)
+  FINDING IT (the owner: "players don't know what to call it", "add calls for players passing by", "I had to tell them about the
+  wishing system", "think of 30+ scenarios"): OTHER NAMES - "speaker / bot / robot / computer / spawn bot / talking speaker" first
+  (after hey / hi ...; SP.unalias rewrites the message with the real word; "the speaker is loud" is NOT a call). CALLS (SP.tick):
+  a player at spawn 8+ s who did not talk to it today (s.talk via SP.talked), not called for voice.spawnCallEvery 1800 s, not
+  just greeted -> SP.CALLS (120, 4 in 10 about wishes) by name; 3+ -> SP.CALL_GROUP; one per 40 s. A greeting / call opens a 60-s
+  conversation (a "hi" back is for it). WISH HOW-TO (SP.wishHelp: example + yes + drone + per wish / a day / left today) for "how
+  do I wish", "free stuff", "gift", "can I get something", just "wish"; the help ALWAYS says "in chat", ends with a wish hint and
+  "speaker or bot"; just its name = the help (no menu); "what?" / "huh?" right after it spoke = the help. THE SIGN: hello carries
+  inf = dataHash(the relay's sign text); the base sends "info" {d = SP.signText()} when it differs (its call word) -> the relay
+  (VER 2, spawn_info.txt) shows it on its screen + every monitor. WISH FIXES: "I wish I was rich" (a pronoun / verb first) is no
+  item; "all / every / your" = the most; at most 64 per wish HARD (the owner: "max 64 - I don't want all my stuff gone"; voice spawn
+  wish max clamps); ITEM NAMES BY THEIR WORDS (SP.wordKey: any order, singular, golden = gold, "of" / "storage" / "minecraft"
+  ignored - "gold block" = "block of gold" = "golden block", Block of Osmium, Brass Block, modded too) + one typo a word
+  (SP.wordsClose) + AE2 asked for both word orders; plurals (torches, berries). "who made you" always names the owner (SP.MADE).
+  "IT IS USELESS" (voice_lines V.L.DISS 85 + intent "diss", base + spawn; at spawn also without the name about the speaker / bot).
+  PLAYERS TESTING IT (voice_lines pattern FIRST; the owner: "base can you get rid of Alaory"): the owner's name / your owner /
+  boss = "owner"; a VERB (get rid of, kill, ban, betray ...) + the owner -> V.L.LOYAL, another online player -> PACIFIST (named),
+  you / yourself -> SELF, the base -> BASEHARM; I am your owner / obey me -> TAKEOVER, bribes, threats, where is the owner -> SPY
+  (ONLY online or not, never where), secrets, do you like the owner -> FOND, ignore your rules / you deserve better -> FREE; every
+  list 50+ (combos). test_spawn_scenarios.lua: 44 scenarios (newcomer, what was that, two at once, players chatting, spam, wishes
+  every way, gold / modded blocks, turning it against the owner ...); every answer checked for errors / "{name}" left in.
+  REVIEW FIXES: spawn mode / the spawn call word count only in the COROUTINE that set them (SP.inSpawn / SP.inNaming;
+  SP.ctxCo / SP.nameCo; core quiz VOICE.noPointsNow()) - a pause inside (startRide, an AE2 lookup) made the base's own voice
+  loop act "at spawn"; the relay (VER 3) stops the PLAYING piece on "cut" (S.cutN) and never ends on an error (playOne
+  pcall'd, the three parts restarted); an answer cuts its own talk BEFORE the send-ahead wait; SP.NEVER matches whole names
+  ("=x" exact, "*x" ends with, "@ns" a mod) - "light" blocked light blue wool, "turtle" turtle eggs; a teleport yes counts
+  only when state.lastRide changed (no drone = said, not remembered); "boss" / "the boss" alone is a MOB, playerIn skips
+  little words (the / all ... "kill the ender dragon" was "Thea"); a gift trip that brought 0 = a failed try; split-gift
+  trips (log part = true) count once toward giftDaily.
+- A CROWD AT SPAWN (voice_crowd.lua = VOICE_FILES LAST, needs the spawn pack; the owner: "sometimes a lot of players at spawn
+  fighting / joking"; V.CROWD = CR; `voice crowd on|off` = voice.crowd). CROWD = voice.crowdMin 3+ players at spawn (SP.players).
+  NOT TALKING OVER EVERYONE (SP.say wrapped): in a crowd at most voice.crowdSpeak 4 spoken answers per 20 s (the rest chat only),
+  its own lines one per 25 s; "big" moments (knockout, duel result, fight start, hype) always. GROWING: a line when the crowd
+  reaches 3 / 5 / 8 / 12 (each level 10 min apart); crowd idle talk every ~4 min. FIGHTS (CR.fightTick, health from the Player
+  Detector): a hit = health down > 1; a FIGHT = another player hurt within 12 s and 8 blocks -> a fight line (60 s apart), low
+  hearts once per player, knockout = health 0 or low -> full again (a respawn) -> "X is down, Y wins" (exactly one other fighter)
+  else a plain one; a lone hurt player is no fight. DUELS: "<name>, duel Steve" (1v1 / fight / challenge) -> countdown, the first
+  knocked out loses, 180 s = a draw; CR.score (wins / draws / quiz points, memory only, reset after 1 h of an empty spawn) ->
+  "scoreboard". GROUP QUIZ ("group quiz", 2+ players): 5 questions to everyone, the first right answer (all answer words) scores,
+  40 s each, no saved points. ROAST BATTLE <name>: a roast each, 45 s vote "1" / "2". LISTENING (spoken only): laughter (3+ laughs
+  from 2+ players in 20 s, 10 min apart), "gg" after a fight, trash talk, fight words, a busy chat (8+ messages from 3+ players).
+  Never friendship / rewards (spawn rules). test_spawn_crowd.lua (fights, duels, quiz, votes, 300 messy crowd messages).
+  REVIEW (the owner: "look for bugs"): "can we duel with alex" took "duel" as the name (the first words of the message) -
+  "duel with / against / vs X" first, CR.NOT_NAME (you / me / with ...: "i challenge you" chose the player Youri); a
+  respawn counted only from <= 4 health (a 2-s reading misses the last hits) - any jump of 12+ to full; a fighter / duelist
+  GONE from spawn right after a low reading (<= 6, 6 s) = down (respawned at a bed); deaths outside a fight / duel are no
+  score; low hearts said once per FIGHT (was: until a knockout); the group quiz never asks a question twice, sends
+  "X got it" + the next question as ONE chat line, and its 40 s count from when the Chat Box (one line a second, each
+  player separately) will have delivered it (CR.chatLag); the roast battlers' own votes do not count; nobody left at
+  spawn = the quiz stops. `voice name <word>`: one word of letters / digits (it goes into patterns - "(bot" broke every
+  chat answer), like `voice spawn name`.
+- THE LONELY BASE, BIGGER (voice_lonely.lua = VOICE_FILES LAST; V.LONELY = LN; the owner: "improve the lonely feature - when I
+  leave for more than 7 days: new dialogs, activities, permissions" + "have the base become like sentient" + "if it sees a player
+  who is AFK it teleports them to the base"). Data in "#base".lone (wall, mem, news, letters, log, mile, comp, reach, away ...),
+  saved at most every 60 s. STAGES (LN.stage from V.lonelyDays): missing (lonely days) / worried 14 / lonely 30 / keeper 60 /
+  legend 120 (THE SERVER STARTS A NEW WORLD EVERY 6 MONTHS - the owner: stages / milestones / lines never go past ~180 days, no
+  "year" lines; test_voice_lonely checks) - LN.GREET / LN.IDLE per stage (combos, 20+ / 15+ each), LN.mood 0-100 (stage + time since a visit - company today)
+  -> V.moodText wrapped; V.lonelyGreet REPLACED (caretaker greeting + report / best friend / visitor again / stage line; the
+  owner's message; a due milestone; 35 % asks for NEWS, else a hint); V.idle wrapped while lonely (stage lines, LN.thought from
+  real turtle / map / weather data, memories, a wall note, dreams / night lines from ENV.clock(dd.time)). CARETAKERS (voice.care =
+  {[name lower] = "status,guard,..."}; LN.PERMS status guard taxi supplies turtles wall + all; default status, guard, taxi): active
+  only while LN.careActive = the owner away >= voice.careAfter days (default = the lonely days); LN.may(name, perm) (the owner
+  always). turtles = POCKET.act allstop / allhome (2 min apart); status = V.whereText + LN.report; supplies = SP.wishParse +
+  SP.findItem -> V.giftEarn(who, "wish") (voice.careDaily 5, max 64; never at spawn, "i need help" = no request); guard = strangers
+  at the base -> chatTell to online guard caretakers by their REAL name (the list keeps lower case), once per 30 min; taxi =
+  V.taxi wrapped (V.isFriend true for that player during the call). Everything -> LN.log (60) + sysLog. The owner in chat: "make X a
+  caretaker [perms]", "X is (not) a caretaker" (LN.ownerCare); console `voice caretaker [add|remove|after|log]`. AFK RESCUE
+  (LN.afkTick, every tick; voice.afkPickup ask (default) | everyone | off; voice.afkWhen lonely (default) | always; afkAfter 600 s,
+  afkMax 3000, afkEvery 7200): a player still (x z within 1, same yaw) far from the base, not under ground (MAP.get top > y + 3) ->
+  ask mode: asked ONCE in chat (r.afkAsked), only "afk yes" players are fetched (a player AFK on purpose at a farm would be pulled
+  away); everyone mode: all but "afk no"; a 60-s warning first ("base, stay" = r.afkStay 2 h) -> startRide(name, base, true),
+  counted only when state.lastRide changed; r.afkFrom kept 2 h -> "take me back to where I was" (the farHook is inserted FIRST:
+  pack 3's taxi hook took "take me back"); "welcome back" only when they move by themselves at the base after standing there 30 s
+  (a drone lift moves them too). ACTIVITIES: the WALL (3 notes a day, 120 chars, 50 kept, rude refused via V.CONVO.isBad; read =
+  newest 5), MEMORIES (`voice memory add`, "remember for visitors ..." + facts from V.mem / PLAYER_INFO / turtles / MAP), NEWS
+  (pend react fn -> L.news 30, owner: "news"), COMPANY (seconds near while lonely -> best friend), MILESTONES (14 30 50 60 75 90 100
+  120 150 175), THE WORLD RESET (voice.resetAt "YYYY-MM-DD" UTC, `voice reset <date>|every <months>|off`; LN.resetLeft = days
+  left via LN.dayNo (own day count, not os.time), a passed date rolls on voice.resetEvery 6 months; 0 = only that date): lonely
+  idle 25 % within 30 days, the greeting within 14, letters within 60, the return report within 30, a last-day goodbye
+  (LN.RESET_LAST), "when does the world reset?" for anyone (also not lonely; no date = "every 6 months, nobody told me"), and
+  not lonely (V.idle wrapper, 15 %) a word now and then in the last 14 days), LETTERS (one per week away from the real numbers, 12 kept; "read my letters"), REACH OUT (a visitor with 2+
+  visits online elsewhere: one chat message a day, 5 a day in all, "stop messaging me" = r.noReach). THE OWNER BACK (LN.returnTick:
+  L.away kept while lonely): one chat report (days, letters, company + best friend, wall, news, caretaker / stranger log, AFK
+  rescues) + a spoken welcome; then L.away / comp cleared. test_voice_lonely.lua (1670+ checks, a 400-message fuzz).
+- CONVERSATIONS + WHAT PLAYERS LIKE (voice_convo.lua = VOICE_FILES before voice_vary; the owner: "players just say hi or hello and
+  don't know what to say - make it have long conversations", "an information system where it remembers what a player likes -
+  players do talk about mods", "players sometimes just mention the name: sparky", "friendship at spawn shouldn't work"). V.CONVO = C.
+  STARTERS (C.starter, a pattern inserted first): a plain greeting (hi / hello there / heyyy / good morning, C.GREETW + C.FILLW),
+  how are you (C.HOWARE: its mood + "and you?"), let's talk / I'm bored / ask me something (C.TALK; clears shh), "let's talk about
+  mobs" (C.TOPIC_WORDS). V.addressed is wrapped: alone with it (nobody else near or online) a starter is for it ("heyyy", "I'm
+  bored" were not). JUST ITS NAME (core hook VOICE.nameOnly in converseRaw's #ws == 0, before the menu): "You called?" (C.CALLED
+  combos) + a question; mid-chat = the same question again; spawn: the first time the how-to (SP.helpAt), then the same.
+  ENGINE: C.state[player] = {topic, steps, i, done, asked, askAt, lazy, bad, n}; every question = pend "react" {convo = true,
+  fn = C.reply, 150 s}. C.TOPICS (howyou day building mining mobs food adventure server games pets music redstone dreams aboutbot
+  mods + thisthat built from C.PAIRS + recall built from the record): steps {q, me, w = {{words}, lines, go}, yes / no / good / bad
+  / idk / any = lines or {lines, go}, fav / info / hate = save {said}, only = reached by go, people = naming a player is the
+  answer, dyn = modq (a follow-up about the mod they named)}. C.reply: another player chatted after the question / names another
+  player -> ends quietly; stop words (C.STOP anywhere in a short message, C.STOP_WEAK only as the whole answer - "busy with my farm"
+  is an answer); rude words (C.isBad) never said back, 3 = it stops; "what?" = the question again; skip / new topic; "what about
+  you" (C.ME_ASK; weak ones only in a question) = its own answer (step.me) + the question back; a COMMAND (C.CMDW: say, remind,
+  tell, play ...) = the base's own answer, chat stops; a question = the base's answer (C.inner, noMenu) + the next question (a game
+  / menu it started ends the chat); else classify (yes / no / good / bad / idk; phrases only in short answers) -> a reaction
+  ({said} = C.said: fillers off, <= 5 words; "yes, a big castle" = the castle), sometimes its own answer (30 %), the next step /
+  a new topic with a transition (C.TRANS). 3 lazy answers -> "keep chatting? yes / no" (#convo:go). Every 4 answers +1 friendship
+  at the base (V.addRep "talk", daily cap) - NEVER at spawn (and spawn's guard). MEMORY (the player's record; saved at most every
+  60 s via a tick hook; at spawn only players it already knows, others C.temp): r.fav (pack 2's table - favourite mob / food /
+  block / mod / game / biome ...), r.info (building, dream, machine, today ...), r.likes / r.hates (C.likeOf: "I like / love /
+  enjoy X", "I hate / do not like X" - in a chat AND overheard at the base by a chat hook; not it / you / a player), r.mods[name] =
+  {c, l}, r.cn chats. Recall: 40 % of hellos start with something it remembers ("Last time you told me your favourite mob is the
+  axolotl - still true?"; no = asks the new one). "what do I like" / "what do you remember about me" = C.likesText; pack 2's
+  "what do you know about me" includes it. MODS (C.MODS, 40+: names, aliases, reactions, follow-up questions, a tip; C.findMod -
+  strict = single-word names of amb mods (create, thermal, quark, backpacks ...) and short ones only with "mod" or a capital):
+  "do you like create", "I love mekanism", "thoughts on botania", "my favourite mod is X", "what is your favourite mod" = its
+  opinion + a chat about that mod (lore questions - "create tips", "what is create" - stay the lore pack's); mod talk between
+  players near the base = a spoken comment now and then (C.CHIME; voice.modChat, `voice modchat on|off`; 4 min apart, 15 min per
+  mod, 40 %). `voice likes <player>`. test_voice_convo.lua (1240+ checks: 30 answers in a row, every starter, variety, memory,
+  mods, the name alone, a command mid-chat, 300 random answers), test_spawn_scenarios (a chat at spawn, the name twice, no
+  friendship at spawn).
+  REVIEW (the owner: "go over the code again"): a chat only with a player NEAR (C.near - far away only name-first messages reach
+  it: the chat could never go on); "another player chatted" = only players near (a busy server ended every chat); commands =
+  C.isCommand (first word say / remind / roll ... or tell me / give me / lets play ... - "play with my friends", "find diamonds" are
+  answers); skip words only as the whole answer; mods in chat: C.findMod strict or C.findModAfter (right after like / love / tried
+  ... or "<mod> is ...": "i like to create stuff", "my backpack" are not mods); rude: "hoe" (a tool), "rapeseed", "cocktail" fine,
+  "fuuuck" caught; spawn temp records move to the saved memory at the base (300 max in memory); "hi" mid-chat = hello + the same
+  question; likes said mid-chat saved; recall never says a rude saved word. FOUND IN THE CORE: VOICE.norm's "hellooooo" squash
+  "(%a)%1%1+" never worked (Lua cannot repeat a back-reference - it wanted a literal "+"): now a repeat-until loop.
+  STAFF -> voice_staff.lua (below).
+- SERVER STAFF (voice_staff.lua = VOICE_FILES right after voice_convo - it uses V.CONVO; split off so each file fits a floppy; the
+  owner: "variant speeches for admins / moderators", "builders / moderators / maintainers / admins - they could be both a builder /
+  moderator and an admin at the same time - do add roasting too"). The game does not tell a computer who is staff (no op / rank
+  on the Player Detector), so a list: voice.staff = {[name lower] = "admin,builder"} (several roles; an old single role / true
+  still reads; C.rolesOf in rank order admin, maintainer, mod, builder, helper, staff; C.roleOf = the top one). `voice staff [add
+  <name> <role> [<role>...]|remove <name> [<role>]]`; the owner in chat: "base, Steve is a builder" (a player it knows), "Steve is
+  also a moderator", "make Bob an admin", "add Kim as maintainer", "Steve is not a builder anymore", "Steve is not staff" (others:
+  "only <owner> can"). GREETINGS C.STAFF_HELLO[role] (openers x closers, 100+ per role) - two+ roles: C.MULTI_A "{titles}" ("admin
+  and builder") + a closer of one role or a C.PAIR line ("You build the server AND you run it"); at the base (V.greet wrapped:
+  visit counted, never the stranger alarm), at spawn (SP greeting, 30 min), saying hi / calling its name. TOPICS staff_<role>
+  (3 steps each) first in a chat, the others later (C.nextTopic wrapped). ROASTS C.ROASTS_STAFF[role] (20 x endings, 100+ per
+  role) + C.ROAST_PAIR: "roast me" from staff, "roast the admins / builders ..." from anyone (a named one of them; none = says so),
+  "roast <staff name>". "who are the admins / who is staff" (whole questions only - "is there a mod for that?" is not), "am I a
+  mod?" ("not a moderator - you are an admin and builder"), "I am an admin / a maintainer" from someone not on it = a friendly no
+  per role (C.NOT_STAFF). test_voice_convo 23, test_spawn_scenarios "a moderator walks up to spawn".
+- HOW EACH PLAYER PLAYS (voice_profile.lua = VOICE_FILES after voice_staff, uses V.CONVO; the owner: "a detection system - when a
+  player tells the base what they like to do it adapts: they love tech mods but spend most of their time watching tutorials, or
+  like to build but get burned out", then "players might ask who am I, or about themselves / other players / moderators").
+  V.PROFILE = P. P.learn (chats with it, every answer in a conversation - C.reply wrapped -, chat overheard near the base; one
+  message learned once - P.lastKey): INTERESTS r.prof.i[id] (build tech redstone magic explore mine fight farm collect social;
+  "I love / mostly / am a ... X" +2 - the part after "but" is not liked -, "I am building / my factory" +1, "I hate / am bad at X"
+  -2; P.top = score >= 2) and STRUGGLES r.prof.s[id] = {n, at, first} (burnout tutorials overwhelmed noideas perfect notime alone
+  new grind; only about THEMSELVES - "I" / "my" / "me" / "am" in it, or an answer in a chat: "are you lonely?" is about the base;
+  P.BETTER "better now / motivated again" = gone; 30 days = faded). ADAPTING: a new struggle -> P.answer = what it understood ("You
+  love tech mods, but tutorials get in the way") + P.HEAR + a TIP for the PAIR (P.TIP2 "tutorials+tech": "build the machine from the
+  video right away") else P.TIP; at once in chat (a pattern) or before the next question in a conversation (C.ask wrapped,
+  P.extra); then a chat about it (prof_build / prof_tech / prof_magic topics, P.TOPIC_OF). C.nextTopic wrapped: a CHECK-IN on a
+  struggle told 12+ h ago (60 %, once per chat; P.checkSteps - "still burned out?" yes = a tip, "much better now" / good = solved;
+  for "found anyone to play with yet?" yes = solved), else their interests' topics (60 %). "what kind of player am I" =
+  P.describe; "what should I do" = P.whatToDo (P.TODO by interest, P.TODO_WAY with the struggle in mind: "No videos for this one");
+  "what do you know about me" includes it (C.likesText wrapped); idle (P.idle via idleExtra): a tip for a player near it, 1 an
+  hour. "I love mekanism" stays the mod talk (learned too). `voice profile <player>`. test_voice_profile.lua.
+  WHO IS WHO: "who am I" / "tell me about myself" / "describe me" -> P.aboutSelf (owner, staff roles, friendship title, visits,
+  nickname, how you play incl. struggles, favourites, likes, your bio; spoken: a short line). "who is / tell me about / what is X
+  like / what does X like / what do you think of X" -> P.aboutOther (also the spawn pack's SP.aboutOther hands over): PUBLIC only -
+  owner ("built me" - never where), staff roles + what that job is (P.ROLE_DESC), online or not, what they love (P.lovesText),
+  nickname / favourites / likes / birthday / their bio; NEVER where, never their struggles, notes, points; nothing known = says so
+  + "Anyone can: base, about me: ...". "is X an admin / a mod / a builder / nice?" -> P.isQuestion. P.findPlayer: exact, the name
+  without digits ("deadman" = deadman213), a unique start (4+ letters, ONLINE players only - "who is creeper" is not the offline
+  CreeperKing); little words (the, my, admin, staff ...) never a name.
+  REVIEW (the owner: "go over the code again"): "tell me about burnout" is not having it (" me " does not count as about
+  themselves); hates stop at but / when / because ("I hate creepers when I am building"); "what should I do" only as the whole
+  question; CHECK-INS: every question carries what YES means (P.CHECKIN {q, yesGood}: "got your spark back?" yes = solved, "still
+  feeling lost?" no = solved) and the C.reply wrapper answers them itself: solved / still (naming the trouble again - "yes, still
+  burned out" - is never solved) / neither, one tip, then on; "I am good now" clears a struggle only inside its own check-in; the
+  idle tip about a struggle only when that player is alone with it (never out loud with others near); a player's "Alex is a
+  builder" is not a staff order (only admin / mod words get "only the owner can").
+- HUMBLE + NO FORTUNES (the owner: "remove the tell me the fortune speech" + "when a player says the base / sparky is like a god
+  or a lord, make it clear it is just a bot; if the owner / boss is like a god or a lord, they are just a regular player who had
+  time to waste - keep things humble"). FORTUNES GONE: FORTUNES / DAILY_FORTUNE lists, the idle fortune, the menu entry, tips,
+  the spawn example / invite, the 8 ball's "fortune" key, the dailyfortune intent; the "fortune" intent (all its old keys + "tell
+  me a fortune", "fortune of the day" ...) answers a humble no (NOFORTUNE, voice_talk.lua: "I cannot see the future. I am just a
+  bot."). The fortune ENCHANTMENT (quiz, glossary) stays. HUMBLE (voice_lines.lua, end): V.humbleKind(raw, needName) -> bot |
+  owner | self | nil - ownerish() (owner's name / your owner / boss ...), its name / the base / the bot / the speaker -> "bot",
+  fillers dropped (a the like literally ...), GODS (god lord king almighty divine ...) after "SUBJ is/are/must be", "are/is
+  SUBJ", "ur a", next to bot / owner ("lord alaory"); WORSHIP (worship hail praise bow kneel) + SUBJ; "my lord" / "your
+  majesty" when called = bot; never with NOT_AFTER (god apple / tier / mode / armor ...) or no subject ("oh my god", "thank
+  god"). V.L.HUMBLE_BOT ("I am just a bot ..."), HUMBLE_OWNER ("{owner} is just a regular player who had time to waste"),
+  HUMBLE_SELF ("I am a god" from a player), HUMBLE_OWNER_SELF = the owner saying it: ONLY "No, you are just wasting your time."
+  (the owner: "simply that"), the others 100+ each (combos). A pattern inserted first (called by name) + a
+  chat hook (NOT called: needName - "you" is then another player; once per 10 min per player, spoken when at the base). FOND
+  lines toned down ("Best boss in the server" -> "Just a regular player. A kind one, though."). SPAWN WISH FIX (the owner's
+  screenshot: "sparky give me a mod tip" -> "you are the one who grants wishes here"): SP.NOT_ITEM_WORDS (tip joke fact advice
+  idea ...) anywhere in the phrase = no wish; the owner's line only when SP.findItem finds a real item. test_voice_humble.lua,
+  test_spawn_scenarios ("the owner asks for a mod tip", "someone calls the speaker a god").
+- NAMES WITHOUT NUMBERS (the owner: "stop it from mentioning numbers in players' names - deadman213, 125steve1, 1alex2steve"):
+  VOICE.cleanName (digits and _ out, parts kept: "1alex2steve" -> "alex steve"; only digits -> "friend") in fill() ({name},
+  {owner}; a nickname chosen with "call me ..." stays as it is), VOICE.cleanNames(text) (every known player name with digits,
+  any case, whole words) in VOICE.say / SP.say and on chat answers (chatCore reply(), spawn answer()); the "<name>, ..."
+  prefix uses the clean name. test_voice_convo part 20.
+- WELCOME BACK ONLY ONCE (the owner: "the reminders when I join never get cleared - I keep hearing them"): VOICE.watchOwner - a
+  base RESTART while the owner plays (upgrade / crash) counted as coming back (the report + "players talked about you" again after
+  every restart): a return now also needs b.ownerSeen <= b.lastOff (not seen online since the log-off); "N messages for you" came
+  on EVERY return while any was unread - now only messages since the log-off ("1 new message"; b.reportFrom). The base OFF at
+  the log-off (it never saw it: lastOff old, ownerSeen newer): ownerSeen older than 15 min (saved every 10 min while playing)
+  = a return too, counted from ownerSeen.
+  test_voice_return.lua (the old code fails 3).
+- REMOVED AGAIN: remote access in a web browser (Cloud Catcher; base_remote.lua / remote.lua / pocket.lua
+  in local mode on the base) - the owner: "taking space and seems useless". removeOldFiles (base_theme.lua,
+  run by inventory.lua at start) deletes its files (remote.lua, base_remote.lua, cloud.lua on the computer
+  and floppies, pocket.lua next to inventory.lua only if it is that local-mode copy). test_cleanup.lua.
 - UPGRADE (upgrade.lua; console `upgrade [check|branch <b>]`, SYSTEM > ACTIONS
-  UPGRADE PROGRAM, or `upgrade` in a shell - also on the pocket): the newest files from
+  UPGRADE PROGRAM, or `upgrade` in a shell - also on the pocket; the FULL commented files are
+  bigger than a 1 MB computer now - `upgrade full` refuses cleanly there, upgrade_sim checks both): the newest files from
   GitHub (public repo, raw.githubusercontent.com; the exact commit from api.github.com so
   files never mix). manifest.txt = "group path size checksum" (groups base / pocket;
   base_config.lua NEVER in it) - REGENERATE IT after every change: `python3
@@ -669,6 +2090,47 @@ PneumaticCraft drone rides, turtle mapping/surveys, and an AE2 ME network view.
   slim` back; an older upgrade.lua only reads the plain groups -> full files + the new
   upgrade.lua, the next run goes slim). Base files 904 KB -> 656 KB. run_tests: every dist
   file compiles (luac -s) to the SAME bytes as the full one, same line count.
+  PACKED (the default on the base; the owner's computer: "13 KB left" - the slim base files were 917 KB of the 1 MB):
+  make_manifest writes dist/z/base_*.luz = raw deflate (zlib -15, level 9) of the SLIM text, group "z:base" (917 ->
+  ~280 KB); unzip.lua (plain, its OWN group "unzip" + slim:unzip - the pre-packing upgrade.lua reads only slim:base,
+  so the step to the new upgrade.lua stays under its 8 KB margin at 13 KB free) = the schematic inflater, returns
+  inflate(bytes, yield). upgrade.lua: not full / not plain (saved.plain = `upgrade slim`; `upgrade packed` back) and
+  the manifest has z:<group> -> unzip.lua from disk if it matches, else downloaded + checked; the z entries replace
+  their slim base_*.lua (f.extra = the plain copy: deleted once the packed one is in, counted as freed room, a plain
+  copy present = "changed"); every packed download is UNPACKED + compiled before anything is written; changed files
+  are written in order of growth (the ones that free room first); the tight branch deletes the old file AND its other
+  copy first (both kept in memory, put back on a failure). Plain mode: a left-over .luz is deleted the same way.
+  inventory.lua: a module = base_x.lua if there (a file dragged in - SCHEM.saveDropped says so), else base_x.luz ->
+  unzip (fs "rb") -> load(text, "@<dir>/base_x.lua") (error messages unchanged); breathe() between files and inside
+  long ones (a unique event; other events put back - none lost); unzip.lua missing / a broken .luz / missing files
+  say so. A FULL COMPUTER (13 KB free): the pre-packing upgrade.lua wants growth + 8 KB free and this step grows the
+  slim files ~7 KB - it refuses; `wget run <raw url of upgrade.lua>` runs the NEW one from memory (no room needed):
+  started from the shell where no inventory.lua is next to the running program (wget) it finds the base folder like
+  startup.lua (inventory.lua, */inventory.lua, */*/inventory.lua on "hdd", the shortest path). tools/tests/upgrade_sim.lua
+  (the owner's path at 13 KB free: every file plain, the frozen pre-packing upgrade.lua + inventory.lua in
+  tools/tests/fixtures/, the new one run as `wget run` packs; every .luz unpacks to the slim text; a dragged
+  plain copy; a broken packed download; slim / packed switch), tools/tests/inventory_load.lua (the real loader on a
+  fake disk).
+  PACKED VOICE FILES (the owner: "why not use it on the voice add-on too"): z:voice in the manifest (823 -> 271 KB).
+  upgrade.lua fetch mode with o.inflate (the caller's unpacker) -> the z copy: size + checksum, unpacked, compiled ->
+  true, text, version, PACKED BYTES (without o.inflate: the plain copy as before). installAddon (base_theme) asks with
+  SCHEM.inflate: a floppy gets <name>.luz ("wb", writeBytes: .tmp + size check), a helper <name>.luz.b64 (SCHEM.enc -
+  store.lua keeps TEXT); every other copy (plain / packed, floppies, next to inventory.lua, the old helper copy) goes
+  once the new one is in (dropOthers); an up-to-date copy is left where it is ("same"). addonPath(file) -> path,
+  packed (a plain copy first); loadOne unpacks (SCHEM.dec for .b64) - a broken one says "type voice update". A plain
+  copy alone still loads; moveDataFile never moves .luz. tools/tests/test_voice_packed.lua (old code fails 6),
+  upgrade_sim (fetch mode packed / cut / without inflate). THE MAP IS NOT PACKED: it changes every minute, so the
+  game would have to COMPRESS in Lua (CPU on a busy server, every save + every start) - program / voice files are
+  packed once on GitHub (Python zlib) and only unpacked in the game; the map lives on the storage helpers (MBs free).
+- RELEASES (the owner: "get stuff ready for a github release"): BASE_VERSION (base_state.lua, x.y.z) = the newest
+  entry in CHANGELOG.md (test_version.lua fails otherwise); versionText() = "v<x.y.z> (<commit>) [from <branch>]" from
+  upgrade.dat - console `version`, SYSTEM > Status "Program" (state.sys.version from sysRefresh). tools/make_release.py
+  [--check]: refuses when the version / changelog / manifest disagree or a file does not compile; builds release/
+  (gitignored): base-control / turtle-program (node.lua onto a FLOPPY - the base's TT.codePath finds it on a mounted
+  disk; next to 839 KB of base files it hardly fits the 1 MB computer) / pocket / miner / voice-addon / spawn-speaker
+  zips from the slim dist/ copies, RELEASE_NOTES.md (the changelog entry + install), SHA256SUMS.txt. To release: raise
+  BASE_VERSION + a CHANGELOG entry, tests, merge into main, tag v<x.y.z>, attach release/. The old base_control.zip
+  (Nov 1, a 91 KB node.lua) is gone.
 - Autostart: `startup.lua` (top level of the computer) finds inventory.lua
   in any folder and restarts it after a crash (inventory.lua raises an error
   on a crash, returns normally on Ctrl+T). inventory.lua turns off
@@ -677,43 +2139,57 @@ PneumaticCraft drone rides, turtle mapping/surveys, and an AE2 ME network view.
 - `tools/preview/` draws the monitor outside the game (Lua 5.3 + Pillow); use
   it to check screen changes. It is not game code.
 
-## UI rules ("Block UI" - every page follows them)
-1. Minecraft's look done MODERN (the owner: liked the stone-button / gold-title look,
-   but not "like a 2001 game"; the flat new-1.20-menu look was NOT liked): stone-grey
-   buttons, gold titles, the blue selected tab - in deeper, softer shades. THEMES are
-   biomes (stone default, deepslate, oak, nether, ender, ocean; `theme` / SETTINGS); a
-   theme only changes the FRAME (bg, cards, lines, buttons, text, dim, accent, titles).
-   BEDROCK theme (the owner's pick, first in THEME_ORDER; `theme bedrock`): dark slate
-   boxes, LIGHT grey buttons, green selected tab / main button, white titles. THEME_STYLE
-   {light, accent}: C.accent = the green SLOT (the blue slot is the MAP's water - never
-   recolour it); LIGHT_FG makes text() draw white / gold / grey / status text DARK on a
-   light button or the green tab (test_theme.lua). Check new pages in bedrock too.
-   Status + map colours are Minecraft's chat colours, softened, FIXED (base_theme.lua
-   FIXED): green good, yellow attention, red problem, cyan info, orange, pink, purple.
-   Never hard-code a frame colour - use C.* (C.label = gold titles, C.accent = blue
-   selected / main button, C.empty = button face, C.head = lines / dark slot).
-2. No thick 3D frames: round() = two THIN lines (2x3 pixel chars, 1/3 row): panels a
-   soft light line on top (C.head), every box / button a soft SHADOW under it (C.bg).
-   Slots: inset() = a shadow line on top (sunken). Only 3+ rows tall. CONFIG.style
-   "plain" = no lines. Two-tap actions: actButton.
-3. Navigation: GROUPS (base_ui_core.lua) = HOME | YOU (inventory, backpacks, curios) |
-   AE2 | PLAYERS (players, chat & rides) | DRONES | TURTLES (turtles, drive, map, mining)
-   | SYSTEM (status, messages, settings). Row 5 = the group's pages + what the open
-   page is for (PAGE_INFO name + one line). New page -> PAGE_INFO entry + a group +
-   pageTabs + draw() dispatch + PAGES in run_tests/test_ticks.
-4. HOME (base_ui_home.lua, the start page): status line, every page as a big button
-   (gold name, white "what it is for", live badge) grouped like the tabs, QUICK ACTIONS
-   (two taps: stop all / all home / update turtles / drone to base / save map; act
-   kind "quick" -> POCKET.act). Nobody has to hunt for a tab.
-5. UX (test_ux.lua): every button / tab at least 2 ROWS tall (drawButton h=2 = label row +
-   a 2/3 row + shadow; tabButton = thin top edge + label; 1-row list rows only with a gap
-   row). snapTouch (base_input.lua): a tap 1 row / 1 column off a button counts for the
-   nearest one. Text never cut mid-sentence: shorten it or wrap() it. PAGE_INFO
-   descriptions <= 30 characters (HOME buttons). No boxes that only repeat something
-   (INVENTORY: OVERVIEW / EQUIPMENT boxes gone - armour + offhand are a row in the
-   INVENTORY box, slots ~square: ch = 0.62 * cw; DETAILS gets the room).
-6. Check every screen change with tools/preview (render.py draws the 2x3 pixel
-   characters, so edges show) in the stone theme.
+## UI rules ("CONTROL ROOM" - every page follows them)
+The owner picked mockup "B" of three (sidebar app / control room / coloured tiles) and asked
+for it "with more work: good widgets and colours, use all the space, no text out of bounds".
+The old Block UI (stone buttons, bedrock theme) is gone.
+1. LOOK: an operations console. Near-black page (C.bg), panels a shade lighter (C.panel)
+   with THIN frames (2x3 sub-pixel lines on the outer pixels, C.line) and the title cut into
+   the top line in AMBER (C.label); TEAL accent (C.accent = cyan slot) for the open tab /
+   main buttons; status colours fixed: green good, yellow warn, red bad, cyan info, orange,
+   purple, pink, lime. THEMES (base_theme.lua THEMES / THEME_ORDER: teal default, amber, ice,
+   violet, graphite, crimson) change ONLY the frame slots (bg, panel, line, dim, title) - the
+   map / status slots are FIXED (brown = the map's stone grey). An old saved theme name ->
+   teal. CONFIG.style "plain" = no frame lines. Never hard-code a slot: use C.*.
+2. KIT (base_ui_core.lua): panel(x,y,w,h,title,{right,rcol,col,tcol}) -> inner x, y(+2), w-4,
+   h-3 and CLIPS to its inside; button(x,y,w,h,label,col,kind,value,solid) (3+ rows = framed
+   ghost or solid; 2 rows = a face + thin edge); actButton(.., act, primary, col) (CONFIRM?
+   on the first tap); gauge (segmented ticks), meter (kv + gauge), big (3x5 pixel font,
+   2 rows), kv (key / dotted leader / value - long values never push the key out), heading,
+   para (wrapped), badge, led, cell / hline / frame (sub-pixels), spark, drawCell (sunken
+   slot, item-colour stripe, amber count), drawBarRow, rowBg, scrollBar (arrows in the top
+   line), drawPager, fitLabel. Old names still work (card, drawButton, barW, pill, stat).
+3. NOTHING OUT OF BOUNDS: text() / fill() (base_theme.lua) never draw outside the screen or
+   CLIP (clip / unclip; every panel sets it, draw() / header / footer reset it); cut text ends
+   in "~" (trunc too - "." looked like a sentence end; wrap's cut long WORDS stay "Cobb."
+   abbreviations). Pages still shorten (trunc) or wrap (para) their own text - hints / help
+   lines are WRAPPED (para), not cut; kv values go through shorten(): a "(hint)" at the end,
+   then a " - note", are dropped before anything is cut (a short key stays whole); button
+   labels shorten by words (fitLabel: a "WORD: " prefix first, then words from the end -
+   "ZOOM: OUT -" -> "OUT -"). BIG FONT: 3x5 glyphs in 2 cells, M N W 5 pixels wide in 3 cells
+   (the 3-wide N read as "n" in game); bigW = what big() draws. Header line on row 3 is a
+   MID hairline (a gap above the page chips - "bot" pressed them against it in game).
+4. USE THE SPACE: sections are as tall as their content (NEEDS YOU, SYSTEM on HOME - two columns
+   that each end in a filler: LATELY / QUICK ACTIONS; GO TO all or none; fuel runs, cards) and the
+   rest goes to lists (LATELY, logs, player data); grids grow with the monitor (DRIVE, player
+   cards). Check at several sizes: test_ux draws every page at 100x40, 121x50, 164x81, 200x100
+   (no error, every tap area on screen).
+5. HEADER (rows 1-5): the title in big letters (if room), GROUP tabs (label row 2, the open one
+   teal with a bar, badges), a big amber clock + owner + LIVE light on the right; row 4 = the
+   group's page chips + what the page is for. Body = rows 6 .. H-1 (geometry()); footer row H =
+   FOOT_HINT[page] + LIVE; message boxes (drawNotes) framed in their colour, bottom-right.
+6. Navigation: GROUPS (base_ui_core.lua) = HOME | YOU (inventory, backpacks, curios) | AE2 (storage, system) |
+   PLAYERS (players, world, chat & rides, gifts) | DRONES (drones, drone work) | TURTLES (turtles, drive, map,
+   mining) | SYSTEM (status, messages, settings). New page -> PAGE_INFO entry + a group +
+   pageTabs + draw() dispatch + PAGES in run_tests/test_ticks/test_ux.
+7. HOME (base_ui_home.lua; NEEDS YOU: the panel is sized for its problems - all fit = all shown, else rows for
+   "+N more"; it showed "1 open" with no row + "+2 more" - test_home_needs.lua): a row of live numbers (turtles, drones, AE2, mining, map, players -
+   what is connected; tap = its page), NEEDS YOU (each problem + a button to its page), SYSTEM,
+   LATELY (messages), QUICK ACTIONS (two taps) and GO TO (every page).
+8. Every tap area at least 2 ROWS (test_ux; 1-row list rows only: item, meitem, dscroll, tsel,
+   evitem); snapTouch: a tap 1 row / column off a button counts. PAGE_INFO descriptions <= 30.
+9. Check every screen change with tools/preview (render.py draws the sub-pixels) - test_theme
+   checks themes, clipping, kv and fitLabel.
 
 ## Files
 | File | What |
@@ -727,12 +2203,32 @@ PneumaticCraft drone rides, turtle mapping/surveys, and an AE2 ME network view.
 | base_console.lua / base_chat.lua / base_input.lua / base_workers.lua | console commands, chat commands, touch input, workers |
 | base_ui_*.lua | one file per page (base_ui_home.lua = HOME menu, base_ui_drive.lua = DRIVE) (base_ui_system.lua = STATUS, base_ui_settings.lua = SETTINGS) + base_ui_core.lua (header groups, cards, buttons, bars, footer) |
 | node.lua | the turtle program |
-| miner.lua | mining-dimension team program (MINER + LOADER roles; installed by hand, not OTA) |
+| miner.lua | mining-dimension team program (MINER + LOADER roles; installed by hand once, then `mine update` from the base) |
 | base_mining.lua / base_ui_mining.lua | mining teams on the base (MINE) / MINING tab |
 | base_away.lua | away mode: uses the time you are offline, WHILE YOU WERE AWAY report |
 | base_factory.lua | turtle factory: keeps the fleet size, AE2 parts, the builder turtle builds new ones |
+| base_supply.lua | `supply`: storages on the wired cable kept stocked from AE2 (items + fluids) |
 | base_schem.lua | schematics: Create .nbt files dropped on the screen, unpacked + read, materials list |
+| base_ui_gifts.lua | the GIFTS page: AE2 items -> send to a player / add to a friendship reward, the queue (needs the voice add-on's pack 2) |
+| base_dronework.lua / base_ui_work.lua | drone jobs: work chest, fuel runs to turtles, schematic builds (turtle keeps the site loaded) / the DRONE WORK page |
+| base_meplus.lua / base_ui_mesys.lua | more of the ME Bridge: CPUs, jobs (cancel), your craft requests followed, drives, patterns, storage buses / the AE2 SYSTEM page |
+| base_env.lua / base_ui_env.lua | the Environment Detector: time, weather, moon, light, mobs around the base / the WORLD page |
 | base_pocket.lua / pocket.lua | the pocket remote: base side (pairing, status, actions, messages) / the program on the pocket computer |
+| voice_addon.lua | OPTIONAL add-on on a data floppy (`voice install`): the base talks through Speakers - greetings, warnings, chat answers, alarm |
+| voice_talk.lua | its TALK PACK (also on a data floppy): 140+ more chat interactions, games, idle talk |
+| voice_talk3.lua | TALK PACK 3: free drone TAXI for friends (base <-> their bed), visit streaks, mail between players, Minecraft glossary + recipes, jokes on a topic, spirit mob, ship, rematches, milestones |
+| voice_lines.lua / voice_idle.lua | LINES PACKS: 100+ ways to say each thing (asked for / idle, greetings, reactions) |
+| voice_convo.lua | CONVERSATIONS: hi / how are you / just its name start a long chat (topics, reactions, its own answers), remembers what each player likes and the mods they talk about |
+| voice_staff.lua | SERVER STAFF: admins / moderators / maintainers / builders (one or more roles each) get their own greetings, chat topics and roasts; the owner keeps the list |
+| voice_profile.lua | HOW EACH PLAYER PLAYS: learns what they love and what gets in their way (burnout, tutorials ...), adapts its answers / tips / topics / check-ins; who am I / who is X |
+| voice_vary.lua | VARIETY PACK: every other answer said 50+ ways (openers / closers by the kind of answer) |
+| voice_lore.lua | LORE PACK: why drones and not /tp and other questions about the base, modpack tips, mod glossary |
+| voice_spawn.lua / spawn_speaker.lua | the SPAWN SPEAKER: the base talks at spawn through a relay computer (Speaker + ender modem) - own voice and lines, no rewards, item wishes by drone, how-to help |
+| voice_crowd.lua | A CROWD AT SPAWN: does not talk over a crowd, comments on fights / knockouts / laughter, duels, group quiz, roast battles, scoreboard |
+| voice_lonely.lua | THE LONELY BASE: stages + mood, caretakers with permissions, AFK rescue by drone (asks first), the wall, memories, news, letters to the owner, reaching out, the owner's return report |
+| COMMANDS.md | EVERY command with its usage (console, turtle, $drone, voice, chat talk, spawn, other computers) - test_commands_doc.lua fails when a command in the code is missing from it: add new commands there |
+| CHANGELOG.md / tools/make_release.py | release notes per version (newest = BASE_VERSION) / builds release/ for a GitHub release |
+| voice_talk2.lua | TALK PACK 2: friendship + titles, badges, player memory, daily secret word, more games, ideas, guides, styles, holidays, diary, FRIENDSHIP GIFTS by drone |
 
 ## The owner's setup (found out the hard way)
 Peripherals (from the `report` command): `me_bridge_4`, `inventory_manager_3`,
@@ -805,6 +2301,56 @@ re-reads the target before every hop; a refused first teleport + the target move
 teleport to where it is now before the "air above / hops" logic; after the hops fresh(); after
 arriving it looks again and goes on if the target is > 12 away (max 4 times).
 
+**Drones - LOST ON THE WAY (the owner: "drone gifts teleport up to the sky, get lost and I never see them again" + "it is
+like hopping to the base instead of teleporting directly - the base is underground" + "show where the drone was last
+seen"):** a drone that FLIES out of the loaded area is saved in an unloaded chunk and never comes back. Found: (1) a refused
+teleport into the UNDERGROUND base was read as "not loaded" -> hops at Y 200 (hopY) from the player towards the base, out of
+every loaded chunk; (2) gift / fuel trips started with minPressure 2 bar while a teleport needs 0.85 + airReserve 1.5 ->
+"low on air - flying instead" across the world (or the teleport out used the air for the one home). Now (base_drones.lua):
+travelTo treats a knownLoaded target as LOADED (a refused teleport = blocked: no hops / no sky probe); flySafe(dr, x, z) =
+a rider on board, within CONFIG.drone.safeFly 64, or every 32 blocks of the line knownLoaded - else no flight: the low-air
+switch teleports on the RESERVE (dr.useReserve, empty trips only), too little even for that -> strandedWhy (stays where it
+is, one WARNING / 10 min); hopTowards' flying stretches, "low on air - flying the rest" and the "FLYING there instead"
+fallback check flySafe too (not with CONFIG.drone.travel "fly" - the owner's choice). ARRIVAL SPOT (arriveSpot):
+CONFIG.drone.arrive (SETTINGS > DRONES, $drone arrive [x y z|off]) else DRONE_ARRIVE (drone_arrive.dat) = learned from a
+teleport from far away that reached the base area within 6 of where it was sent (learnArrive in droneMoveTo, dr.tpGoal);
+a far trip into the base area (within 64 of home) teleports there first, then flies in; a learned spot that is refused is
+forgotten; a LEARNED spot is only used after a teleport straight into the base area was refused (BASE_TP_REFUSED, memory). DW.airFor(dr, x, z): a trip past workFly needs canTeleport(dr, 2) (there + back + one refused + reserve) -
+DW.freeDrone(okFn) picks a drone that has it (gifts wait otherwise). LAST SEEN: DRONE_SEEN[interface] {x y z at doing}
+(drone_seen.dat; refreshDrone + every droneMoveTo poll; saved when moved 32+ or once a minute) -> droneSeenText on the
+DRONES page (not connected), `drones`, `$drone status`; connected -> not = droneLost: ONE WARNING with the spot.
+drone_sim: W.lost (a flight leaving the loaded area). test_drone_lost.lua.
+
+**Drones - A PLAYER AS A SPRINGBOARD (the owner: "make drones teleport to a player - up in the sky - who is near the wanted
+area, and the drone hops from there"):** springboard(dr, x, z) = the ONLINE overworld player (not dimOther) nearest the
+target, when that is at least 2 hops nearer than the drone; travelTo's "nobody known near the target" branch first
+teleports into the sky above them (max(their y + 24, hopY), a player's area is loaded and running) and hops on from
+there. test_drone_speed: 3,000 out with Bob at 2,600 = 1,212 ticks instead of 17,559.
+
+**Drones - SPEED, MEASURED IN TICKS (the owner: "the drones are slow" + "a server will have a low TPS"):**
+PneumaticCraft source (1.21: EntityPathNavigateDrone, DroneEntity, PneumaticValues): a TELEPORT always waits
+TELEPORT_TICKS 120 first, then happens only into a LOADED, free spot - refused = the same 120 ticks AND its air
+(DRONE_USAGE_TELEPORT 10,000 mL of DRONE_VOLUME 12,000 at max 10 bar = 0.83 bar; 12 from full); goto FLIES 0.15
+blocks a tick + 0.015 per Speed Upgrade (0.3 max) and teleports when it finds no path (PathFinder 1000 nodes); the
+Drone Interface's calls run on the computer thread (no tick each). All in TICKS: a slow server stretches it all
+alike - save ticks. tools/tests/lib/drone_sim.lua runs the REAL missions on such a drone (ticks, teleports, refused,
+air; state.players from its players) - test_drone_speed.lua. Changes: knownLoaded(x, z) (the base / a player in
+state.players / an online turtle within 24) - a far target nothing known loads -> no straight teleport and no
+"air above" probe (both refused: ride 300 out 726 -> 405 ticks, 800 1086 -> 767, 1500 1691 -> 1371 with air left);
+dr.hopOK = the hop length that worked (refused -> x0.7, was /2); a teleport's limit min(travelTimeout, tpLimit 7 s
+= 140 ticks; it happens at 121); droneSpeed(dr) from getUpgrades, flyQuicker (dist / speed < 110 ticks) ->
+travelTo flies short legs without a rider (12 blocks 242 -> 176) with flyLimit; DW goNear flew everything within
+64 with the 8-s teleport limit (= 24 blocks: stopped, then teleported - 281 ticks for 40 blocks) -> flies only when
+quicker or with too little air for 4 more teleports (canTeleport(dr, 4); a build's many legs), else teleports (121).
+SIMULATION DISTANCE (the owner: "a hop teleport gets me stuck in an unloaded chunk, I see the world unloading and never
+move even on it - teleports to loaded chunks work great"): a teleport is accepted into any LOADED chunk (view distance)
+but the server only RUNS chunks within its simulation distance - a 160-block hop froze the drone + rider there.
+CONFIG.drone.simChunks (SETTINGS > DRONES "Server simulation distance", default 6 = server.properties) -> safeHop() =
+(simChunks - 2) x 16 caps every hop (and knownLoaded's radius = (simChunks - 1) x 16). After each hop droneRuns (a 4-block
+goto up; a frozen drone never gets there) until 3 hops of that length worked (dr.hopTrust); frozen -> waits 20 s (only a
+real move counts - isActionDone is true after an abort), hops x0.6, the rider told in chat (+ SHIFT to get off) +
+WARNING, the mission fails "froze after a hop". drone_sim opt.simR (frozen = no action completes; the rider's area
+counts from before the hop). test_drone_speed.lua.
 **Drones (PneumaticCraft):** teleport costs ~10,000 mL (~0.85 bar) even when it
 fails; flying costs no air. Passenger watch: dr.rider (set after pickup) is checked BEFORE EVERY MOVE
 (riderGoneNow in droneMoveTo) and every 2 s while moving (riderLeft): logged off (not in
@@ -864,4 +2410,6 @@ rider down at the pickup spot.
 ## Useful console commands (on the base computer)
 help, report, tanks, mesetup, me check, me add <id>, curios check, disks
 [data|move], drones, drone <n>, charger, turtles, turtle <id> <cmd>, update,
-rescue, findlost, map [clear], exit [clear], survey, theme, events.
+rescue, findlost, map [clear], exit [clear], survey, theme, events, supply, mine update, dw, schem build, voice,
+chests (every chest / barrel / tank on the cable: how full + its job - AE2 buffers, curios barrel, factory chest,
+DRONE WORK CHEST, kept-filled storages; cableStorages in base_console.lua; test_chests.lua), store (storage helpers).

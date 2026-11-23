@@ -94,3 +94,42 @@ CHECK(#hitsOf("cauto") == 1, "worn item: KEEP ONE ON button")
 
 fetchCurios, inv, bridge, bridgeKind = savedFetch, savedInv, savedBridge, savedKind
 CURIOS.auto, CURIOS.fits = {}, {}
+
+-- EVERY TICK, PUT ON AT ONCE (the owner plays hardcore: "make the equip item in intervals to be each tick"): the curios
+-- worker calls autoTick(true) every tick - the slots are read every 0.05 s and the totem goes on in that same call (not
+-- queued behind a fluid ALL); a second totem used right after is put on at the next tick (no 20-s busy wait)
+do
+  fetchCurios, inv = function() return rows() end, inv or {}
+  bridge = { getItem = function(f) local n = stock[f.name] return n and { name = f.name, count = n } or nil end }
+  local savedRun = runAction
+  local ran = {}
+  runAction = function(a) ran[#ran + 1] = a CURIOS.autoResult(a, 1) worn[1] = { name = a.name, count = 1 } end
+  CURIOS.auto, CURIOS.busy = {}, {}
+  CURIOS.toggleAuto("charm", "minecraft:totem_of_undying", "Totem of Undying")
+  stock["minecraft:totem_of_undying"] = 5
+  worn[1] = nil
+  state.actionQueue = { { kind = "fadd", name = "minecraft:water", count = 1e9 } }   -- (a long job waiting)
+  CURIOS.lastRead = -100
+  CURIOS.autoTick(true)
+  CHECK(#ran == 1 and ran[1].kind == "cequip" and #state.actionQueue == 1, "put on AT ONCE in the curios worker, not queued")
+  CHECK(CURIOS.every() <= 0.05, "every tick (" .. CURIOS.every() .. " s)")
+  local reads = 0
+  local f1 = fetchCurios
+  fetchCurios = function() reads = reads + 1 return f1() end
+  CLOCK = CLOCK + 0.05 CURIOS.autoTick(true)
+  CHECK(reads == 1, "slots read again one tick later")
+  worn[1] = nil                                   -- used again right away
+  CLOCK = CLOCK + 0.05 CURIOS.autoTick(true)
+  CHECK(#ran == 2, "a second totem used at once: on again the next tick (" .. #ran .. ")")
+  CURIO_BUSY = true
+  worn[1] = nil
+  CLOCK = CLOCK + 0.05 CURIOS.autoTick(true)
+  CHECK(#ran == 2, "another curios move running: waits a tick")
+  CURIO_BUSY = false
+  CLOCK = CLOCK + 0.05 CURIOS.autoTick(true)
+  CHECK(#ran == 3, "... then goes on")
+  fetchCurios = f1
+  runAction = savedRun
+  CHECK(type(curiosWorker) == "function", "its own worker")
+  fetchCurios, inv, bridge = savedFetch, savedInv, savedBridge
+end

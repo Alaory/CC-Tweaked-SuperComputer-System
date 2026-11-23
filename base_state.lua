@@ -8,6 +8,21 @@
 ---------------------------------------------------------------------
 -- STATE
 ---------------------------------------------------------------------
+BASE_VERSION = "1.0.0"   -- the release number (CHANGELOG.md); `upgrade` also keeps the exact commit (upgrade.dat)
+-- the version + the commit `upgrade` last installed (read in workers - never in drawing)
+function versionText()
+  local sha, branch
+  local okR, h = pcall(fs.open, "upgrade.dat", "r")
+  if okR and h then
+    local t = textutils.unserialize(h.readAll() or "")
+    h.close()
+    if type(t) == "table" then sha, branch = t.sha, t.branch end
+  end
+  local s = "v" .. BASE_VERSION
+  if type(sha) == "string" and sha ~= "" then s = s .. " (" .. sha:sub(1, 7) .. ")" end
+  if type(branch) == "string" and branch ~= "" then s = s .. " from " .. branch end
+  return s
+end
 HAND_CMD = false        -- a console command is running: turtle commands from it are YOURS (TT.send hand)
 state = {
   status = "loading", -- loading | ok | nocard | offline
