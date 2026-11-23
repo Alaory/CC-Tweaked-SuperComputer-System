@@ -5,6 +5,8 @@
 -- ignores fromSlot (took one from the backpack instead) -> put back, refused with the reason.
 local P, CHEST, ME = {}, {}, {}
 local honour = true
+OLDNUM = false
+inv, bridge = invS, brS
 local function key(t, a, b) if type(a) == "table" then return a, b end return b, a end
 local function add(t, name, n) t[name] = (t[name] or 0) + n end
 local function reset()
@@ -25,6 +27,11 @@ local FAKE = {
   exportItem = function(a, b)                                     -- player -> chest
     local f = key(nil, a, b)
     local from = honour and f.fromSlot
+    if OLDNUM and from then                -- (a manager numbering armour 100-103 and the off hand -106, like the owner's)
+      local map = { [100] = 36, [101] = 37, [102] = 38, [103] = 39, [-106] = 40 }
+      if from >= 36 and from <= 40 then return 0 end
+      from = map[from] or from
+    end
     for s = 0, 40 do
       local it = P[s]
       if it and it.name == f.name and (not from or s == from) then
@@ -113,3 +120,20 @@ setToast = toast0
 CHECK(P[39] and said and said:find("full", 1, true), "full backpack: refused, says so")
 inv, bridge, state.owner = inv0, bridge0, owner0
 state.page, state.equipSel = "home", nil
+
+-- IN GAME (the owner's screenshot): "Not moved: Quantum Boots - the Inventory Manager moved nothing" - the manager numbers
+-- worn armour 100-103 (boots 100) and the off hand -106: slot 36 moved nothing. Now the slot it reported and both numberings.
+reset()
+honour, OLDNUM = true, true
+local invS, brS = inv, bridge
+inv, state.owner = FAKE, "Alaory"
+bridge = { importItem = function(a, b) local f = key(nil, a, b) local n = math.min(CHEST[f.name] or 0, f.count or 64)
+  CHEST[f.name] = (CHEST[f.name] or 0) - n add(ME, f.name, n) return n end, getItem = function() return nil end }
+readAll()
+local nB, wB = equipMove(4, false)
+readAll()
+CHECK(nB == 1 and not state.equip[4], "boots off with a manager that numbers armour 100-103 (" .. tostring(nB) .. ", " .. tostring(wB) .. ")")
+local nO, wO = equipMove(5, true)
+CHECK(nO == 1 and (ME["minecraft:shield"] or 0) >= 1, "the off hand (-106) off + into AE2 (" .. tostring(nO) .. ", " .. tostring(wO) .. ")")
+OLDNUM = false
+inv, bridge = invS, brS

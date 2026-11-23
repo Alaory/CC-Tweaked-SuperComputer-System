@@ -889,6 +889,10 @@ end
 
 
 EQUIP_SLOT = { 39, 38, 37, 36, 40 }
+
+
+
+EQUIP_TRY = { { 103, 39 }, { 102, 38 }, { 101, 37 }, { 100, 36 }, { -106, 40, 98, 106 } }
 local function equipName(i) local e = state.equip and state.equip[i] return e and e.name end
 local function packCount(name)
 local n = 0
@@ -904,10 +908,23 @@ local name = equipName(i)
 if not name then return 0, "nothing is worn there" end
 if not toME and (state.used or 0) >= 36 then return 0, "your inventory is full - make room first" end
 local before = packCount(name)
-local ok, r = transfer(inv, INV_FROM_PLAYER, chestManagerDir("take"), { name = name, count = 1, fromSlot = slot })
-local got = ok and (tonumber(r) or numOf(r) or 0) or 0
-if not ok then return 0, tostring(r) end
-if got <= 0 then return 0, "the Inventory Manager moved nothing (it may not reach armour slots)" end
+local cands, seen = {}, {}
+local worn = state.equip and state.equip[i]
+local function cand(n) n = tonumber(n) if n and not seen[n] then seen[n] = true cands[#cands + 1] = n end end
+cand(worn and worn.slot)
+for _, n in ipairs(EQUIP_TRY[i] or { slot }) do cand(n) end
+local got, lastErr = 0, nil
+for _, sl in ipairs(cands) do
+local ok, r = transfer(inv, INV_FROM_PLAYER, chestManagerDir("take"), { name = name, count = 1, fromSlot = sl })
+if ok then got = tonumber(r) or numOf(r) or 0 else lastErr = tostring(r) end
+if got > 0 then slot = sl break end
+end
+if got <= 0 then
+local tried = {}
+for _, n in ipairs(cands) do tried[#tried + 1] = tostring(n) end
+return 0, "the Inventory Manager could not take it off (tried slots " .. table.concat(tried, ", ") .. ")" ..
+(lastErr and (": " .. lastErr) or "") .. " - your Advanced Peripherals version may not reach worn armour"
+end
 pcall(refreshInventory)
 if packCount(name) < before or equipName(i) == name then
 

@@ -62,6 +62,19 @@ The top row has the tab groups; a group with several pages shows them as small t
 
 A tab only shows up when the block it needs is connected.
 
+### What it looks like
+
+Real screens of the program (an example base, drawn with `tools/preview` - in game the letters are the Minecraft font).
+
+| | |
+|---|---|
+| ![HOME](docs/images/home.png) **HOME** - live numbers, what needs you, recent messages, quick actions | ![AE2](docs/images/me.png) **AE2 > STORAGE** - find, take, store and craft; keep a storage filled |
+| ![TURTLES](docs/images/turtles.png) **TURTLES** - every turtle's state and fuel, what needs a look | ![MAP](docs/images/map.png) **TURTLES > MAP** - the land the turtles mapped, surveys, auto-map |
+| ![DRONES](docs/images/drone.png) **DRONES** - rides: a passenger, a destination, FERRY | ![DRONE WORK](docs/images/work.png) **DRONES > DRONE WORK** - the work chest, fuel runs, a schematic build seen from above |
+| ![YOU](docs/images/inventory.png) **YOU > INVENTORY** - your backpack, hotbar, armour; send items to AE2 | ![PLAYERS](docs/images/players.png) **PLAYERS** - everyone ever seen: where, health, visits |
+| ![DRIVE](docs/images/drive.png) **TURTLES > DRIVE** - steer one turtle by hand, the blocks around it | ![AE2 SYSTEM](docs/images/mesys.png) **AE2 > SYSTEM** - crafting CPUs, jobs, drives, patterns |
+| ![SYSTEM](docs/images/system.png) **SYSTEM > STATUS** - disk, floppies, helpers, the system log | ![SETTINGS](docs/images/settings.png) **SYSTEM > SETTINGS** - change settings by tapping |
+
 **Messages:** warnings and errors pop up as small boxes in the bottom-right corner; everything
 else goes to SYSTEM > Messages (and `events.log`). What you just tapped always gets a box.
 If you want, messages are also sent to you privately in chat.

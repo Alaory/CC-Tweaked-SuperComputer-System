@@ -37,6 +37,8 @@ Peripherals (tested on CC:Tweaked 1.120.2, Minecraft 1.21.1, NeoForge).
   the help", "I am back" and "I love this place" get the right answer.
 - Every voice line was read: a dozen wrong Minecraft / mod facts in the quiz, riddles, tips and mod tips are corrected.
 - A schematic dropped on the screen is stored on a storage helper first (the computer and the floppies are often full).
+- Taking armour / the off hand off from the INVENTORY tab tries the slot numbering your Inventory Manager uses (100-103).
+- README pictures of the main screens.
 - Files can be dropped onto the computer's screen while the base runs: program files are saved next to inventory.lua (it says
   when a restart is needed), schematics are read - no need to stop the base first.
 - INVENTORY tab: armour and the offhand can be picked (they were un-picked at once) and taken off into your inventory or

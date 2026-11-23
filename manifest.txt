@@ -13,7 +13,7 @@ base base_env.lua 10269 b6081e20
 base base_factory.lua 29444 4933f33c
 base base_input.lua 31054 99762fa0
 base base_map.lua 89456 f0f6e930
-base base_me.lua 97081 a8489cc3
+base base_me.lua 98127 4bc939c8
 base base_meplus.lua 15773 3ac38582
 base base_mining.lua 26096 d4b4a690
 base base_players.lua 26142 cbba8332
@@ -79,7 +79,7 @@ slim:base base_env.lua 7154 ae1b2584 dist/base_env.lua
 slim:base base_factory.lua 21629 0269dab1 dist/base_factory.lua
 slim:base base_input.lua 21948 66de7008 dist/base_input.lua
 slim:base base_map.lua 56492 d7578ad2 dist/base_map.lua
-slim:base base_me.lua 69440 ddee8a7f dist/base_me.lua
+slim:base base_me.lua 70093 4c89d391 dist/base_me.lua
 slim:base base_meplus.lua 11765 8b3ef560 dist/base_meplus.lua
 slim:base base_mining.lua 18868 9cac13bc dist/base_mining.lua
 slim:base base_players.lua 17989 e66a7256 dist/base_players.lua

@@ -889,6 +889,10 @@ end
 -- ME network (toME) or back into the backpack (a free slot). Checked by reading the inventory before and after: a manager
 -- that ignores fromSlot would take the same item from the BACKPACK - then it is put back and the move refused.
 EQUIP_SLOT = { 39, 38, 37, 36, 40 }      -- state.equip index (helm, chest, legs, boots, offhand) -> the manager's slot
+-- (IN GAME: "the Inventory Manager moved nothing" for boots at 36 - the owner's manager lists armour as 100-103, the
+--  old Minecraft numbering, and the off hand as -106. The slot the manager itself reported is tried first, then both
+--  numberings; every try is checked: the worn slot must be empty after, the backpack must not have lost one)
+EQUIP_TRY = { { 103, 39 }, { 102, 38 }, { 101, 37 }, { 100, 36 }, { -106, 40, 98, 106 } }
 local function equipName(i) local e = state.equip and state.equip[i] return e and e.name end
 local function packCount(name)
   local n = 0
@@ -904,10 +908,23 @@ function equipMove(i, toME)
   if not name then return 0, "nothing is worn there" end
   if not toME and (state.used or 0) >= 36 then return 0, "your inventory is full - make room first" end
   local before = packCount(name)
-  local ok, r = transfer(inv, INV_FROM_PLAYER, chestManagerDir("take"), { name = name, count = 1, fromSlot = slot })
-  local got = ok and (tonumber(r) or numOf(r) or 0) or 0
-  if not ok then return 0, tostring(r) end
-  if got <= 0 then return 0, "the Inventory Manager moved nothing (it may not reach armour slots)" end
+  local cands, seen = {}, {}
+  local worn = state.equip and state.equip[i]
+  local function cand(n) n = tonumber(n) if n and not seen[n] then seen[n] = true cands[#cands + 1] = n end end
+  cand(worn and worn.slot)
+  for _, n in ipairs(EQUIP_TRY[i] or { slot }) do cand(n) end
+  local got, lastErr = 0, nil
+  for _, sl in ipairs(cands) do
+    local ok, r = transfer(inv, INV_FROM_PLAYER, chestManagerDir("take"), { name = name, count = 1, fromSlot = sl })
+    if ok then got = tonumber(r) or numOf(r) or 0 else lastErr = tostring(r) end
+    if got > 0 then slot = sl break end
+  end
+  if got <= 0 then
+    local tried = {}
+    for _, n in ipairs(cands) do tried[#tried + 1] = tostring(n) end
+    return 0, "the Inventory Manager could not take it off (tried slots " .. table.concat(tried, ", ") .. ")" ..
+              (lastErr and (": " .. lastErr) or "") .. " - your Advanced Peripherals version may not reach worn armour"
+  end
   pcall(refreshInventory)
   if packCount(name) < before or equipName(i) == name then
     -- (it came out of the backpack, not off the body: put it back, say why)
