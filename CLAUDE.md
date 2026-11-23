@@ -932,6 +932,15 @@ PneumaticCraft drone rides, turtle mapping/surveys, and an AE2 ME network view.
   calculating / crafting or 10 min after a request (J.craft[item] = {n, at epoch s, err}); no pattern -> J.noPattern
   (statusLines "No AE2 pattern for"); a J.short item that was asked for is looked at again within 60 s.
   CONFIG.drone.buildCraft (default on; SETTINGS > DRONES; `schem craft on|off`). test_dronework "AUTO-CRAFT".
+  BUILD SPEED (the owner: "a drone built half of it and most of the time it keeps waiting for items"): (1) every work
+  mission ended with the HOME step (returnHome) - back to the charger, and the next trip flew to the chest again: a
+  build trip's cmd.stay (DW submit, kind dig / place) + canTeleport(dr, 3) -> it stays at the work chest ("Stays at the
+  work chest for the next trip"); parkCheck resets dr.awaySince while the drone is busy (an old count sent it home in
+  the second between two trips) and still sends it home after 20 s idle; (2) a drone under CONFIG.drone.minPressure
+  got trips that failed at the start ("Pressure too low") and each paused the WHOLE build 2 min: DW.airFor checks
+  minPressure first (gifts / fuel runs / buildOne's freeDrone okFn) - it charges, the others work; a "Pressure too
+  low" failure no longer sets J.waitUntil. test_drone_parallel (no home flights between trips; a 1-bar drone gets no
+  trip, no stalls) - the old code fails 3.
   DW.test / console `dw test [item]` (the owner: "how do I test the drone chest"): DW.notReady, the chest's spot + distance
   from the drones' home, 1 PLAIN item (DW.TEST_ITEMS: the first AE2 has, or the one named) AE2 -> work chest -> AE2;
   then, with the owner within 48 of the chest, DW.giftRun(owner, item, 1) = a drone takes it out of the chest and drops

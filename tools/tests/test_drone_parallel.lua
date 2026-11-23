@@ -2,7 +2,7 @@
 -- two drones build side by side - their missions run as coroutines here, as in the drone worker. They share ONE work
 -- chest: each takes it only to load / unload (DW.chestTake), so the chest never holds two drones' items and a drone
 -- never carries two kinds. No spot is given to two drones, layers stay in order, a gift goes while a build runs.
-local CH = { x = 2, y = 69, z = 0 }
+local CH = { x = 12, y = 69, z = 0 }
 bridgeKind = bridgeKind or "ME"
 local HOME = { x = 0, y = 70, z = 0 }
 local function key(x, y, z) return x .. "," .. y .. "," .. z end
@@ -15,7 +15,7 @@ local function kinds(t) local n = 0 for _, v in pairs(t) do if v > 0 then n = n 
 -- each drone: its own position / inventory / action; the chest, AE2 and the world are shared
 local D = {}
 local function makeDrone(k)
-  local d = { pos = { x = 0, y = 71, z = 0 }, inv = {}, area = {}, act = nil, sides = {} }
+  local d = { pos = { x = 0, y = 71, z = 0 }, inv = {}, area = {}, act = nil, sides = {}, p = 9 }
   D[k] = d
   local per = {
     clearArea = function() d.area = {} end,
@@ -26,7 +26,7 @@ local function makeDrone(k)
     end,
     isConnectedToDrone = function() return true end, abortAction = function() d.act = nil end,
     getDronePosition = function() return d.pos.x + 0.5, d.pos.y + 0.5, d.pos.z + 0.5 end,
-    isActionDone = function() return d.act == nil end, getDronePressure = function() return 9 end,
+    isActionDone = function() return d.act == nil end, getDronePressure = function() return d.p end,
     clearWhitelistText = function() end, clearBlacklistText = function() end, addWhitelistText = function() end,
     clearWhitelistItemFilter = function() end, setUseCount = function() end, exitPiece = function() end,
     setSides = function(...) d.sides = { ... } end, setDropStraight = function() end,
@@ -42,6 +42,7 @@ local function finish(d)
   local p = pts[1]
   if a == "pneumaticcraft:teleport" or a == "pneumaticcraft:goto" then
     d.pos = { x = p.x, y = p.y, z = p.z }
+    if math.abs(p.x - HOME.x) + math.abs(p.z - HOME.z) <= 3 and W.counting then W.homeTrips = (W.homeTrips or 0) + 1 end
   elseif a == "pneumaticcraft:inventory_import" then
     if key(p.x, p.y, p.z) == key(CH.x, CH.y, CH.z) then
       if kinds(W.chest) > 1 then W.mixedChest = W.mixedChest + 1 end
@@ -172,7 +173,10 @@ SCHEM.cache["floor"] = { s = s, path = "schematics/floor.nbt" }
 local OX, OY, OZ = 32, 64, 32
 local ok, msg = DW.startBuild("floor", OX, OY, OZ, 0, false)
 CHECK(ok, "the build starts (" .. tostring(msg) .. ")")
+W.counting = true
 local done = runUntil(function() return DW.job == nil and next(DW.trips) == nil end)
+W.counting = false
+CHECK((W.homeTrips or 0) == 0, "no flight home to the charger between build trips (" .. tostring(W.homeTrips) .. ")")
 CHECK(done, "the build finishes")
 local good = 0
 for x = 0, 11 do for z = 0, 11 do
@@ -220,3 +224,23 @@ local doneB = runUntil(function() return DW.job == nil and next(DW.trips) == nil
 CHECK(doneB and (W.dropped["minecraft:diamond"] or 0) == 5, "the gift arrived and the build finished (" ..
       tostring(W.dropped["minecraft:diamond"]) .. " diamonds)")
 CHECK(W.mixedChest == 0 and W.mixedDrone == 0, "gift + build: still one kind per drone, the chest never mixed")
+
+-- a drone LOW ON AIR: it is not given trips (it charges), the other builds on - no "Pressure too low" stalls
+do
+  W.blocks, W.order = {}, {}
+  local low = droneOrder[2]
+  D[low].p = 1
+  local fails = 0
+  local realDone = DW.stopBuild
+  DW.startBuild("floor", OX + 16, OY, OZ, 0, false)
+  local J0 = DW.job
+  local lowTrips = 0
+  local doneL = runUntil(function()
+    for k in pairs(DW.trips) do if k == low then lowTrips = lowTrips + 1 end end
+    if J0.why and tostring(J0.why):find("Pressure", 1, true) then fails = fails + 1 end
+    return DW.job == nil and next(DW.trips) == nil
+  end)
+  CHECK(doneL and lowTrips == 0, "a drone with 1 bar gets no trip; the build finishes with the other (" .. lowTrips .. " trips on it)")
+  CHECK(fails == 0, "no 'Pressure too low' stalls (" .. fails .. ")")
+  D[low].p = 9
+end

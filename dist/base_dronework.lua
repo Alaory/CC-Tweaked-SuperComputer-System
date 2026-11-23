@@ -127,6 +127,13 @@ end
 
 
 function DW.airFor(dr, x, z)
+
+
+pcall(refreshDrone, dr)
+local p = dronePressure(dr)
+if p and p < (tonumber(CONFIG.drone.minPressure) or 2) then
+return false, string.format("%s charges (%.1f bar)", tostring(dr.label), p)
+end
 local hx, _, hz = DW.chestAt()
 if not hx then local h = CONFIG.drone.home or {} hx, hz = h.x, h.z end
 if not (hx and tonumber(x)) then return true end
@@ -302,7 +309,10 @@ local function submit(dr, title, steps, trip)
 trip.dr, trip.title, trip.at = dr.key, title, now()
 DW.trips[dr.key] = trip
 DW.syncTrip()
-if not submitDrone(dr, { kind = "work", title = title, steps = steps }) then
+
+
+local stay = trip.kind == "dig" or trip.kind == "place"
+if not submitDrone(dr, { kind = "work", title = title, steps = steps, stay = stay }) then
 DW.trips[dr.key] = nil
 DW.syncTrip()
 return false, "the drone is busy"
@@ -967,7 +977,8 @@ if not ok then
 J.fails = (J.fails or 0) + 1
 J.why = m and m.err or "the drone mission failed"
 
-if tostring(J.why):find("Pressure too low", 1, true) then J.fails = J.fails - 1 J.waitUntil = now() + 120
+
+if tostring(J.why):find("Pressure too low", 1, true) then J.fails = J.fails - 1
 elseif T.missing then
 J.fails = J.fails - 1
 J.short = J.short or {}
@@ -1044,7 +1055,7 @@ if reading then J.why = "reading the schematic " .. J.name .. " ..." else J.paus
 return false
 end
 local busy, flying, layer, fkind, flate, fsolid = buildFlying()
-local dr = DW.freeDrone()
+local dr = DW.freeDrone(function(d) return DW.airFor(d, J.x, J.z) end)
 if not dr then if flying == 0 then J.why = "waiting for a free drone" end return false end
 local bad = DW.notReady()
 if bad then J.why = bad return false end

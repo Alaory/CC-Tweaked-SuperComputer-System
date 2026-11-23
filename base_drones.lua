@@ -1712,6 +1712,9 @@ function parkCheck()
   end
   for _, k in ipairs(droneOrder) do
     local dr = drones[k]
+    -- (working: the 20 s "idle away from home" count starts after - a build drone waiting at the work chest between
+    --  two trips was sent home at once with an old count)
+    if dr and (dr.busy or #dr.queue > 0) then dr.awaySince = nil end
     if dr and not dr.busy and #dr.queue == 0 then
       local lastP = dr.pressure
       pcall(refreshDrone, dr)
@@ -1990,6 +1993,8 @@ function runMission(dr, cmd)
   if CONFIG.drone.returnHome and cmd.kind ~= "home" and cmd.kind ~= "pickup" and droneCarries(dr, nil) == true then
     droneLog(dr, "Somebody is still on board - NOT flying home with them")
     dr.rider = dr.rider or "passenger"
+  elseif cmd.stay and canTeleport(dr, 3) then
+    droneLog(dr, "Stays at the work chest for the next trip")      -- (a build: the park check sends it home when idle)
   elseif CONFIG.drone.returnHome and cmd.kind ~= "home" and cmd.kind ~= "pickup" then
     local hs = homeStep(dr)
     dr.mission.steps[#dr.mission.steps + 1] = { text = hs.text, status = "run" }

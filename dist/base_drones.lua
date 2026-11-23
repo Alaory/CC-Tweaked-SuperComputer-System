@@ -1712,6 +1712,9 @@ end
 end
 for _, k in ipairs(droneOrder) do
 local dr = drones[k]
+
+
+if dr and (dr.busy or #dr.queue > 0) then dr.awaySince = nil end
 if dr and not dr.busy and #dr.queue == 0 then
 local lastP = dr.pressure
 pcall(refreshDrone, dr)
@@ -1990,6 +1993,8 @@ droneLog(dr, "Finished: " .. title)
 if CONFIG.drone.returnHome and cmd.kind ~= "home" and cmd.kind ~= "pickup" and droneCarries(dr, nil) == true then
 droneLog(dr, "Somebody is still on board - NOT flying home with them")
 dr.rider = dr.rider or "passenger"
+elseif cmd.stay and canTeleport(dr, 3) then
+droneLog(dr, "Stays at the work chest for the next trip")
 elseif CONFIG.drone.returnHome and cmd.kind ~= "home" and cmd.kind ~= "pickup" then
 local hs = homeStep(dr)
 dr.mission.steps[#dr.mission.steps + 1] = { text = hs.text, status = "run" }
