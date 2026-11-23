@@ -883,10 +883,22 @@ PneumaticCraft drone rides, turtle mapping/surveys, and an AE2 ME network view.
   items LEARNED to fit (worn before / put on from here: CURIOS.fits, curios_fits.dat).
   SHOW ALL lists every AE2 item (Curios refuses what does not fit). AUTO-EQUIP: AUTO next
   to an item / KEEP ONE ON on a worn one -> rule {slot, item} (curios_auto.dat);
-  CURIOS.autoTick (comms worker, slots read every 2 s while rules exist - was 8 s, too slow for a used totem) queues a cequip FIRST in the action queue
-  (auto=true) when the item is not worn in that slot type and a slot is free (a used
-  totem); r.why = "none left in AE2" / the put-on error (shown on the tab, `curios auto`).
-  Putting on needs CONFIG.me.curiosChest. test_curios.lua.
+  EVERY TICK (the owner plays HARDCORE: "make the equip item in intervals to be each tick"): its OWN worker curiosWorker
+  (base_workers.lua, in inventory.lua's list; not the comms worker's 2-s clock) calls CURIOS.autoTick(true) every
+  CURIOS.every() = CONFIG.curios.every (0.05 s = a tick) while rules exist: the slots are read and a missing item is PUT ON
+  RIGHT THERE (runAction in that worker - the action queue can be busy for seconds with a fluid ALL); CURIO_BUSY (runAction's
+  curios branch) keeps two curios moves from overlapping (the curios chest); a success clears the busy wait (a second totem
+  used right after = on again the next tick), a failure waits 15 s, none in AE2 10 s. autoTick() without direct (tests /
+  old callers) still queues a cequip FIRST in the action queue. r.why = "none left in AE2" / the put-on error (shown on the
+  tab, `curios auto`). Putting on needs CONFIG.me.curiosChest. test_curios.lua.
+- ARMOUR + OFFHAND ON THE INVENTORY TAB (the owner: "equipment cannot be selected or moved"): the armour cells were "item"
+  hits and refreshInventory dropped selName unless the item was in the BACKPACK (every read un-picked it); DETAILS only knew
+  backpack items. Now hit "equip" -> state.equipSel (1 helm .. 4 boots, 5 offhand; cleared when the slot empties) -> DETAILS
+  of the piece (worn as, durability) + TAKE OFF > INVENTORY (act eqoff) / TAKE OFF + SEND > AE2 (eqsend), side by side on a
+  short panel. equipMove (base_me.lua): EQUIP_SLOT = the manager's slot (39 helm .. 36 boots, 40 offhand), exportItem {name,
+  count 1, fromSlot} into the take buffer, then bufferToPlayer / bufferToME; the inventory is read before and after - a
+  manager that ignores fromSlot (the same item left the BACKPACK, the worn one still on) -> put back + refused with the
+  reason; a full backpack -> refused. test_equip.lua (fake manager honouring / ignoring fromSlot).
 - SUPPLY (base_supply.lua SUPPLY, console `supply`, SUPPLY.tick run by supplyWorker every SUPPLY.every()
   s = CONFIG.supply.every, default 1 (the owner drains a tank in a second and waited 10 s; `supply every
   <s>` 0.2-600, setSetting); supply.dat via dataPath): rules {target = network name of a storage on the WIRED cable,

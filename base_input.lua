@@ -546,6 +546,11 @@ function handleTouch(tx, ty)
         state.playerSel = h[6]                       -- (PLAYERS page: the picked player)
       elseif h[5] == "item" then
         if h[6] and h[6] ~= selName then selName = h[6] else selName = nil end
+        state.equipSel = nil
+      elseif h[5] == "equip" then                    -- (INVENTORY: an armour / offhand slot)
+        if h[6] and h[6] ~= state.equipSel and state.equip and state.equip[h[6]] then state.equipSel = h[6]
+        else state.equipSel = nil end
+        selName = nil
       elseif h[5] == "ndismiss" then
         dismissNote(h[6])
       elseif h[5] == "nclear" then

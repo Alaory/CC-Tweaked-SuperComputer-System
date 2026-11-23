@@ -396,6 +396,19 @@ function playerWorker()
   end
 end
 
+-- AUTO-EQUIP every tick (the owner plays hardcore: "make the equip item in intervals to be each tick"): its own worker,
+-- so a used totem is back on within a tick or two - not on the comms worker's 2-s clock, not behind the action queue
+function curiosWorker()
+  while state.running do
+    if CURIOS and #CURIOS.auto > 0 and inv and bridge then
+      pcall(CURIOS.autoTick, true)
+      waitFor(CURIOS.every(), "curios_wake")
+    else
+      waitFor(5, "curios_wake")
+    end
+  end
+end
+
 function supplyWorker()
   while state.running do
     local ok, busy = pcall(SUPPLY.tick)
@@ -648,7 +661,6 @@ function commsWorker()
       pcall(FACTORY.tick)                -- fewer turtles than you want: build one (AE2 parts)
       pcall(MINE.silentTick)             -- a mining turtle went silent: where it was last
       pcall(MINE.updTick)                -- mine update: the new miner.lua to the mining turtles (teams paused)
-      pcall(CURIOS.autoTick)             -- auto-equip: keep a totem (...) on in its curios slot
       pcall(DW.tick)                     -- drone jobs: fuel runs to turtles, schematic builds
       if MEX then pcall(MEX.jobTick) end -- your AE2 craft requests: done / missing items / cancelled
       if TT.listDirty and codeTick % 15 == 0 then pcall(TT.saveList) end

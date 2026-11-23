@@ -570,6 +570,7 @@ function refreshInventory()
   sortList()
 
   if selName and not totals[selName] then selName = nil end
+  if state.equipSel and not equip[state.equipSel] then state.equipSel = nil end   -- (taken off)
 end
 
 

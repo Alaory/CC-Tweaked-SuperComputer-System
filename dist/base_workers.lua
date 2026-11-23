@@ -396,6 +396,19 @@ waitFor(det and math.max(0.05, e) or 5, "players_wake")
 end
 end
 
+
+
+function curiosWorker()
+while state.running do
+if CURIOS and #CURIOS.auto > 0 and inv and bridge then
+pcall(CURIOS.autoTick, true)
+waitFor(CURIOS.every(), "curios_wake")
+else
+waitFor(5, "curios_wake")
+end
+end
+end
+
 function supplyWorker()
 while state.running do
 local ok, busy = pcall(SUPPLY.tick)
@@ -648,7 +661,6 @@ pcall(AWAY.tick)
 pcall(FACTORY.tick)
 pcall(MINE.silentTick)
 pcall(MINE.updTick)
-pcall(CURIOS.autoTick)
 pcall(DW.tick)
 if MEX then pcall(MEX.jobTick) end
 if TT.listDirty and codeTick % 15 == 0 then pcall(TT.saveList) end

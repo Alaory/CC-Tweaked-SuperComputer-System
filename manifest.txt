@@ -1,22 +1,22 @@
-base inventory.lua 4981 8dbaf2ef
+base inventory.lua 5034 410fcc33
 base startup.lua 1532 dcf086f6
 base store.lua 11181 9643835d
 base upgrade.lua 10858 725e2cf0
 base base_away.lua 19132 3e929492
 base base_chat.lua 23519 0eb6fd4c
 base base_console.lua 77636 c4873a9a
-base base_curios.lua 6649 027d0923
+base base_curios.lua 7969 634b1833
 base base_devices.lua 34895 00a92721
 base base_drones.lua 93950 8feb0b39
 base base_dronework.lua 52948 ab1c26fa
 base base_env.lua 10269 b6081e20
 base base_factory.lua 29444 4933f33c
-base base_input.lua 30763 61499c21
+base base_input.lua 31054 99762fa0
 base base_map.lua 89456 f0f6e930
-base base_me.lua 93497 c7ef6ab1
+base base_me.lua 97081 a8489cc3
 base base_meplus.lua 15773 3ac38582
 base base_mining.lua 26096 d4b4a690
-base base_players.lua 26045 5972a635
+base base_players.lua 26142 cbba8332
 base base_pocket.lua 17517 5b9116dd
 base base_schem.lua 18382 f71f07f2
 base base_state.lua 6010 24d11619
@@ -33,7 +33,7 @@ base base_ui_env.lua 11053 2e164c54
 base base_ui_events.lua 3192 fead898d
 base base_ui_gifts.lua 13314 ee7ef631
 base base_ui_home.lua 14860 03d8c1f8
-base base_ui_inventory.lua 6147 752b5390
+base base_ui_inventory.lua 8622 56720719
 base base_ui_map.lua 15770 654bde29
 base base_ui_me.lua 16789 d4bdd4e6
 base base_ui_mesys.lua 16602 41e3deaf
@@ -44,7 +44,7 @@ base base_ui_storage.lua 13810 0a7a3da0
 base base_ui_system.lua 8539 1111d2b4
 base base_ui_turtles.lua 18523 fbf4149c
 base base_ui_work.lua 14403 51feaab8
-base base_workers.lua 41803 f9303192
+base base_workers.lua 42193 1da2ab7c
 node node.lua 173232 fb324050
 pocket pocket.lua 25876 c940e352
 pocket upgrade.lua 10858 725e2cf0
@@ -64,25 +64,25 @@ voice voice_spawn.lua 96757 69563873
 voice voice_crowd.lua 27630 effa4204
 voice voice_lonely.lua 68942 fc94859b
 spawn spawn_speaker.lua 12501 b9c0e30f
-slim:base inventory.lua 2821 ad6e18b6 dist/inventory.lua
+slim:base inventory.lua 2855 f3dffc28 dist/inventory.lua
 slim:base startup.lua 833 00f3544b dist/startup.lua
 slim:base store.lua 7892 55ef20ea dist/store.lua
 slim:base upgrade.lua 7424 b8d25fcc dist/upgrade.lua
 slim:base base_away.lua 13709 b2890939 dist/base_away.lua
 slim:base base_chat.lua 17869 c802c350 dist/base_chat.lua
 slim:base base_console.lua 64328 5e1a4a96 dist/base_console.lua
-slim:base base_curios.lua 4074 bccf64fa dist/base_curios.lua
+slim:base base_curios.lua 4566 afac3e09 dist/base_curios.lua
 slim:base base_devices.lua 23725 4b3af2c2 dist/base_devices.lua
 slim:base base_drones.lua 60328 75efe5cc dist/base_drones.lua
 slim:base base_dronework.lua 38622 ca3c58da dist/base_dronework.lua
 slim:base base_env.lua 7154 ae1b2584 dist/base_env.lua
 slim:base base_factory.lua 21629 0269dab1 dist/base_factory.lua
-slim:base base_input.lua 21755 7c75dd0a dist/base_input.lua
+slim:base base_input.lua 21948 66de7008 dist/base_input.lua
 slim:base base_map.lua 56492 d7578ad2 dist/base_map.lua
-slim:base base_me.lua 66912 04979bf7 dist/base_me.lua
+slim:base base_me.lua 69440 ddee8a7f dist/base_me.lua
 slim:base base_meplus.lua 11765 8b3ef560 dist/base_meplus.lua
 slim:base base_mining.lua 18868 9cac13bc dist/base_mining.lua
-slim:base base_players.lua 17911 7ba368ee dist/base_players.lua
+slim:base base_players.lua 17989 e66a7256 dist/base_players.lua
 slim:base base_pocket.lua 13810 69e92a80 dist/base_pocket.lua
 slim:base base_schem.lua 13483 11a1f7a3 dist/base_schem.lua
 slim:base base_state.lua 2654 f000a2bc dist/base_state.lua
@@ -99,7 +99,7 @@ slim:base base_ui_env.lua 8993 0700d4eb dist/base_ui_env.lua
 slim:base base_ui_events.lua 2398 625dcdc5 dist/base_ui_events.lua
 slim:base base_ui_gifts.lua 10649 919a9a4c dist/base_ui_gifts.lua
 slim:base base_ui_home.lua 12269 5930b691 dist/base_ui_home.lua
-slim:base base_ui_inventory.lua 5120 94ca73c2 dist/base_ui_inventory.lua
+slim:base base_ui_inventory.lua 7148 df1d83c4 dist/base_ui_inventory.lua
 slim:base base_ui_map.lua 11972 451428fc dist/base_ui_map.lua
 slim:base base_ui_me.lua 13603 6435cdda dist/base_ui_me.lua
 slim:base base_ui_mesys.lua 13664 4ec0e530 dist/base_ui_mesys.lua
@@ -110,7 +110,7 @@ slim:base base_ui_storage.lua 11336 07fce5d6 dist/base_ui_storage.lua
 slim:base base_ui_system.lua 7131 437ffe00 dist/base_ui_system.lua
 slim:base base_ui_turtles.lua 15847 ac0874c5 dist/base_ui_turtles.lua
 slim:base base_ui_work.lua 11915 9dc7a913 dist/base_ui_work.lua
-slim:base base_workers.lua 25663 59c09bf5 dist/base_workers.lua
+slim:base base_workers.lua 25856 d07dfad8 dist/base_workers.lua
 slim:node node.lua 120878 74c46441 dist/node.lua
 slim:pocket pocket.lua 21398 2b717c01 dist/pocket.lua
 slim:pocket upgrade.lua 7424 b8d25fcc dist/upgrade.lua

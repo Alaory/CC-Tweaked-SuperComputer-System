@@ -41,7 +41,8 @@ for i = 1, 5 do
 local cx = gx + (i - 1 + (i == 5 and 1 or 0)) * pitch
 local it = state.equip[i]
 drawCell(cx, ay, cw, ch, it, labels[i])
-addHit(cx, ay, cw, ch, "item", it and it.name)
+if state.equipSel == i then frame(cx, ay, cw, ch, C.accent, C.bg) end
+addHit(cx, ay, cw, ch, "equip", i)
 end
 
 local bx = gx + 7 * pitch
@@ -93,8 +94,49 @@ end
 if more > 0 then text(ix, top + maxItems, "+" .. more .. " more...", C.dim, C.panel) end
 end
 
+EQUIP_LABEL = { "Helmet", "Chestplate", "Leggings", "Boots", "Offhand" }
+
+local function drawEquipDetail(x, y, w, h, i, it)
+local ix, iy, iw, ih = panel(x, y, w, h, "DETAILS - " .. EQUIP_LABEL[i]:upper())
+local name = it.displayName or prettify(it.name)
+local col = colorFor(it.name)
+cell(ix, iy, 1 + 4 + 16, col, C.panel)
+cell(ix, iy + 1, 1 + 4 + 16, col, C.panel)
+text(ix + 2, iy, trunc(name, iw - 2), C.text, C.panel)
+text(ix + 2, iy + 1, trunc(it.name, iw - 2), C.dim, C.panel)
+local r = iy + 3
+kv(ix, r, iw, "Worn as", EQUIP_LABEL[i]) r = r + 1
+if (it.count or 1) > 1 then kv(ix, r, iw, "Count", commas(it.count)) r = r + 1 end
+local dur, durMax = durability(it)
+if dur and durMax and r + 1 <= y + h - 2 then
+local f = dur / durMax
+meter(ix, r, iw, "Durability", commas(dur) .. " / " .. commas(durMax), f, f > 0.5 and C.good or (f > 0.2 and C.warn or C.bad))
+r = r + 2
+end
+local full = (state.used or 0) >= 36
+local offL = full and "TAKE OFF (inventory full)" or "TAKE OFF > INVENTORY"
+local sendL = "TAKE OFF + SEND > " .. tostring(bridgeKind or "AE2")
+local bottom = y + h - 2
+local room = bottom - r
+local bh = room >= 8 and 3 or 2
+if not bridge or room >= 2 * bh + 1 then
+local by = bottom - (bridge and (2 * bh + 1) or bh) + 1
+actButton(ix, by, iw, bh, offL, { kind = "eqoff", name = it.name, count = 1, slotIdx = i }, false, full and C.dim or C.accent)
+if bridge then
+actButton(ix, by + bh + 1, iw, bh, sendL, { kind = "eqsend", name = it.name, count = 1, slotIdx = i }, false, C.purple)
+end
+else
+local half = math.floor((iw - 1) / 2)
+local by = bottom - 1
+actButton(ix, by, half, 2, offL, { kind = "eqoff", name = it.name, count = 1, slotIdx = i }, false, full and C.dim or C.accent)
+actButton(ix + half + 1, by, iw - half - 1, 2, sendL, { kind = "eqsend", name = it.name, count = 1, slotIdx = i }, false, C.purple)
+end
+end
+
 
 function drawDetail(x, y, w, h)
+local ei = state.equipSel
+if ei and state.equip and state.equip[ei] then return drawEquipDetail(x, y, w, h, ei, state.equip[ei]) end
 local t
 for _, e in ipairs(state.list or {}) do if e.name == selName then t = e break end end
 local ix, iy, iw, ih = panel(x, y, w, h, "DETAILS")

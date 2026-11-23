@@ -883,6 +883,55 @@ function sendToME(name, count)
   return sent
 end
 
+-- ===== ARMOUR + OFFHAND (the owner: "equipment can't be selected or moved" on the INVENTORY tab) =====
+-- The Inventory Manager sees the player's whole inventory: 0-35 the backpack, 36 boots .. 39 helmet, 40 the offhand.
+-- exportItem with {name, count = 1, fromSlot = <that slot>} takes the piece OFF into the buffer chest; then it goes to the
+-- ME network (toME) or back into the backpack (a free slot). Checked by reading the inventory before and after: a manager
+-- that ignores fromSlot would take the same item from the BACKPACK - then it is put back and the move refused.
+EQUIP_SLOT = { 39, 38, 37, 36, 40 }      -- state.equip index (helm, chest, legs, boots, offhand) -> the manager's slot
+local function equipName(i) local e = state.equip and state.equip[i] return e and e.name end
+local function packCount(name)
+  local n = 0
+  for _, t in ipairs(state.list or {}) do if t.name == name then n = n + (t.count or 0) end end
+  return n
+end
+function equipMove(i, toME)
+  i = tonumber(i)
+  local slot = i and EQUIP_SLOT[i]
+  if not slot then return 0, "no such equipment slot" end
+  pcall(refreshInventory)
+  local name = equipName(i)
+  if not name then return 0, "nothing is worn there" end
+  if not toME and (state.used or 0) >= 36 then return 0, "your inventory is full - make room first" end
+  local before = packCount(name)
+  local ok, r = transfer(inv, INV_FROM_PLAYER, chestManagerDir("take"), { name = name, count = 1, fromSlot = slot })
+  local got = ok and (tonumber(r) or numOf(r) or 0) or 0
+  if not ok then return 0, tostring(r) end
+  if got <= 0 then return 0, "the Inventory Manager moved nothing (it may not reach armour slots)" end
+  pcall(refreshInventory)
+  if packCount(name) < before or equipName(i) == name then
+    -- (it came out of the backpack, not off the body: put it back, say why)
+    local back = bufferToPlayer(name, got, "take")
+    if back < got then owe(name, got - back, "player", "take") end
+    return 0, "this Inventory Manager cannot take worn items off by slot (it took one from your backpack - put back)"
+  end
+  if toME then
+    local sent = bufferToME(name, got, "take")
+    if sent < got then
+      local back = bufferToPlayer(name, got - sent, "take")
+      if back < got - sent then owe(name, got - sent - back, "player", "take") end
+      return sent, "the network did not take it - it went into your backpack"
+    end
+    return sent
+  end
+  local back = bufferToPlayer(name, got, "take")
+  if back < got then
+    owe(name, got - back, "player", "take")
+    return back, "no room in your backpack - kept in the buffer, given back when there is room"
+  end
+  return back
+end
+
 -- ===== Curios: worn items <-> ME network / inventory (through the buffer chest) =====
 -- exportCuriosItem / importCuriosItem take different arguments in different
 -- Advanced Peripherals versions, so the program asks the function itself:
@@ -1815,9 +1864,19 @@ function runAction(a)
 
   if a.kind == "cstore" or a.kind == "cunequip" or a.kind == "cequip" then
     local n, err
-    if a.kind == "cstore" then n, err = curioToME(a.name, a.count, a.slotType, a.slotNo)
-    elseif a.kind == "cunequip" then n, err = curioToInventory(a.name, a.count, a.slotType, a.slotNo)
-    else n, err = meToCurio(a.name, a.count, a.slotType, a.slotNo) end
+    -- CURIO_BUSY: the auto-equip worker puts things on by itself every tick - never two curios moves at once
+    -- (both use the curios chest)
+    local w = 0
+    while CURIO_BUSY and w < 100 do sleep(0.05) w = w + 1 end
+    CURIO_BUSY = true
+    local okC, n1, e1 = pcall(function()
+      if a.kind == "cstore" then return curioToME(a.name, a.count, a.slotType, a.slotNo)
+      elseif a.kind == "cunequip" then return curioToInventory(a.name, a.count, a.slotType, a.slotNo) end
+      return meToCurio(a.name, a.count, a.slotType, a.slotNo)
+    end)
+    CURIO_BUSY = false
+    if okC then n, err = n1, e1 else n, err = 0, tostring(n1) end
+    n = tonumber(n) or 0
     if a.kind == "cequip" and CURIOS then
       if a.auto then CURIOS.autoResult(a, n, err)
       elseif n > 0 then CURIOS.learn(a.slotType, a.name) end   -- (it fits: shown for this slot type from now on)
@@ -1828,6 +1887,17 @@ function runAction(a)
     else setToast("Curios: " .. disp .. " not moved - " .. tostring(err or "nothing happened"), C.bad, 12) end
     state.force.curios = true
     state.meForce = true
+    os.queueEvent("inv_wake")
+    return
+  end
+
+  if a.kind == "eqoff" or a.kind == "eqsend" then
+    local n, err = equipMove(a.slotIdx, a.kind == "eqsend")
+    local what = a.kind == "eqsend" and ("Sent to " .. tostring(bridgeKind or "AE2") .. ": ") or "Taken off: "
+    if n > 0 then setToast(what .. disp .. (err and (" - " .. err) or ""), err and C.warn or C.good, 8)
+    else setToast("Not moved: " .. disp .. " - " .. tostring(err or "nothing happened"), C.bad, 12) end
+    if n > 0 then state.equipSel = nil end
+    state.force.inv = true
     os.queueEvent("inv_wake")
     return
   end
