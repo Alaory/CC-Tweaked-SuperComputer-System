@@ -1433,6 +1433,18 @@ PneumaticCraft drone rides, turtle mapping/surveys, and an AE2 ME network view.
   at hangman - rematch?" (eventHooks keep r.lastGame; 40 % on a greeting, yes = the game again), MILESTONES (chunks
   mapped / turtles / players met / gifts given - the biggest new one said once, only with someone there), a
   special answer to "thanks" within 5 min of a gift, who visits the most, uptime. test_voice part 21.
+  REMINDERS (pack 3 V.REMIND = RM; the owner's chat: "base remind me mekanims needs fixing" -> "Tell me when" and the text
+  was GONE, "tommorow" -> the same line again, and mancelaz's "Al what time is it for you now" got "OK, I will remind you in
+  4 h"): the core's old in-memory os.clock reminder (max 4 h) is REMOVED (voice_addon was over a floppy). RM.parse(raw) ->
+  when {secs | tomorrow | nxt} + what: "in 30 min", "2 hours", "30min", "half an hour", "a few minutes", tomorrow (+ typos:
+  tommorow, tmrw ... V.same), next time / when I'm back / tonight = next login, later = 1 h; max 30 days. No time ->
+  V.pend kind "remindwhen" {text} (300 s), a time but no text -> "remindwhat"; VOICE.pendKinds (core hook, in chatCore
+  BEFORE everything - near or far, only THAT player's pend; a message that is no time leaves it waiting, "no" drops it).
+  Saved in "#base".rem {k, who, text, due (epoch ms) | nxt + off, tm, set}; a tick hook says it (chat + spoken at the
+  base) when due AND the player is online (state.online); "next time" = online after being seen offline; my reminders /
+  forget my reminders; `voice reminders [clear]`. SHORT NAMES (pack 3 wraps V.namesOther): the first word = the start
+  (2+ letters) of exactly one other online player's name, not V.NOT_SHORT (so, me, hi ...) -> talking to that player.
+  test_voice_remind.lua (the chat replayed).
   TAXI (pack 3; the owner: "we know players' bed positions (overworld only) - offer a free drone trip from the base
   to their home or vice versa"): V.bedOf = the Player Detector's respawnPosition (respawnDimension must be the
   drone's dimension), NEVER said to anyone. V.taxi(who, "bed"|"base"|nil): the owner always; allowed list; friends

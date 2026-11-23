@@ -382,11 +382,7 @@ CHECK(ask("base compliment me"):find(owner, 1, true), "compliment me")
 CHECK(ask("base tell me a story"):find("The end", 1, true), "a story")
 CHECK(ask("base remember buy diamonds"):find("buy diamonds", 1, true), "remember something")
 CHECK(ask("base my notes"):find("buy diamonds", 1, true) and VOICE.mem()[owner:lower()].notes, "my notes (kept on the floppy)")
-CHECK(ask("base remind me in 2 minutes to check the furnace"):find("2 m", 1, true) or #VOICE.timers == 1, "a reminder is set")
-CLOCK = CLOCK + 121
-told = {}
-VOICE.tick()
-CHECK(told[1] and told[1]:find("check the furnace", 1, true), "the reminder comes after 2 minutes: " .. tostring(told[1]))
+-- (reminders live in TALK PACK 3 now - tools/tests/test_voice_remind.lua)
 CHECK(ask("base shh"):find("quiet", 1, true) and VOICE.isQuiet(), "shh -> quiet for a while")
 VOICE.queue, VOICE.convo, VOICE.pend = {}, {}, {}
 CLOCK = CLOCK + 60

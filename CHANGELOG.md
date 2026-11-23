@@ -26,6 +26,9 @@ Peripherals (tested on CC:Tweaked 1.120.2, Minecraft 1.21.1, NeoForge).
 - PING is sent again until the turtle answers (survey turtles have their modem off while scanning) and says why not.
 - Drones on far trips jump into the sky above a player near the target first, then hop on from there.
 - Item wishes work at the base too, not only at spawn. The miner program is kept on a storage helper.
+- Reminders: "base, remind me mekanism needs fixing" keeps the text and asks when; "tomorrow" (typos too), "in 2 hours",
+  "next time" all work; reminders survive restarts and wait until you are online. A message that starts with the
+  beginning of another player's name ("Al, what time is it") is for that player - the base stays out.
 - Schematic builds are easier: stand where it should go, look the way it should go and type `$drone build <name>`;
   turn it with `turn left / right / around` or `facing east`, then `$drone build yes`. The DRONE WORK page shows the
   build seen from above (turned, with you on it), TURN LEFT / TURN RIGHT and where it goes. Torches, signs, doors ...

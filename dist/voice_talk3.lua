@@ -655,3 +655,230 @@ end,
 
 V.L = V.L or {}
 V.L.SPIRIT, V.L.SPIRIT_WHY, V.L.GLOSS, V.L.GLOSS_ALIAS = SPIRIT, SPIRIT_WHY, GLOSS, GLOSS_ALIAS
+
+
+
+
+
+
+
+local RM = {}
+V.REMIND = RM
+RM.UNIT = { s = 1, sec = 1, secs = 1, second = 1, seconds = 1, m = 60, min = 60, mins = 60, minute = 60, minutes = 60,
+h = 3600, hr = 3600, hrs = 3600, hour = 3600, hours = 3600, d = 86400, day = 86400, days = 86400, week = 604800, weeks = 604800 }
+RM.WORDN = { a = 1, an = 1, one = 1, two = 2, three = 3, four = 4, five = 5, six = 6, seven = 7, eight = 8, nine = 9, ten = 10,
+fifteen = 15, twenty = 20, thirty = 30, forty = 40, fifty = 50, few = 3, couple = 2 }
+RM.TOMORROW = { tomorrow = true, tomorow = true, tommorow = true, tommorrow = true, tomorro = true, tomoro = true, tmrw = true,
+tmr = true, tmrrw = true, tmw = true, ["2morrow"] = true, ["2moro"] = true, ["2mrw"] = true, tomoz = true, tomorrows = true }
+RM.NEXT = { "next time i log in", "next time i join", "next time i m on", "next time im on", "next time i am on", "next time i come",
+"next time i play", "next time you see me", "when i log in", "when i log on", "when i join", "when i come back",
+"when i m back", "when im back", "when i am back", "when i get back", "when i come on", "next login", "next time",
+"tonight" }
+RM.LATER = { "later today", "in a bit", "in a while", "later" }
+RM.LEAD = { hey = true, ok = true, okay = true, please = true, pls = true, plz = true, can = true, could = true, would = true,
+will = true, you = true, u = true, set = true, a = true, make = true, remind = true, reminder = true, me = true,
+to = true, about = true, that = true, of = true, i = true, need = true, want = true, timer = true, ["for"] = true,
+["in"] = true, ["and"] = true, ["then"] = true, so = true, also = true, just = true }
+RM.TAIL = { please = true, pls = true, plz = true, thanks = true, thx = true, ty = true, ok = true, ["for"] = true, at = true,
+["in"] = true, ["and"] = true, to = true, on = true, me = true }
+RM.MAX, RM.EACH = 60, 10
+function RM.words(raw)
+local s = " " .. tostring(raw or ""):lower():gsub("'", ""):gsub("[^%w%.]", " "):gsub("%.+%s", " ") .. " "
+local w = {}
+for t in s:gmatch("%S+") do w[#w + 1] = t end
+return w
+end
+
+function RM.parse(raw)
+local w = RM.words(raw)
+local used, when = {}, nil
+local base = tostring(V.cfg("name", "base")):lower()
+for i, t in ipairs(w) do
+if t == base then used[i] = true end
+end
+for i = 1, #w do
+if not when and not used[i] then
+local t = w[i]
+local n, u = tonumber(t), w[i + 1]
+local n2, u2 = t:match("^(%d+%.?%d*)(%a+)$")
+if t == "half" and (w[i + 1] == "an" or w[i + 1] == "a") and RM.UNIT[w[i + 2] or ""] == 3600 then
+when = { secs = 1800 } used[i], used[i + 1], used[i + 2] = true, true, true
+elseif (n or RM.WORDN[t]) and RM.UNIT[u or ""] then
+when = { secs = (n or RM.WORDN[t]) * RM.UNIT[u] } used[i], used[i + 1] = true, true
+if (t == "few" or t == "couple") and w[i - 1] == "a" then used[i - 1] = true end
+elseif (t == "few" or t == "couple") and w[i + 1] == "of" and RM.UNIT[w[i + 2] or ""] then
+when = { secs = RM.WORDN[t] * RM.UNIT[w[i + 2]] } used[i], used[i + 1], used[i + 2] = true, true, true
+if w[i - 1] == "a" then used[i - 1] = true end
+elseif tonumber(n2) and RM.UNIT[u2] then
+when = { secs = tonumber(n2) * RM.UNIT[u2] } used[i] = true
+elseif RM.TOMORROW[t] or (#t >= 6 and #t <= 9 and t:sub(1, 2) == "to" and V.same(t, "tomorrow")) then
+when = { tomorrow = true } used[i] = true
+local nx = w[i + 1]
+if nx == "morning" or nx == "evening" or nx == "night" or nx == "afternoon" then used[i + 1] = true end
+end
+if when and (w[i - 1] == "in" or w[i - 1] == "after" or w[i - 1] == "for") and not used[i - 1] then used[i - 1] = true end
+end
+end
+local rest = {}
+for i, t in ipairs(w) do if not used[i] then rest[#rest + 1] = t end end
+local s = " " .. table.concat(rest, " ") .. " "
+if not when then
+for _, ph in ipairs(RM.NEXT) do
+local a, b = s:find(" " .. ph .. " ", 1, true)
+if a then when = { nxt = true } s = s:sub(1, a) .. s:sub(b) break end
+end
+end
+if not when then
+for _, ph in ipairs(RM.LATER) do
+local a, b = s:find(" " .. ph .. " ", 1, true)
+if a then when = { secs = 3600 } s = s:sub(1, a) .. s:sub(b) break end
+end
+end
+
+rest = {}
+for t in s:gmatch("%S+") do rest[#rest + 1] = t end
+while rest[1] and RM.LEAD[rest[1]] do table.remove(rest, 1) end
+while rest[#rest] and RM.TAIL[rest[#rest]] do table.remove(rest) end
+if when and when.secs then when.secs = math.max(10, math.min(30 * 86400, when.secs)) end
+return when, table.concat(rest, " ")
+end
+function RM.list()
+local b = V.base()
+if type(b.rem) ~= "table" then b.rem = {} end
+return b.rem
+end
+function RM.onlineNow(k)
+if type(state.online) ~= "table" then return nil end
+return state.online[k] and true or false
+end
+function RM.whenText(r)
+if r.nxt then return "next time you come online" end
+local left = math.max(0, (r.due - os.epoch("utc")) / 1000)
+if r.tm then return "tomorrow (the first time I see you online after " .. os.date("!%H:%M", math.floor(r.due / 1000)) .. " UTC)" end
+return "in " .. fmtSpan(left)
+end
+function RM.add(who, when, what)
+local L, k = RM.list(), tostring(who):lower()
+local mine = 0
+for _, r in ipairs(L) do if r.k == k then mine = mine + 1 end end
+if mine >= RM.EACH then return "You already have " .. RM.EACH .. " reminders. Say: base, my reminders." end
+if #L >= RM.MAX then return "My reminder list is full. Ask me again later." end
+local now = os.epoch("utc")
+local r = { k = k, who = tostring(who), text = what ~= "" and what or "the reminder you asked for", set = now }
+if when.nxt then r.nxt = true r.off = (RM.onlineNow(k) == false) or nil
+elseif when.tomorrow then r.due, r.tm = now + 12 * 3600000, true
+else r.due = now + math.floor(when.secs * 1000) end
+L[#L + 1] = r
+pcall(V.saveMem)
+return "OK, I will remind you " .. RM.whenText(r) .. ": " .. r.text .. "."
+end
+RM.ASK = "Say: in 30 min, in 2 hours, tomorrow, or next time."
+
+V.pendKinds["remindwhen"] = function(who, P, ws, raw)
+local w = RM.words(raw)
+local base = tostring(V.cfg("name", "base")):lower()
+if w[1] == base then table.remove(w, 1) end
+if #w <= 3 and (w[1] == "no" or w[1] == "nah" or w[1] == "cancel" or w[1] == "nevermind" or w[1] == "never" or w[1] == "forget") then
+V.pend[tostring(who):lower()] = nil
+return "OK, no reminder."
+end
+local when, more = RM.parse(raw)
+if not when then return nil end
+V.pend[tostring(who):lower()] = nil
+local what = P.text ~= "" and P.text or more
+return RM.add(who, when, what)
+end
+V.pendKinds["remindwhat"] = function(who, P, ws, raw)
+local w = RM.words(raw)
+local base = tostring(V.cfg("name", "base")):lower()
+if w[1] == base then table.remove(w, 1) end
+V.pend[tostring(who):lower()] = nil
+if #w == 0 or (#w <= 2 and (w[1] == "no" or w[1] == "nah" or w[1] == "cancel" or w[1] == "nevermind")) then return "OK, no reminder." end
+local _, what = RM.parse(table.concat(w, " "))
+return RM.add(who, P.when, what ~= "" and what or table.concat(w, " "))
+end
+
+table.insert(V.patterns, 1, function(who, raw, ws)
+local low = " " .. table.concat(RM.words(raw), " ") .. " "
+if not (low:find(" remind", 1, true) or low:find(" timer ", 1, true)) then return nil end
+local k = tostring(who):lower()
+local L = RM.list()
+if low:find(" reminders ", 1, true) and (low:find(" forget ", 1, true) or low:find(" clear ", 1, true) or low:find(" cancel ", 1, true)
+or low:find(" delete ", 1, true) or low:find(" remove ", 1, true) or low:find(" stop ", 1, true)) then
+local n = 0
+for i = #L, 1, -1 do if L[i].k == k then table.remove(L, i) n = n + 1 end end
+pcall(V.saveMem)
+return n > 0 and ("Done - " .. n .. " reminder(s) forgotten.") or "You have no reminders."
+end
+if low:find(" reminders ", 1, true) or low:find(" my reminder ", 1, true) then
+local out = {}
+for _, r in ipairs(L) do if r.k == k then out[#out + 1] = r.text .. " (" .. RM.whenText(r) .. ")" end end
+if #out == 0 then return "You have no reminders. Like: remind me in 30 min to check the furnace." end
+return "Your reminders: " .. table.concat(out, "; ") .. "."
+end
+if not (low:find(" remind me ", 1, true) or low:find(" remind us ", 1, true) or low:find(" reminder ", 1, true)
+or low:find(" set a timer ", 1, true) or low:find(" timer for ", 1, true)) then return nil end
+local when, what = RM.parse(raw)
+if when and what ~= "" then return RM.add(who, when, what) end
+if when then
+V.pend[k] = { kind = "remindwhat", when = when, till = os.clock() + 180 }
+return "OK - what should I remind you about?"
+end
+if what == "" then return "What should I remind you about, and when? Like: remind me in 30 min to check the furnace." end
+V.pend[k] = { kind = "remindwhen", text = what, till = os.clock() + 300 }
+return "When should I remind you about \"" .. what .. "\"? " .. RM.ASK
+end)
+
+V.tickHooks[#V.tickHooks + 1] = function(now, nearNow)
+local L = RM.list()
+if #L == 0 then return end
+local t, changed = os.epoch("utc"), false
+for i = #L, 1, -1 do
+local r = L[i]
+local on = RM.onlineNow(r.k)
+if r.nxt and on == false and not r.off then r.off, changed = true, true end
+local due = (r.nxt and r.off and on) or (r.due and t >= r.due and on ~= false) or (r.nxt and on == nil and t - (r.set or t) > 12 * 3600000)
+if due then
+table.remove(L, i)
+changed = true
+local line = r.who .. ", reminder: " .. tostring(r.text) .. "."
+if chatTell then pcall(chatTell, r.who, line, true) end
+if nearNow and nearNow[r.who] then V.say(line, "minecraft:block.note_block.pling", true) end
+end
+end
+if changed then pcall(V.saveMem) end
+end
+
+V.commands["reminders"] = function(words, say)
+local L = RM.list()
+if words[3] == "clear" then V.base().rem = {} pcall(V.saveMem) say("All reminders forgotten.") return end
+if #L == 0 then say("No reminders.") return end
+for _, r in ipairs(L) do say(r.who .. ": " .. tostring(r.text) .. " - " .. RM.whenText(r)) end
+end
+
+
+
+V.NOT_SHORT = {}
+for w in ([[so do me my hi he we us it is in on at to an as am be by go oh ah uh um ok no yo ya ye up the and but you
+  your yes yeah nah how who why what when where can did does are was all any hey lol omg idk its for not too now get got
+  has had her him his she they them then than this that there here just like well wait okay sure nice good cool lets let
+  one two bot]]):gmatch("%S+") do V.NOT_SHORT[w] = true end
+local namesOther0 = V.namesOther
+function V.namesOther(who, ws, raw)
+local n = namesOther0(who, ws, raw)
+if n then return n end
+local on = state.online
+if type(on) ~= "table" then return nil end
+local me = tostring(who):lower()
+local first = tostring(raw or ""):lower():match("^[%s%p]*([%w_]+)")
+if not first or #first < 2 or V.NOT_SHORT[first] or first == tostring(V.cfg("name", "base")):lower() then return nil end
+local hit
+for p in pairs(on) do
+p = tostring(p):lower()
+if p ~= me and #p > #first and p:sub(1, #first) == first then
+if hit then return nil end
+hit = p
+end
+end
+return hit
+end

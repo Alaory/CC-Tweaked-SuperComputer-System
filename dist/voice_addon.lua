@@ -1136,7 +1136,6 @@ function VOICE.event(who, kind, what)
 for _, fn in ipairs(VOICE.eventHooks) do pcall(fn, who, kind, what) end
 end
 VOICE.gameKinds = {}
-VOICE.timers = VOICE.timers or {}
 VOICE.QUIZ = {
 { q = "How many blocks of obsidian does the smallest nether portal need?", a = { "10", "ten" } },
 { q = "What do you give a wolf to tame it?", a = { "bone", "bones" } },
@@ -1245,14 +1244,6 @@ end
 return nil
 end
 
-local function parseTimer(q)
-local n, unit = q:match("(%d+)%s*(%a+)")
-n = tonumber(n)
-if not n then return nil end
-local mult = (unit:find("^sec") and 1) or (unit:find("^min") and 60) or (unit:find("^h") and 3600) or 60
-local what = q:match(" to (.+)$") or q:match(" about (.+)$") or "your timer"
-return math.max(5, math.min(4 * 3600, n * mult)), (what:gsub("%s+$", ""))
-end
 function VOICE.extraAnswer(q, who)
 local function phrase(...) for _, w in ipairs({ ... }) do if q:find(w, 1, true) then return true end end return false end
 local function has(...) for _, w in ipairs({ ... }) do if q:find(" " .. w .. " ", 1, true) then return true end end return false end
@@ -1310,13 +1301,6 @@ return "Around the base I see " .. plural(c.hostile or 0, "monster", "monsters")
 end
 if phrase("real time", "irl", "real world") then
 return "The server clock says " .. os.date("!%H:%M", math.floor(os.epoch("utc") / 1000)) .. " UTC."
-end
-if phrase("remind me", "timer", "set a reminder") then
-local secs, what = parseTimer(q)
-if not secs then return "Tell me when, like: remind me in 5 minutes to check the furnace." end
-if #VOICE.timers >= 10 then return "I already have ten reminders. Ask me again later." end
-VOICE.timers[#VOICE.timers + 1] = { who = name, at = os.clock() + secs, text = what }
-return "OK, I will remind you in " .. fmtSpan(secs) .. "."
 end
 if phrase("remember ") and not phrase("do you remember") then
 local what = q:match("remember (.+)$")
@@ -1694,6 +1678,8 @@ VOICE.greetExtra = {}
 VOICE.chatHooks = {}
 VOICE.tickHooks = {}
 VOICE.hash = {}
+VOICE.pendKinds = {}
+
 VOICE.patterns = {}
 VOICE.nameOnly = nil
 VOICE.idleExtra = {}
@@ -2056,6 +2042,13 @@ end
 VOICE.say(line, nil, true)
 end
 VOICE.openConvo(who)
+end
+
+local PW = VOICE.pend[k]
+local PK = PW and VOICE.pendKinds[PW.kind]
+if PK and os.clock() < (tonumber(PW.till) or 0) then
+local okW, cW = pcall(PK, who, PW, ws, text)
+if okW and type(cW) == "string" then reply(cW) return true end
 end
 
 
@@ -2708,16 +2701,6 @@ VOICE.say("Alert. A " .. mob .. " is close to the base.", "minecraft:block.bell.
 break
 end
 end
-end
-end
-
-for i = #VOICE.timers, 1, -1 do
-local t = VOICE.timers[i]
-if now >= t.at then
-table.remove(VOICE.timers, i)
-local line = t.who .. ", reminder: " .. t.text .. "."
-if nearNow[t.who] then VOICE.say(line, "minecraft:block.note_block.pling") end
-if chatTell then chatTell(t.who, line) end
 end
 end
 

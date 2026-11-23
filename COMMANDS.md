@@ -347,6 +347,7 @@ only (not in chat).
 | `voice listen on\|off` | remembers what players say about you while you are offline |
 | `voice listen tell on\|off` | says out loud "I will pass it on" when it hears it |
 | `voice heard [clear]` | what players said about you (shown ones are deleted) / delete all |
+| `voice reminders [clear]` | every player's reminders (and when) / forget them all |
 | `voice nick <a,b,...>` | your other names it should listen for |
 | `voice forget` | forgets every player it met (your message for visitors and the visitor list stay) |
 
@@ -434,7 +435,9 @@ a stranger's word.
 | `base, hi` / `base, how are you?` / `base, let's talk` | a conversation (it asks questions and remembers your answers) |
 | `base, tell me a joke` / `fact` / `riddle` / `roast me` / `compliment me` / `tell me a story` | one of hundreds |
 | `base, let's play` / `quiz` / `hangman` / `guess my number` / `rock paper scissors` / `would you rather` | a game |
-| `base, remind me in 10 minutes to check the farm` | a reminder |
+| `base, remind me in 10 minutes to check the farm` | a reminder (also `in 2 hours`, `tomorrow`, `next time`; said in chat when you are online - one due while you are off waits for you) |
+| `base, remind me <something>` | no time given: it keeps the text and asks when - answer `in 30 min`, `tomorrow`, `next time` or `no` |
+| `base, my reminders` / `base, forget my reminders` | your reminders / forget them all |
 | `base, remember <text>` / `my notes` / `forget my notes` | notes it keeps for you |
 | `base, call me <name>` / `my birthday is 14 march` / `my favourite mob is the axolotl` | it remembers |
 | `base, who am I?` / `who is Steve?` / `what do you know about me?` | what it knows (never where anyone is) |

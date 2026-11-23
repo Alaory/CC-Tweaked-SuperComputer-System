@@ -1136,7 +1136,6 @@ function VOICE.event(who, kind, what)
   for _, fn in ipairs(VOICE.eventHooks) do pcall(fn, who, kind, what) end
 end
 VOICE.gameKinds = {}                   -- [kind] = function(g, who, q, strict, key) -> reply / nil (TALK PACKS add games)
-VOICE.timers = VOICE.timers or {}      -- { who, at, text }
 VOICE.QUIZ = {
   { q = "How many blocks of obsidian does the smallest nether portal need?", a = { "10", "ten" } },
   { q = "What do you give a wolf to tame it?", a = { "bone", "bones" } },
@@ -1245,14 +1244,6 @@ function VOICE.gameReply(who, q, strict)
   return nil
 end
 -- "remind me in 5 minutes to ..." / "timer 2 minutes"
-local function parseTimer(q)
-  local n, unit = q:match("(%d+)%s*(%a+)")
-  n = tonumber(n)
-  if not n then return nil end
-  local mult = (unit:find("^sec") and 1) or (unit:find("^min") and 60) or (unit:find("^h") and 3600) or 60
-  local what = q:match(" to (.+)$") or q:match(" about (.+)$") or "your timer"
-  return math.max(5, math.min(4 * 3600, n * mult)), (what:gsub("%s+$", ""))
-end
 function VOICE.extraAnswer(q, who)
   local function phrase(...) for _, w in ipairs({ ... }) do if q:find(w, 1, true) then return true end end return false end
   local function has(...) for _, w in ipairs({ ... }) do if q:find(" " .. w .. " ", 1, true) then return true end end return false end
@@ -1310,13 +1301,6 @@ function VOICE.extraAnswer(q, who)
   end
   if phrase("real time", "irl", "real world") then
     return "The server clock says " .. os.date("!%H:%M", math.floor(os.epoch("utc") / 1000)) .. " UTC."
-  end
-  if phrase("remind me", "timer", "set a reminder") then
-    local secs, what = parseTimer(q)
-    if not secs then return "Tell me when, like: remind me in 5 minutes to check the furnace." end
-    if #VOICE.timers >= 10 then return "I already have ten reminders. Ask me again later." end
-    VOICE.timers[#VOICE.timers + 1] = { who = name, at = os.clock() + secs, text = what }
-    return "OK, I will remind you in " .. fmtSpan(secs) .. "."
   end
   if phrase("remember ") and not phrase("do you remember") then
     local what = q:match("remember (.+)$")
@@ -1694,6 +1678,8 @@ VOICE.greetExtra = {}                  -- function(name) after a greeting (birth
 VOICE.chatHooks = {}                   -- function(who, text, near, answered) after every chat message
 VOICE.tickHooks = {}                   -- function(now, nearNow) every tick (2 s) - TALK PACK 2: gifts
 VOICE.hash = {}                        -- ["adv"] = function(who, arg) for menu choices "#adv:<arg>"
+VOICE.pendKinds = {}                   -- [kind] = function(who, P, ws, raw) -> chat or nil: an answer it WAITS for from that
+                                       -- player (TALK PACK 3: "when should I remind you?") - near or far, before anything else
 VOICE.patterns = {}                    -- function(who, raw, ws) -> chat, spoken (exact shapes, tried first)
 VOICE.nameOnly = nil                   -- function(who, raw) -> chat, spoken: a message that is only its name (the conversation pack)
 VOICE.idleExtra = {}                   -- function(nearNow, who) -> text said / true (more idle talk)
@@ -2056,6 +2042,13 @@ function VOICE.chatCore(m)
       VOICE.say(line, nil, true)
     end
     VOICE.openConvo(who)
+  end
+  -- an answer it asked THIS player for (a pack's pend kind: "tomorrow" after "when should I remind you?")
+  local PW = VOICE.pend[k]
+  local PK = PW and VOICE.pendKinds[PW.kind]
+  if PK and os.clock() < (tonumber(PW.till) or 0) then
+    local okW, cW = pcall(PK, who, PW, ws, text)
+    if okW and type(cW) == "string" then reply(cW) return true end
   end
   -- a running game (guess my number / quiz / rock paper scissors): the reply needs no name
   -- (with its name in it, it is a question - only a CORRECT quiz answer / a number / rock paper
@@ -2708,16 +2701,6 @@ function VOICE.tick()
           break
         end
       end
-    end
-  end
-  -- reminders that are due (said out loud when the player is at the base, else in chat)
-  for i = #VOICE.timers, 1, -1 do
-    local t = VOICE.timers[i]
-    if now >= t.at then
-      table.remove(VOICE.timers, i)
-      local line = t.who .. ", reminder: " .. t.text .. "."
-      if nearNow[t.who] then VOICE.say(line, "minecraft:block.note_block.pling") end
-      if chatTell then chatTell(t.who, line) end
     end
   end
   -- the collected warnings: one line now and then (not each one - "too much notifications")
