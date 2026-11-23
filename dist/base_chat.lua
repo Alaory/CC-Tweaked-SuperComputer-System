@@ -156,7 +156,7 @@ if sub == "help" then
 reply("Use: " .. c .. " home | " .. c .. " to <place" ..
 ((owner or CONFIG.chat.othersToPlayers) and "|player" or "") .. "> | " .. c .. " back | " ..
 c .. " places | " .. c .. " status | " .. c .. " stop")
-if owner then reply("Places: " .. c .. " mark <name> (stand ON the block) | " .. c .. " unmark <name> | " .. c .. " workchest [x y z] (stand ON the drones' work chest, or its spot) | " .. c .. " test (test it, standing near it) | " .. c .. " arrive [off] (stand at an open spot of an underground base - far trips teleport there, then fly in) | " .. c .. " build <name> (a schematic in front of you - look the way it should go) | " .. c .. " spawn here / pair <code> (the spawn speaker)") end
+if owner then reply("Places: " .. c .. " mark <name> (stand ON the block) | " .. c .. " unmark <name> | " .. c .. " workchest [x y z] (stand ON the drones' work chest, or its spot) | " .. c .. " test (test it, standing near it) | " .. c .. " arrive [off] (stand at an open spot of an underground base - far trips teleport there, then fly in) | " .. c .. " build <name> (a schematic in front of you - look the way it should go) | " .. c .. " chain a,b*5,c (pieces one after another - a road) | " .. c .. " clear here (twice: the corners of a box of water / lava to empty) | " .. c .. " spawn here / pair <code> (the spawn speaker)") end
 if owner then reply("Owner: " .. c .. " allow/deny <name> | " ..
 c .. " allowed | " .. c .. " yes/no <name> | " .. c .. " notify on/all/off") end
 
@@ -265,6 +265,75 @@ local pl, whyW = DW.where(sch, words, 4, name, 0)
 if not pl then reply("Cannot: " .. tostring(whyW)) return end
 DW.chatPend[key] = { name = words[3], pl = pl, at = os.clock() }
 show(DW.chatPend[key])
+end
+
+elseif sub == "chain" then
+
+if not owner then reply("Only " .. tostring(state.owner) .. " can start a build.") return end
+DW.chatPend = DW.chatPend or {}
+local key = name:lower() .. "#chain"
+local a = tostring(words[3] or ""):lower()
+local P = DW.chatPend[key]
+if P and os.clock() - P.at > 300 then DW.chatPend[key], P = nil, nil end
+if a == "" then
+reply("Stand where the first piece goes, look the way it goes on:  " .. c .. " chain road_start,road*6,road_end [turn right] [toward east] [clear]")
+elseif a == "yes" or a == "go" or a == "start" then
+if not P then reply("Nothing to start - first:  " .. c .. " chain <names>") return end
+DW.chatPend[key] = nil
+DW.enqueue(P.list)
+reply(DW.job and ("Started " .. DW.job.name .. " - " .. #DW.queue .. " more piece(s) after it.") or "Queued - it starts once the schematics are read.")
+elseif a == "no" or a == "cancel" then
+DW.chatPend[key] = nil
+reply("OK, not built.")
+else
+local list, text = DW.chainPlan(words[3], words, 4, name)
+if not list then reply("Cannot: " .. tostring(text)) return end
+DW.chatPend[key] = { list = list, at = os.clock() }
+reply("Chain: " .. text .. ". Say  " .. c .. " chain yes  to start.")
+end
+
+elseif sub == "clear" or sub == "drain" then
+
+if not owner then reply("Only " .. tostring(state.owner) .. " can start that.") return end
+DW.chatPend = DW.chatPend or {}
+local key = name:lower() .. "#clear"
+local a = tostring(words[3] or ""):lower()
+local P = DW.chatPend[key]
+if P and os.clock() - P.at > 600 then DW.chatPend[key], P = nil, nil end
+if a == "" then
+reply("Empty a box of water / lava: stand at one corner (the TOP one at the surface) -  " .. c .. " clear here  - then at the " ..
+"opposite corner (at the bottom) -  " .. c .. " clear here  - then  " .. c .. " clear yes.  Walls go round it, " ..
+"everything inside is filled and dug out.")
+elseif a == "yes" or a == "go" or a == "start" then
+if not (P and P.b) then reply("Mark both corners first:  " .. c .. " clear here") return end
+DW.chatPend[key] = nil
+local x1, y1, z1, x2, y2, z2 = P.a[1], P.a[2], P.a[3], P.b[1], P.b[2], P.b[3]
+if DW.job then
+DW.enqueue({ { kind = "drain", box = { x1, y1, z1, x2, y2, z2 }, fill = P.fill, name = "clear " .. fmtPos(x1, y1, z1),
+x = math.min(x1, x2), y = math.min(y1, y2), z = math.min(z1, z2), rot = 0 } })
+reply("A job runs (" .. DW.job.name .. ") - this one waits in the queue (" .. #DW.queue .. ").")
+else
+local _, msg = DW.startDrain(x1, y1, z1, x2, y2, z2, P.fill)
+reply(msg)
+end
+elseif a == "no" or a == "cancel" then
+DW.chatPend[key] = nil
+reply("OK, forgotten.")
+else
+local x, y, z = posArg(words, 3, name)
+if not x then reply("Cannot: " .. cleanErr(y)) return end
+local fill = words[4] and words[4]:lower() ~= "with" and SUPPLY.fullName(words[4]) or (words[5] and SUPPLY.fullName(words[5])) or nil
+if not P or P.b then
+DW.chatPend[key] = { a = { x, y, z }, at = os.clock(), fill = fill }
+reply("Corner 1: " .. fmtPos(x, y, z) .. ". Now the opposite corner:  " .. c .. " clear here")
+else
+P.b, P.at, P.fill = { x, y, z }, os.clock(), fill or P.fill
+local w = math.abs(P.a[1] - x) + 1
+local h = math.abs(P.a[2] - y) + 1
+local d = math.abs(P.a[3] - z) + 1
+reply("Box " .. w .. " x " .. d .. " x " .. h .. " (" .. w * d * h .. " blocks) from " .. fmtPos(P.a[1], P.a[2], P.a[3]) ..
+" to " .. fmtPos(x, y, z) .. ". Everything inside the walls goes. Say  " .. c .. " clear yes  to start.")
+end
 end
 
 elseif sub == "arrive" then

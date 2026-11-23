@@ -234,7 +234,11 @@ Keeps a chest or tank on the wired cable stocked from AE2. It only ever puts thi
 | `schem delete <name>` | deletes it |
 | `schem preview <name> [here\|place\|x y z] [facing <dir>\|turn left\|right\|around] [centered] [clear]` | only says where it would go and which way it faces |
 | `schem build <name> [here\|place\|x y z] [facing north\|east\|south\|west \| turn left\|right\|around \| rot 90] [centered] [clear]` | drones build it. No place / `here` = in front of you (where you look, 2 blocks ahead, bottom at your feet); a place / x y z = the GROUND block it stands on (its north-west corner, or `centered`). `facing east` = the side that was north faces east. `clear` = dig the schematic's air spots first |
-| `schem status` / `pause` / `resume` / `stop` | the build: how far / pause / go on / end |
+| `schem status` / `pause` / `resume` / `stop` | the build: how far / pause / go on / end (`stop` also drops the queue) |
+| `schem chain <a>,<b>*5,<c> [here\|place\|x y z] [toward north\|east\|south\|west] [facing <dir>\|turn left\|right\|around] [centered] [clear]` | a CHAIN of schematics (a road in parts): the first where `schem build` would put it, each next one right after the one before, toward the way you look (or `toward <dir>`), centred on it, all turned the same way. `road*5` = that piece 5 times. They are built one after another |
+| `schem queue [clear]` | the builds / clearings waiting their turn; `clear` drops them |
+| `schem skip` | ends the running build and starts the next one in the queue |
+| `dw clear <corner> <corner> [block]` (also `dw drain`) | EMPTIES A BOX OF WATER / LAVA for building: walls round it (the outer ring), the inside filled with the block (cobblestone - it comes back to AE2) and dug out top down. Everything inside the walls goes. Put the top corner at the surface. Corners: x y z, a saved place or `me`. A job already running -> it waits in the queue |
 | `schem craft [on\|off\|now]` | AE2 crafts the blocks a running build is short of (items with a pattern; on by default, checked every 30 s); `now` = ask at once |
 
 ### The voice add-on
@@ -306,6 +310,8 @@ privately. Players who are not allowed only get `help` and ride requests (the ow
 | `$drone arrive [<x> <y> <z>\|off]` (owner) | the drones' ARRIVAL SPOT for an underground base: an open spot they can teleport to (where you stand); far trips teleport there, then fly in |
 | `$drone workchest [<x> <y> <z>]` (owner) | the drones' work chest = the block you stand on (or those coordinates) |
 | `$drone build [<name> [turn right\|facing east ...] [clear]]` (owner) | a schematic in FRONT OF YOU (look the way it should go): says where and which way it faces; then `$drone build turn left / right / around` or `facing <dir>` to turn it, `$drone build yes` to start (`no` = forget it, `stop`, `status`) |
+| `$drone chain <a>,<b>*5,<c> [turn right\|facing east ...] [toward <dir>] [clear]` (owner) | a chain of schematics from in front of you, going on the way you look; `$drone chain yes` starts it (`no` = forget it) |
+| `$drone clear here [with <block>]` (also `$drone drain`, owner) | stand on one corner of a box of water / lava (the top one, at the surface): `$drone clear here`; then on the opposite corner: `$drone clear here` again; `$drone clear yes` starts it (walls, fill, dig out) |
 | `$drone test [item]` (owner) | tests the work chest while you stand near it (a drone drops an item at your feet) |
 | `$drone spawn here` (owner) | the spawn speaker's spot = where you stand |
 | `$drone spawn pair <code>` (owner) | pairs the spawn relay computer (the code is on its screen) |

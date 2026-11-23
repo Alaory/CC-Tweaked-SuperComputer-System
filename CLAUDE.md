@@ -956,6 +956,31 @@ PneumaticCraft drone rides, turtle mapping/surveys, and an AE2 ME network view.
   drone takes from stepLoad's T.tWait / tGive / tTake) -> DW.timesLine in schem status ("Trip time (avg of N): ...").
   test_drone_parallel test1 part (all 8, gravel after the bottom, a free drone takes the salt with the bottom out, no
   empty-drone visits at the start, the times line).
+  KEEPING APART (the owner: "a drone will try to place a block where another drone is standing"): a trip's spots are
+  ONE 8 x 8 square of one chunk (nextTrip's ck - DW.plan's order is unchanged: saved J.done strings index it); tr.box
+  (DW.boxOf) at the start; buildOne passes over a group whose box is within DW.gap() (CONFIG.drone.buildGap 3) of a
+  flying trip's box on every axis (DW.tooClose) - a tiny build (test1) goes one drone at a time now. A spot that
+  REFUSED its block (back > 0: which one is not known): the trip's tried spots get J.again[i] = group, J.againN[g] =
+  how many came back, J.againUntil 20 s (memory) -> ONE 2nd try = only that group, loading just againN blocks, all
+  its spots in the area (a filled one refuses) -> done; what comes back then = J.skippedN. Before: counted "taken",
+  the spot stayed EMPTY. test_drone_parallel: the fake drone blocks the cells next to all its spots while it works
+  (0.2 s a block) - the old code lost 58 of 153 blocks; a 24 x 24 checkerboard + one spot blocked once.
+  CHAINS + QUEUE (the owner: "a road split into multi schem files"): DW.queue (dronequeue.dat; DW.loadQueue
+  validates) of builds / clearings; DW.queueTick (DW.tick, no job running) starts the next (a schematic not read yet
+  is requested, never waited for; a failed start = WARNING, dropped). DW.chainPlan(spec, words, i, who): "a,b*5,c"
+  (DW.chainNames), `toward <dir>` taken out, the first piece placed by DW.where, the next ones right after the one
+  before along dir (else the way you look), centred across, the same rot. Console schem chain / queue [clear] / skip,
+  schem stop drops the queue; chat $drone chain ... -> yes (DW.chatPend[name#chain]).
+  CLEARING WATER / LAVA (DW.startDrain, kind "drain", J.box, J.fill cobblestone - no falling / hanging fill, >= 3 x 3,
+  <= DW.DRAIN_MAX 20000 blocks): DW.drainPlan = BOTTOM UP a layer at a time (p.grav on all: a block over an open
+  spot would shut the water below in, out of reach), walls then the inside (a block placed into water replaces it),
+  then the inside dug top down (J.digLast: nextTrip fills first, digs after; the dug
+  blocks come back with the drone). Console dw clear|drain <corner> <corner> [block], chat $drone clear here (two
+  corners) -> yes. A job running -> it waits in the queue.
+  ANCHORS PER CHUNK (the owner: "a turtle can only load the chunk that it is in"): J.anchors {["cx,cz"] = id} (saved;
+  an old J.anchor is read as one), at most #droneOrder; buildOne passes over a group in a chunk not loaded
+  (DW.anchorFor: a free turtle goto the chunk middle at top + 3, every 300 s again; all taken -> one whose chunk has
+  nothing left moves) and builds elsewhere meanwhile; DW.anchorTick (30 s) sends a turtle whose chunk is done home.
   DW.test / console `dw test [item]` (the owner: "how do I test the drone chest"): DW.notReady, the chest's spot + distance
   from the drones' home, 1 PLAIN item (DW.TEST_ITEMS: the first AE2 has, or the one named) AE2 -> work chest -> AE2;
   then, with the owner within 48 of the chest, DW.giftRun(owner, item, 1) = a drone takes it out of the chest and drops

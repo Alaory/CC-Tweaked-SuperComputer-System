@@ -3,12 +3,12 @@ base startup.lua 1532 dcf086f6
 base store.lua 11181 9643835d
 base upgrade.lua 17018 90571421
 base base_away.lua 19132 3e929492
-base base_chat.lua 23519 0eb6fd4c
-base base_console.lua 78663 c3f1321d
+base base_chat.lua 27676 67723185
+base base_console.lua 82488 06778bcf
 base base_curios.lua 7969 634b1833
 base base_devices.lua 34895 00a92721
 base base_drones.lua 94493 edab8cb5
-base base_dronework.lua 68078 215ba8b3
+base base_dronework.lua 86182 86116272
 base base_env.lua 10269 b6081e20
 base base_factory.lua 29478 ac14f7e9
 base base_input.lua 31054 99762fa0
@@ -43,7 +43,7 @@ base base_ui_settings.lua 21577 aa7cdfec
 base base_ui_storage.lua 13810 0a7a3da0
 base base_ui_system.lua 8539 1111d2b4
 base base_ui_turtles.lua 18523 fbf4149c
-base base_ui_work.lua 14654 d6da6b5d
+base base_ui_work.lua 14952 4c5b4587
 base base_workers.lua 42625 3cda3da7
 unzip unzip.lua 5639 e7bf8534
 node node.lua 174157 c93fe371
@@ -70,12 +70,12 @@ slim:base startup.lua 833 00f3544b dist/startup.lua
 slim:base store.lua 7892 55ef20ea dist/store.lua
 slim:base upgrade.lua 11623 560f68d3 dist/upgrade.lua
 slim:base base_away.lua 13709 b2890939 dist/base_away.lua
-slim:base base_chat.lua 17869 c802c350 dist/base_chat.lua
-slim:base base_console.lua 65138 d90481bf dist/base_console.lua
+slim:base base_chat.lua 21394 8ec1487f dist/base_chat.lua
+slim:base base_console.lua 68281 8862509f dist/base_console.lua
 slim:base base_curios.lua 4566 afac3e09 dist/base_curios.lua
 slim:base base_devices.lua 23725 4b3af2c2 dist/base_devices.lua
 slim:base base_drones.lua 60553 198d7632 dist/base_drones.lua
-slim:base base_dronework.lua 48314 8e4e57da dist/base_dronework.lua
+slim:base base_dronework.lua 61315 e0733438 dist/base_dronework.lua
 slim:base base_env.lua 7154 ae1b2584 dist/base_env.lua
 slim:base base_factory.lua 21663 188c4b24 dist/base_factory.lua
 slim:base base_input.lua 21948 66de7008 dist/base_input.lua
@@ -110,7 +110,7 @@ slim:base base_ui_settings.lua 18538 cca647a8 dist/base_ui_settings.lua
 slim:base base_ui_storage.lua 11336 07fce5d6 dist/base_ui_storage.lua
 slim:base base_ui_system.lua 7131 437ffe00 dist/base_ui_system.lua
 slim:base base_ui_turtles.lua 15847 ac0874c5 dist/base_ui_turtles.lua
-slim:base base_ui_work.lua 12135 c59de502 dist/base_ui_work.lua
+slim:base base_ui_work.lua 12407 926ce96c dist/base_ui_work.lua
 slim:base base_workers.lua 25970 5c3462fc dist/base_workers.lua
 slim:unzip unzip.lua 3971 1327b726 dist/unzip.lua
 slim:node node.lua 121193 17e0e4fe dist/node.lua
@@ -133,12 +133,12 @@ slim:voice voice_crowd.lua 22630 1a77c693 dist/voice_crowd.lua
 slim:voice voice_lonely.lua 58869 faa308a6 dist/voice_lonely.lua
 slim:spawn spawn_speaker.lua 9748 e9e10994 dist/spawn_speaker.lua
 z:base base_away.luz 4486 b47178c0 dist/z/base_away.luz
-z:base base_chat.luz 5601 6bb58d98 dist/z/base_chat.luz
-z:base base_console.luz 21230 df13cb7a dist/z/base_console.luz
+z:base base_chat.luz 6447 5079e374 dist/z/base_chat.luz
+z:base base_console.luz 22350 0025e774 dist/z/base_console.luz
 z:base base_curios.luz 1558 fe4c6a20 dist/z/base_curios.luz
 z:base base_devices.luz 6933 982df396 dist/z/base_devices.luz
 z:base base_drones.luz 15833 8454c5ba dist/z/base_drones.luz
-z:base base_dronework.luz 14242 62d10beb dist/z/base_dronework.luz
+z:base base_dronework.luz 17990 c4fef564 dist/z/base_dronework.luz
 z:base base_env.luz 2601 7478a918 dist/z/base_env.luz
 z:base base_factory.luz 6111 78bb75ec dist/z/base_factory.luz
 z:base base_input.luz 6568 51e12629 dist/z/base_input.luz
@@ -173,7 +173,7 @@ z:base base_ui_settings.luz 6538 d9d033cc dist/z/base_ui_settings.luz
 z:base base_ui_storage.luz 3823 39cf2b43 dist/z/base_ui_storage.luz
 z:base base_ui_system.luz 2906 376eacb9 dist/z/base_ui_system.luz
 z:base base_ui_turtles.luz 5660 9e3fe7f3 dist/z/base_ui_turtles.luz
-z:base base_ui_work.luz 4266 c70876b9 dist/z/base_ui_work.luz
+z:base base_ui_work.luz 4354 43d59761 dist/z/base_ui_work.luz
 z:base base_workers.luz 8024 9e3fcc14 dist/z/base_workers.luz
 z:voice voice_addon.luz 36665 703134d7 dist/z/voice_addon.luz
 z:voice voice_talk.luz 23409 731e77a9 dist/z/voice_talk.luz

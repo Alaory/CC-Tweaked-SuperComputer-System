@@ -96,6 +96,16 @@ Peripherals (tested on CC:Tweaked 1.120.2, Minecraft 1.21.1, NeoForge).
   a no-digging zone around the base.
 - Schematic builds get their missing blocks crafted by AE2 automatically (items with a pattern; `schem craft
   on|off|now`, SETTINGS > DRONES). `schem status` names the blocks AE2 has no pattern for.
+- Drones no longer get in each other's way on a build: two drones always work at least 3 blocks apart (each trip
+  is one 8 x 8 square), and a spot that refused its block once (a drone, a mob or a player in the way) is tried
+  again with just the blocks that came back. On a tiny build (a few blocks) the drones now take turns.
+- A CHAIN of schematics (a road in parts): `schem chain road_start,road*6,road_end` (or `$drone chain ...` in chat)
+  builds the pieces one after another, each right after the one before. Builds wait in a queue (`schem queue`,
+  `schem skip`).
+- Drones can EMPTY A BOX OF WATER / LAVA for building (`dw clear <corner> <corner>`, or `$drone clear here` at two
+  corners): walls round it, the inside filled with cobblestone and dug out again.
+- A build site that is not loaded gets one turtle PER CHUNK (a turtle loads only its own chunk); a turtle whose
+  chunk is done moves to the next one or goes home.
 - Drone builds use more drones on small builds: blocks go into any layer at once (falling blocks like sand and
   gravel still wait for the layer below, torches and doors for the walls), no extra chest visit before each trip,
   and `schem status` shows where a trip's time goes (chest wait, AE2 into the chest, the drone taking it, flying,

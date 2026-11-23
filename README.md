@@ -574,9 +574,19 @@ things that hang on walls come last. Blocks are placed the default way round (st
 face another way), fluids are left out. Blocks AE2 is short of are CRAFTED by AE2 automatically
 (items it has a pattern for - `schem status` names the ones without a pattern; `schem craft off` to stop
 it, or SETTINGS > DRONES). An item AE2 has none of waits (it looks again every 5 minutes) while the
-rest is built. All free drones work at once. A site nobody keeps loaded gets a turtle that waits above it.
-`schem` lists them, `schem <name>` shows the size and the materials, `schem status` / `pause` /
+rest is built. All free drones work at once, always a few blocks apart so they do not get in each other's way.
+A site nobody keeps loaded gets a turtle in each chunk that has work (a turtle loads only its own chunk); it waits
+above the build. `schem` lists them, `schem <name>` shows the size and the materials, `schem status` / `pause` /
 `stop` for a running build.
+
+**A chain of pieces (a road):** `schem chain road_start,road*6,road_end [x y z] [toward east]` - each piece right
+after the one before, centred, all turned the same way; they are built one after another (`schem queue`, `schem
+skip`). In chat: `$drone chain road_start,road*6,road_end`, then `$drone chain yes`.
+
+**Clearing water or lava:** `dw clear <corner> <corner>` (or in chat: `$drone clear here` on the top corner at the
+surface, again on the opposite bottom corner, then `$drone clear yes`). The drones put walls round the box, fill it
+with cobblestone and dig it out again - an empty, dry hole to build in. Everything inside the walls goes. Drones
+work in the overworld only (their own dimension).
 
 Other files can be dropped onto the computer's screen too - program files are saved next to
 `inventory.lua` (it tells you when a restart is needed). See [COMMANDS.md](COMMANDS.md#dropping-files-onto-the-computer).

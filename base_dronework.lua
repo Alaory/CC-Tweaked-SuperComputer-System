@@ -737,7 +737,7 @@ end
 
 -- (times on the os.clock are NOT saved: it starts at 0 again after a server restart - a build "waiting 5 min"
 --  waited hours, the anchor's goto was never sent again)
-DW.MEMORY_ONLY = { plan = true, waitUntil = true, anchorSent = true, short = true }
+DW.MEMORY_ONLY = { plan = true, waitUntil = true, anchorSent = true, anchorAt = true, short = true, againUntil = true }
 function DW.save()
   local J = DW.job
   if not J then pcall(fs.delete, dataPath(DW.FILE)) return end
@@ -750,7 +750,25 @@ function DW.load()
   if type(t) == "table" and type(t.name) == "string" and type(t.done) == "string" and type(t.dug or "") == "string"
      and tonumber(t.x) and tonumber(t.y) and tonumber(t.z) and tonumber(t.rot or 0) then
     t.dug = t.dug or ""
-    for k in pairs(DW.MEMORY_ONLY) do t[k] = nil end    -- (the plan is rebuilt from the schematic; old files had clock times)
+    for k in pairs(DW.MEMORY_ONLY) do t[k] = nil end
+    if t.kind == "drain" then
+      if type(t.box) ~= "table" then return end
+      for k = 1, 6 do if not tonumber(t.box[k]) then return end end
+      if type(t.fill) ~= "string" then t.fill = nil end
+    elseif t.kind ~= nil then return end
+    -- (one turtle per chunk now: an older file kept ONE in t.anchor)
+    local an = {}
+    if type(t.anchors) == "table" then
+      for ck, id in pairs(t.anchors) do if type(ck) == "string" and tonumber(id) then an[ck] = tonumber(id) end end
+    end
+    if tonumber(t.anchor) then an[type(t.anchorGoal) == "string" and t.anchorGoal or "old"] = tonumber(t.anchor) end
+    t.anchors, t.anchor, t.anchorGoal = an, nil, nil
+    for _, id in pairs(an) do if state.turtles[id] then state.turtles[id].dwAnchor = true end end
+    local ag, an2 = {}, {}
+    if type(t.again) == "table" then for k, v in pairs(t.again) do if tonumber(k) and tonumber(v) then ag[tonumber(k)] = tonumber(v) end end end
+    if type(t.againN) == "table" then for k, v in pairs(t.againN) do if tonumber(k) and tonumber(v) then an2[tonumber(k)] = tonumber(v) end end end
+    t.again, t.againN = ag, an2
+    t.placed, t.skippedN, t.fails = tonumber(t.placed) or 0, tonumber(t.skippedN) or 0, tonumber(t.fails) or 0    -- (the plan is rebuilt from the schematic; old files had clock times)
     DW.job = t
   end
 end
@@ -759,6 +777,12 @@ end
 -- not in memory is read by the map worker (nil, "reading")
 local function planOf(J)
   if J.plan then return J.plan end
+  if J.kind == "drain" then
+    local plan = DW.drainPlan(J)
+    if #J.done ~= #plan.place or #J.dug ~= #plan.air then return nil, "the clearing job changed - start it again" end
+    J.plan = plan
+    return plan
+  end
   local s = SCHEM.get(J.name)
   if not s then
     local why = SCHEM.failed[J.name]
@@ -842,6 +866,71 @@ function DW.craftTick(J, force)
   return #asked
 end
 
+------------------------------------------------------------------ CLEAR WATER / LAVA (make free space)
+-- (the owner: "use a drone to clear an ocean out of water or the nether out of lava to make free space"): drones
+-- cannot carry a sea away - so the box gets WALLS on its outer ring (they stay, every layer), the inside is FILLED with
+-- a plain block (placing a block into water / lava removes the fluid), then the inside is DUG OUT top down (the blocks
+-- go back into AE2 each trip). Everything inside the walls is dug - also the sea floor / terrain in the box. The top
+-- of the box should be at the surface (water above it would flow in). Overworld only (the drones' dimension).
+function DW.drainBox(J)
+  local b = J.box
+  return math.min(b[1], b[4]), math.min(b[2], b[5]), math.min(b[3], b[6]),
+         math.max(b[1], b[4]), math.max(b[2], b[5]), math.max(b[3], b[6])
+end
+function DW.drainPlan(J)
+  local x1, y1, z1, x2, y2, z2 = DW.drainBox(J)
+  local item = J.fill or "minecraft:cobblestone"
+  local place, air = {}, {}
+  -- (everything is placed BOTTOM UP, a layer at a time - grav: a block over an open spot would shut the water below in,
+  --  out of a drone's reach; the walls first in each layer)
+  local function cols(y, inner, fn)
+    for cx = math.floor(x1 / 16), math.floor(x2 / 16) do for cz = math.floor(z1 / 16), math.floor(z2 / 16) do
+      for x = math.max(x1, cx * 16), math.min(x2, cx * 16 + 15) do for z = math.max(z1, cz * 16), math.min(z2, cz * 16 + 15) do
+        local edge = x == x1 or x == x2 or z == z1 or z == z2
+        if edge ~= inner then fn(x, y, z) end
+      end end
+    end end
+  end
+  for y = y1, y2 do
+    cols(y, false, function(x, yy, z) place[#place + 1] = { x = x, y = yy, z = z, item = item, grav = true } end)
+    cols(y, true, function(x, yy, z) place[#place + 1] = { x = x, y = yy, z = z, item = item, grav = true } end)
+  end
+  for y = y2, y1, -1 do                                        -- then the inside dug out - top down
+    cols(y, true, function(x, yy, z) air[#air + 1] = { x = x, y = yy, z = z } end)
+  end
+  return { place = place, air = air, skipped = {}, top = y2 + 1 }
+end
+DW.DRAIN_MAX = 20000
+function DW.startDrain(x1, y1, z1, x2, y2, z2, fill)
+  if DW.job then return false, "a build is running (" .. DW.job.name .. ") -  schem stop  first" end
+  local bad = DW.notReady()
+  if bad then return false, bad end
+  fill = fill or cfg("drainBlock") or "minecraft:cobblestone"
+  if not fill:find(":", 1, true) then fill = "minecraft:" .. fill end
+  if DW.isGravity(fill) or DW.isLate(fill) then return false, prettify(fill) .. " falls / hangs - take a plain block (cobblestone, dirt ...)" end
+  local J = { kind = "drain", box = { x1, y1, z1, x2, y2, z2 }, fill = fill, rot = 0, clear = true, digLast = true,
+              placed = 0, skippedN = 0, startedE = os.epoch("utc"), fails = 0 }
+  local ax, ay, az, bx, by, bz = DW.drainBox(J)
+  local w, h, d = bx - ax + 1, by - ay + 1, bz - az + 1
+  if w < 3 or d < 3 then return false, "the box must be at least 3 x 3 (its outer ring becomes the walls)" end
+  if w * h * d > (tonumber(cfg("drainMax")) or DW.DRAIN_MAX) then
+    return false, "that box is " .. w * h * d .. " blocks - at most " .. (tonumber(cfg("drainMax")) or DW.DRAIN_MAX) ..
+                  " in one job (clear it in parts)"
+  end
+  J.name = "clear " .. w .. "x" .. d .. "x" .. h
+  J.x, J.y, J.z = ax, ay, az
+  local plan = DW.drainPlan(J)
+  J.done, J.dug, J.plan = string.rep("0", #plan.place), string.rep("0", #plan.air), plan
+  DW.job = J
+  DW.save()
+  local msg = "Clearing " .. fmtPos(ax, ay, az) .. " to " .. fmtPos(bx, by, bz) .. " (" .. w .. " x " .. d .. " x " .. h ..
+              "): walls round it, the inside filled with " .. prettify(fill) .. " (" .. #plan.place .. " blocks, they come back) " ..
+              "and dug out top down - everything inside the walls goes"
+  if sysLog then sysLog(msg) end
+  if DW.craftTick then DW.craftTick(J, true) end
+  return true, msg
+end
+
 function DW.startBuild(name, x, y, z, rot, clear)
   if DW.job then return false, "a build is running (" .. DW.job.name .. ") -  schem stop  first" end
   local bad = DW.notReady()
@@ -868,17 +957,221 @@ function DW.startBuild(name, x, y, z, rot, clear)
   return true, msg
 end
 
-local function anchorTurtle(J)
-  return J.anchor and state.turtles[J.anchor]
+------------------------------------------------------------------ the QUEUE + CHAINS (a road in pieces)
+-- (the owner: "place a chain of structures one next to another - a road split into several schematic files"):
+--   schem chain road1,road2*5,road3 [here|place|x y z] [toward <dir>] [turn ..|facing ..] [clear]
+-- the first piece goes where a single build would; each next one right after the one before, toward the way you look
+-- (or `toward <dir>`), centred on it; all turned the same way. Builds wait in DW.queue (dronequeue.dat) and start one
+-- after another; a clearing job can wait there too. `schem queue [clear]`.
+DW.queue = DW.queue or {}
+DW.QFILE = "dronequeue.dat"
+function DW.saveQueue()
+  if #DW.queue == 0 then pcall(fs.delete, dataPath(DW.QFILE)) return end
+  saveFileSafe(dataPath(DW.QFILE), serialSmall(DW.queue))
 end
-local function releaseAnchor(J)
-  local t = anchorTurtle(J)
+function DW.loadQueue()
+  DW.queue = {}
+  local t = readSafe(dataPath(DW.QFILE))
+  if type(t) ~= "table" then return end
+  for _, q in ipairs(t) do
+    if type(q) == "table" and type(q.name) == "string" and tonumber(q.x) and tonumber(q.y) and tonumber(q.z) then
+      local e = { name = q.name, x = tonumber(q.x), y = tonumber(q.y), z = tonumber(q.z), rot = tonumber(q.rot) or 0,
+                  clear = q.clear and true or nil }
+      if q.kind == "drain" and type(q.box) == "table" and #q.box == 6 then
+        local ok = true
+        for k = 1, 6 do if not tonumber(q.box[k]) then ok = false end end
+        if ok then e.kind, e.box, e.fill = "drain", q.box, type(q.fill) == "string" and q.fill or nil end
+      end
+      if q.kind ~= "drain" or e.kind then DW.queue[#DW.queue + 1] = e end
+    end
+  end
+end
+-- "road1,road2*3" -> { "road1", "road2", "road2", "road2" }
+function DW.chainNames(spec)
+  local out = {}
+  for part in tostring(spec or ""):gmatch("[^,]+") do
+    local nm, n = part:match("^(.-)%*(%d+)$")
+    if not nm then nm, n = part, 1 end
+    for _ = 1, math.min(tonumber(n) or 1, 200) do if #out < 400 then out[#out + 1] = nm end end
+  end
+  return out
+end
+DW.DIRNUM = { north = 0, n = 0, east = 1, e = 1, south = 2, s = 2, west = 3, w = 3 }
+-- the pieces' places -> list, text  (nil, why)
+function DW.chainPlan(spec, words, i, who)
+  local names = DW.chainNames(spec)
+  if #names == 0 then return nil, "no schematics named (road1,road2*5,road3)" end
+  local w2, dir = {}, nil
+  local j = 1
+  while j <= #words do
+    local lw = tostring(words[j]):lower()
+    if j >= i and (lw == "toward" or lw == "towards" or lw == "along" or lw == "direction") then
+      dir = DW.DIRNUM[tostring(words[j + 1] or ""):lower()]
+      if not dir then return nil, "toward north | east | south | west" end
+      j = j + 2
+    else
+      w2[#w2 + 1] = words[j]
+      j = j + 1
+    end
+  end
+  local cache = {}
+  local function sch(n)
+    if cache[n] then return cache[n] end
+    local s0, why = SCHEM.load(n)
+    if not s0 then return nil, tostring(n) .. ": " .. tostring(why) end
+    cache[n] = s0
+    return s0
+  end
+  local s1, why1 = sch(names[1])
+  if not s1 then return nil, why1 end
+  local pl, whyW = DW.where(s1, w2, i, who, 0)
+  if not pl then return nil, whyW end
+  dir = dir or (pl.how == "front" and pl.look) or nil
+  if not dir then return nil, "which way does it go on? add  toward north | east | south | west" end
+  local list = { { name = names[1], x = pl.ox, y = pl.oy, z = pl.oz, rot = pl.rot, clear = pl.clear } }
+  local pw, pd = DW.footprint(s1, pl.rot)
+  local px, pz = pl.ox, pl.oz
+  for k = 2, #names do
+    local s0, why = sch(names[k])
+    if not s0 then return nil, why end
+    local w, d = DW.footprint(s0, pl.rot)
+    local x, z
+    if dir == 1 then x, z = px + pw, pz + math.floor((pd - d) / 2)
+    elseif dir == 3 then x, z = px - w, pz + math.floor((pd - d) / 2)
+    elseif dir == 2 then x, z = px + math.floor((pw - w) / 2), pz + pd
+    else x, z = px + math.floor((pw - w) / 2), pz - d end
+    list[#list + 1] = { name = names[k], x = x, y = pl.oy, z = z, rot = pl.rot, clear = pl.clear }
+    px, pz, pw, pd = x, z, w, d
+  end
+  local f = list[1]
+  local text = #list .. " piece(s) toward " .. DW.DIRNAME[dir] .. ", " .. DW.turnText(pl.rot) .. ": from " ..
+               fmtPos(f.x, f.y, f.z) .. " to " .. fmtPos(px + pw - 1, pl.oy, pz + pd - 1)
+  return list, text
+end
+-- into the queue (the first starts now when nothing is being built)
+function DW.enqueue(list)
+  for _, q in ipairs(list) do DW.queue[#DW.queue + 1] = q end
+  DW.saveQueue()
+  DW.queueTick()
+end
+-- the next queued build when none runs (comms worker - never waits: a schematic not read yet is asked for)
+function DW.queueTick()
+  if DW.job or #DW.queue == 0 then return end
+  local q = DW.queue[1]
+  local ok, msg
+  if q.kind == "drain" then
+    ok, msg = DW.startDrain(q.box[1], q.box[2], q.box[3], q.box[4], q.box[5], q.box[6], q.fill)
+  else
+    if not SCHEM.get(q.name) then
+      local why = SCHEM.failed[q.name]
+      if why then SCHEM.failed[q.name] = nil ok, msg = false, why
+      elseif SCHEM.wanted[q.name] or not SCHEM.request(q.name) then return end
+      if ok == nil and not SCHEM.get(q.name) then return end
+    end
+    if ok == nil then ok, msg = DW.startBuild(q.name, q.x, q.y, q.z, q.rot, q.clear) end
+  end
+  table.remove(DW.queue, 1)
+  DW.saveQueue()
+  if not ok then
+    pushNote("WARNING", "Queued build " .. q.name .. " not started: " .. tostring(msg), C.warn)
+  elseif sysLog then sysLog("Next queued build: " .. tostring(msg) .. " (" .. #DW.queue .. " more waiting)") end
+end
+
+-- KEEPING THE SITE LOADED (the owner: "a turtle can only load the chunk it is in"): one turtle PER CHUNK that has work and
+-- is not loaded - J.anchors = { ["cx,cz"] = turtle id }, at most one per drone. A turtle whose chunk is done moves on to
+-- the next one (or goes home); all go home when the job ends.
+function DW.anchorList(J)
+  local out = {}
+  for ck, id in pairs(J.anchors or {}) do
+    local t = state.turtles[id]
+    if t then out[#out + 1] = { ck = ck, t = t } end
+  end
+  table.sort(out, function(a, b) return a.ck < b.ck end)
+  return out
+end
+local function releaseOne(J, ck, why)
+  local id = (J.anchors or {})[ck]
+  local t = id and state.turtles[id]
   if t then
     t.dwAnchor = nil
     TT.send(t.id, "home", {}, true)
-    TT.log(t, "Build anchor no longer needed - going home")
+    TT.log(t, why or "Build anchor no longer needed - going home")
   end
-  J.anchor = nil
+  if J.anchors then J.anchors[ck] = nil end
+  if J.anchorAt then J.anchorAt[ck] = nil end
+end
+local function releaseAnchor(J)
+  for ck in pairs(J.anchors or {}) do releaseOne(J, ck) end
+  J.anchors, J.anchor = {}, nil
+end
+-- the chunks with work left (a spot still to do, or out with a drone)
+local function openChunks(J, plan)
+  local open = {}
+  local function add(p) open[math.floor(p.x / 16) .. "," .. math.floor(p.z / 16)] = true end
+  for i = 1, #J.done do if J.done:sub(i, i) == "0" and plan.place[i] then add(plan.place[i]) end end
+  for i = 1, #J.dug do if J.dug:sub(i, i) == "0" and plan.air[i] then add(plan.air[i]) end end
+  for _, t in pairs(DW.trips) do if t.at and type(t.box) == "table" then add({ x = t.box[1], z = t.box[3] }) end end
+  return open
+end
+DW.openChunks = openChunks
+-- a turtle for chunk cx cz (the build's top + 3, the chunk's middle) -> the text for J.why
+function DW.anchorFor(J, plan, cx, cz)
+  J.anchors = J.anchors or {}
+  J.anchorAt = J.anchorAt or {}
+  local ck = cx .. "," .. cz
+  for k, id in pairs(J.anchors) do                       -- (gone offline: another one goes)
+    local t = state.turtles[id]
+    if not t or not TT.online(t) then
+      if t then t.dwAnchor = nil end
+      J.anchors[k], J.anchorAt[k] = nil, nil
+    end
+  end
+  local a = J.anchors[ck] and state.turtles[J.anchors[ck]]
+  if not a then
+    local n = 0
+    for _ in pairs(J.anchors) do n = n + 1 end
+    if n >= math.max(1, #droneOrder) then
+      -- (all out: one whose chunk is finished moves here)
+      local open = openChunks(J, plan)
+      for k, id in pairs(J.anchors) do
+        if not open[k] then
+          a = state.turtles[id]
+          J.anchors[k], J.anchorAt[k] = nil, nil
+          break
+        end
+      end
+      if not a then return "waiting for a turtle keeping another chunk of the site loaded" end
+    else
+      local gx, gz = cx * 16 + 8, cz * 16 + 8
+      local best, bd
+      for _, id in ipairs(TT.available()) do
+        local t = state.turtles[id]
+        if t and t.pos and t.pos.x and (tonumber(t.fuel) or 0) > 2000 and not t.held and not t.dwAnchor then
+          local d = math.abs(t.pos.x - gx) + math.abs(t.pos.z - gz)
+          if not bd or d < bd then best, bd = t, d end
+        end
+      end
+      if not best then return "the site is not loaded and no free turtle (fuel > 2000) can go and keep it loaded" end
+      a = best
+    end
+    J.anchors[ck], a.dwAnchor = a.id, true
+    TT.log(a, "Goes to the drone job " .. J.name .. " to keep chunk " .. ck .. " loaded")
+  end
+  if now() - (J.anchorAt[ck] or -999) > 300 then
+    J.anchorAt[ck] = now()
+    TT.send(a.id, "goto", { cx * 16 + 8, math.min(310, plan.top + 3), cz * 16 + 8 }, true)
+  end
+  return a.label .. " is on its way to keep part of the site loaded"
+end
+-- every 30 s: a turtle whose chunk has nothing left goes home
+function DW.anchorTick(J)
+  if not J.anchors or not next(J.anchors) then return end
+  local plan = planOf(J)
+  if not plan then return end
+  local open = openChunks(J, plan)
+  for ck in pairs(J.anchors) do
+    if not open[ck] then releaseOne(J, ck, "Its chunk of the drone job is done - going home") end
+  end
 end
 function DW.stopBuild(why)
   local J = DW.job
@@ -918,44 +1211,73 @@ function DW.nextTrip(J, cap, busy)
   if not plan then return nil end
   busy = busy or {}
   local bd, bp = busy.dig or {}, busy.place or {}
-  local function ck(p) return math.floor(p.x / 16) .. "," .. math.floor(p.z / 16) end
-  for i = 1, #J.dug do
-    if J.dug:sub(i, i) == "0" and not bd[i] then
-      local p0, idx = plan.air[i], {}
-      for k = i, #J.dug do
-        local p = plan.air[k]
-        if J.dug:sub(k, k) == "0" and not bd[k] and ck(p) == ck(p0) then idx[#idx + 1] = k end
-        if #idx >= 64 then break end
+  -- (a trip's spots are in ONE 8 x 8 square of one chunk - compact, so two drones can work squares apart: DW.tooClose)
+  local function ck(p) return math.floor(p.x / 8) .. "," .. math.floor(p.z / 8) end
+  local function digTrip()
+    for i = 1, #J.dug do
+      if J.dug:sub(i, i) == "0" and not bd[i] then
+        local p0, idx = plan.air[i], {}
+        for k = i, #J.dug do
+          local p = plan.air[k]
+          if p.y ~= p0.y then break end                      -- (one layer: top down)
+          if J.dug:sub(k, k) == "0" and not bd[k] and ck(p) == ck(p0) then idx[#idx + 1] = k end
+          if #idx >= 64 then break end
+        end
+        return { kind = "dig", idx = idx, at = p0 }
       end
-      return { kind = "dig", idx = idx, at = p0 }
     end
   end
-  -- (still being cleared by another drone: nothing is placed before every dig is done)
-  if J.dug:find("0", 1, true) then return nil end
+  -- (a CLEARING job - J.digLast - fills first and digs after: below; a build clears first)
+  if not J.digLast then
+    local t = digTrip()
+    if t then return t end
+    -- (still being cleared by another drone: nothing is placed before every dig is done)
+    if J.dug:find("0", 1, true) then return nil end
+  end
   -- (an item AE2 could not give is left for J.short's 5 min - the rest of the build goes on; it stopped at that item)
   local short, waiting = J.short or {}, nil
+  -- (spots that refused a block wait J.againUntil before the 2nd try - the drone in the way has moved on by then)
+  local ag, againWait = J.again or {}, J.againUntil and now() < J.againUntil
+  local retryWait = false
   for i = 1, #J.done do
-    if J.done:sub(i, i) == "0" and not bp[i] then
+    if againWait and ag[i] and J.done:sub(i, i) == "0" and not bp[i] then retryWait = true end
+    if J.done:sub(i, i) == "0" and not bp[i] and not (againWait and ag[i]) then
       local p0, idx = plan.place[i], {}
       if short[p0.item] and now() < short[p0.item] then
         waiting = waiting or {}
         waiting[p0.item] = true
+      elseif ag[i] then
+        -- (a 2nd try: only that trip's spots, only as many blocks as came back - a filled spot refuses, the drone
+        --  puts them into the free ones)
+        local g = ag[i]
+        for k = i, #J.done do
+          if ag[k] == g and J.done:sub(k, k) == "0" and not bp[k] then idx[#idx + 1] = k end
+        end
+        return { kind = "place", item = p0.item, idx = idx, at = p0, late = p0.late, grav = p0.grav, group = g,
+                 want = math.max(1, math.min(#idx, (J.againN or {})[g] or #idx)) }
       else
         for k = i, #J.done do
           local p = plan.place[k]
           if p.y ~= p0.y then break end
-          if J.done:sub(k, k) == "0" and not bp[k] and p.item == p0.item and ck(p) == ck(p0) then idx[#idx + 1] = k end
+          if J.done:sub(k, k) == "0" and not bp[k] and not ag[k] and p.item == p0.item and ck(p) == ck(p0) then
+            idx[#idx + 1] = k
+          end
           if #idx >= cap then break end
         end
         return { kind = "place", item = p0.item, idx = idx, at = p0, late = p0.late, grav = p0.grav }
       end
     end
   end
+  if retryWait then return nil, "a few spots refused their block (a drone or a mob in the way?) - trying them again soon" end
   if waiting then
     local names = {}
     for it in pairs(waiting) do names[#names + 1] = prettify(it) end
     table.sort(names)
     return nil, "only " .. table.concat(names, ", ") .. " left - AE2 has none (it looks again every 5 min)"
+  end
+  if J.digLast then
+    if J.done:find("0", 1, true) then return nil end            -- (blocks still out with a drone: dig after)
+    return digTrip()
   end
 end
 
@@ -1050,10 +1372,29 @@ local function tripDone(trip, dr)
   else
     local carried = T.carried or 0
     local back = (T.back or {})[trip.item] or 0
-    local placed = math.max(0, math.min(carried, #trip.idx) - back)
+    local tried = math.min(carried, #trip.idx)
+    local placed = math.max(0, tried - back)
     J.placed = J.placed + placed
-    J.skippedN = J.skippedN + math.max(0, math.min(carried, #trip.idx) - placed)
-    J.done = mark(J.done, trip.idx, carried, "1")
+    -- (blocks that came back: their spot was taken - by a block already there, or by a DRONE / mob / player in the way
+    --  for a moment. Which spot is not known: all of this trip's spots get ONE more try after 20 s - a filled one simply
+    --  sends its block back again. A spot's 2nd try counts it as done.)
+    J.again, J.againN = J.again or {}, J.againN or {}
+    local b = {}
+    for i = 1, #J.done do b[i] = J.done:sub(i, i) end
+    if trip.group then                                    -- (the 2nd try: done, what came back again was really taken)
+      for _, i in ipairs(trip.idx) do J.again[i] = nil b[i] = "1" end
+      J.againN[trip.group] = nil
+      J.skippedN = J.skippedN + back
+    elseif back > 0 then
+      J.againSeq = (tonumber(J.againSeq) or 0) + 1
+      local g = J.againSeq
+      for k = 1, tried do J.again[trip.idx[k]] = g end
+      J.againN[g] = back
+      J.againUntil = now() + 20
+    else
+      for k = 1, tried do b[trip.idx[k]] = "1" end
+    end
+    J.done = table.concat(b)
   end
   DW.save()
 end
@@ -1074,8 +1415,10 @@ function DW.tick()
   end
   DW.syncTrip()
   pcall(DW.fuelTick)
+  if not DW.job and #DW.queue > 0 then pcall(DW.queueTick) end
   local J = DW.job
   if J then pcall(DW.craftTick, J) end
+  if J and now() - (DW.anchorCheck or -999) > 30 then DW.anchorCheck = now() pcall(DW.anchorTick, J) end
   if not J or J.paused then return end
   -- as many build trips as there are free drones (each on its own spots)
   for _ = 1, math.max(1, #droneOrder) do
@@ -1095,15 +1438,43 @@ end
 -- the build trips out now: busy spots, how many, their layer / kind / late
 local function buildFlying()
   local busy, n, layer, kind, late, solid = { dig = {}, place = {} }, 0, nil, nil, false, false
+  local boxes = {}
   for _, t in pairs(DW.trips) do
     if t.kind == "dig" or t.kind == "place" then
       n = n + 1
+      if type(t.box) == "table" then boxes[#boxes + 1] = t.box end
       for _, k in ipairs(t.idx or {}) do busy[t.kind][k] = true end
       layer, kind = t.layer, t.kind
       if t.late then late = true else solid = true end
     end
   end
-  return busy, n, layer, kind, late, solid
+  return busy, n, layer, kind, late, solid, boxes
+end
+-- the box round a trip's spots {x1, y1, z1, x2, y2, z2}
+function DW.boxOf(pts)
+  local b
+  for _, p in ipairs(pts) do
+    if not b then b = { p.x, p.y, p.z, p.x, p.y, p.z }
+    else
+      b[1], b[2], b[3] = math.min(b[1], p.x), math.min(b[2], p.y), math.min(b[3], p.z)
+      b[4], b[5], b[6] = math.max(b[4], p.x), math.max(b[5], p.y), math.max(b[6], p.z)
+    end
+  end
+  return b
+end
+-- KEEPING APART (the owner: "a drone will try to place a block where another drone is standing"): a drone places from
+-- the block next to its spot - two drones working closer than CONFIG.drone.buildGap (3) blocks get in each other's way
+-- (a block cannot go where a drone is). Two trips' boxes must be that far apart on at least one axis.
+function DW.gap() return math.max(1, tonumber(cfg("buildGap")) or 3) end
+function DW.tooClose(a, b, gap)
+  if not a or not b then return false end
+  gap = gap or DW.gap()
+  local far = 0
+  for k = 1, 3 do
+    local d = math.max(a[k] - b[k + 3], b[k] - a[k + 3])
+    if d > far then far = d end
+  end
+  return far < gap
 end
 
 -- start ONE build trip on a free drone; true = started (another may follow this tick)
@@ -1115,23 +1486,41 @@ function DW.buildOne(J)
     if reading then J.why = "reading the schematic " .. J.name .. " ..." else J.paused = tostring(why) end
     return false
   end
-  local busy, flying, layer, fkind, flate, fsolid = buildFlying()
+  local busy, flying, layer, fkind, flate, fsolid, boxes = buildFlying()
   local dr = DW.freeDrone(function(d) return DW.airFor(d, J.x, J.z) end)
   if not dr then if flying == 0 then J.why = "waiting for a free drone" end return false end
   local bad = DW.notReady()
   if bad then J.why = bad return false end
   -- (a group that must wait - a falling block above an open layer, a torch while walls are out - is passed over and the
   --  NEXT group tried: test1's gravel came before its salt in the plan and kept the free drone idle)
-  local tr, waitWhy
+  -- (a chunk that is not loaded: a turtle is sent there and the group passed over - other chunks go on meanwhile)
+  local tr, waitWhy, anchorWhy, digY, pts
+  local gap = DW.gap()
   for _ = 1, 20 do
     tr, waitWhy = DW.nextTrip(J, DW.slots(dr) * 64, busy)
     if not tr then break end
+    pts = {}
+    for _, k in ipairs(tr.idx) do pts[#pts + 1] = (tr.kind == "dig" and plan.air or plan.place)[k] end
+    tr.box = DW.boxOf(pts)
+    if tr.kind == "dig" then digY = digY or tr.at.y end
     local blocked = flying > 0 and (tr.kind ~= fkind or (tr.kind == "dig" and tr.at.y ~= layer) or (tr.late and fsolid))
+    if not blocked and tr.kind == "dig" and tr.at.y ~= digY then blocked = true end      -- (clearing: top down)
     if not blocked and tr.grav and DW.lowestOpen(J, plan, busy) < tr.at.y then blocked = true end
+    if not blocked then
+      for _, b in ipairs(boxes) do if DW.tooClose(tr.box, b, gap) then blocked = true break end end
+    end
+    if not blocked and not DW.loaded(tr.at.x, tr.at.z) then
+      anchorWhy = DW.anchorFor(J, plan, math.floor(tr.at.x / 16), math.floor(tr.at.z / 16))
+      blocked = true
+    end
     if not blocked then break end
     for _, k in ipairs(tr.idx) do busy[tr.kind][k] = true end
     tr = nil
     waitWhy = "waiting"
+  end
+  if not tr and anchorWhy then
+    if flying == 0 then J.why = anchorWhy end
+    return false
   end
   if not tr and waitWhy == "waiting" then
     if flying == 0 then J.why = "falling blocks (sand, gravel ...) wait for the layer below - something there is short in AE2" end
@@ -1151,48 +1540,13 @@ function DW.buildOne(J)
   --  placing goes on in ANY layer at once - a drone places a block in mid-air; clearing stays in one layer, top down;
   --  blocks that FALL wait for every layer below; blocks that hang - torches, doors - until every solid one is in.
   --  Checked in the loop above.)
-  -- the chunk must be loaded: else a turtle goes there first and waits above the build
-  local cx, cz = math.floor(tr.at.x / 16), math.floor(tr.at.z / 16)
-  local loaded = DW.loaded(tr.at.x, tr.at.z)
-  local a = anchorTurtle(J)
-  if a and not TT.online(a) then a.dwAnchor = nil J.anchor = nil a = nil end
-  if not loaded then
-    if flying > 0 then return false end              -- (the anchor stays while drones work where it is)
-    local gx, gy, gz = cx * 16 + 8, math.min(310, plan.top + 3), cz * 16 + 8
-    if not a then
-      local best, bd
-      for _, id in ipairs(TT.available()) do
-        local t = state.turtles[id]
-        if (tonumber(t.fuel) or 0) > 2000 and not t.held then
-          local d = math.abs(t.pos.x - gx) + math.abs(t.pos.z - gz)
-          if not bd or d < bd then best, bd = t, d end
-        end
-      end
-      if not best then J.why = "the site is not loaded and no free turtle (fuel > 2000) can go and keep it loaded" return false end
-      a = best
-      J.anchor, a.dwAnchor = a.id, true
-      TT.log(a, "Goes to the drone build " .. J.name .. " to keep its chunk loaded")
-    end
-    if not J.anchorGoal or J.anchorGoal ~= cx .. "," .. cz or now() - (J.anchorSent or -999) > 300 then
-      J.anchorGoal, J.anchorSent = cx .. "," .. cz, now()
-      TT.send(a.id, "goto", { gx, gy, gz }, true)
-    end
-    J.why = a.label .. " is on its way to keep the build site loaded"
-    return false
-  end
   local _, by = DW.loaded(tr.at.x, tr.at.z)
   J.why = nil
   local T = {}
-  local pts = {}
-  if tr.kind == "dig" then
-    for _, k in ipairs(tr.idx) do pts[#pts + 1] = plan.air[k] end
-  else
-    for _, k in ipairs(tr.idx) do pts[#pts + 1] = plan.place[k] end
-  end
   local p0 = pts[1]
   local function site() return p0.x, plan.top + 2, p0.z end
   local steps = { stepUnload(dr, T, "Empty the drone first", true) }
-  if tr.kind == "place" then steps[#steps + 1] = stepLoad(dr, T, tr.item, #pts) end
+  if tr.kind == "place" then steps[#steps + 1] = stepLoad(dr, T, tr.item, tr.want or #pts) end
   steps[#steps + 1] = stepGo(dr, "Fly to the build site", site, true)
   if tr.kind == "dig" then
     steps[#steps + 1] = { text = "Clear " .. #pts .. " spots", fn = function()
@@ -1202,8 +1556,8 @@ function DW.buildOne(J)
     steps[#steps + 1] = { text = "Place " .. #pts .. " " .. prettify(tr.item), fn = function()
       local n = math.min(#pts, T.carried or #pts)
       local some = {}
-      for k = 1, n do some[k] = pts[k] end
-      return act(dr, "pneumaticcraft:place", some, 60 + 4 * n) end }
+      for k = 1, (tr.group and #pts or n) do some[k] = pts[k] end
+      return act(dr, "pneumaticcraft:place", some, 60 + 4 * #some) end }
   end
   steps[#steps + 1] = stepUnload(dr, T, "Bring back what is left")
   tr.J, tr.layer = T, p0.y                         -- (tr.at becomes the start time in submit)
@@ -1403,10 +1757,17 @@ function DW.statusLines()
     if J.why then out[#out + 1] = "  " .. J.why end
     local tl = DW.timesLine()
     if tl then out[#out + 1] = "  " .. tl end
-    local a = anchorTurtle(J)
-    if a then out[#out + 1] = "  Keeping the site loaded: " .. a.label end
+    for _, e in ipairs(DW.anchorList(J)) do
+      out[#out + 1] = "  Keeping chunk " .. e.ck .. " loaded: " .. e.t.label .. (TT.online(e.t) and "" or " (offline)")
+    end
+  end
+  for k, q in ipairs(DW.queue) do
+    if k > 6 then out[#out + 1] = "  ... " .. (#DW.queue - 6) .. " more" break end
+    out[#out + 1] = (k == 1 and "Waiting: " or "         ") .. k .. ". " .. q.name ..
+                    (q.kind == "drain" and "" or (" at " .. fmtPos(q.x, q.y, q.z)))
   end
   return out
 end
 
 DW.load()
+DW.loadQueue()

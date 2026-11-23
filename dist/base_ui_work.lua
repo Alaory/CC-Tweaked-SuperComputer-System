@@ -127,8 +127,13 @@ text(ix, yy, trunc("Now: " .. tostring(t.title) .. (dr and (" - " .. tostring(dr
 yy = yy + 1
 end
 if J.why then yy = para(ix, yy, iw, J.why, C.warn, 3) end
-local a = J.anchor and state.turtles[J.anchor]
-if a then text(ix, yy, trunc(a.label .. " keeps the site loaded", iw), C.dim, C.panel) end
+local al = DW.anchorList and DW.anchorList(J) or {}
+if #al > 0 then
+local nm = {}
+for _, e in ipairs(al) do nm[#nm + 1] = e.t.label end
+text(ix, yy, trunc(table.concat(nm, ", ") .. (#al > 1 and " keep the site loaded" or " keeps the site loaded"), iw), C.dim, C.panel)
+end
+if #(DW.queue or {}) > 0 then text(ix, yy + 1, trunc(#DW.queue .. " more job(s) waiting: " .. DW.queue[1].name, iw), C.dim, C.panel) end
 
 local rows = DW.materials(J)
 local my = yy + 2

@@ -10,7 +10,7 @@ local W = { chest = {}, blocks = {}, stock = { ["minecraft:stone"] = 1000, ["min
             ["modern_industrialization:salt_block"] = 100, ["minecraft:anvil"] = 10, ["minecraft:chest"] = 10,
             ["minecraft:barrel"] = 10, ["minecraft:gravel"] = 10,
             ["minecraft:torch"] = 100, ["minecraft:diamond"] = 50 }, mixedChest = 0, mixedDrone = 0, maxTrips = 0,
-            placedOnTaken = 0, order = {}, dropped = {} }
+            placedOnTaken = 0, order = {}, dropped = {}, water = {}, blockOnce = {} }
 local function count(t) local n = 0 for _, v in pairs(t) do n = n + v end return n end
 local function kinds(t) local n = 0 for _, v in pairs(t) do if v > 0 then n = n + 1 end end return n end
 
@@ -25,6 +25,13 @@ local function makeDrone(k)
     setAction = function(a)
       if a:find("condition", 1, true) then d.act = nil return end
       d.act, d.doneAt = a, CLOCK + 0.9
+      -- (placing / digging: the drone moves round its spots while it works, next to each one - a block cannot go
+      --  where it is)
+      if a == "pneumaticcraft:place" or a == "pneumaticcraft:dig" then
+        d.stand = {}
+        for _, q in ipairs(d.area) do d.stand[key(q.x + 1, q.y, q.z)] = true end
+        d.doneAt = CLOCK + 0.9 + 0.2 * #d.area                -- (a block every 0.2 s)
+      end
     end,
     isConnectedToDrone = function() return true end, abortAction = function() d.act = nil end,
     getDronePosition = function() return d.pos.x + 0.5, d.pos.y + 0.5, d.pos.z + 0.5 end,
@@ -66,13 +73,28 @@ local function finish(d)
     for name, n in pairs(d.inv) do W.dropped[name] = (W.dropped[name] or 0) + n end
     W.giftAt = W.giftAt or CLOCK
     d.inv = {}
+  elseif a == "pneumaticcraft:dig" then
+    for _, q in ipairs(pts) do
+      local k = key(q.x, q.y, q.z)
+      if W.blocks[k] then                                  -- (a drone picks up what it digs)
+        W.dug = (W.dug or 0) + 1
+        d.inv[W.blocks[k]] = (d.inv[W.blocks[k]] or 0) + 1
+        W.blocks[k] = nil
+      end
+      W.water[k] = nil
+    end
   elseif a == "pneumaticcraft:place" then
     for _, q in ipairs(pts) do
       local name = next(d.inv)
       if not name then break end
       local k = key(q.x, q.y, q.z)
-      if W.blocks[k] then W.placedOnTaken = W.placedOnTaken + 1
+      local inWay = false
+      for _, od in pairs(D) do if od ~= d and od.act and od.stand and od.stand[k] then inWay = true end end
+      if W.blockOnce[k] then W.blockOnce[k] = nil inWay = true end
+      if inWay then W.droneInWay = (W.droneInWay or 0) + 1
+      elseif W.blocks[k] then W.placedOnTaken = W.placedOnTaken + 1
       else
+        W.water[k] = nil
         W.blocks[k] = name
         W.order[#W.order + 1] = { y = q.y, item = name }
         d.inv[name] = d.inv[name] - 1
@@ -80,7 +102,7 @@ local function finish(d)
       end
     end
   end
-  d.act = nil
+  d.act, d.stand = nil, nil
 end
 
 -- AE2 + the work chest (shared)
@@ -309,4 +331,183 @@ do
         tostring(W.emptyExports) .. " for 6 trips)")
   local tl = DW.timesLine()
   CHECK(tl and tl:find("chest wait", 1, true), "schem status shows where a trip's time goes: " .. tostring(tl))
+end
+
+-- DRONES IN EACH OTHER'S WAY (the owner: "a drone will try to place a block where another drone is standing"): a 24 x 24
+-- checkerboard floor (two kinds in one layer - their trips cover the same squares). Drones work squares apart
+-- (DW.tooClose), so no block meets a drone; a spot that refuses a block ONCE (a mob, a player) is tried again, not
+-- left empty as "taken".
+do
+  local f = { size = { x = 24, y = 1, z = 24 }, palette = { { name = "minecraft:stone", props = {} },
+              { name = "minecraft:oak_planks", props = {} } }, blocks = {} }
+  for x = 0, 23 do for z = 0, 23 do f.blocks[#f.blocks + 1] = { x, 0, z, ((x + z) % 2 == 0) and 1 or 2 } end end
+  SCHEM.cache["bigfloor"] = { s = f, path = "schematics/bigfloor.nbt" }
+  W.blocks, W.order, W.maxTrips, W.droneInWay = {}, {}, 0, 0
+  W.stock["minecraft:stone"], W.stock["minecraft:oak_planks"] = 1000, 1000
+  local BX, BY, BZ = -40, 64, -40
+  W.blockOnce[key(BX + 3, BY, BZ + 5)] = true          -- (something stands there for the first try)
+  DW.startBuild("bigfloor", BX, BY, BZ, 0, false)
+  local closeSeen = false
+  local doneF = runUntil(function()
+    local boxes = {}
+    for _, t in pairs(DW.trips) do if t.box then boxes[#boxes + 1] = t.box end end
+    for a = 1, #boxes do for b = a + 1, #boxes do if DW.tooClose and DW.tooClose(boxes[a], boxes[b]) then closeSeen = true end end end
+    return DW.job == nil and next(DW.trips) == nil
+  end, 60000)
+  CHECK(doneF, "the 24 x 24 floor is built")
+  local good = 0
+  for x = 0, 23 do for z = 0, 23 do
+    if W.blocks[key(BX + x, BY, BZ + z)] == (((x + z) % 2 == 0) and "minecraft:stone" or "minecraft:oak_planks") then good = good + 1 end
+  end end
+  CHECK(good == 576, "every block placed - the spot that refused once was tried again (" .. good .. "/576)")
+  CHECK(W.droneInWay == 1, "no block was put where another drone stood (" .. (W.droneInWay - 1) .. " times; 1 = the test's own blocker)")
+  CHECK(not closeSeen, "two drones never worked closer than " .. (DW.gap and DW.gap() or 3) .. " blocks")
+  CHECK(W.maxTrips >= 2, "... and still side by side on a big floor (most at once: " .. W.maxTrips .. ")")
+  CHECK(W.stock["minecraft:stone"] == 1000 - 288 and W.stock["minecraft:oak_planks"] == 1000 - 288,
+        "exactly the blocks used left AE2, the retry's block went back (" .. W.stock["minecraft:stone"] .. ", " .. W.stock["minecraft:oak_planks"] .. ")")
+end
+
+-- A SITE IN TWO UNLOADED CHUNKS (the owner: "a turtle can only load the chunk that it is in"): one turtle per chunk
+do
+  local f = { size = { x = 24, y = 1, z = 4 }, palette = { { name = "minecraft:stone", props = {} } }, blocks = {} }
+  for x = 0, 23 do for z = 0, 3 do f.blocks[#f.blocks + 1] = { x, 0, z, 1 } end end
+  SCHEM.cache["wide"] = { s = f, path = "schematics/wide.nbt" }
+  local FX, FZ = 1600, 1600                             -- chunks 100 and 101 in x
+  state.turtles = {
+    [7] = { id = 7, label = "T7", log = {}, lastSeen = os.clock(), pos = { x = 5, y = 70, z = 5 }, fuel = 50000, task = "idle" },
+    [8] = { id = 8, label = "T8", log = {}, lastSeen = os.clock(), pos = { x = 6, y = 70, z = 5 }, fuel = 50000, task = "idle" } }
+  local sent = {}
+  local send0, on0, av0 = TT.send, TT.online, TT.available
+  TT.send = function(id, cmd, args) sent[#sent + 1] = { id = id, cmd = cmd, args = args } end
+  TT.online = function() return true end
+  TT.available = function()
+    local l = {}
+    for id, t in pairs(state.turtles) do if not t.dwAnchor then l[#l + 1] = id end end
+    table.sort(l)
+    return l
+  end
+  W.blocks = {}
+  DW.startBuild("wide", FX, 64, FZ, 0, false)
+  local J = DW.job
+  DW.tick()
+  local chunks = {}
+  for _, m in ipairs(sent) do if m.cmd == "goto" then chunks[math.floor(m.args[1] / 16)] = m.id end end
+  CHECK(chunks[100] and chunks[101] and chunks[100] ~= chunks[101], "two turtles go, one to EACH chunk of the site")
+  CHECK(next(DW.trips) == nil, "no drone goes before the site is loaded")
+  local st = table.concat(DW.statusLines(), "\n")
+  CHECK(st:find("Keeping chunk 100,", 1, true) and st:find("Keeping chunk 101,", 1, true), "schem status lists both: " .. st)
+  -- they arrive
+  for cx, id in pairs(chunks) do state.turtles[id].pos = { x = cx * 16 + 8, y = 70, z = FZ + 1 } end
+  local doneW = runUntil(function()
+    for _, t in pairs(state.turtles) do t.lastSeen = os.clock() end
+    return DW.job == nil and next(DW.trips) == nil
+  end)
+  local n = 0
+  for x = 0, 23 do for z = 0, 3 do if W.blocks[key(FX + x, 64, FZ + z)] then n = n + 1 end end end
+  CHECK(doneW and n == 96, "then the drones build in both chunks (" .. n .. "/96)")
+  local homes = 0
+  for _, m in ipairs(sent) do if m.cmd == "home" then homes = homes + 1 end end
+  CHECK(homes == 2 and not state.turtles[7].dwAnchor and not state.turtles[8].dwAnchor, "both go home after (" .. homes .. ")")
+  -- an OLD saved job (one anchor in J.anchor) is read as one chunk's anchor
+  saveFileSafe(dataPath(DW.FILE), textutils.serialize({ name = "wide", x = FX, y = 64, z = FZ, rot = 0, done = "0", dug = "",
+                                                         placed = 0, skippedN = 0, anchor = 7, anchorGoal = "100,100" }))
+  DW.load()
+  CHECK(DW.job and DW.job.anchors and DW.job.anchors["100,100"] == 7 and state.turtles[7].dwAnchor, "an old file's anchor is kept")
+  DW.job = nil
+  DW.save()
+  TT.send, TT.online, TT.available = send0, on0, av0
+  state.turtles = {}
+end
+
+-- A CHAIN (the owner: "a road split into several schematic files"): each piece right after the one before, centred
+do
+  local a = { size = { x = 5, y = 1, z = 3 }, palette = { { name = "minecraft:stone", props = {} } }, blocks = {} }
+  local b = { size = { x = 5, y = 1, z = 5 }, palette = { { name = "minecraft:oak_planks", props = {} } }, blocks = {} }
+  for x = 0, 4 do for z = 0, 2 do a.blocks[#a.blocks + 1] = { x, 0, z, 1 } end end
+  for x = 0, 4 do for z = 0, 4 do b.blocks[#b.blocks + 1] = { x, 0, z, 1 } end end
+  SCHEM.cache["roada"] = { s = a, path = "schematics/roada.nbt" }
+  SCHEM.cache["roadb"] = { s = b, path = "schematics/roadb.nbt" }
+  local list, text = DW.chainPlan("roada,roadb*2", { "schem", "chain", "roada,roadb*2", "-50", "63", "20", "toward", "east" }, 4, "Alaory")
+  CHECK(list and #list == 3, "3 pieces (" .. tostring(text) .. ")")
+  if list then
+    CHECK(list[1].x == -50 and list[1].z == 20 and list[1].y == 64, "the first on the ground block given")
+    CHECK(list[2].x == -45 and list[2].z == 19 and list[3].x == -40 and list[3].z == 19,
+          "the next ones right after it, toward the east, centred (" .. list[2].x .. " " .. list[2].z .. ", " .. list[3].x .. " " .. list[3].z .. ")")
+  end
+  local l2 = DW.chainPlan("roada,roada", { "schem", "chain", "x", "-50", "63", "20", "toward", "north" }, 4, "Alaory")
+  CHECK(l2 and l2[2].z == 17 and l2[2].x == -50, "toward north: the next one before it in z")
+  CHECK(not DW.chainPlan("roada,nosuch", { "schem", "chain", "x", "-50", "63", "20", "toward", "east" }, 4, "Alaory"),
+        "a missing schematic: nothing queued")
+  -- the queue: the first starts, the next when it is done
+  W.blocks, DW.queue = {}, {}
+  W.stock["minecraft:stone"], W.stock["minecraft:oak_planks"] = 1000, 1000
+  DW.enqueue(list)
+  CHECK(DW.job and DW.job.name == "roada" and #DW.queue == 2, "the first piece starts, two wait")
+  CHECK(readSafe(dataPath(DW.QFILE)), "the queue is saved (a restart keeps it)")
+  local doneQ = runUntil(function() return DW.job == nil and #DW.queue == 0 and next(DW.trips) == nil end, 40000)
+  local n = 0
+  for _ in pairs(W.blocks) do n = n + 1 end
+  CHECK(doneQ and n == 15 + 25 + 25, "all three pieces built, one after another (" .. n .. "/65)")
+  CHECK(not fs.exists(dataPath(DW.QFILE)), "the queue file goes when it is empty")
+  -- console
+  local out = handleCommand("schem chain roada,roada -30 63 -30 toward south") or {}
+  CHECK(DW.job and #DW.queue == 1, "schem chain starts it: " .. table.concat(out, " / "))
+  out = handleCommand("schem queue") or {}
+  CHECK(table.concat(out, "\n"):find("roada", 1, true), "schem queue lists it")
+  handleCommand("schem stop")
+  CHECK(DW.job == nil and #DW.queue == 0, "schem stop stops it and drops the queue")
+  runUntil(function() return next(DW.trips) == nil end)
+end
+
+-- EMPTY A BOX OF WATER (the owner: "clear an ocean out of water / the nether out of lava"): walls round it, the
+-- inside filled, then dug out - the box ends empty, the walls stay, the fill blocks went back to AE2
+do
+  local X1, Y1, Z1, X2, Y2, Z2 = 20, 60, -40, 25, 62, -36
+  W.blocks, W.water, W.order = {}, {}, {}
+  for x = X1, X2 do for y = Y1, Y2 do for z = Z1, Z2 do W.water[key(x, y, z)] = true end end end
+  W.stock["minecraft:cobblestone"] = 1000
+  local out = handleCommand("dw clear " .. X1 .. " " .. Y2 .. " " .. Z1 .. " " .. X2 .. " " .. Y1 .. " " .. Z2) or {}
+  local J = DW.job
+  CHECK(J and J.kind == "drain", "dw clear starts it: " .. table.concat(out, " / "))
+  local doneD = runUntil(function() return DW.job == nil and next(DW.trips) == nil end, 60000)
+  CHECK(doneD, "the clearing finishes")
+  local walls, inside, wet = 0, 0, 0
+  for x = X1, X2 do for y = Y1, Y2 do for z = Z1, Z2 do
+    local k = key(x, y, z)
+    local edge = x == X1 or x == X2 or z == Z1 or z == Z2
+    if edge and W.blocks[k] == "minecraft:cobblestone" then walls = walls + 1 end
+    if not edge and W.blocks[k] then inside = inside + 1 end
+    if not edge and W.water[k] then wet = wet + 1 end
+  end end end
+  local ring = (6 * 5 - 4 * 3) * 3
+  CHECK(walls == ring, "walls round it (" .. walls .. "/" .. ring .. ")")
+  CHECK(inside == 0 and wet == 0, "inside: no water, no blocks left (" .. inside .. " blocks, " .. wet .. " water)")
+  CHECK(W.stock["minecraft:cobblestone"] == 1000 - ring, "only the walls' cobblestone is gone from AE2 (" .. W.stock["minecraft:cobblestone"] .. ")")
+  local down = false
+  for i = 2, #W.order do if W.order[i].y < W.order[i - 1].y then down = true end end
+  CHECK(#W.order > 0 and not down, "filled BOTTOM UP (a block over open water would shut it in)")
+  CHECK(not DW.startDrain(0, 60, 0, 1, 61, 5), "a box under 3 x 3: refused")
+  CHECK(not DW.startDrain(0, 60, 0, 9, 61, 5, "minecraft:sand"), "sand as the fill (it falls): refused")
+end
+
+-- in chat: $drone clear here at two corners, then yes; $drone chain ... then yes
+do
+  local told = {}
+  local tell0 = chatTell
+  chatTell = function(n, t) told[#told + 1] = t end
+  local function chat(m) handleChat({ name = "Alaory", uuid = state.ownerUuid, msg = "$" .. CONFIG.chat.command .. " " .. m }) end
+  chat("clear 30 62 30")
+  chat("clear 34 60 34")
+  CHECK(table.concat(told, " "):find("5 x 5 x 3", 1, true), "$drone clear: two corners -> the box: " .. table.concat(told, " / "))
+  chat("clear yes")
+  CHECK(DW.job and DW.job.kind == "drain", "$drone clear yes starts it: " .. tostring(told[#told]))
+  DW.stopBuild("test")
+  told = {}
+  chat("chain roada,roada 0 63 30 toward east")
+  CHECK(not DW.job and table.concat(told, " "):find("2 piece", 1, true), "$drone chain: says where, waits for yes: " .. table.concat(told, " / "))
+  chat("chain yes")
+  CHECK(DW.job and DW.job.name == "roada" and #DW.queue == 1, "$drone chain yes starts it")
+  handleCommand("schem stop")
+  runUntil(function() return next(DW.trips) == nil end)
+  chatTell = tell0
 end

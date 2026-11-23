@@ -67,6 +67,8 @@ HELP = {
   " supply [<storage> <item> <count>|<storage> fluid <fluid> <buckets>|stop <n>|now]   keep a storage on the cable stocked from AE2",
   " dw [chest <n> me|fuel <id>|fuel item <item> [n]|auto on|off]   drone jobs: work chest, fuel runs to turtles",
   " schem build <name> <me|place|x y z> [rot 90] [clear] | status | pause | resume | stop   a drone builds it",
+  " schem chain <a>,<b>*3 [place] [toward <dir>] | queue [clear] | skip   pieces one after another (a road)",
+  " dw clear <corner> <corner> [block]   empty a box of water / lava (walls, fill, dig out)",
   " mine update [stop]    the newest miner.lua to every mining turtle (teams paused first, then started again)",
   " factory [chest <name>|builder <id>|build|stop]   build turtles from AE2 parts",
   " factory recipes|learn|forget <item>|crafter <id>   recipes TAUGHT to a crafting turtle",
@@ -906,9 +908,46 @@ function handleCommand(line)
         say("Auto-craft for builds: " .. (DW.craftOn() and "ON" or "OFF") .. "  (schem craft on|off|now)")
       end
       if DW.job then for _, l in ipairs(DW.statusLines()) do if l:find("craft", 1, true) or l:find("pattern", 1, true) then say(l) end end end
-    elseif sub == "stop" then
-      local _, msg = DW.stopBuild("stopped by you")
+    elseif sub == "chain" then
+      -- schem chain road1,road2*5,road3 [here|place|x y z] [toward <dir>] [turn ..|facing ..] [centered] [clear]
+      if not words[3] then
+        say("Usage: schem chain <name>,<name>*<n>,... [here | <saved place> | x y z] [toward north|east|south|west] [facing <dir> | turn left|right|around] [clear]")
+        say("  the pieces are built one after another, each right after the one before (a road in parts), all turned the same way.")
+        say("  here / no place = the first in front of you, going on the way you look. Example:  schem chain road_start,road*6,road_end")
+      else
+        local list, text = DW.chainPlan(words[3], words, 4, state.owner)
+        if not list then say(tostring(text))
+        else
+          say("Chain: " .. text)
+          DW.enqueue(list)
+          say(DW.job and ("Started: " .. DW.job.name .. ", " .. #DW.queue .. " more waiting  (schem queue, schem skip, schem stop)") or
+              "Queued - it starts once the schematics are read (schem queue)")
+        end
+      end
+    elseif sub == "queue" then
+      if (words[3] or ""):lower() == "clear" then
+        local n = #DW.queue
+        DW.queue = {}
+        DW.saveQueue()
+        say("Queue cleared (" .. n .. " job(s) dropped). The running one goes on (schem stop).")
+      elseif #DW.queue == 0 then say("Nothing waiting. (schem chain ..., or  dw clear  queues more)")
+      else
+        for k, q in ipairs(DW.queue) do
+          say(k .. ". " .. q.name .. (q.kind == "drain" and "" or (" at " .. fmtPos(q.x, q.y, q.z) .. " " .. DW.turnText(q.rot or 0))))
+        end
+        say("schem queue clear = drop them,  schem skip = stop the running one and start the next")
+      end
+    elseif sub == "skip" then
+      local _, msg = DW.stopBuild("skipped by you")
       say(msg)
+      DW.queueTick()
+      if DW.job then say("Next: " .. DW.job.name) end
+    elseif sub == "stop" then
+      local n = #DW.queue
+      DW.queue = {}
+      DW.saveQueue()
+      local _, msg = DW.stopBuild("stopped by you")
+      say(msg .. (n > 0 and (" - and " .. n .. " queued job(s) dropped") or ""))
     elseif sub == "pause" then
       if DW.job then DW.job.paused = "paused by you (schem resume)" DW.save() say("Paused.") else say("No build is running.") end
     elseif sub == "resume" then
@@ -948,6 +987,7 @@ function handleCommand(line)
       end
       for _, n in ipairs(names) do say("  " .. n) end
       say("schem <name> = size and materials,  schem delete <name>,  schem build <name> <me|place|x y z> [rot 90] [clear]")
+      say("schem chain <a>,<b>*3,<c> [place] [toward <dir>] = pieces one after another (a road),  schem queue")
     end
 
   elseif cmd == "dw" or cmd == "dronework" then
@@ -1002,6 +1042,29 @@ function handleCommand(line)
           say(msg)
         end
       else say("Usage: dw fuel <turtle id>  |  dw fuel item <item> [count]") end
+    elseif sub == "clear" or sub == "drain" then
+      -- dw clear <corner> <corner> [block]: an area under water / lava emptied (walls round it, filled, dug out)
+      local x1, y1, z1, j = posArg(words, 3)
+      local x2, y2, z2, j2
+      if x1 then x2, y2, z2, j2 = posArg(words, j) end
+      if not x1 or not x2 then
+        say("Usage: dw clear <corner 1> <corner 2> [block]   (corners: x y z, a saved place or me)")
+        say("  empties a box of water / lava for building: the drones put walls round it, fill the inside with the")
+        say("  block (cobblestone - it comes back) and dig it out top down. EVERYTHING inside the walls goes (sea floor too).")
+        say("  Put the top corner AT the surface. Drones work in their own dimension (the overworld) only.")
+        if words[3] then say("  " .. tostring(x1 and y2 or y1)) end
+      else
+        local fill = words[j2] and SUPPLY.fullName(words[j2]) or nil
+        if DW.job then
+          local e = { kind = "drain", box = { x1, y1, z1, x2, y2, z2 }, fill = fill, name = "clear " .. fmtPos(x1, y1, z1),
+                      x = math.min(x1, x2), y = math.min(y1, y2), z = math.min(z1, z2), rot = 0 }
+          DW.enqueue({ e })
+          say("A job runs (" .. DW.job.name .. ") - the clearing waits in the queue as job " .. #DW.queue .. " (schem queue)")
+        else
+          local _, msg = DW.startDrain(x1, y1, z1, x2, y2, z2, fill)
+          say(msg)
+        end
+      end
     elseif sub == "test" then
       DW.test(say, words[3] and SUPPLY.fullName(words[3]) or nil)
     elseif sub == "auto" and (words[3] == "on" or words[3] == "off") then
@@ -1010,7 +1073,7 @@ function handleCommand(line)
       say("Automatic drone fuel runs " .. words[3]:upper())
     else
       for _, l in ipairs(DW.statusLines()) do say(l) end
-      say("dw chest [<n|name> me]  |  dw test [item]  |  dw fuel <id>  |  dw fuel item <item> [count]  |  dw auto on|off  |  schem build ...")
+      say("dw chest [<n|name> me]  |  dw test [item]  |  dw fuel <id>  |  dw fuel item <item> [count]  |  dw auto on|off  |  dw clear <corner> <corner> [block]  |  schem build / chain ...")
     end
 
   elseif cmd == "voice" then
