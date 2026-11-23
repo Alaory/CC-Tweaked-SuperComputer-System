@@ -1133,30 +1133,23 @@ for i = 1, 16 do before[i] = turtle.getItemCount(i) end
 local okD = withEquipped("_pickaxe", dig) == true
 
 
-local toss = false
+local toss, sel = false, nil
 for i = 1, 16 do
 if turtle.getItemCount(i) > before[i] then
+sel = sel or turtle.getSelectedSlot()
 local d = turtle.getItemDetail(i)
-if d and not isFuel(d.name) and not isTool(d.name) then DUG[d.name] = true toss = true end
+if d and not keepItem(d.name, i) then toss = true end
 end
 end
+if sel then turtle.select(sel) end
 if okD and (toss or freeSlots() <= 2) then pcall(dropJunk) end
 return okD
 end
 
 
-JUNK = {}
-for _, n in ipairs({ "cobblestone", "cobbled_deepslate", "dirt", "coarse_dirt", "rooted_dirt", "gravel", "sand",
-"red_sand", "netherrack", "tuff", "granite", "diorite", "andesite", "calcite", "dripstone_block",
-"pointed_dripstone", "flint", "mud", "moss_block", "sandstone", "red_sandstone", "basalt",
-"smooth_basalt", "blackstone", "end_stone", "soul_sand", "soul_soil", "snowball", "deepslate",
-"stone", "mycelium", "podzol", "grass_block", "clay", "terracotta" }) do JUNK[n] = true end
 
 
-DUG = {}
-ORE_DROP = {}
-for _, n in ipairs({ "diamond", "emerald", "lapis_lazuli", "redstone", "quartz", "amethyst_shard", "gold_nugget",
-"ancient_debris", "glowstone_dust", "raw_iron", "raw_gold", "raw_copper" }) do ORE_DROP[n] = true end
+
 function isTool(n)
 for _, p in ipairs({ "pickaxe", "scanner", "modem", "chunk", "drive", "floppy", "disk", "turtle", "computer", "crafting",
 "automata", "_core", "bucket", "cell" }) do
@@ -1164,12 +1157,13 @@ if n:find(p, 1, true) then return true end
 end
 return false
 end
-function isJunk(name)
+function keepItem(name, slot)
 name = tostring(name)
-local id = name:match(":(.+)$") or name
-if JUNK[id] then return true end
-if isFuel(name) or isTool(name) or (S.reuse and S.reuse[name]) then return false end
-return DUG[name] or ORE_DROP[id] or id:sub(1, 4) == "raw_" or id:find("_ore", 1, true) ~= nil
+if isTool(name) or isFuel(name) or (S.reuse and S.reuse[name]) then return true end
+if neverBurn(name) or not slot then return false end
+turtle.select(slot)
+local okF, f = pcall(turtle.refuel, 0)
+return okF and f == true
 end
 function freeSlots()
 local n = 0
@@ -1188,7 +1182,7 @@ if not fn then return 0 end
 local sel, n = turtle.getSelectedSlot(), 0
 for i = 1, 16 do
 local d = turtle.getItemDetail(i)
-if d and isJunk(d.name) then
+if d and not keepItem(d.name, i) then
 turtle.select(i)
 if fn() then n = n + d.count end
 end

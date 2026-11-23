@@ -481,10 +481,12 @@ PneumaticCraft drone rides, turtle mapping/surveys, and an AE2 ME network view.
   names after the colon, any mod - never ores, fuel, tools, redstone/glowstone), thrown out on a side
   WITHOUT an inventory, never in the base zone; idle with 0 free slots -> once a minute too. ORES TOO (the owner: "stop
   making survey turtles hold ores - a full turtle cannot swap items"): tryDig compares the slot counts before / after
-  the dig - what came in is LEARNED (DUG, memory only; not fuel, not isTool) and dropJunk runs at once; isJunk = JUNK +
-  DUG + ORE_DROP (diamond emerald lapis redstone quartz amethyst gold nugget ancient debris glowstone dust raw iron /
-  gold / copper) + "raw_*" + "*_ore" (any mod) - never isFuel (coal from coal ore stays), S.reuse, isTool (pickaxe,
-  scanner, modem, chunky, drive, floppy, turtle, computer, crafting, automata core, bucket, cell); idle with <= 2 free. m.freeSlots
+  the dig - anything that came in and is not kept -> dropJunk at once. Then ("they dig trees and leaves and other modded
+  items too"; a junk LIST always missed modded drops, and what a turtle held from before was never learned) a KEEP list:
+  keepItem(name, slot) = isTool (pickaxe, scanner, modem, chunk, drive, floppy, disk, turtle, computer, crafting,
+  automata, _core, bucket, cell) or isFuel or S.reuse, else not neverBurn (logs, planks, saplings, sticks go) and the
+  GAME burns it (refuel(0) on that slot - a modded fuel / a drone's delivery stays); everything else is thrown away
+  (dropJunk: away from the base, never into a chest). Idle with <= 2 free slots: once a minute. node_junk.lua. m.freeSlots
   -> t.freeSlots. LOST TOOLS: the base compares t.gear with the new report - "scanner" / "pick" gone ->
   WARNING + sysLog "<turtle> LOST its Geo Scanner (last job: t.prevTask, now at .., N free slots)" (the
   owner finds survey turtles with EMPTY inventories - cause not found yet; this tells us when / where).

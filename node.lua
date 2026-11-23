@@ -1131,32 +1131,25 @@ tryDig = function(dir)
   local before = {}
   for i = 1, 16 do before[i] = turtle.getItemCount(i) end
   local okD = withEquipped("_pickaxe", dig) == true
-  -- what the dig brought in (cobblestone, raw iron, diamonds ...): LEARNED (DUG) and thrown away at once - the owner:
-  -- "stop making survey turtles hold ores" (full of them it could not take fuel / items any more)
-  local toss = false
+  -- what the dig brought in (cobblestone, raw iron, saplings, modded drops ...) is thrown away at once - the owner:
+  -- "stop making survey turtles hold ores", "they dig trees and leaves and other modded items too"
+  local toss, sel = false, nil
   for i = 1, 16 do
     if turtle.getItemCount(i) > before[i] then
+      sel = sel or turtle.getSelectedSlot()
       local d = turtle.getItemDetail(i)
-      if d and not isFuel(d.name) and not isTool(d.name) then DUG[d.name] = true toss = true end
+      if d and not keepItem(d.name, i) then toss = true end
     end
   end
+  if sel then turtle.select(sel) end
   if okD and (toss or freeSlots() <= 2) then pcall(dropJunk) end
   return okD
 end
 
--- plain blocks a turtle digs on its way: thrown away, never kept (exact names, any mod)
-JUNK = {}
-for _, n in ipairs({ "cobblestone", "cobbled_deepslate", "dirt", "coarse_dirt", "rooted_dirt", "gravel", "sand",
-                     "red_sand", "netherrack", "tuff", "granite", "diorite", "andesite", "calcite", "dripstone_block",
-                     "pointed_dripstone", "flint", "mud", "moss_block", "sandstone", "red_sandstone", "basalt",
-                     "smooth_basalt", "blackstone", "end_stone", "soul_sand", "soul_soil", "snowball", "deepslate",
-                     "stone", "mycelium", "podzol", "grass_block", "clay", "terracotta" }) do JUNK[n] = true end
--- + ORES it dug (raw ores, gems ... any mod) and whatever a dig brought in this run (DUG) - never fuel, endless
--- fuel or a tool (the pickaxe / scanner / modem it swaps, a rescuer's drive + floppy)
-DUG = {}
-ORE_DROP = {}
-for _, n in ipairs({ "diamond", "emerald", "lapis_lazuli", "redstone", "quartz", "amethyst_shard", "gold_nugget",
-                     "ancient_debris", "glowstone_dust", "raw_iron", "raw_gold", "raw_copper" }) do ORE_DROP[n] = true end
+-- WHAT A TURTLE KEEPS away from the base - everything else is thrown away (a KEEP list: a list of junk always missed
+-- a modded drop): its gear (the pickaxe / scanner / modem it swaps, Chunky, a rescuer's drive + floppy, a core, a
+-- cell, buckets, a turtle it builds), fuel (coal & co., any item the game burns that is not wood / tools - logs,
+-- planks, saplings, sticks go), its endless fuel. slot = check that slot with refuel(0) (it selects it).
 function isTool(n)
   for _, p in ipairs({ "pickaxe", "scanner", "modem", "chunk", "drive", "floppy", "disk", "turtle", "computer", "crafting",
                        "automata", "_core", "bucket", "cell" }) do
@@ -1164,19 +1157,20 @@ function isTool(n)
   end
   return false
 end
-function isJunk(name)
+function keepItem(name, slot)
   name = tostring(name)
-  local id = name:match(":(.+)$") or name
-  if JUNK[id] then return true end
-  if isFuel(name) or isTool(name) or (S.reuse and S.reuse[name]) then return false end
-  return DUG[name] or ORE_DROP[id] or id:sub(1, 4) == "raw_" or id:find("_ore", 1, true) ~= nil
+  if isTool(name) or isFuel(name) or (S.reuse and S.reuse[name]) then return true end
+  if neverBurn(name) or not slot then return false end
+  turtle.select(slot)
+  local okF, f = pcall(turtle.refuel, 0)
+  return okF and f == true
 end
 function freeSlots()
   local n = 0
   for i = 1, 16 do if turtle.getItemCount(i) == 0 then n = n + 1 end end
   return n
 end
--- throw the junk out on a side with NO inventory (never into a chest), never at the base
+-- throw what it does not keep (keepItem) out on a side with NO inventory (never into a chest), never at the base
 function dropJunk()
   if inBaseZone() then return 0 end
   local fn
@@ -1188,7 +1182,7 @@ function dropJunk()
   local sel, n = turtle.getSelectedSlot(), 0
   for i = 1, 16 do
     local d = turtle.getItemDetail(i)
-    if d and isJunk(d.name) then
+    if d and not keepItem(d.name, i) then
       turtle.select(i)
       if fn() then n = n + d.count end
     end

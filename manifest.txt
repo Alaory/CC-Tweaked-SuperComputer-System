@@ -46,7 +46,7 @@ base base_ui_turtles.lua 18523 fbf4149c
 base base_ui_work.lua 14531 203232f6
 base base_workers.lua 42625 3cda3da7
 unzip unzip.lua 5639 e7bf8534
-node node.lua 174771 3c7fd5fb
+node node.lua 174157 c93fe371
 pocket pocket.lua 25876 c940e352
 pocket upgrade.lua 17018 90571421
 miner miner.lua 125074 da12b7a8
@@ -113,7 +113,7 @@ slim:base base_ui_turtles.lua 15847 ac0874c5 dist/base_ui_turtles.lua
 slim:base base_ui_work.lua 12034 88ce7b97 dist/base_ui_work.lua
 slim:base base_workers.lua 25970 5c3462fc dist/base_workers.lua
 slim:unzip unzip.lua 3971 1327b726 dist/unzip.lua
-slim:node node.lua 121898 fb7cc44b dist/node.lua
+slim:node node.lua 121193 17e0e4fe dist/node.lua
 slim:pocket pocket.lua 21398 2b717c01 dist/pocket.lua
 slim:pocket upgrade.lua 11623 560f68d3 dist/upgrade.lua
 slim:miner miner.lua 84075 2798fb9a dist/miner.lua

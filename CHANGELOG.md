@@ -94,8 +94,9 @@ Peripherals (tested on CC:Tweaked 1.120.2, Minecraft 1.21.1, NeoForge).
   and put to use, a chunk test for copies.
 - STOP that always works, your own commands first, a DRIVE page to steer a turtle by hand,
   a no-digging zone around the base.
-- Survey turtles no longer keep dug ores (raw ores, gems, apples from leaves ...): thrown away right after the dig,
-  like stone and dirt. Fuel and tools stay. Turtles already full clean themselves out when idle.
+- Survey turtles no longer keep what they dig (ores, gems, logs, saplings, sticks, modded drops ...): away from the
+  base a turtle keeps only its gear, its fuel and its endless fuel item - the rest is thrown away right after the
+  dig. Turtles already full clean themselves out when idle.
 - The program takes a third of the space: `upgrade` keeps the base files PACKED (`base_*.luz`, ~280 KB instead
   of ~917 KB of the computer's 1 MB) and the base unpacks them in memory when it starts. A plain file you drag in
   is still used first. `upgrade slim` / `upgrade full` for plain files. The voice add-on is packed too (`voice
