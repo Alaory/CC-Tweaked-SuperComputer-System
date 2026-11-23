@@ -597,11 +597,14 @@ skip`). In chat: `$drone chain road_start,road*6,road_end`, then `$drone chain y
 into AE2 (`schem built` lists your builds, `schem unbuild <n>` picks one). `dw dig <corner> <corner>` digs out
 every block in an area (in chat: `$drone dig here` on two corners, then `$drone dig yes`), `dw break <x y z>` /
 `$drone break x y z` breaks one block (F3 shows its "Targeted Block"). The work chest, the charger and the drones'
-home spot are never dug. Each start asks for a `yes` first (one block does not).
+home spot are never dug. Each start asks for a `yes` first (one block does not). Stone, ores and bricks need a
+PICKAXE: a drone with only one inventory slot cannot carry one, so it leaves those blocks alone (dug by hand they
+would be destroyed). Give the drones an Inventory Upgrade and set SETTINGS > DRONES "Drone inventory slots" to 2: they
+then take a plain pickaxe from AE2 for every dig trip and bring it back.
 
 **Clearing water or lava:** `dw clear <corner> <corner>` (or in chat: `$drone clear here` on the top corner at the
 surface, again on the opposite bottom corner, then `$drone clear yes`). The drones put walls round the box, fill it
-with cobblestone and dig it out again - an empty, dry hole to build in. Everything inside the walls goes. Drones
+with dirt and dig it out again - an empty, dry hole to build in. Everything inside the walls goes. Drones
 work in the overworld only (their own dimension).
 
 Other files can be dropped onto the computer's screen too - program files are saved next to

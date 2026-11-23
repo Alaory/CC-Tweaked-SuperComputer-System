@@ -96,6 +96,10 @@ Peripherals (tested on CC:Tweaked 1.120.2, Minecraft 1.21.1, NeoForge).
   a no-digging zone around the base.
 - Schematic builds get their missing blocks crafted by AE2 automatically (items with a pattern; `schem craft
   on|off|now`, SETTINGS > DRONES). `schem status` names the blocks AE2 has no pattern for.
+- Drones never DESTROY what they dig: they dig with a pickaxe from AE2 when they have room for one (2+ inventory
+  slots - SETTINGS > DRONES "Drone inventory slots"), else they leave stone, ores and bricks alone (by hand those
+  drop nothing). Taking a build down removes torches and doors before the walls they hang on. A stopped or skipped
+  job's last trips no longer count toward the next job.
 - A block a drone could not break (out of reach, a claimed chunk, nothing dropped) is tried once more and then
   reported as a WARNING - it was reported as done.
 - Drones TAKE THINGS DOWN too: `schem unbuild` takes a build down again (its blocks go back into AE2; `schem built`
@@ -109,7 +113,7 @@ Peripherals (tested on CC:Tweaked 1.120.2, Minecraft 1.21.1, NeoForge).
   builds the pieces one after another, each right after the one before. Builds wait in a queue (`schem queue`,
   `schem skip`).
 - Drones can EMPTY A BOX OF WATER / LAVA for building (`dw clear <corner> <corner>`, or `$drone clear here` at two
-  corners): walls round it, the inside filled with cobblestone and dug out again.
+  corners): walls round it, the inside filled with dirt and dug out again.
 - A build site that is not loaded gets one turtle PER CHUNK (a turtle loads only its own chunk); a turtle whose
   chunk is done moves to the next one or goes home.
 - Drone builds use more drones on small builds: blocks go into any layer at once (falling blocks like sand and

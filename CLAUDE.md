@@ -971,7 +971,7 @@ PneumaticCraft drone rides, turtle mapping/surveys, and an AE2 ME network view.
   (DW.chainNames), `toward <dir>` taken out, the first piece placed by DW.where, the next ones right after the one
   before along dir (else the way you look), centred across, the same rot. Console schem chain / queue [clear] / skip,
   schem stop drops the queue; chat $drone chain ... -> yes (DW.chatPend[name#chain]).
-  CLEARING WATER / LAVA (DW.startDrain, kind "drain", J.box, J.fill cobblestone - no falling / hanging fill, >= 3 x 3,
+  CLEARING WATER / LAVA (DW.startDrain, kind "drain", J.box, J.fill DW.DRAIN_FILL dirt (a hand digs it and it drops) - no falling / hanging fill, >= 3 x 3,
   <= DW.DRAIN_MAX 20000 blocks): DW.drainPlan = BOTTOM UP a layer at a time (p.grav on all: a block over an open
   spot would shut the water below in, out of reach), walls then the inside (a block placed into water replaces it),
   then the inside dug top down (J.digLast: nextTrip fills first, digs after; the dug
@@ -994,6 +994,15 @@ PneumaticCraft drone rides, turtle mapping/surveys, and an AE2 ME network view.
   mod can cancel the fake player's LeftClickBlock). So a break (1 block) / unbuild trip whose unload brought NOTHING
   back (T.back) = unconfirmed: J.digAgain[i] + J.digWait 20 s (memory) -> one more try; nothing again -> J.noDrops,
   the end note is a WARNING with DW.DIG_WHY, never DONE. (Area digs have air spots - not checked.)
+  NEVER DESTROYED (review before the merge; PneumaticCraft source: a drone has 1 slot + 1 per Inventory Upgrade, what
+  does not fit is dropped; it digs by HAND unless it holds a tool, and stone / ores / bricks broken by hand drop
+  NOTHING - unbuild / dw dig destroyed them): every dig sets setRequiresTool(true) (such a block is left alone);
+  CONFIG.drone.slots >= 2 (SETTINGS > DRONES "Drone inventory slots") -> DW.digTool (the best PLAIN pickaxe AE2 has,
+  DW.TOOLS / drone.digTool, cached 60 s) loaded each dig trip ("Get a ... for digging", a failed load = dig without
+  it), DW.digCap = (slots - 1) x 64 spots, it goes back with the rest (T.tool not counted as "got"). Unbuild digs
+  LATE items (torches, doors) first. trip.job = its job: tripDone ignores a trip whose job was stopped / skipped (the
+  queue starts the next one while old trips are out - they marked the NEW job's spots). test_drone_parallel (the fake
+  drone digs by hand / with a pickaxe; old code: 16 stone destroyed, 1 brick lost, torch last, the new job marked).
   ANCHORS PER CHUNK (the owner: "a turtle can only load the chunk that it is in"): J.anchors {["cx,cz"] = id} (saved;
   an old J.anchor is read as one), at most #droneOrder; buildOne passes over a group in a chunk not loaded
   (DW.anchorFor: a free turtle goto the chunk middle at top + 3, every 300 s again; all taken -> one whose chunk has

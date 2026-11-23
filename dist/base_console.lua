@@ -1096,7 +1096,7 @@ if x1 then x2, y2, z2, j2 = posArg(words, j) end
 if not x1 or not x2 then
 say("Usage: dw clear <corner 1> <corner 2> [block]   (corners: x y z, a saved place or me)")
 say("  empties a box of water / lava for building: the drones put walls round it, fill the inside with the")
-say("  block (cobblestone - it comes back) and dig it out top down. EVERYTHING inside the walls goes (sea floor too).")
+say("  block (dirt - it comes back) and dig it out top down. EVERYTHING inside the walls goes (sea floor too).")
 say("  Put the top corner AT the surface. Drones work in their own dimension (the overworld) only.")
 if words[3] then say("  " .. tostring(x1 and y2 or y1)) end
 else

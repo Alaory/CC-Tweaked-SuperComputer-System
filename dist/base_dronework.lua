@@ -889,7 +889,7 @@ math.max(b[1], b[4]), math.max(b[2], b[5]), math.max(b[3], b[6])
 end
 function DW.drainPlan(J)
 local x1, y1, z1, x2, y2, z2 = DW.drainBox(J)
-local item = J.fill or "minecraft:cobblestone"
+local item = J.fill or DW.DRAIN_FILL
 local place, air = {}, {}
 
 
@@ -911,11 +911,13 @@ end
 return { place = place, air = air, skipped = {}, top = y2 + 1 }
 end
 DW.DRAIN_MAX = 20000
+
+DW.DRAIN_FILL = "minecraft:dirt"
 function DW.startDrain(x1, y1, z1, x2, y2, z2, fill)
 if DW.job then return false, "a build is running (" .. DW.job.name .. ") -  schem stop  first" end
 local bad = DW.notReady()
 if bad then return false, bad end
-fill = fill or cfg("drainBlock") or "minecraft:cobblestone"
+fill = fill or cfg("drainBlock") or DW.DRAIN_FILL
 if not fill:find(":", 1, true) then fill = "minecraft:" .. fill end
 if DW.isGravity(fill) or DW.isLate(fill) then return false, prettify(fill) .. " falls / hangs - take a plain block (cobblestone, dirt ...)" end
 local J = { kind = "drain", box = { x1, y1, z1, x2, y2, z2 }, fill = fill, rot = 0, clear = true, digLast = true,
@@ -1011,11 +1013,18 @@ return { place = {}, air = topDown(air), skipped = {}, top = y2 + 1 }
 end
 function DW.unbuildPlan(s, J)
 local p = DW.plan(s, J.x, J.y, J.z, J.rot)
-local keep, air = protected(), {}
+local keep = protected()
+local late, solid = {}, {}
 for _, q in ipairs(p.place) do
-if not keep[q.x .. "," .. q.y .. "," .. q.z] then air[#air + 1] = { x = q.x, y = q.y, z = q.z, item = q.item } end
+if not keep[q.x .. "," .. q.y .. "," .. q.z] then
+local e = { x = q.x, y = q.y, z = q.z, item = q.item }
+if q.late then late[#late + 1] = e else solid[#solid + 1] = e end
 end
-return { place = {}, air = topDown(air), skipped = {}, top = p.top }
+end
+
+local air = topDown(late)
+for _, e in ipairs(topDown(solid)) do air[#air + 1] = e end
+return { place = {}, air = air, skipped = {}, top = p.top }
 end
 local function digJob(kind, name)
 return { kind = kind, name = name, rot = 0, clear = true, done = "", placed = 0, skippedN = 0,
@@ -1327,8 +1336,29 @@ for ck in pairs(J.anchors) do
 if not open[ck] then releaseOne(J, ck, "Its chunk of the drone job is done - going home") end
 end
 end
-DW.DIG_WHY = "a claimed chunk where drones may not break blocks, no free block next to it for the drone, or a block " ..
-"that drops nothing without a pickaxe - the drone's log on the DRONES page says what it did"
+DW.DIG_WHY = "stone, ores, bricks ... need a PICKAXE (a drone with one slot cannot carry one - give the drones an " ..
+"Inventory Upgrade and set SETTINGS > DRONES slots to 2), a claimed chunk where drones may not break blocks, " ..
+"or no free block next to it for the drone - the drone's log on the DRONES page says what it did"
+
+
+DW.TOOLS = { "minecraft:netherite_pickaxe", "minecraft:diamond_pickaxe", "minecraft:iron_pickaxe", "minecraft:stone_pickaxe" }
+function DW.digTool()
+if DW.toolAt and now() - DW.toolAt < 60 then return DW.toolName or nil end
+DW.toolAt, DW.toolName = now(), false
+if not bridge then return nil end
+local list = cfg("digTool") and { cfg("digTool") } or DW.TOOLS
+for _, n in ipairs(list) do
+local okV, plain = pcall(FACTORY.variants, n)
+if okV and (tonumber(plain) or 0) > 0 then DW.toolName = n break end
+end
+return DW.toolName or nil
+end
+
+function DW.digCap(dr)
+local s = DW.slots(dr)
+if s >= 2 and DW.digTool() then return (s - 1) * 64 end
+return nil
+end
 function DW.dugCount(J)
 local n = 0
 for i = 1, #(J.dug or "") do if J.dug:sub(i, i) == "1" then n = n + 1 end end
@@ -1368,7 +1398,7 @@ end
 
 
 
-function DW.nextTrip(J, cap, busy)
+function DW.nextTrip(J, cap, busy, digCap)
 local plan = planOf(J)
 if not plan then return nil end
 busy = busy or {}
@@ -1389,9 +1419,9 @@ if p.y ~= p0.y then break end
 if J.dug:sub(k, k) == "0" and not bd[k] and not (digWait and dag[k]) and ck(p) == ck(p0) and p.item == p0.item then
 idx[#idx + 1] = k
 end
-if #idx >= 64 then break end
+if #idx >= (digCap or 64) then break end
 end
-return { kind = "dig", idx = idx, at = p0 }
+return { kind = "dig", idx = idx, at = p0, tool = digCap and DW.digTool() or nil }
 end
 end
 end
@@ -1497,6 +1527,9 @@ local ok = m and m.state == "done"
 if not ok and dr then dr.dwEmpty = false end
 if (trip.kind == "dig" or trip.kind == "place") and m then pcall(noteTimes, trip, m) end
 local J, T = DW.job, trip.J
+
+
+if trip.job and trip.job ~= J then J = nil end
 if trip.kind == "gift" then
 
 
@@ -1543,7 +1576,7 @@ if trip.kind == "dig" then
 
 
 local got = 0
-for _, n in pairs(T.back or {}) do got = got + (tonumber(n) or 0) end
+for it, n in pairs(T.back or {}) do if it ~= T.tool then got = got + (tonumber(n) or 0) end end
 J.dugGot = (J.dugGot or 0) + got
 local check = J.kind == "unbuild" or (J.kind == "dig" and #J.dug == 1)
 if check and got == 0 then
@@ -1690,7 +1723,7 @@ if bad then J.why = bad return false end
 local tr, waitWhy, anchorWhy, digY, pts
 local gap = DW.gap()
 for _ = 1, 20 do
-tr, waitWhy = DW.nextTrip(J, DW.slots(dr) * 64, busy)
+tr, waitWhy = DW.nextTrip(J, DW.slots(dr) * 64, busy, DW.digCap(dr))
 if not tr then break end
 pts = {}
 for _, k in ipairs(tr.idx) do pts[#pts + 1] = (tr.kind == "dig" and plan.air or plan.place)[k] end
@@ -1744,11 +1777,27 @@ local p0 = pts[1]
 local function site() return p0.x, plan.top + 2, p0.z end
 local steps = { stepUnload(dr, T, "Empty the drone first", true) }
 if tr.kind == "place" then steps[#steps + 1] = stepLoad(dr, T, tr.item, tr.want or #pts) end
+if tr.kind == "dig" and tr.tool then
+
+local s0 = stepLoad(dr, T, tr.tool, 1)
+local f0 = s0.fn
+s0.text = "Get a " .. prettify(tr.tool) .. " for digging"
+s0.fn = function()
+local okT = f0()
+T.missing, T.tool = nil, okT and tr.tool or nil
+return true
+end
+steps[#steps + 1] = s0
+end
 steps[#steps + 1] = stepGo(dr, "Fly to the build site", site, true)
 if tr.kind == "dig" then
 steps[#steps + 1] = { text = "Clear " .. #pts .. " spots", fn = function()
 dr.dwEmpty = false
-return act(dr, "pneumaticcraft:dig", pts, 60 + 4 * #pts) end }
+
+
+
+if dr.periph and dr.periph.setRequiresTool then pcall(dr.periph.setRequiresTool, true) end
+return act(dr, "pneumaticcraft:dig", pts, 60 + (T.tool and 4 or 12) * #pts) end }
 else
 steps[#steps + 1] = { text = "Place " .. #pts .. " " .. prettify(tr.item), fn = function()
 local n = math.min(#pts, T.carried or #pts)
@@ -1757,7 +1806,7 @@ for k = 1, (tr.group and #pts or n) do some[k] = pts[k] end
 return act(dr, "pneumaticcraft:place", some, 60 + 4 * #some) end }
 end
 steps[#steps + 1] = stepUnload(dr, T, "Bring back what is left")
-tr.J, tr.layer = T, p0.y
+tr.J, tr.layer, tr.job = T, p0.y, J
 local title = (tr.kind == "dig" and "Clear" or "Build") .. " " .. J.name .. " (layer " .. (p0.y - J.y + 1) .. ")"
 local ok, err = submit(dr, title, steps, tr)
 J.loadedBy = by

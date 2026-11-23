@@ -42,6 +42,7 @@ local function makeDrone(k)
     setSide = function(_, v) d.sides[#d.sides + 1] = v end,
     getAction = function() return d.act end, setOperator = function() end, setCount = function() end,
     evaluateCondition = function() return false end,
+    setRequiresTool = function(v) d.reqTool = v end,
   }
   return per
 end
@@ -55,7 +56,7 @@ local function finish(d)
   elseif a == "pneumaticcraft:inventory_import" then
     if key(p.x, p.y, p.z) == key(CH.x, CH.y, CH.z) then
       if kinds(W.chest) > 1 then W.mixedChest = W.mixedChest + 1 end
-      local room = 64 - count(d.inv)
+      local room = 64 * (tonumber(CONFIG.drone.slots) or 1) - count(d.inv)
       for name, n in pairs(W.chest) do
         local take = math.min(n, room)
         if take > 0 then d.inv[name] = (d.inv[name] or 0) + take W.chest[name] = n - take room = room - take end
@@ -76,7 +77,14 @@ local function finish(d)
   elseif a == "pneumaticcraft:dig" then
     for _, q in ipairs(pts) do
       local k = key(q.x, q.y, q.z)
-      if W.blocks[k] and W.noDig[k] then W.digRefused = (W.digRefused or 0) + 1     -- (a claimed chunk / out of reach)
+      -- (PneumaticCraft: a drone digs by HAND unless it holds a tool; stone-like blocks dug by hand drop NOTHING. With
+      --  "requires tool" on such a block is left alone without a pickaxe)
+      local needs = W.blocks[k] and (W.blocks[k]:find("stone", 1, true) or W.blocks[k]:find("_ore", 1, true))
+      local pick = false
+      for nm in pairs(d.inv) do if nm:find("pickaxe", 1, true) then pick = true end end
+      if needs and not pick and d.reqTool then W.skippedNoTool = (W.skippedNoTool or 0) + 1
+      elseif needs and not pick then W.lostNoTool = (W.lostNoTool or 0) + 1 W.blocks[k] = nil
+      elseif W.blocks[k] and W.noDig[k] then W.digRefused = (W.digRefused or 0) + 1     -- (a claimed chunk / out of reach)
       elseif W.blocks[k] then                              -- (a drone picks up what it digs)
         W.dug = (W.dug or 0) + 1
         d.inv[W.blocks[k]] = (d.inv[W.blocks[k]] or 0) + 1
@@ -466,7 +474,7 @@ do
   local X1, Y1, Z1, X2, Y2, Z2 = 20, 60, -40, 25, 62, -36
   W.blocks, W.water, W.order = {}, {}, {}
   for x = X1, X2 do for y = Y1, Y2 do for z = Z1, Z2 do W.water[key(x, y, z)] = true end end end
-  W.stock["minecraft:cobblestone"] = 1000
+  W.stock["minecraft:dirt"] = 1000
   local out = handleCommand("dw clear " .. X1 .. " " .. Y2 .. " " .. Z1 .. " " .. X2 .. " " .. Y1 .. " " .. Z2) or {}
   local J = DW.job
   CHECK(J and J.kind == "drain", "dw clear starts it: " .. table.concat(out, " / "))
@@ -476,14 +484,14 @@ do
   for x = X1, X2 do for y = Y1, Y2 do for z = Z1, Z2 do
     local k = key(x, y, z)
     local edge = x == X1 or x == X2 or z == Z1 or z == Z2
-    if edge and W.blocks[k] == "minecraft:cobblestone" then walls = walls + 1 end
+    if edge and W.blocks[k] == "minecraft:dirt" then walls = walls + 1 end
     if not edge and W.blocks[k] then inside = inside + 1 end
     if not edge and W.water[k] then wet = wet + 1 end
   end end end
   local ring = (6 * 5 - 4 * 3) * 3
   CHECK(walls == ring, "walls round it (" .. walls .. "/" .. ring .. ")")
   CHECK(inside == 0 and wet == 0, "inside: no water, no blocks left (" .. inside .. " blocks, " .. wet .. " water)")
-  CHECK(W.stock["minecraft:cobblestone"] == 1000 - ring, "only the walls' cobblestone is gone from AE2 (" .. W.stock["minecraft:cobblestone"] .. ")")
+  CHECK(W.stock["minecraft:dirt"] == 1000 - ring, "only the walls' dirt is gone from AE2 - the fill came back (" .. W.stock["minecraft:dirt"] .. ")")
   local down = false
   for i = 2, #W.order do if W.order[i].y < W.order[i - 1].y then down = true end end
   CHECK(#W.order > 0 and not down, "filled BOTTOM UP (a block over open water would shut it in)")
@@ -549,6 +557,11 @@ do
   end end end
   W.blocks[key(CH.x, CH.y, CH.z)] = "minecraft:barrel"
   local dirt0 = W.stock["minecraft:dirt"] or 0
+  local stone0 = W.stock["minecraft:stone"] or 0
+  CONFIG.drone.slots = 2
+  W.stock["minecraft:diamond_pickaxe"] = 2
+  DW.toolAt = nil
+  W.lostNoTool = 0
   out = handleCommand("dw dig " .. (CH.x - 2) .. " " .. CH.y .. " " .. (CH.z - 2) .. " " .. (CH.x + 2) .. " " .. (CH.y - 1) .. " " .. (CH.z + 2)) or {}
   CHECK(not DW.job and table.concat(out, " "):find("50 spots", 1, true), "dw dig: the box, then waits for yes: " .. table.concat(out, " / "))
   handleCommand("dw dig yes")
@@ -569,9 +582,31 @@ do
   CHECK(W.blocks[key(CH.x, CH.y, CH.z)] == "minecraft:barrel", "the work chest itself is never dug")
   CHECK(orderOK, "top layer first")
   CHECK((W.stock["minecraft:dirt"] or 0) > dirt0, "what the drones dug went into AE2 (dirt " .. dirt0 .. " -> " .. tostring(W.stock["minecraft:dirt"]) .. ")")
+  CHECK((W.stock["minecraft:stone"] or 0) > stone0 and W.lostNoTool == 0, "with 2 slots the drone takes a PICKAXE: the stone came back too (" ..
+        stone0 .. " -> " .. tostring(W.stock["minecraft:stone"]) .. ", destroyed " .. W.lostNoTool .. ")")
+  CHECK(W.stock["minecraft:diamond_pickaxe"] == 2, "the pickaxes went back into AE2 (" .. tostring(W.stock["minecraft:diamond_pickaxe"]) .. ")")
+  CONFIG.drone.slots = 1
+  DW.toolAt = nil
+
+  -- ONE SLOT, NO PICKAXE (the owner's drones): stone is never DESTROYED (by hand it drops nothing) - left, and said
+  do
+    local notes = {}
+    local pn0 = pushNote
+    pushNote = function(kind, msg, ...) notes[#notes + 1] = tostring(kind) .. ": " .. tostring(msg) return pn0(kind, msg, ...) end
+    W.blocks = {}
+    W.blocks[key(3, 66, 3)] = "minecraft:stone_bricks"
+    W.lostNoTool = 0
+    handleCommand("dw break 3 66 3")
+    runUntil(function() return DW.job == nil and next(DW.trips) == nil end, 30000)
+    local all = table.concat(notes, "\n")
+    CHECK(W.blocks[key(3, 66, 3)] == "minecraft:stone_bricks" and W.lostNoTool == 0,
+          "one slot, no pickaxe: the stone bricks are NOT destroyed (" .. tostring(W.lostNoTool) .. " lost)")
+    CHECK(all:find("WARNING", 1, true) and all:find("PICKAXE", 1, true), "... and the warning says a pickaxe is needed:\n" .. all)
+    pushNote = pn0
+  end
 
   -- one block
-  W.blocks[key(5, 66, 5)] = "minecraft:stone"
+  W.blocks[key(5, 66, 5)] = "minecraft:dirt"
   out = handleCommand("dw break 5 66 5") or {}
   CHECK(DW.job and DW.job.kind == "dig", "dw break starts at once: " .. table.concat(out, " / "))
   runUntil(function() return DW.job == nil and next(DW.trips) == nil end)
@@ -582,7 +617,7 @@ do
   local tell0 = chatTell
   chatTell = function(_, t) told[#told + 1] = t end
   local function chat(m) handleChat({ name = "Alaory", uuid = state.ownerUuid, msg = "$" .. CONFIG.chat.command .. " " .. m }) end
-  W.blocks[key(7, 66, 7)] = "minecraft:stone"
+  W.blocks[key(7, 66, 7)] = "minecraft:dirt"
   chat("break 7 66 7")
   CHECK(DW.job and DW.job.kind == "dig", "$drone break x y z: " .. tostring(told[#told]))
   runUntil(function() return DW.job == nil and next(DW.trips) == nil end)
@@ -616,7 +651,7 @@ do
   local notes = {}
   local pn0 = pushNote
   pushNote = function(kind, msg, ...) notes[#notes + 1] = tostring(kind) .. ": " .. tostring(msg) return pn0(kind, msg, ...) end
-  W.blocks[key(9, 66, 9)] = "minecraft:stone"
+  W.blocks[key(9, 66, 9)] = "minecraft:dirt"
   W.noDig[key(9, 66, 9)] = true
   W.digRefused = 0
   handleCommand("dw break 9 66 9")
@@ -628,10 +663,36 @@ do
   -- a block it can break: done at the first try, no warning
   notes = {}
   W.noDig = {}
-  W.blocks[key(9, 66, 9)] = "minecraft:stone"
+  W.blocks[key(9, 66, 9)] = "minecraft:dirt"
   handleCommand("dw break 9 66 9")
   runUntil(function() return DW.job == nil and next(DW.trips) == nil end, 30000)
   all = table.concat(notes, "\n")
   CHECK(not W.blocks[key(9, 66, 9)] and all:find("DONE", 1, true) and not all:find("WARNING", 1, true), "a block it can break: DONE, no warning")
   pushNote = pn0
+end
+
+-- TAKE-DOWN ORDER + a job's trips stay with that job
+do
+  local wt = { size = { x = 2, y = 3, z = 1 }, palette = { { name = "minecraft:oak_planks", props = {} },
+               { name = "minecraft:torch", props = {} } },
+               blocks = { { 0, 0, 0, 1 }, { 0, 1, 0, 1 }, { 0, 2, 0, 1 }, { 1, 0, 0, 2 } } }
+  local plan = DW.unbuildPlan(wt, { x = 0, y = 64, z = 0, rot = 0 })
+  CHECK(plan.air[1] and plan.air[1].item == "minecraft:torch", "taking down: the torch first (it would fall off the wall) - " ..
+        tostring(plan.air[1] and plan.air[1].item))
+  -- a trip of a job that was stopped comes back after the next job started: it must not mark the new job's spots
+  SCHEM.cache["floor"] = { s = s, path = "schematics/floor.nbt" }
+  DW.trips, DW.queue = {}, {}
+  DW.startBuild("floor", OX, OY, OZ + 40, 0, false)
+  local A = DW.job
+  DW.stopBuild("test")
+  DW.startBuild("floor", OX + 40, OY, OZ + 40, 0, false)
+  local B = DW.job
+  drones.ghost = { key = "ghost", busy = false, queue = {}, mission = { state = "done", steps = {} } }
+  DW.trips.ghost = { kind = "place", idx = { 1, 2, 3 }, J = { carried = 3, back = {} }, job = A, dr = "ghost",
+                     at = os.clock(), item = "minecraft:stone", layer = OY }
+  DW.tick()
+  CHECK(DW.job == B and not B.done:find("1", 1, true) and B.placed == 0, "the old job's trip did not mark the new job's spots")
+  drones.ghost = nil
+  DW.stopBuild("test")
+  runUntil(function() return next(DW.trips) == nil end)
 end

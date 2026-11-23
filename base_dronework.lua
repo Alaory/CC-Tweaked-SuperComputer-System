@@ -889,7 +889,7 @@ function DW.drainBox(J)
 end
 function DW.drainPlan(J)
   local x1, y1, z1, x2, y2, z2 = DW.drainBox(J)
-  local item = J.fill or "minecraft:cobblestone"
+  local item = J.fill or DW.DRAIN_FILL
   local place, air = {}, {}
   -- (everything is placed BOTTOM UP, a layer at a time - grav: a block over an open spot would shut the water below in,
   --  out of a drone's reach; the walls first in each layer)
@@ -911,11 +911,13 @@ function DW.drainPlan(J)
   return { place = place, air = air, skipped = {}, top = y2 + 1 }
 end
 DW.DRAIN_MAX = 20000
+-- (DIRT, not cobblestone: a drone digs by hand unless it can carry a pickaxe, and cobblestone dug by hand is gone)
+DW.DRAIN_FILL = "minecraft:dirt"
 function DW.startDrain(x1, y1, z1, x2, y2, z2, fill)
   if DW.job then return false, "a build is running (" .. DW.job.name .. ") -  schem stop  first" end
   local bad = DW.notReady()
   if bad then return false, bad end
-  fill = fill or cfg("drainBlock") or "minecraft:cobblestone"
+  fill = fill or cfg("drainBlock") or DW.DRAIN_FILL
   if not fill:find(":", 1, true) then fill = "minecraft:" .. fill end
   if DW.isGravity(fill) or DW.isLate(fill) then return false, prettify(fill) .. " falls / hangs - take a plain block (cobblestone, dirt ...)" end
   local J = { kind = "drain", box = { x1, y1, z1, x2, y2, z2 }, fill = fill, rot = 0, clear = true, digLast = true,
@@ -1011,11 +1013,18 @@ function DW.digPlan(J)
 end
 function DW.unbuildPlan(s, J)
   local p = DW.plan(s, J.x, J.y, J.z, J.rot)
-  local keep, air = protected(), {}
+  local keep = protected()
+  local late, solid = {}, {}
   for _, q in ipairs(p.place) do
-    if not keep[q.x .. "," .. q.y .. "," .. q.z] then air[#air + 1] = { x = q.x, y = q.y, z = q.z, item = q.item } end
+    if not keep[q.x .. "," .. q.y .. "," .. q.z] then
+      local e = { x = q.x, y = q.y, z = q.z, item = q.item }
+      if q.late then late[#late + 1] = e else solid[#solid + 1] = e end
+    end
   end
-  return { place = {}, air = topDown(air), skipped = {}, top = p.top }
+  -- (torches, doors, signs ... FIRST: dug with the wall they hang on they fall as items the drone does not catch)
+  local air = topDown(late)
+  for _, e in ipairs(topDown(solid)) do air[#air + 1] = e end
+  return { place = {}, air = air, skipped = {}, top = p.top }
 end
 local function digJob(kind, name)
   return { kind = kind, name = name, rot = 0, clear = true, done = "", placed = 0, skippedN = 0,
@@ -1327,8 +1336,29 @@ function DW.anchorTick(J)
     if not open[ck] then releaseOne(J, ck, "Its chunk of the drone job is done - going home") end
   end
 end
-DW.DIG_WHY = "a claimed chunk where drones may not break blocks, no free block next to it for the drone, or a block " ..
-            "that drops nothing without a pickaxe - the drone's log on the DRONES page says what it did"
+DW.DIG_WHY = "stone, ores, bricks ... need a PICKAXE (a drone with one slot cannot carry one - give the drones an " ..
+            "Inventory Upgrade and set SETTINGS > DRONES slots to 2), a claimed chunk where drones may not break blocks, " ..
+            "or no free block next to it for the drone - the drone's log on the DRONES page says what it did"
+-- A PICKAXE FOR DIGGING: only a drone with room for it next to what it digs (CONFIG.drone.slots >= 2 - one slot holds
+-- the tool, the rest the blocks). The best PLAIN one AE2 has (never your own - FACTORY.variants), looked up once a minute.
+DW.TOOLS = { "minecraft:netherite_pickaxe", "minecraft:diamond_pickaxe", "minecraft:iron_pickaxe", "minecraft:stone_pickaxe" }
+function DW.digTool()
+  if DW.toolAt and now() - DW.toolAt < 60 then return DW.toolName or nil end
+  DW.toolAt, DW.toolName = now(), false
+  if not bridge then return nil end
+  local list = cfg("digTool") and { cfg("digTool") } or DW.TOOLS
+  for _, n in ipairs(list) do
+    local okV, plain = pcall(FACTORY.variants, n)
+    if okV and (tonumber(plain) or 0) > 0 then DW.toolName = n break end
+  end
+  return DW.toolName or nil
+end
+-- spots a dig trip may take: 64, or (slots - 1) x 64 when the drone carries a pickaxe
+function DW.digCap(dr)
+  local s = DW.slots(dr)
+  if s >= 2 and DW.digTool() then return (s - 1) * 64 end
+  return nil
+end
 function DW.dugCount(J)
   local n = 0
   for i = 1, #(J.dug or "") do if J.dug:sub(i, i) == "1" then n = n + 1 end end
@@ -1368,7 +1398,7 @@ end
 
 -- the next trip: { kind = "dig", idx } or { kind = "place", item, idx } (one chunk, one layer)
 -- busy = { dig = {[k] = true}, place = {...} }: spots another drone is on now (left out)
-function DW.nextTrip(J, cap, busy)
+function DW.nextTrip(J, cap, busy, digCap)
   local plan = planOf(J)
   if not plan then return nil end
   busy = busy or {}
@@ -1389,9 +1419,9 @@ function DW.nextTrip(J, cap, busy)
           if J.dug:sub(k, k) == "0" and not bd[k] and not (digWait and dag[k]) and ck(p) == ck(p0) and p.item == p0.item then
             idx[#idx + 1] = k
           end
-          if #idx >= 64 then break end
+          if #idx >= (digCap or 64) then break end
         end
-        return { kind = "dig", idx = idx, at = p0 }
+        return { kind = "dig", idx = idx, at = p0, tool = digCap and DW.digTool() or nil }
       end
     end
   end
@@ -1497,6 +1527,9 @@ local function tripDone(trip, dr)
   if not ok and dr then dr.dwEmpty = false end           -- (a failed trip may have left items in the drone)
   if (trip.kind == "dig" or trip.kind == "place") and m then pcall(noteTimes, trip, m) end
   local J, T = DW.job, trip.J
+  -- (a trip of a job that was stopped / skipped meanwhile: its spots are not this job's - the queue starts the next job
+  --  while the old trips are still out)
+  if trip.job and trip.job ~= J then J = nil end
   if trip.kind == "gift" then
     -- delivered = what it carried minus what came back (a failed trip: nothing counted - the next
     -- trip's first step empties the drone into AE2 anyway)
@@ -1543,7 +1576,7 @@ local function tripDone(trip, dr)
     --  when the drone could not get to the block or was not allowed to break it (a claimed chunk): a BREAK / TAKE-DOWN
     --  trip that brought NOTHING back gets one more try after 20 s, then it is counted as "nothing came back" and said)
     local got = 0
-    for _, n in pairs(T.back or {}) do got = got + (tonumber(n) or 0) end
+    for it, n in pairs(T.back or {}) do if it ~= T.tool then got = got + (tonumber(n) or 0) end end
     J.dugGot = (J.dugGot or 0) + got
     local check = J.kind == "unbuild" or (J.kind == "dig" and #J.dug == 1)
     if check and got == 0 then
@@ -1690,7 +1723,7 @@ function DW.buildOne(J)
   local tr, waitWhy, anchorWhy, digY, pts
   local gap = DW.gap()
   for _ = 1, 20 do
-    tr, waitWhy = DW.nextTrip(J, DW.slots(dr) * 64, busy)
+    tr, waitWhy = DW.nextTrip(J, DW.slots(dr) * 64, busy, DW.digCap(dr))
     if not tr then break end
     pts = {}
     for _, k in ipairs(tr.idx) do pts[#pts + 1] = (tr.kind == "dig" and plan.air or plan.place)[k] end
@@ -1744,11 +1777,27 @@ function DW.buildOne(J)
   local function site() return p0.x, plan.top + 2, p0.z end
   local steps = { stepUnload(dr, T, "Empty the drone first", true) }
   if tr.kind == "place" then steps[#steps + 1] = stepLoad(dr, T, tr.item, tr.want or #pts) end
+  if tr.kind == "dig" and tr.tool then
+    -- (a pickaxe from AE2 for this trip - it comes back with the rest; none to be had = dig without it)
+    local s0 = stepLoad(dr, T, tr.tool, 1)
+    local f0 = s0.fn
+    s0.text = "Get a " .. prettify(tr.tool) .. " for digging"
+    s0.fn = function()
+      local okT = f0()
+      T.missing, T.tool = nil, okT and tr.tool or nil
+      return true
+    end
+    steps[#steps + 1] = s0
+  end
   steps[#steps + 1] = stepGo(dr, "Fly to the build site", site, true)
   if tr.kind == "dig" then
     steps[#steps + 1] = { text = "Clear " .. #pts .. " spots", fn = function()
       dr.dwEmpty = false
-      return act(dr, "pneumaticcraft:dig", pts, 60 + 4 * #pts) end }
+      -- (REQUIRES THE RIGHT TOOL - PneumaticCraft source: a drone digs with its bare hand by default, and stone, ores,
+      --  bricks ... broken by hand drop NOTHING: they were destroyed. With it on, such a block is left alone unless
+      --  the drone holds a pickaxe)
+      if dr.periph and dr.periph.setRequiresTool then pcall(dr.periph.setRequiresTool, true) end
+      return act(dr, "pneumaticcraft:dig", pts, 60 + (T.tool and 4 or 12) * #pts) end }
   else
     steps[#steps + 1] = { text = "Place " .. #pts .. " " .. prettify(tr.item), fn = function()
       local n = math.min(#pts, T.carried or #pts)
@@ -1757,7 +1806,7 @@ function DW.buildOne(J)
       return act(dr, "pneumaticcraft:place", some, 60 + 4 * #some) end }
   end
   steps[#steps + 1] = stepUnload(dr, T, "Bring back what is left")
-  tr.J, tr.layer = T, p0.y                         -- (tr.at becomes the start time in submit)
+  tr.J, tr.layer, tr.job = T, p0.y, J              -- (tr.at becomes the start time in submit)
   local title = (tr.kind == "dig" and "Clear" or "Build") .. " " .. J.name .. " (layer " .. (p0.y - J.y + 1) .. ")"
   local ok, err = submit(dr, title, steps, tr)
   J.loadedBy = by

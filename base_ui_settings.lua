@@ -221,6 +221,8 @@ SETTING_GROUPS = {
     num("drone.pickupTries", "Pickup tries", "tries to pick a player up before giving up", 4, 1, 10, 1, plain),
     bool("drone.buildCraft", "Builds: AE2 crafts what is short", "a schematic build asks AE2 to craft the blocks it " ..
          "lacks (items with a pattern)", true),
+    num("drone.slots", "Drone inventory slots", "1 + its Inventory Upgrades. 2 or more = it carries a pickaxe from AE2 " ..
+        "when it digs (stone, ores, bricks need one)", 1, 1, 36, 1, function(v) return v .. (v == 1 and " slot" or " slots") end),
   } },
   { name = "CHAT", list = {
     bool("chat.askOwner", "Ask me for strangers' rides", "players not on the allow list need your OK", true),

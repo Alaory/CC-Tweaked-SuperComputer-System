@@ -240,9 +240,9 @@ Keeps a chest or tank on the wired cable stocked from AE2. It only ever puts thi
 | `schem skip` | ends the running build and starts the next one in the queue |
 | `schem built` | the builds started here (newest first, 20 kept) |
 | `schem unbuild [<n>\|<name>]` / `schem unbuild <name> <place\|x y z> [turn ...]` | TAKE A BUILD DOWN again: every block the schematic has there is dug, top down, one kind per trip - the blocks go back into AE2. No name = the newest build; a name + place for one built before. Then `schem unbuild yes` |
-| `dw dig <corner> <corner>` | drones dig EVERY block in that box, top down, into AE2 (water / lava stay - `dw clear` empties those). Then `dw dig yes`. Never the work chest, the charger or the drones' home spot |
+| `dw dig <corner> <corner>` | drones dig EVERY block in that box, top down, into AE2 (water / lava stay - `dw clear` empties those). Then `dw dig yes`. Never the work chest, the charger or the drones' home spot. Stone, ores and bricks need a pickaxe: drones with 2+ inventory slots (SETTINGS > DRONES "Drone inventory slots") take one from AE2; with one slot those blocks are left alone (never destroyed) |
 | `dw break <x y z\|place\|me>` | a drone breaks that ONE block (F3 "Targeted Block" shows its x y z) |
-| `dw clear <corner> <corner> [block]` (also `dw drain`) | EMPTIES A BOX OF WATER / LAVA for building: walls round it (the outer ring), the inside filled with the block (cobblestone - it comes back to AE2) and dug out top down. Everything inside the walls goes. Put the top corner at the surface. Corners: x y z, a saved place or `me`. A job already running -> it waits in the queue |
+| `dw clear <corner> <corner> [block]` (also `dw drain`) | EMPTIES A BOX OF WATER / LAVA for building: walls round it (the outer ring), the inside filled with the block (dirt by default - it comes back to AE2) and dug out top down. Everything inside the walls goes. Put the top corner at the surface. Corners: x y z, a saved place or `me`. A job already running -> it waits in the queue |
 | `schem craft [on\|off\|now]` | AE2 crafts the blocks a running build is short of (items with a pattern; on by default, checked every 30 s); `now` = ask at once |
 
 ### The voice add-on
