@@ -121,7 +121,11 @@ local function buildPanel(x, y, w, h)
     gauge(ix, iy + 6, iw, share, C.good)
     local yy = iy + 8
     if J.paused then yy = para(ix, yy, iw, "PAUSED: " .. J.paused, C.warn, 2) end
-    if DW.trip and DW.trip.title then text(ix, yy, trunc("Now: " .. DW.trip.title, iw), C.label, C.panel) yy = yy + 1 end
+    for _, t in ipairs(DW.tripList and DW.tripList() or {}) do
+      local dr = drones[t.dr]
+      text(ix, yy, trunc("Now: " .. tostring(t.title) .. (dr and (" - " .. tostring(dr.label)) or ""), iw), C.label, C.panel)
+      yy = yy + 1
+    end
     if J.why then yy = para(ix, yy, iw, J.why, C.warn, 3) end
     local a = J.anchor and state.turtles[J.anchor]
     if a then text(ix, yy, trunc(a.label .. " keeps the site loaded", iw), C.dim, C.panel) end

@@ -911,6 +911,21 @@ PneumaticCraft drone rides, turtle mapping/surveys, and an AE2 ME network view.
   reads only DW.view (DW.refreshView in DW.tick every 10 s while the page is open: cable chests +
   SCHEM.list + SCHEM.cache) / DW.job / DW.sel / state. Tab badge = a dot while a job runs.
   test_dronework.lua taps every button.
+  EVERY DRONE AT ONCE (the owner: "why use 1 drone? why not use more?" + "a drone can only carry 1 type of item"; the
+  idea of a 2nd work chest at the build site: the ME Bridge only reaches chests on the base's wired cable, a site chest
+  would be filled by drone trips anyway): DW.trips[drone key] = one trip per drone (DW.trip = one of them, for older
+  talk packs; DW.anyTrip(kind), DW.tripList()); giftRun / fuelRun / fuelTick no longer refuse while another job runs -
+  DW.freeDrone decides. ONE WORK CHEST, TAKEN IN TURNS: stepLoad / stepUnload fly to the chest FIRST, then DW.chestTake
+  (DW.chestBy = drone key; waits 0.5-s sleeps up to 180 s; a holder whose mission is over or 120 s old is not waited
+  for) for the export / import / back-to-AE2 only, DW.chestFree on every way out; DW.test refuses while a drone holds
+  it. BUILDS: DW.tick finishes every done trip, then DW.buildOne per free drone (up to #droneOrder a tick):
+  DW.nextTrip(J, cap, busy) skips spots out with a trip (buildFlying: busy dig / place idx, how many out, their
+  tr.layer - tr.at is the start time after submit -, kind, late); no place trip while any dig is left; side by side
+  only in the SAME layer and kind, LATE items (torches, doors ...) only once no solid trip is out; a site not loaded
+  waits while trips are out (the anchor stays); "finished" only when the last trips are back. One item type per trip
+  as before. Page / console list every trip with its drone. tools/tests/test_drone_parallel.lua (2 drones as
+  coroutines, shared chest / AE2 / world: 153 blocks, 2 trips at once, chest never mixed, one kind per drone, no spot
+  twice, torches after the floor, exact AE2 counts, a gift during a build) - the old code fails 3.
   DW.test / console `dw test [item]` (the owner: "how do I test the drone chest"): DW.notReady, the chest's spot + distance
   from the drones' home, 1 PLAIN item (DW.TEST_ITEMS: the first AE2 has, or the one named) AE2 -> work chest -> AE2;
   then, with the owner within 48 of the chest, DW.giftRun(owner, item, 1) = a drone takes it out of the chest and drops

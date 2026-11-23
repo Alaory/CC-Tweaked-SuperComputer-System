@@ -922,11 +922,13 @@ do
   runs[1] = nil
   local busy0 = VOICE.giftBusy
   VOICE.giftNext, VOICE.giftBusy, DW.wanted = 0, nil, nil
-  DW.trip = { title = "Fuel for T41", kind = "fuel" }
+  -- (every drone works side by side now: the gift waits only when NO drone is free - here the only one is on a fuel run)
+  local fr0 = DW.freeDrone
+  DW.freeDrone = function() return nil, "Drone 1 busy: Fuel for T41" end
   gtick(CLOCK, { Kevin = true })
   CHECK(#runs == 0 and DW.wanted and tostring(VOICE.giftWhy):find("goes next", 1, true) and VOICE.giftNext <= CLOCK + 2,
         "a drone job runs: the gift waits as NEXT (" .. tostring(VOICE.giftWhy) .. ")")
-  DW.trip = nil
+  DW.freeDrone = fr0
   local fr = DW.freeDrone
   DW.freeDrone = function() return nil, "Drone 1 Alaory on board" end
   VOICE.giftNext = 0

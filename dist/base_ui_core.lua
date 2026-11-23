@@ -460,7 +460,7 @@ end
 if #droneOrder > 0 then
 tabs[#tabs + 1] = { "drone", #droneOrder > 1 and "DRONES" or "DRONE",
 #droneOrder > 1 and tostring(#droneOrder) or nil }
-local busy = DW and (DW.job or DW.trip) and "\7" or nil
+local busy = DW and (DW.job or DW.trip or (DW.trips and next(DW.trips))) and "\7" or nil
 tabs[#tabs + 1] = { "work", "DRONE WORK", busy, busy and C.good or nil }
 end
 if VOICE and VOICE.giftEarn then

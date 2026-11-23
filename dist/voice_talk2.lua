@@ -1073,7 +1073,9 @@ local away = not near and V.giftAwayOK(g.who)
 if not V.giftWait(g, nearNow, now) then
 
 
-local busyWhy = DW.trip and ("a drone job is running (" .. tostring(DW.trip.title or DW.trip.kind) .. ")")
+
+
+local busyWhy = (not DW.trips) and DW.trip and ("a drone job is running (" .. tostring(DW.trip.title or DW.trip.kind) .. ")")
 if not busyWhy and DW.freeDrone then
 local fd, fw = DW.freeDrone()
 if not fd then busyWhy = "no free drone (" .. tostring(fw or DW.noDroneWhy or "?") .. ")" end
@@ -1190,7 +1192,8 @@ for _, p in ipairs(V.nearPlayers()) do near[p.name] = true end
 if V.giftBusy then
 out[#out + 1] = "Flying now: " .. V.giftBusy.n .. " " .. itemName(V.giftBusy.item) .. " to " .. V.giftBusy.who ..
 (DW and DW.trip and (" (" .. tostring(DW.trip.title) .. ")") or " - but no drone job runs: freed")
-if DW and DW.trip then return out end
+local gt = DW and ((DW.anyTrip and DW.anyTrip("gift")) or (not DW.anyTrip and DW.trip))
+if gt then return out end
 V.giftBusy = nil
 end
 for _, g in ipairs((gifts())) do g.retryAt = nil end
