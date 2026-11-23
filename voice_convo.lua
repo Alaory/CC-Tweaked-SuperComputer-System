@@ -163,7 +163,7 @@ function C.isBad(ws, t)
   end
   return false
 end
-C.YES = set({ "yes", "yess", "definitely", "totally", "absolutely", "ofc", "always", "kinda", "obviously", "indeed", "yah", "aye", "true",
+C.YES = set({ "yes", "ok", "okay", "yess", "definitely", "totally", "absolutely", "ofc", "always", "kinda", "obviously", "indeed", "yah", "aye", "true",
   "correct", "yesh", "duh", "certainly", "def", "si", "ja", "oui" })
 C.YES_P = { "of course", "i do", "a lot", "for sure", "i have", "i am", "i did", "love it", "you bet", "heck yes", "why not", "sort of",
   "a bit", "a little", "i guess so", "i think so", "kind of", "very much", "all the time", "every day", "sometimes" }
@@ -1150,6 +1150,11 @@ end
 -- a thing they like, cleaned (nil = not a thing: "it", "you", a player, too long)
 function C.thing(x)
   if not x then return nil end
+  -- ("I love this place" / "your base" is about the base, not a thing they like - it was saved as "likes place")
+  local xl = " " .. x .. " "
+  for _, g in ipairs({ " this place ", " it here ", " your base ", " the base ", " this base ", " your place ", " here " }) do
+    if xl:find(g, 1, true) then return nil end
+  end
   local ws = {}
   for w in x:gmatch("%S+") do ws[#ws + 1] = w end
   local keep = set({ "to" })

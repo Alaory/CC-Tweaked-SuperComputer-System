@@ -283,6 +283,8 @@ for i = #VOICE.queue, 1, -1 do
 if not VOICE.queue[i].answer then table.remove(VOICE.queue, i) VOICE.skipped = (VOICE.skipped or 0) + 1 break end
 end
 end
+VOICE.saidN = (VOICE.saidN or 0) + 1
+if VOICE.saidN % 200 == 0 then for t0, at0 in pairs(VOICE.said) do if os.clock() - at0 > 60 then VOICE.said[t0] = nil end end end
 VOICE.said[text] = os.clock()
 
 
@@ -895,7 +897,7 @@ local dd = ENV and ENV.data
 local c = dd and ENV.clock(dd.time)
 if not c then return "I have no clock - the Environment Detector is missing." end
 return "It is " .. c.hhmm .. ", day " .. c.day .. ". " .. (c.night and "Night" or "Day") ..
-" - " .. (c.night and "morning" or "night") .. " in " .. math.max(1, math.floor(c.secs / 60)) .. " minutes."
+" - " .. (c.night and "morning" or "night") .. " in " .. plural(math.max(1, math.floor(c.secs / 60)), "minute", "minutes") .. "."
 end
 function VOICE.weatherText()
 local dd = ENV and ENV.data
@@ -1260,7 +1262,7 @@ if phrase("rock paper scissors", "rps") then
 startGame(who, { kind = "rps" })
 return "Rock, paper or scissors? Type yours in chat."
 end
-if has("quiz", "trivia", "question") then
+if has("quiz", "trivia") or phrase("ask me a question", "ask me something", "give me a question") then
 local Q = pick(VOICE.QUIZ)
 startGame(who, { kind = "quiz", a = Q.a, tries = 0 })
 return "Quiz time! " .. Q.q .. " Type the answer in chat."
@@ -1302,7 +1304,7 @@ end
 if phrase("real time", "irl", "real world") then
 return "The server clock says " .. os.date("!%H:%M", math.floor(os.epoch("utc") / 1000)) .. " UTC."
 end
-if phrase("remember ") and not phrase("do you remember") then
+if phrase("remember ") and not phrase("do you remember", "remember when", "remember that time", "you remember", "remember me") then
 local what = q:match("remember (.+)$")
 if what then
 local m = VOICE.mem()
@@ -1345,7 +1347,7 @@ if phrase("good morning") then return "Good morning, " .. name .. "!" end
 if phrase("good night") then return "Good night, " .. name .. ". Sweet dreams." end
 if phrase("welcome ") then
 local other = q:match("welcome (%S+)")
-if other then return "Welcome, " .. other .. "! Nice to have you here." end
+if other and not (VOICE.isReal and VOICE.isReal(other)) then return "Welcome, " .. other .. "! Nice to have you here." end
 end
 if phrase(" say ") and (isOwner(who) or isFriend(who)) then
 local what = q:match(" say (.+)$")
@@ -1479,11 +1481,11 @@ VOICE.REACT = {
 
 local SHORT = { u = "you", ur = "your", r = "are", y = "why", wat = "what", wut = "what", whats = "what is", whos = "who is",
 wheres = "where is", hows = "how is", im = "i am", ive = "i have", dont = "do not", cant = "can not", wont = "will not",
-pls = "please", plz = "please", thx = "thanks", ty = "thanks", tysm = "thanks", k = "ok", kk = "ok", okey = "ok",
+pls = "please", plz = "please", thx = "thanks", ty = "thanks", tysm = "thanks", k = "ok", kk = "ok",
 ppl = "people", hru = "how are you", wyd = "what are you doing", idk = "i do not know", n = "and", b4 = "before",
 gr8 = "great", luv = "love", msg = "message", sup = "hello", yo = "hello", hai = "hi", hii = "hi", heya = "hello",
 hiya = "hello", howdy = "hello", yea = "yes", yeah = "yes", yep = "yes", yup = "yes", ya = "yes", sure = "yes",
-okay = "yes", ok = "yes", nah = "no", nope = "no", naw = "no" }
+okay = "ok", okey = "ok", nah = "no", nope = "no", naw = "no" }
 
 function VOICE.norm(text)
 local t = tostring(text or ""):lower():gsub("'", ""):gsub("[%p]", " ")
@@ -1523,6 +1525,7 @@ VOICE.dist = dist
 function VOICE.same(w, k)
 if w == k or w == k .. "s" or k == w .. "s" or w == k .. "es" then return true end
 if #k < 4 or #w < 4 then return false end
+if VOICE.isReal and VOICE.isReal(w) then return false end
 if w:sub(1, 1) ~= k:sub(1, 1) then return false end
 local max = (#k >= 7) and 2 or 1
 return dist(w, k, max) <= max
@@ -1535,6 +1538,7 @@ end
 
 
 VOICE.INTENTS = {
+{ id = "thanks", canon = "thanks", keys = { "thanks", "thank", "appreciate", "cheers" } },
 { id = "menu", keys = { "help", "options", "commands", "menu", "what can you do", "what can i ask", "what can i say",
 "what do i say", "what do i do", "how does this work", "how do i talk", "what should i ask", "list" } },
 { id = "whereturtle", keys = { "where turtle", "find turtle", "where is turtle", "locate turtle" } },
@@ -1589,7 +1593,6 @@ VOICE.INTENTS = {
 { id = "online", canon = "who is online", keys = { "online", "who is on", "players", "people" } },
 { id = "whereami", canon = "where am i", keys = { "where am i", "my position", "coords", "coordinates", "lost", "where is home" } },
 { id = "mobs", canon = "mobs", keys = { "mobs", "monsters", "animals", "outside", "creepers", "zombies", "danger", "safe" } },
-{ id = "thanks", canon = "thanks", keys = { "thanks", "thank", "appreciate", "cheers" } },
 { id = "bye", keys = { "bye", "goodbye", "cya", "see you", "leaving", "gotta go", "later", "good night" } },
 { id = "hello", canon = "hello", keys = { "hello", "hi", "hey", "greetings", "good morning", "good evening", "good afternoon", "anyone there", "hellooo" } },
 }
@@ -1622,7 +1625,7 @@ end
 local out = {}
 for i, w in ipairs(ws) do
 local best = w
-if not VOCAB[w] and #w >= 4 and not tonumber(w) then
+if not VOCAB[w] and #w >= 4 and not tonumber(w) and not (VOICE.isReal and VOICE.isReal(w)) then
 local bd = 3
 for v in pairs(VOCAB) do
 if #v >= 4 and v:sub(1, 1) == w:sub(1, 1) then
@@ -1729,7 +1732,7 @@ end
 parts[#parts + 1] = "The big screen shows everything I do."
 return table.concat(parts, " ")
 end
-local YES = { yes = true, y = true, please = true, go = true, alright = true, absolutely = true, definitely = true }
+local YES = { yes = true, y = true, please = true, go = true, alright = true, absolutely = true, definitely = true, ok = true }
 local NO = { no = true, n = true, never = true, later = true, stop = true }
 
 
@@ -2496,7 +2499,7 @@ if isOwner(name) then
 local b = VOICE.base()
 if b.report then
 b.report = nil
-local since, list = b.lastOff or 0, {}
+local since, list = b.reportFrom or b.lastOff or 0, {}
 for _, v in pairs(b.visitors) do if (v.last or 0) > since then list[#list + 1] = v.name .. (v.n > 1 and (" " .. v.n .. " times") or "") end end
 VOICE.saveMem()
 local line = "Welcome back, " .. name .. "."

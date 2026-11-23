@@ -867,7 +867,7 @@ local t = table.concat(ws, " ")
 if t == "forget me" or t == "please forget me" or t:find("forget about me") or t:find("delete my data") or t:find("forget everything about me")
 or t:find("delete everything about me") then
 V.pend[tostring(who):lower()] = { kind = "react", till = os.clock() + 60, fn = function(w, ws2)
-if ws2[1] == "yes" or ws2[1] == "please" or ws2[1] == "y" then
+if ws2[1] == "yes" or ws2[1] == "please" or ws2[1] == "y" or ws2[1] == "ok" then
 forgetPlayer(w)
 return "Done. I forgot everything about you: points, badges, nickname, favourites, birthday and your guestbook line. " ..
 "(Only a note of the gifts you already got stays, so they are not given twice.)"

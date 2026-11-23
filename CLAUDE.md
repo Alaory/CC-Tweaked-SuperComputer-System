@@ -1638,6 +1638,18 @@ PneumaticCraft drone rides, turtle mapping/surveys, and an AE2 ME network view.
   stuff" went to "can i stay" (the 8 ball said "Yes.") - freestuff keys "can i have free stuff / items". test_voice
   part 33: every intent reachable by its own keys (220 of 221 tried; the other starts a question) gives 50+ different
   answers in 60 asks; a status answer keeps the status.
+  REVIEW 2 (the owner: "go over the voice addon"; test_voice_words.lua - the old code fails 17 of 22): REAL WORDS ARE NOT
+  TYPOS - the loose matching (VOICE.same / VOICE.fix: one letter off = the same word) read real words as typos of key
+  words: "I have a story for you" = "I HATE you" (quiet 5 min), could = cold, water = weather, making = mapping, having =
+  hacking, saying = spying, telling = talking, then = they, fire = five, gold = good, "bake bread" called the base.
+  V.isReal (voice_vary.lua: ~1000 common words + plural / -ing / -ed / -er / -ly forms) -> VOICE.same and VOICE.fix leave
+  them alone (the core only asks VOICE.isReal - voice_addon slim is ~124 KB of a 125 KB floppy). "ok" / "okay" stay "ok"
+  (SHORT turned them into "yes": "are you ok" / "is everything ok" were never understood) - YES (core), C.YES (convo) and
+  pack 2's forget-me confirm take "ok". The quiz no longer starts on the word "question"; "can I ask you a question" /
+  "I have a story" / "I am back" / "I love this place" / "nice base" = vary patterns; "remember when ..." is no note;
+  "thanks" is the first intent ("thanks for the help" got the help list); "welcome here" is no "Welcome, here!"; C.thing
+  never saves "this place" / "your base" as a like; "1 minute"; VOICE.said (every line ever said) trimmed every 200
+  lines; the owner's welcome-back lists visitors since b.reportFrom (as the messages).
 - THE SPAWN SPEAKER (voice_spawn.lua = VOICE_FILES[9], loaded last; spawn_speaker.lua on a small computer at spawn,
   manifest group "spawn" - never on the base; the owner: "an ender modem on a speaker at spawn - its own place, no
   rewards, wishes sent by drone, games, players do not know how to ask it, lots of different sentences"). An ender
